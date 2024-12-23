@@ -1,0 +1,64 @@
+.tank-container {
+  @include displayFlex(center, center, column);
+  height: 85vh;
+  z-index: 100;
+  margin: 0 20px;
+  user-select: none;
+
+  .image {
+    @include displayFlex(center, center, column);
+    width: 350px;
+    user-select: none;
+  }
+  img {
+    pointer-events: none;
+  }
+}
+
+.tb-coin-image-icon {
+  height: 24px;
+  width: 24px;
+  margin-left: 5px;
+  margin-right: 40px;
+  border-radius: 320px;
+}
+
+.tb-coin-image {
+  border-radius: 320px;
+  height: 28px;
+  width: 28px;
+}
+
+.clicker {
+  @include displayFlex(center, center, column);
+  position: absolute;
+  overflow: hidden;
+  cursor: pointer;
+  height: 58vh;
+  width: 90%;
+  user-select: none;
+  outline: none;
+
+  .coin-container {
+    @include displayFlex(space-between, center, row);
+  }
+  .bonus-text {
+    color: $tg-theme-button-text;
+    font-size: 18px;
+    font-weight: $font-weight-bold;
+    margin-right: 6px;
+  }
+}
+
+.spawned-image {
+  animation: raise 2s ease-in-out forwards;
+}
+
+@keyframes raise {
+  0% {
+    bottom: 0;
+  }
+  100% {
+    bottom: 100%;
+  }
+}

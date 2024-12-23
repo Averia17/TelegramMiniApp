@@ -1,0 +1,31 @@
+.click-page {
+  &__container {
+    @include displayFlex(normal, normal, column);
+    color: $tg-theme-text;
+    text-align: center;
+  }
+
+  &__header {
+    @include displayFlex(space-between, center, row);
+    color: $tg-theme-text;
+    text-align: center;
+  }
+
+  &__text {
+    text-align: left;
+    font-size: 36px;
+    font-weight: $font-weight-bold;
+  }
+}
+.no-select {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+.no-select:focus {
+    outline: none !important;
+}

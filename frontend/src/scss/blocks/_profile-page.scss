@@ -1,0 +1,147 @@
+.profile-tab {
+  padding: 20px;
+  color: $tg-theme-text !important;
+  background-color: $tg-theme-bg !important;
+  border-radius: 8px;
+  font-family: Roboto, sans-serif;
+
+  .page-title {
+    margin-bottom: 20px;
+  }
+
+  .loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100px;
+  }
+
+  .user-info {
+    margin-bottom: 20px;
+
+    .username, .full-name {
+      font-size: 1.35rem;
+      margin-bottom: 10px;
+    }
+  }
+
+  .tb-username-component {
+    @include displayFlex(center, center, row);
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+    .label {
+      font-size: 1.2rem;
+      margin-right: 10px;
+      color: #333;
+      font-weight: bold;
+    }
+
+    .input {
+      flex: 1;
+      padding: 6px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1.2rem;
+      transition: border-color 0.3s ease;
+      width: 120px;
+      margin-right: 5px;
+
+      &:focus {
+        border-color: $tg-theme-button;
+        outline: none;
+      }
+
+      &::placeholder {
+        color: #aaa;
+        font-size: 0.85rem;
+        font-style: italic;
+        font-weight: normal;
+      }
+    }
+
+  }
+
+  .token-exchange-component {
+    font-family: Roboto, sans-serif;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+    max-width: 400px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+    .label {
+      font-size: 1.2rem;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .clicks-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 20px 0;
+
+      .clicks {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #007bff;
+        margin: 0 10px;
+      }
+    }
+
+    .no-tokens {
+      font-size: 1.2rem;
+      color: #ff4d4d;
+      margin-top: 20px;
+    }
+
+    .snackbar {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background-color: #333;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      z-index: 1000;
+    }
+  }
+
+  .invited-users {
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    max-width: 400px;
+    overflow: auto;
+
+    .label {
+      font-size: 1.35rem;
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #333;
+    }
+
+    .user-item {
+      font-size: 1.2rem;
+      color: #555;
+      margin-bottom: 10px;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+  }
+}

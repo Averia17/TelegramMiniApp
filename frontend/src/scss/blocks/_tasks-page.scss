@@ -1,0 +1,26 @@
+.tasks {
+  color: $tg-theme-text !important;
+  background-color: $tg-theme-bg !important;
+  &__invite-task {
+    @include displayFlex(space-between, center, row);
+    padding: 16px;
+    background-color: #f0f0f0;
+    border-radius: 8px;
+    color: black;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    font-size: 1.35rem;
+    font-family: 'Roboto', sans-serif;
+    margin-bottom: 10px;
+  }
+  &__share-link {
+    @include displayFlex(space-between, center, row);
+  }
+}
+
+.task-title-container {
+  @include displayFlex(space-between, center, row);
+  font-size: 1.2rem !important;
+}
+
+
+
