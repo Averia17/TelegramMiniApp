@@ -1,15 +1,13 @@
-FROM python:3.11-slim as builder
+FROM python:3.12-slim
 
-RUN python3 -m venv /venv && /venv/bin/pip install -U pip wheel setuptools && mkdir /src && mkdir /src/src
+RUN pip install -U pip wheel setuptools && mkdir /src && mkdir /src/src
 
 COPY pyproject.toml /src/
 
-RUN /venv/bin/pip install '/src[web]'
-
-FROM python:3.11-slim
+RUN pip install '/src[web]'
 
 WORKDIR /src
-COPY --from=builder /venv /venv
+
 COPY src /src/src
 
-CMD ["/venv/bin/uvicorn", "miniapp.webhook.app:app", "--host", "0.0.0.0", "--reload", "--port", "8000", "--workers", "4"]
+CMD ["uvicorn", "miniapp.webhook.app:app", "--host", "0.0.0.0", "--reload", "--port", "8000", "--workers", "4"]

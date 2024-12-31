@@ -1,6 +1,7 @@
 services:
-  app:
-    container_name: "app"
+  frontend:
+    container_name: "frontend"
+    image: "frontend"
     build:
         context: ./frontend
         dockerfile: Dockerfile
@@ -24,7 +25,7 @@ services:
 
   bot:
     container_name: "bot"
-    image: "miniapp_bot"
+    image: "bot"
     stop_signal: SIGINT
     build:
       context: ./backend
@@ -72,7 +73,7 @@ services:
       - /var/app/miniapp:/src/public
     depends_on:
       - webhook
-      - app
+      - frontend
   webhook:
     container_name: "webhook"
     image: "webhook"
