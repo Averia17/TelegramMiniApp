@@ -4,11 +4,10 @@ import {getCookie} from "../../utils/cookie.js";
 
 export const BattleTab = () => {
     const [players, setPlayers] = useState([]);
-    const [input, setInput] = useState('');
     const [ws, setWs] = useState(null);
     const id = getCookie("user_id")
+
     useEffect(() => {
-        console.log("connect")
         const socket = new WebSocket('ws://localhost:3779/battle/connect');
         setWs(socket);
 
@@ -17,7 +16,7 @@ export const BattleTab = () => {
             setPlayers(data.players_data)
         };
         socket.onclose = (event) => {
-
+            setPlayers((prevPlayers) =>prevPlayers.filter(({player_id}) => player_id !== id))
         }
 
         // return () => {
@@ -25,28 +24,14 @@ export const BattleTab = () => {
         // };
     }, []);
 
-    const sendMessage = (event) => {
-        event.preventDefault();
-        if (ws && input) {
-            ws.send(input);
-            setInput('');
-        }
-    };
-    console.log(players)
     return (
         <div>
             <h1>Battle Game</h1>
             <div>Player {id}</div>
-            <Map id={id} players={players}/>
-            <form onSubmit={sendMessage}>
-                <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    autoComplete="off"
-                />
-                <button type="submit">Send</button>
-            </form>
+            {ws ?
+                <Map id={id} ws={ws} players={players}/>:
+                <div>Loading...</div>
+            }
         </div>
     );
 }
