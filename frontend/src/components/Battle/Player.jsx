@@ -24,26 +24,28 @@ const MoveButton = ({ direction, handleMove }) => (
 );
 
 const PlayerInfo = ({ player, id, handleAttack }) => (
-    <div
+    <button
         style={{
             position: 'relative',
             padding: '3px',
             border: player.id === id && '1px solid orange',
         }}
+        disabled={player.health <= 0}
         key={player.id}
         onClick={(event) => handleAttack(event, player.id)}
     >
         <div>Player {player.id}</div>
         <div>HP {player.health}</div>
-    </div>
+        <div>Level {player.level}</div>
+    </button>
 );
 
 export const Player = ({ id, ws, player }) => {
     const handleAttack = (event, player_id) => {
+        event.preventDefault();
         if (id === player_id) {
             return;
         }
-        event.preventDefault();
         ws.send(JSON.stringify({ action: 'attack', data: { player_id: player_id } }));
     };
 
