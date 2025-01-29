@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react";
-import {Map} from "../Battle/Map.jsx";
+import {BattleScreen} from "../Battle/BattleScreen.jsx";
 import {getCookie} from "../../utils/cookie.js";
 
 export const BattleTab = () => {
@@ -39,12 +39,40 @@ export const BattleTab = () => {
         // };
     }, []);
 
+    const handleMove = (event, direction) => {
+        event.preventDefault();
+        ws.send(JSON.stringify({action: 'move', data: {direction: direction}}));
+    };
+
+    useEffect(() => {
+        if(!ws) return
+
+        document.addEventListener('keydown', (event) => {
+            switch (event.key.toUpperCase()) {
+                case 'A':
+                    handleMove(event, 'LEFT');
+                    break;
+                case 'S':
+                    handleMove(event, 'BOTTOM');
+                    break;
+                case 'D':
+                    handleMove(event, 'RIGHT');
+                    break;
+                case 'W':
+                    handleMove(event, 'TOP');
+                    break;
+                default:
+                    break;
+            }
+        });
+    }, [ws]);
+
     return (
         <div>
             <h1>Battle Game</h1>
             <div>Player {id}</div>
-            {ws ?
-                <Map id={id} ws={ws} camps={camps} players={players}/>:
+            {ws && Object.keys(players).length > 0 && Object.keys(camps).length > 0?
+                <BattleScreen id={id} ws={ws} handleMove={handleMove} camps={camps} players={players}/>:
                 <div>Loading...</div>
             }
         </div>
