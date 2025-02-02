@@ -1,4 +1,4 @@
-import React, {useEffect} from "react";
+import React from "react";
 
 const Button = ({onClick, children}) => (
     <button className="touch-button" onClick={onClick} >

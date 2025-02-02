@@ -9,6 +9,7 @@ import {LeaderboardTab} from "../components/Tabs/Leaderboard.jsx";
 import {TasksTab} from "../components/Tabs/TasksTab.jsx";
 import {ProfileTab} from "../components/Tabs/ProfileTab.jsx";
 import {BattleTab} from "../components/Tabs/BattleTab.jsx";
+import {WebSocketProvider} from "../components/Battle/WebSocketProvider.jsx";
 
 
 function CustomTabPanel(props) {
@@ -44,7 +45,9 @@ const LandingPage = () => {
     return (
         <>
             <CustomTabPanel value={value} index={0}>
-                <BattleTab/>
+                <WebSocketProvider url="ws://localhost:3779/battle/connect">
+                    <BattleTab/>
+                </WebSocketProvider>
             </CustomTabPanel>
             <CustomTabPanel value={value} index={1}>
                 <ClickerTab/>

@@ -1,13 +1,14 @@
-import React from "react";
+import React, {useCallback} from "react";
 
-export const Camp = ({ ws, camp }) => {
-    const handleAttack = (event, camp) => {
+
+export const Camp = React.memo(({ camp, attackCamp }) => {
+    const handleAttack = useCallback((event) => {
         event.preventDefault();
         if (camp.health <= 0) {
             return;
         }
-        ws.send(JSON.stringify({action: 'camp_attack', data: {camp_id: camp.id}}));
-    };
+        attackCamp(camp.id)
+    },[camp, attackCamp]);
 
     return <button
         style={{
@@ -20,10 +21,11 @@ export const Camp = ({ ws, camp }) => {
         }}
         disabled={camp.health <= 0}
         key={camp.id}
-        onClick={(event) => handleAttack(event, camp)}
+        onClick={handleAttack}
     >
         <div>Camp {camp.id}</div>
         <div>HP {camp.health}</div>
         <div>Level {camp.level}</div>
     </button>
-}
+}, (prevProps, nextProps) => JSON.stringify(prevProps.camp) === JSON.stringify(nextProps.camp)
+)

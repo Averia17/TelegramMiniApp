@@ -1,56 +1,34 @@
-import {MyPlayer} from "./MyPlayer.jsx";
-import {Player} from "./Player.jsx";
-import {Camp} from "./Camp.jsx";
-import React from "react";
+import React, { useMemo, useState} from "react";
 
 import "./style.scss"
+import {Players} from "./Players.jsx";
+import {Camps} from "./Camps.jsx";
 
 
-export const Map = ({id, ws, camps, players}) => {
-    const myPlayer = {id: id, ...players[id]}
+export const Map = React.memo(({id}) => {
+    const [myPlayerLocation, setMyPlayerLocation] = useState(undefined)
 
-    const handleAttack = (event, player_id) => {
-        event.preventDefault();
-        if (id === player_id) {
-            return;
-        }
-        ws.send(JSON.stringify({action: 'attack', data: {player_id: player_id}}));
-    };
+    const offsets = useMemo(() => {
+        if (!myPlayerLocation) return [0, 0];
 
-    let offsetX = window.innerWidth / 2 - myPlayer.location[0]
-    let offsetY = myPlayer.location[1] - window.innerHeight
-    if (offsetX > 0) {
-        offsetX = 0
-    }
-    if (offsetX < -600) {
-        offsetX = -600
-    }
-    if (offsetY > 0) {
-        offsetY = 0
-    }
-    if (offsetY < -450) {
-        offsetY = -450
-    }
+        const OFFSET_X_MIN = -600;
+        const OFFSET_X_MAX = 0;
+        const OFFSET_Y_MIN = -450;
+        const OFFSET_Y_MAX = 0;
 
-    return <div className="map" style={{transform: `translate(${offsetX}px, ${offsetY}px)`}}>
-        <MyPlayer id={id} player={myPlayer}/>
-        {Object.entries(players)
-            .filter(([key, value]) => Number.parseInt(key) !== id)
-            .map(([key, value]) => ({
-                id: Number.parseInt(key),
-                health: value.health,
-                level: value.level,
-                location: value.location
-            }))
-            .map((player) => <Player key={player.id} handleAttack={handleAttack} player={player}/>)}
+        const [playerX, playerY] = myPlayerLocation;
 
-        {Object.entries(camps)
-            .map(([key, value]) => ({
-                id: Number.parseInt(key),
-                health: value.health,
-                level: value.level,
-                location: value.location
-            }))
-            .map((camp) => <Camp key={camp.id} ws={ws} camp={camp}/>)}
+        let offsetX = window.innerWidth / 2 - playerX;
+        let offsetY = playerY - window.innerHeight;
+
+        offsetX = Math.max(OFFSET_X_MIN, Math.min(offsetX, OFFSET_X_MAX));
+        offsetY = Math.max(OFFSET_Y_MIN, Math.min(offsetY, OFFSET_Y_MAX));
+
+        return [offsetX, offsetY];
+    }, [myPlayerLocation]);
+
+    return <div className="map" style={{transform: `translate(${offsets[0]}px, ${offsets[1]}px)`}}>
+        <Players id={id} setMyPlayerLocation={setMyPlayerLocation}/>
+        <Camps/>
     </div>
-}
+},)

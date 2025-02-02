@@ -10,10 +10,10 @@ import {getCookie, setCookie} from "./utils/cookie.js";
 const App = () => {
     const showPopup = useShowPopup()
     const [impactOccurred, notificationOccurred, selectionChanged] = useHapticFeedback()
-    const [isInvalidVersion, setIsInvalidVersion] = useState(false)
+    // const [isInvalidVersion, setIsInvalidVersion] = useState(false)
 
     useEffect(() => {
-        const initData = window.Telegram.WebApp.initDataUnsafe
+        const initData = window.Telegram?.WebApp.initDataUnsafe
         if (import.meta.env.VITE_REACT_APP_API_URL.includes("localhost") && !getCookie("user_id")) {
             setCookie("user_id", Math.floor(Math.random() * 100000) + 1, 1)
         }
@@ -26,24 +26,24 @@ const App = () => {
                 })
             }
         }
-        if (window.Telegram && window.Telegram.WebApp) {
-            if (!window.Telegram.WebApp.isVersionAtLeast("6.9")) {
-                notificationOccurred("error")
-                if (window.Telegram.WebApp.isVersionAtLeast("6.2")) {
-                    showPopup({message: "Please update your Telegram app to the latest version to use this app."})
-                } else {
-                    console.log("the version is not supported")
-                    setIsInvalidVersion(true)
-                }
-            }
-            // Alternatively to what can be set with react-telegram-web-app, you can directly set the following properties:
-            try {
-                window.Telegram.WebApp.requestWriteAccess()
-            } catch (e) {
-                console.log(e)
-            }
-            window.Telegram.WebApp.expand()
-        }
+        // if (window.Telegram && window.Telegram.WebApp) {
+        //     if (!window.Telegram.WebApp.isVersionAtLeast("6.9")) {
+        //         notificationOccurred("error")
+        //         if (window.Telegram.WebApp.isVersionAtLeast("6.2")) {
+        //             showPopup({message: "Please update your Telegram app to the latest version to use this app."})
+        //         } else {
+        //             console.log("the version is not supported")
+        //             setIsInvalidVersion(true)
+        //         }
+        //     }
+        //     // Alternatively to what can be set with react-telegram-web-app, you can directly set the following properties:
+        //     try {
+        //         window.Telegram.WebApp.requestWriteAccess()
+        //     } catch (e) {
+        //         console.log(e)
+        //     }
+        //     window.Telegram.WebApp.expand()
+        // }
     }, [])
 
     return (
@@ -62,7 +62,7 @@ const App = () => {
             {/*{!isInvalidVersion && (*/}
             <BrowserRouter>
                 <Routes>
-                    <Route path="/" element={<LandingPage isInvalidVersion={isInvalidVersion}/>}/>
+                    <Route path="/" element={<LandingPage/>}/>
                 </Routes>
             </BrowserRouter>
             {/*)}*/}
