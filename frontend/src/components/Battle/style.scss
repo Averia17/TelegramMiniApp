@@ -52,3 +52,10 @@
     }
   }
 }
+
+.loading-container {
+  position: relative;
+  padding: 5px 0;
+  background: transparent;
+  z-index: 2;
+}

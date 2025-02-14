@@ -34,17 +34,17 @@ class ConnectionManager:
                 await self.disconnect(player_id)
 
     # async def send_broadcast_players(self):
-    #     players = self.game_service.get_players()
+    #     players = self.game_server.get_players()
     #     await self.send_broadcast({"players": players})
     #
     # async def send_broadcast_one_player(self, player_id: int):
-    #     player = self.game_service.get_player(player_id)
+    #     player = self.game_server.get_player(player_id)
     #     await self.send_broadcast({"player": [player_id, player]})
     #
     # async def send_broadcast_camps(self):
-    #     camps = self.game_service.get_camps()
+    #     camps = self.game_server.get_camps()
     #     await self.send_broadcast({"camps": camps})
     #
     # async def send_broadcast_one_camp(self, camp_id: int):
-    #     camp = self.game_service.get_camp(camp_id)
+    #     camp = self.game_server.get_camp(camp_id)
     #     await self.send_broadcast({"camp": camp})

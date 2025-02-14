@@ -45,9 +45,7 @@ const LandingPage = () => {
     return (
         <>
             <CustomTabPanel value={value} index={0}>
-                <WebSocketProvider url="ws://localhost:3779/battle/connect">
-                    <BattleTab/>
-                </WebSocketProvider>
+                <BattleTab/>
             </CustomTabPanel>
             <CustomTabPanel value={value} index={1}>
                 <ClickerTab/>

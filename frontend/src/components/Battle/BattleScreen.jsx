@@ -7,7 +7,7 @@ import {useWebSocket} from "./WebSocketProvider.jsx";
 
 
 export const BattleScreen = ({id}) => {
-    const { move } = useWebSocket();
+    const {move} = useWebSocket();
 
     const handleMove = useCallback((event, direction) => {
         event.preventDefault();
@@ -16,17 +16,17 @@ export const BattleScreen = ({id}) => {
 
     useEffect(() => {
         document.addEventListener('keydown', (event) => {
-            switch (event.key.toUpperCase()) {
-                case 'A':
+            switch (event.code) {
+                case 'KeyA':
                     handleMove(event, 'LEFT');
                     break;
-                case 'S':
+                case 'KeyS':
                     handleMove(event, 'BOTTOM');
                     break;
-                case 'D':
+                case 'KeyD':
                     handleMove(event, 'RIGHT');
                     break;
-                case 'W':
+                case 'KeyW':
                     handleMove(event, 'TOP');
                     break;
                 default:

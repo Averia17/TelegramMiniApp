@@ -13,8 +13,9 @@ class Directions(Enum):
 
 
 
-class GameService:
-    def __init__(self):
+class GameServer:
+    def __init__(self, battle_id):
+        self.id = battle_id
         self._players: dict[int, dict] = defaultdict(lambda: {"health": 100, "level": 1, "location": None})
         self._camps = {
             1: {"health": 50, "level": 0.5, "location": [100, 200]},
@@ -28,6 +29,9 @@ class GameService:
 
     def get_players(self):
         return self._players
+
+    def get_players_ids(self):
+        return list(self._players.keys())
 
     def get_player(self, player_id: int):
         return self._players[player_id]
