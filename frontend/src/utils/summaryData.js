@@ -8,7 +8,7 @@ const fetchUserDataAndLocationInfo = async (
     let selectedTimeSlot = JSON.parse(await storage.getItem("selectedTimeSlot"))
     const locationInfo = JSON.parse(await storage.getItem("selectedLocation"))
     try {
-      const workingHours = await axios.get(`${import.meta.env.VITE_REACT_APP_API_URL}/api/working_hours/${locationInfo.location_id}`)
+      const workingHours = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/working_hours/${locationInfo.location_id}`)
       // make date object from string inside selectedTimeSlot
       selectedTimeSlot = new Date(selectedTimeSlot)
 

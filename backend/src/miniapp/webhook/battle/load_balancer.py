@@ -2,8 +2,8 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
+from miniapp.webhook.battle.action_service import ActionService
 from miniapp.webhook.battle.game_server import GameServer
 from miniapp.webhook.constants import TIMEZONE
 
@@ -38,10 +38,11 @@ class LoadBalancer:
 
         battle_id = str(uuid.uuid4())
         game_server = GameServer(battle_id)
+        action_service = ActionService(game_server)
         for player in players:
             game_server.init_player(player[0])
 
         for player in players:
             await player[1].send_json({"battle_id": battle_id})
 
-        return game_server
+        return action_service

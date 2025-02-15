@@ -14,7 +14,7 @@ const TaskItem = ({task, setCompletedTasksIds, completed, userId}) => {
             } else if (task.link) {
                 window.Telegram.WebApp.openLink(task.link)
             }
-            const response = await axios.post(`${import.meta.env.VITE_REACT_APP_API_URL}/api/users/${userId}/complete_task`,
+            const response = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/api/users/${userId}/complete_task`,
                 {task_id: task.id, reward: task.reward}
             )
             setTimeout(() => {
@@ -94,7 +94,7 @@ export const Tasks = ({onChangeTab}) => {
     useEffect(() => {
         if (userId) {
             setIsLoading(true)
-            axios.get(`${import.meta.env.VITE_REACT_APP_API_URL}/api/users/${userId}/completed_tasks`).then(({data}) => {
+            axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/users/${userId}/completed_tasks`).then(({data}) => {
                 setCompletedTasksIds(data["completed_tasks"])
                 setAccUsername(data["tb_username"])
             }).finally(() => setIsLoading(false));

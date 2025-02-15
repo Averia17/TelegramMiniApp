@@ -13,7 +13,7 @@ const TBUsernameComponent = ({tbUsername, userId}) => {
     const [severity, setSeverity] = useState('success');
 
     const handleUpdate = () => {
-        axios.patch(`${import.meta.env.VITE_REACT_APP_API_URL}/api/users/${userId}`, {tb_username: username})
+        axios.patch(`${import.meta.env.VITE_BACKEND_URL}/api/users/${userId}`, {tb_username: username})
             .then(({data}) => {
                 setUsername(data["tb_username"]);
                 setMessage('TB Username updated successfully!');
@@ -22,7 +22,7 @@ const TBUsernameComponent = ({tbUsername, userId}) => {
                 if(!tbUsername) {
                     setTimeout(() => {
                         const reward = 1000;
-                        axios.post(`${import.meta.env.VITE_REACT_APP_API_URL}/api/users/${userId}/complete_task`, {
+                        axios.post(`${import.meta.env.VITE_BACKEND_URL}/api/users/${userId}/complete_task`, {
                             task_id: 4,
                             reward: reward
                         }).then(() => {
@@ -134,7 +134,7 @@ export const ProfileTab = () => {
     useEffect(() => {
         if (userId) {
             setIsLoading(true);
-            axios.get(`${import.meta.env.VITE_REACT_APP_API_URL}/api/users/${userId}/profile`)
+            axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/users/${userId}/profile`)
                 .then(({data}) => {
                     setUser(data);
                 })

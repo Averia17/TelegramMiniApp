@@ -9,7 +9,6 @@ import {LeaderboardTab} from "../components/Tabs/Leaderboard.jsx";
 import {TasksTab} from "../components/Tabs/TasksTab.jsx";
 import {ProfileTab} from "../components/Tabs/ProfileTab.jsx";
 import {BattleTab} from "../components/Tabs/BattleTab.jsx";
-import {WebSocketProvider} from "../components/Battle/WebSocketProvider.jsx";
 
 
 function CustomTabPanel(props) {
@@ -35,7 +34,7 @@ function a11yProps(index) {
     };
 }
 
-const LandingPage = () => {
+const LandingPage = ({id}) => {
     const [value, setValue] = React.useState(0);
 
     const handleChange = (event, newValue) => {
@@ -45,7 +44,7 @@ const LandingPage = () => {
     return (
         <>
             <CustomTabPanel value={value} index={0}>
-                <BattleTab/>
+                <BattleTab id={id}/>
             </CustomTabPanel>
             <CustomTabPanel value={value} index={1}>
                 <ClickerTab/>

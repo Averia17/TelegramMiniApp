@@ -10,8 +10,8 @@ log = logging.getLogger(__name__)
 
 load_balancer = LoadBalancer()
 
-game_servers = {}  # battle_id : game_server
-action_services: [int, ActionService] = {}  # player_id : action_service
+battle_actions: dict[str, ActionService] = {}  # battle_id : action_service
+player_actions: dict[int, ActionService] = {}  # player_id : action_service
 battle_router = APIRouter(prefix="/battle")
 
 
@@ -22,16 +22,18 @@ async def start_battle(websocket: WebSocket):
         await websocket.close(reason="Cookie user_id required")
         return
 
-    all_players = list(chain.from_iterable(server.get_players_ids() for server in game_servers.values()))
+    all_players = list(chain.from_iterable(
+        action_service.game_server.get_players_ids() for action_service in battle_actions.values()
+    ))
     if user_id in all_players:
         await websocket.close(reason="Player already in battle")
         return
 
     await websocket.accept()
     await load_balancer.add_player_to_queue(user_id, websocket)
-    game_server = await load_balancer.create_battle()
+    action_service = await load_balancer.create_battle()
 
-    if not game_server:
+    if not action_service:
         try:
             while True:
                 message = await websocket.receive_json()
@@ -42,8 +44,9 @@ async def start_battle(websocket: WebSocket):
         except WebSocketDisconnect:
             await load_balancer.remove_player_from_queue(user_id)
     else:
-        game_servers[game_server.id] = game_server
-        log.info(f"BATTLE ID {game_server.id}")
+        battle_id = action_service.game_server.id
+        battle_actions[battle_id] = action_service
+        log.info(f"Start battle {battle_id}")
 
 
 @battle_router.websocket("/connect/{battle_id}")
@@ -53,10 +56,8 @@ async def connect_player(websocket: WebSocket, battle_id: str):
         await websocket.close(reason="Cookie user_id required")
         return
 
-    game_server = game_servers[battle_id]
-    action_service = ActionService(game_server)
-
-    action_services[user_id] = action_service
+    action_service = battle_actions[battle_id]
+    player_actions[user_id] = action_service
 
     await action_service.connect_player(websocket)
 
@@ -75,3 +76,10 @@ async def connect_player(websocket: WebSocket, battle_id: str):
             await handler(**data)
     except WebSocketDisconnect:
         await action_service.connection_manager.disconnect(user_id)
+
+
+@battle_router.get("/player_state/{played_id}")
+async def player_state(played_id: int):
+    if action_service := player_actions.get(played_id):
+        return {"battle_id": action_service.game_server.id}
+    return {}

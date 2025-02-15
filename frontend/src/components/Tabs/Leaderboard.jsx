@@ -9,7 +9,7 @@ export const LeaderboardTab = () => {
     const [users, setUsers] = useState([])
 
     useEffect(() => {
-        axios.get(`${import.meta.env.VITE_REACT_APP_API_URL}/api/users/leaderboard`).then(({data}) => {
+        axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/users/leaderboard`).then(({data}) => {
             setUsers(data)
         })
     }, [])

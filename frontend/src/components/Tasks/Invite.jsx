@@ -14,7 +14,7 @@ export const Invite = () => {
 
     const generateInviteLink = () => {
         if (userId) {
-            axios.get(`${import.meta.env.VITE_REACT_APP_API_URL}/api/users/${userId}/invite_link`).then(({data}) => {
+            axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/users/${userId}/invite_link`).then(({data}) => {
                 setTimeout(() => {
                     navigator.clipboard.writeText(data.invite_link);
                 }, 0)

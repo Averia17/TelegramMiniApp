@@ -15,7 +15,7 @@ export const Clicker = () => {
     useEffect(() => {
         if (userId) {
             setIsLoading(true)
-            axios.get(`${import.meta.env.VITE_REACT_APP_API_URL}/api/users/${userId}`).then(({data}) => {
+            axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/users/${userId}`).then(({data}) => {
                 setClicks(data["clicks"])
                 setClicksAfterSave(data["clicks"])
                 setInviteBonus(data["count_invites"])
@@ -26,7 +26,7 @@ export const Clicker = () => {
     useEffect(() => {
         const interval = setInterval(async () => {
             if (clicks > clicksAfterSave) {
-                axios.post(`${import.meta.env.VITE_REACT_APP_API_URL}/api/users/click`, {
+                axios.post(`${import.meta.env.VITE_BACKEND_URL}/api/users/click`, {
                     clicks: clicks,
                     user_id: userId
                 }).then(({data}) => {

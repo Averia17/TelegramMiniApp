@@ -11,21 +11,25 @@ const App = () => {
     const showPopup = useShowPopup()
     const [impactOccurred, notificationOccurred, selectionChanged] = useHapticFeedback()
     // const [isInvalidVersion, setIsInvalidVersion] = useState(false)
+    const [id, setId] = useState(undefined)
 
     useEffect(() => {
         const initData = window.Telegram?.WebApp.initDataUnsafe
-        if (import.meta.env.VITE_REACT_APP_API_URL.includes("localhost") && !getCookie("user_id")) {
-            setCookie("user_id", Math.floor(Math.random() * 100000) + 1, 1)
+        let userId = getCookie("user_id");
+        if (import.meta.env.VITE_BACKEND_URL.includes("localhost") && !userId) {
+            userId = Math.floor(Math.random() * 100000) + 1
+            setCookie("user_id", userId, 1)
         }
         if (initData?.start_param && initData.start_param.includes("inviterId") && initData?.user?.id) {
-            const userId = initData.user.id
+            userId = initData.user.id
             const inviterId = Number(initData.start_param.replace("inviterId", ""))
             if (userId && inviterId) {
-                axios.post(`${import.meta.env.VITE_REACT_APP_API_URL}/api/users/${userId}/accept_invite`, {inviter_id: inviterId}).then(({data}) => {
+                axios.post(`${import.meta.env.VITE_BACKEND_URL}/api/users/${userId}/accept_invite`, {inviter_id: inviterId}).then(({data}) => {
 
                 })
             }
         }
+        setId(Number.parseInt(userId))
         // if (window.Telegram && window.Telegram.WebApp) {
         //     if (!window.Telegram.WebApp.isVersionAtLeast("6.9")) {
         //         notificationOccurred("error")
@@ -62,7 +66,7 @@ const App = () => {
             {/*{!isInvalidVersion && (*/}
             <BrowserRouter>
                 <Routes>
-                    <Route path="/" element={<LandingPage/>}/>
+                    {<Route path="/" element={id ? <LandingPage id={id}/> : <></>}/>}
                 </Routes>
             </BrowserRouter>
             {/*)}*/}
