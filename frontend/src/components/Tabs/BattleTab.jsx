@@ -14,18 +14,16 @@ export const BattleTab = ({id}) => {
         }).finally(() => setLoading(false))
     }, [id])
 
-    return <div>
-        {loading ? <>Loading</> : <>
-            <div>Player {id}</div>
-            {battleId ? <>
-                    <div>BattleId {battleId}</div>
-                    <WebSocketProvider url={`ws://localhost:3779/battle/connect/${battleId}`}>
-                        <BattleScreen id={id}/>
-                    </WebSocketProvider>
-                </> :
-                <LoadingComponent setBattleId={setBattleId}/>
+    return <div className="battle-tab">
+        <div className="battle-title">
+            {loading ? <>Loading</> : <>
+                <div>Player {id}</div>
+                {battleId ? <div>BattleId {battleId}</div>: <LoadingComponent setBattleId={setBattleId}/>}
+            </>
             }
-        </>
-        }
+        </div>
+        {battleId && <WebSocketProvider url={`ws://localhost:3779/battle/connect/${battleId}`}>
+            <BattleScreen id={id}/>
+        </WebSocketProvider>}
     </div>
 }

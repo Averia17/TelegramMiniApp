@@ -34,15 +34,18 @@ class LoadBalancer:
                 return None
 
             log.info(self.queue)
-            players = [self.queue.pop(0) for _ in range(self.TEAM_SIZE)]
+            players = self.queue[:self.TEAM_SIZE]
 
-        battle_id = str(uuid.uuid4())
-        game_server = GameServer(battle_id)
-        action_service = ActionService(game_server)
-        for player in players:
-            game_server.init_player(player[0])
+            battle_id = str(uuid.uuid4())
+            game_server = GameServer(battle_id)
+            action_service = ActionService(game_server)
+            for player in players:
+                game_server.init_player(player[0])
 
-        for player in players:
-            await player[1].send_json({"battle_id": battle_id})
+            for player in players:
+                await player[1].send_json({"battle_id": battle_id})
+
+            player_ids_in_battle = {player[0] for player in players}
+            self.queue = [player for player in self.queue if player[0] not in player_ids_in_battle]
 
         return action_service

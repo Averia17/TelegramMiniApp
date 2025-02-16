@@ -22,10 +22,10 @@ async def start_battle(websocket: WebSocket):
         await websocket.close(reason="Cookie user_id required")
         return
 
-    all_players = list(chain.from_iterable(
+    players_in_battle = list(chain.from_iterable(
         action_service.game_server.get_players_ids() for action_service in battle_actions.values()
     ))
-    if user_id in all_players:
+    if user_id in players_in_battle:
         await websocket.close(reason="Player already in battle")
         return
 

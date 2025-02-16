@@ -22,7 +22,7 @@ function CustomTabPanel(props) {
             aria-labelledby={`simple-tab-${index}`}
             {...other}
         >
-            {value === index && <Box sx={{p: 3}}>{children}</Box>}
+            {value === index && <div>{children}</div>}
         </div>
     );
 }
@@ -61,7 +61,7 @@ const LandingPage = ({id}) => {
             <Box sx={{
                 borderBottom: 1,
                 borderColor: 'divider',
-                position: 'absolute',
+                position: 'fixed',
                 bottom: 0,
                 left: 0,
                 width: '100%',
