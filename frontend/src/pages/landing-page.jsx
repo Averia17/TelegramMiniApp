@@ -9,6 +9,7 @@ import {LeaderboardTab} from "../components/Tabs/Leaderboard.jsx";
 import {TasksTab} from "../components/Tabs/TasksTab.jsx";
 import {ProfileTab} from "../components/Tabs/ProfileTab.jsx";
 import {BattleTab} from "../components/Tabs/BattleTab.jsx";
+import {ShopTab} from "../components/Tabs/ShopTab.jsx";
 
 
 function CustomTabPanel(props) {
@@ -47,15 +48,18 @@ const LandingPage = ({id}) => {
                 <BattleTab id={id}/>
             </CustomTabPanel>
             <CustomTabPanel value={value} index={1}>
-                <ClickerTab/>
+                <ShopTab id={id}/>
             </CustomTabPanel>
             <CustomTabPanel value={value} index={2}>
-                <LeaderboardTab/>
+                <ClickerTab/>
             </CustomTabPanel>
             <CustomTabPanel value={value} index={3}>
-                <TasksTab onChangeTab={() => handleChange(null, 4)}/>
+                <LeaderboardTab/>
             </CustomTabPanel>
             <CustomTabPanel value={value} index={4}>
+                <TasksTab onChangeTab={() => handleChange(null, 4)}/>
+            </CustomTabPanel>
+            <CustomTabPanel value={value} index={5}>
                 <ProfileTab/>
             </CustomTabPanel>
             <Box sx={{
@@ -70,10 +74,11 @@ const LandingPage = ({id}) => {
             }}>
                 <Tabs value={value} onChange={handleChange} aria-label="basic tabs example">
                     <Tab className="tab-label" label="Battle" {...a11yProps(0)} sx={{flex: 1}}/>
-                    <Tab className="tab-label" label="Clicker" {...a11yProps(1)} sx={{flex: 1}}/>
-                    <Tab className="tab-label" label="Rating" {...a11yProps(2)} sx={{flex: 1}}/>
-                    <Tab className="tab-label" label="Tasks" {...a11yProps(3)} sx={{flex: 1}}/>
-                    <Tab className="tab-label" label="Profile" {...a11yProps(4)} sx={{flex: 1}}/>
+                    <Tab className="tab-label" label="Shop" {...a11yProps(1)} sx={{flex: 1}}/>
+                    <Tab className="tab-label" label="Clicker" {...a11yProps(2)} sx={{flex: 1}}/>
+                    <Tab className="tab-label" label="Rating" {...a11yProps(3)} sx={{flex: 1}}/>
+                    <Tab className="tab-label" label="Tasks" {...a11yProps(4)} sx={{flex: 1}}/>
+                    <Tab className="tab-label" label="Profile" {...a11yProps(5)} sx={{flex: 1}}/>
                 </Tabs>
             </Box>
         </>

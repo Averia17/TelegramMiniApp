@@ -1,5 +1,5 @@
 import {BattleScreen} from "../Battle/BattleScreen.jsx";
-import {LoadingComponent} from "../BattleSearch/LoadingComponent.jsx";
+import {StartBattleComponent} from "../BattleSearch/StartBattleComponent.jsx";
 import {WebSocketProvider} from "../Battle/WebSocketProvider.jsx";
 import {useEffect, useState} from "react";
 import axios from "axios";
@@ -18,7 +18,7 @@ export const BattleTab = ({id}) => {
         <div className="battle-title">
             {loading ? <>Loading</> : <>
                 <div>Player {id}</div>
-                {battleId ? <div>BattleId {battleId}</div>: <LoadingComponent setBattleId={setBattleId}/>}
+                {battleId ? <div>BattleId {battleId}</div>: <StartBattleComponent setBattleId={setBattleId}/>}
             </>
             }
         </div>

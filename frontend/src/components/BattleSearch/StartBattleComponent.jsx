@@ -1,6 +1,6 @@
 import {useEffect, useState} from "react";
 
-export const LoadingComponent = ({setBattleId}) => {
+export const StartBattleComponent = ({setBattleId}) => {
     const [startTime, setStartTime] = useState(undefined)
     const [seconds, setSeconds] = useState(undefined);
     const [ws, setWs] = useState(undefined)

@@ -10,7 +10,7 @@ name = "MiniApp"
 version = "0.0.1"
 
 description = "Mini web app in Telegram"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -32,6 +32,12 @@ bot = [
 web = [
     "aiogram~=3.0",
     "uvicorn[standard]~=0.34",
-    "fastapi~=0.102",
+    "fastapi~=0.115",
     "python-dateutil",
 ]
+shop = [
+    "uvicorn[standard]~=0.34",
+    "fastapi~=0.115",
+    "python-dateutil",
+]
+

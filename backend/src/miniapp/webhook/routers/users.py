@@ -8,12 +8,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import joinedload
 from miniapp.infrastructure.database.models.users import Invite
 from miniapp.infrastructure.database.repo.requests import RequestsRepo
-from miniapp.webhook.utils import (
-    get_repo,
-    validate_telegram_data,
-    bot,
-    parse_init_data,
-)
+from miniapp.webhook.utils import get_repo
 
 from miniapp.infrastructure.database.models import User
 
