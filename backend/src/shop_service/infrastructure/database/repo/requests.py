@@ -2,19 +2,17 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from infrastructure.database.repo.products import ProductRepo
+from infrastructure.database.repo.products import ProductRepo, OrderedProductRepo
 
 
 @dataclass
 class RequestsRepo:
-    """
-    Repository for handling database operations. This class holds all the repositories for the database models.
-
-    You can add more repositories as properties to this class, so they will be easily accessible.
-    """
-
     session: AsyncSession
 
     @property
-    def users(self) -> ProductRepo:
+    def products(self) -> ProductRepo:
         return ProductRepo(self.session)
+
+    @property
+    def ordered_products(self) -> OrderedProductRepo:
+        return OrderedProductRepo(self.session)
