@@ -22,7 +22,7 @@ export const BattleTab = ({id}) => {
             </>
             }
         </div>
-        {battleId && <WebSocketProvider url={`ws://localhost:3779/battle/connect/${battleId}`}>
+        {battleId && <WebSocketProvider url={`${import.meta.env.VITE_WEBSOCKET_URL}/battle/connect/${battleId}`}>
             <BattleScreen id={id}/>
         </WebSocketProvider>}
     </div>

@@ -6,7 +6,7 @@ export const StartBattleComponent = ({setBattleId}) => {
     const [ws, setWs] = useState(undefined)
 
     const startSearchBattle = () => {
-        const socket = new WebSocket("ws://localhost:3779/battle/start");
+        const socket = new WebSocket(`${import.meta.env.VITE_WEBSOCKET_URL}/battle/start`);
         setWs(socket)
         socket.onmessage = (event) => {
             const data = JSON.parse(event.data);

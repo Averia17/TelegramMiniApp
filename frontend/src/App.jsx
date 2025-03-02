@@ -18,7 +18,6 @@ const App = () => {
         let userId = getCookie("user_id");
         if (import.meta.env.VITE_BACKEND_URL.includes("localhost") && !userId) {
             userId = Math.floor(Math.random() * 100000) + 1
-            setCookie("user_id", userId, 1)
         }
         if (initData?.start_param && initData.start_param.includes("inviterId") && initData?.user?.id) {
             userId = initData.user.id
@@ -29,7 +28,11 @@ const App = () => {
                 })
             }
         }
+        if(initData?.user?.id) {
+            userId = initData?.user?.id
+        }
         setId(Number.parseInt(userId))
+        setCookie("user_id", userId, 1)
         // if (window.Telegram && window.Telegram.WebApp) {
         //     if (!window.Telegram.WebApp.isVersionAtLeast("6.9")) {
         //         notificationOccurred("error")
