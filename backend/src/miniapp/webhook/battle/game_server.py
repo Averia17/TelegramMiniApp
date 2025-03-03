@@ -51,7 +51,7 @@ class GameServer:
         attacker = self._players[user_id]
         if target["health"] - attacker["level"] > 0:
             target["health"] -= attacker["level"]
-            changes[player_id]["health"] = target["heath"]
+            changes[player_id]["health"] = target["health"]
         else:
             target["health"] = 0
             attacker["level"] += 1
