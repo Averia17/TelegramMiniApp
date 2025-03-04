@@ -9,7 +9,7 @@ from miniapp.webhook.battle import router as battle_router
 app = FastAPI()
 prefix_router = APIRouter(prefix="/api")
 
-log_level = logging.INFO
+log_level = logging.DEBUG
 log = logging.getLogger(__name__)
 
 origins = [
@@ -27,10 +27,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-logging.getLogger(__name__).setLevel(logging.INFO)
+logging.getLogger(__name__).setLevel(log_level)
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(filename)s:%(lineno)d #%(levelname)-8s [%(asctime)s] - %(name)s - %(message)s",
+    level=log_level,
+    format="%(filename)s:%(lineno)d #%(levelname)-8s [%(asctime)s] - %(message)s",
 )
 
 app.include_router(battle_router)

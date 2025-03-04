@@ -18,6 +18,7 @@ export const WebSocketProvider = ({children, url}) => {
     const [ws, setWs] = useState(null);
     const [players, setPlayers] = useState({});
     const [camps, setCamps] = useState({});
+    const [startTime, setStartTime] = useState(undefined);
     const id = Number.parseInt(getCookie("user_id"))
 
     useEffect(() => {
@@ -35,6 +36,9 @@ export const WebSocketProvider = ({children, url}) => {
                     if (entity === "camp") {
                         setCamps(prevCamps => deepUpdate(prevCamps, entityData))
                     }
+                }
+                if (entity === "start_time") {
+                    setStartTime(entityData)
                 }
             });
         };
@@ -69,6 +73,7 @@ export const WebSocketProvider = ({children, url}) => {
                 attackPlayer,
                 attackCamp,
                 players,
+                startTime,
                 camps
             }}
         >

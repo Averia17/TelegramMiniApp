@@ -1,4 +1,5 @@
 import logging
+from asyncio import create_task
 
 from starlette.websockets import WebSocket
 
@@ -9,9 +10,10 @@ log = logging.getLogger(__name__)
 
 
 class BattleManager:
-    def __init__(self, battle: Battle):
-        self.battle = battle
+    def __init__(self):
+        self.battle = Battle()
         self.connection_manager = ConnectionManager()
+        create_task(self.set_timeout())
 
     async def connect_player(self, websocket: WebSocket):
         player_id = int(websocket.cookies["user_id"])
@@ -19,12 +21,17 @@ class BattleManager:
         self.battle.init_player(player_id)
 
         await self.connection_manager.send_broadcast({"player": self.battle.get_players()})
-        await self.connection_manager.send_personal_data(player_id, {"camp": self.battle.get_camps()})
+        await self.connection_manager.send_personal_data(player_id, {
+            "camp": self.battle.get_camps(), "start_time": str(self.battle.start_time)
+        })
         log.info(f"Player {player_id} connected")
 
     async def attack_player(self, user_id: int, player_id: int):
         changes = self.battle.attack_player(user_id, player_id)
         if changes:
+            if changes["player"][player_id].get("health") == 0:
+                await self.connection_manager.disconnect(player_id)
+
             await self.connection_manager.send_broadcast(changes)
 
     async def attack_camp(self, user_id: int, camp_id: int):
@@ -36,3 +43,12 @@ class BattleManager:
         changes = self.battle.move(user_id, direction)
         if changes:
             await self.connection_manager.send_broadcast(changes)
+
+    async def finish_battle(self):
+        log.info(f"Finish battle {self.battle.id}")
+        await self.connection_manager.disconnect_all_players()
+        await self.connection_manager.send_broadcast({"battle": "finished"})
+
+    async def set_timeout(self):
+        await self.battle.wait_finish()
+        await self.finish_battle()

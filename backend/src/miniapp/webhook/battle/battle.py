@@ -1,10 +1,11 @@
+import asyncio
 import uuid
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from random import randint
 
-from miniapp.webhook.constants import MAX_X_LOCATION, MAX_Y_LOCATION
+from miniapp.webhook.constants import MAX_X_LOCATION, MAX_Y_LOCATION, TIMEZONE
 
 
 class Directions(Enum):
@@ -14,8 +15,9 @@ class Directions(Enum):
     LEFT = "LEFT"
 
 
-
 class Battle:
+    TIMEOUT = timedelta(minutes=1)
+
     def __init__(self):
         self.id = str(uuid.uuid4())
         self._players: dict[int, dict] = defaultdict(lambda: {"health": 100, "level": 1, "location": None})
@@ -24,7 +26,7 @@ class Battle:
             2: {"health": 150, "level": 1, "location": [600, 400]},
             3: {"health": 10, "level": 1.5, "location": [300, 300]},
         }
-        self.start_time = datetime.now()
+        self.start_time = datetime.now(TIMEZONE)
 
     def init_player(self, player_id):
         if not self._players[player_id]["location"]:
@@ -95,3 +97,7 @@ class Battle:
         if MAX_Y_LOCATION > location_y > 0:
             self._players[user_id]["location"][1] = location_y
         return {"player": {user_id: {"location": self._players[user_id]["location"]}}}
+
+    async def wait_finish(self):
+        while datetime.now(TIMEZONE) < self.start_time + self.TIMEOUT:
+            await asyncio.sleep(1)

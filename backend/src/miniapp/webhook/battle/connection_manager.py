@@ -1,7 +1,6 @@
 import logging
 
-from starlette.websockets import WebSocket, WebSocketDisconnect
-
+from starlette.websockets import WebSocket, WebSocketDisconnect, WebSocketState
 
 log = logging.getLogger(__name__)
 
@@ -16,7 +15,14 @@ class ConnectionManager:
 
     async def disconnect(self, player_id: int):
         if player_id in self.connections:
-            self.connections.pop(player_id)
+            websocket = self.connections.pop(player_id)
+            if websocket.client_state != WebSocketState.DISCONNECTED:
+                await websocket.close()
+
+    async def disconnect_all_players(self):
+        player_ids = list(self.connections.keys())
+        for player_id in player_ids:
+            await self.disconnect(player_id)
 
     async def send_personal_data(self, player_id: int, data):
         websocket = self.connections[player_id]

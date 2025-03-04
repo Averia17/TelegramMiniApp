@@ -1,7 +1,7 @@
 import React, {useCallback, useEffect} from 'react';
 import {Touchpad} from "./Touchpad.jsx";
 import {Map} from "./Map.jsx";
-
+import {BattleTimer} from "./BattleTimer.jsx"
 import "./style.scss"
 import {useWebSocket} from "./WebSocketProvider.jsx";
 
@@ -36,6 +36,7 @@ export const BattleScreen = ({id}) => {
     }, [handleMove]);
 
     return <div className="battle-screen">
+        <BattleTimer/>
         <Touchpad handleMove={handleMove}/>
         <Map id={id}/>
     </div>
