@@ -4,7 +4,7 @@ from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
 from miniapp.webhook import routers
-from miniapp.webhook.battle.websocket import battle_router
+from miniapp.webhook.battle import router as battle_router
 
 app = FastAPI()
 prefix_router = APIRouter(prefix="/api")

@@ -1,4 +1,6 @@
+import uuid
 from collections import defaultdict
+from datetime import datetime
 from enum import Enum
 from random import randint
 
@@ -13,15 +15,16 @@ class Directions(Enum):
 
 
 
-class GameServer:
-    def __init__(self, battle_id):
-        self.id = battle_id
+class Battle:
+    def __init__(self):
+        self.id = str(uuid.uuid4())
         self._players: dict[int, dict] = defaultdict(lambda: {"health": 100, "level": 1, "location": None})
         self._camps = {
             1: {"health": 50, "level": 0.5, "location": [100, 200]},
             2: {"health": 150, "level": 1, "location": [600, 400]},
             3: {"health": 10, "level": 1.5, "location": [300, 300]},
         }
+        self.start_time = datetime.now()
 
     def init_player(self, player_id):
         if not self._players[player_id]["location"]:

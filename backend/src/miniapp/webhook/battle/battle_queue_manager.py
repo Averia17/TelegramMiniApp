@@ -1,15 +1,14 @@
 import asyncio
 import logging
-import uuid
 from datetime import datetime
 
-from miniapp.webhook.battle.action_service import ActionService
-from miniapp.webhook.battle.game_server import GameServer
+from miniapp.webhook.battle.battle_manager import BattleManager
+from miniapp.webhook.battle.battle import Battle
 from miniapp.webhook.constants import TIMEZONE
 
 log = logging.getLogger(__name__)
 
-class LoadBalancer:
+class BattleQueueManager:
     TEAM_SIZE = 2
 
     def __init__(self):
@@ -36,16 +35,15 @@ class LoadBalancer:
             log.info(self.queue)
             players = self.queue[:self.TEAM_SIZE]
 
-            battle_id = str(uuid.uuid4())
-            game_server = GameServer(battle_id)
-            action_service = ActionService(game_server)
+            battle = Battle()
+            battle_manager = BattleManager(battle)
             for player in players:
-                game_server.init_player(player[0])
+                battle.init_player(player[0])
 
             for player in players:
-                await player[1].send_json({"battle_id": battle_id})
+                await player[1].send_json({"battle_id": battle.id})
 
             player_ids_in_battle = {player[0] for player in players}
             self.queue = [player for player in self.queue if player[0] not in player_ids_in_battle]
 
-        return action_service
+        return battle_manager
