@@ -16,7 +16,7 @@ class Directions(Enum):
 
 
 class Battle:
-    TIMEOUT = timedelta(minutes=1)
+    TIMEOUT = timedelta(minutes=5)
 
     def __init__(self):
         self.id = str(uuid.uuid4())

@@ -19,11 +19,6 @@ class ConnectionManager:
             if websocket.client_state != WebSocketState.DISCONNECTED:
                 await websocket.close()
 
-    async def disconnect_all_players(self):
-        player_ids = list(self.connections.keys())
-        for player_id in player_ids:
-            await self.disconnect(player_id)
-
     async def send_personal_data(self, player_id: int, data):
         websocket = self.connections[player_id]
         await websocket.send_json(data)
@@ -32,25 +27,10 @@ class ConnectionManager:
         await websocket.send_text(message)
 
     async def send_broadcast(self, data):
-        for player_id, websocket in self.connections.items():
+        players = list(self.connections.items())
+        for player_id, websocket in players:
             try:
                 await websocket.send_json(data)
             except WebSocketDisconnect:
                 log.error(f"Player {player_id} disconnected")
                 await self.disconnect(player_id)
-
-    # async def send_broadcast_players(self):
-    #     players = self.battle.get_players()
-    #     await self.send_broadcast({"players": players})
-    #
-    # async def send_broadcast_one_player(self, player_id: int):
-    #     player = self.battle.get_player(player_id)
-    #     await self.send_broadcast({"player": [player_id, player]})
-    #
-    # async def send_broadcast_camps(self):
-    #     camps = self.battle.get_camps()
-    #     await self.send_broadcast({"camps": camps})
-    #
-    # async def send_broadcast_one_camp(self, camp_id: int):
-    #     camp = self.battle.get_camp(camp_id)
-    #     await self.send_broadcast({"camp": camp})

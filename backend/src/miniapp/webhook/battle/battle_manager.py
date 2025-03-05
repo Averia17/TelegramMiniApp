@@ -8,6 +8,9 @@ from miniapp.webhook.battle.battle import Battle
 
 log = logging.getLogger(__name__)
 
+battle_managers: dict[str, "BattleManager"] = {}  # battle_id : battle_manager
+player_managers: dict[int, "BattleManager"] = {}  # player_id : battle_manager
+
 
 class BattleManager:
     def __init__(self):
@@ -24,13 +27,13 @@ class BattleManager:
         await self.connection_manager.send_personal_data(player_id, {
             "camp": self.battle.get_camps(), "start_time": str(self.battle.start_time)
         })
-        log.info(f"Player {player_id} connected")
+        log.info(f"Player {player_id} connected to battle {self.battle.id}")
 
     async def attack_player(self, user_id: int, player_id: int):
         changes = self.battle.attack_player(user_id, player_id)
         if changes:
             if changes["player"][player_id].get("health") == 0:
-                await self.connection_manager.disconnect(player_id)
+                await self.remove_player_from_battle(player_id)
 
             await self.connection_manager.send_broadcast(changes)
 
@@ -44,10 +47,18 @@ class BattleManager:
         if changes:
             await self.connection_manager.send_broadcast(changes)
 
+    async def remove_player_from_battle(self, player_id):
+        if player_id not in player_managers:
+            log.error(f"Player {player_id} not in battle")
+        player_managers.pop(player_id)
+        await self.connection_manager.disconnect(player_id)
+
     async def finish_battle(self):
         log.info(f"Finish battle {self.battle.id}")
-        await self.connection_manager.disconnect_all_players()
+        battle_managers.pop(self.battle.id)
         await self.connection_manager.send_broadcast({"battle": "finished"})
+        for player_id in list(self.connection_manager.connections.keys()):
+            await self.remove_player_from_battle(player_id)
 
     async def set_timeout(self):
         await self.battle.wait_finish()

@@ -3,15 +3,13 @@ from itertools import chain
 
 from fastapi import WebSocket, WebSocketDisconnect, APIRouter
 
-from miniapp.webhook.battle.battle_manager import BattleManager
+from miniapp.webhook.battle.battle_manager import battle_managers, player_managers
 from miniapp.webhook.battle.battle_queue_manager import BattleQueueManager
 
 log = logging.getLogger(__name__)
 
 battle_queue_manager = BattleQueueManager()
 
-battle_managers: dict[str, BattleManager] = {}  # battle_id : battle_manager
-player_managers: dict[int, BattleManager] = {}  # player_id : battle_manager
 router = APIRouter(prefix="/battle")
 
 
@@ -83,3 +81,11 @@ async def player_state(played_id: int):
     if battle_manager := player_managers.get(played_id):
         return {"battle_id": battle_manager.battle.id}
     return {}
+
+@router.get("/server_state")
+async def server_state():
+    return {
+        "players_in_battle": list(player_managers.keys()),
+        "battles": list(battle_managers.keys()),
+        "queue": battle_queue_manager.queue
+    }

@@ -47,8 +47,8 @@ export const StartBattleComponent = ({setBattleId}) => {
 
     return <div className="loading-container">
         {startTime ? <div>
-            <div>Secs {seconds}</div>
-            Start {startTime}
+            <div>Finding {seconds}s</div>
+            Start {new Date(startTime).toLocaleTimeString()}
             <button disabled={!ws} onClick={stopSearchBattle}>Stop</button>
         </div> : <button onClick={startSearchBattle}>Start Battle</button>
         }

@@ -9,9 +9,6 @@ from miniapp.webhook.battle import router as battle_router
 app = FastAPI()
 prefix_router = APIRouter(prefix="/api")
 
-log_level = logging.DEBUG
-log = logging.getLogger(__name__)
-
 origins = [
     # "https://factual-herring-driven.ngrok-free.app",
     # "http://localhost:80",
@@ -27,10 +24,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+log_level = logging.DEBUG
 logging.getLogger(__name__).setLevel(log_level)
 logging.basicConfig(
     level=log_level,
-    format="%(filename)s:%(lineno)d #%(levelname)-8s [%(asctime)s] - %(message)s",
+    format="%(levelname)-8s %(asctime)s %(message)s",
+    datefmt="%H:%M:%S"
 )
 
 app.include_router(battle_router)

@@ -3,7 +3,7 @@
   overflow: hidden;
 
   .battle-title {
-    padding: 10px;
+    padding: 10px 0 0 10px;
   }
 }
 
@@ -16,6 +16,9 @@
     position: relative;
     border: 1px solid black;
     //z-index: 2;
+  }
+  .battle-timer {
+    padding-left: 10px;
   }
 }
 

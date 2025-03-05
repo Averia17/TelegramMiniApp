@@ -22,5 +22,5 @@ export const BattleTimer = () => {
         return () => clearInterval(interval);
     }, [startTime]);
 
-    return <div>Left Time {seconds}s</div>
+    return <div className="battle-timer">Left Time {seconds}s</div>
 }

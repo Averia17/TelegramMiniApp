@@ -14,7 +14,7 @@ const deepUpdate = (data, newData) => {
     return updatedData;
 }
 
-export const WebSocketProvider = ({children, url}) => {
+export const WebSocketProvider = ({children, url, setBattleId}) => {
     const [ws, setWs] = useState(null);
     const [players, setPlayers] = useState({});
     const [camps, setCamps] = useState({});
@@ -40,6 +40,9 @@ export const WebSocketProvider = ({children, url}) => {
                 if (entity === "start_time") {
                     setStartTime(entityData)
                 }
+                if (entity === "battle" && entityData === "finished") {
+                    setBattleId(undefined)
+                }
             });
         };
         socket.onclose = (event) => {
@@ -48,6 +51,7 @@ export const WebSocketProvider = ({children, url}) => {
                 delete newPlayers[id];
                 return newPlayers;
             });
+            setBattleId(undefined)
         };
         // return () => {
         //     socket.close();
