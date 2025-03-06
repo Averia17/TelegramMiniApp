@@ -15,16 +15,19 @@
     "@mui/icons-material": "^5.11.0",
     "@mui/lab": "^5.0.0-alpha.66",
     "@mui/material": "^5.3.0",
+    "@react-three/fiber": "^9.0.4",
+    "@types/three": "^0.174.0",
     "@vkruglikov/react-telegram-web-app": "^2.2.0",
     "axios": "^1.5.1",
     "date-fns": "^2.30.0",
     "moment": "^2.29.4",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.16.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^6.16.0",
+    "three": "^0.174.0"
   },
   "devDependencies": {
-    "@types/react": "^18.0.28",
+    "@types/react": "^18.3.18",
     "@types/react-dom": "^18.0.11",
     "@vitejs/plugin-react": "^4.0.0",
     "@vitejs/plugin-react-refresh": "^1.3.1",

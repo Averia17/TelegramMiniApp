@@ -36,7 +36,7 @@ class BattleQueueManager:
     async def add_player_to_queue(self, player_id, websocket):
         for queue_item in self.queue:
             if queue_item.player_id == player_id:
-                await websocket.send_json({"start_time": queue_item.start_time})
+                await websocket.send_json({"start_time": queue_item.start_time.isoformat()})
                 return
         start_time = datetime.now(TIMEZONE)
         self.queue.append(QueueItem(player_id=player_id, websocket=websocket, start_time=start_time))
