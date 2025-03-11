@@ -4,6 +4,7 @@ import {Map} from "./Map.jsx";
 import {BattleTimer} from "./BattleTimer.jsx"
 import "./style.scss"
 import {useWebSocket} from "./WebSocketProvider.jsx";
+import {Scene} from "./Scene.jsx";
 
 
 export const BattleScreen = ({id}) => {
@@ -38,6 +39,7 @@ export const BattleScreen = ({id}) => {
     return <div className="battle-screen">
         <BattleTimer/>
         <Touchpad handleMove={handleMove}/>
-        <Map id={id}/>
+        <Scene/>
+        {/*<Map id={id}/>*/}
     </div>
 }

@@ -1,5 +1,4 @@
 import tankImage from "../assets/images/tank.png"
-import coinImage from "../assets/images/tb-logo.jpg"
 import React, {useState, useEffect, useRef, useCallback} from 'react';
 import axios from "axios"
 import CircularProgress from "@mui/material/CircularProgress";
@@ -84,7 +83,7 @@ export const Clicker = () => {
                 {isLoading ? <CircularProgress size={24}/> :
                     <p className="click-page__text">
                         {clicks}
-                        <img className="tb-coin-image-icon" src={coinImage} alt="Coin Image"></img>
+                        <img className="tb-coin-image-icon" src={tankImage} alt="Coin Image"></img>
                     </p>
                 }
                 <p className="click-page__text">Bonus x{(1 + inviteBonus)}</p>
@@ -100,7 +99,7 @@ export const Clicker = () => {
                         <div className="bonus-text">+ {(1 + inviteBonus)}</div>
                         <img
                             key={coin.id}
-                            src={coinImage}
+                            src={tankImage}
                             alt="Spawned"
                             className="tb-coin-image"
                         />
