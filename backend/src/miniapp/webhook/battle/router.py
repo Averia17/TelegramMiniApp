@@ -15,6 +15,7 @@ router = APIRouter(prefix="/battle")
 
 @router.websocket("/start")
 async def start_battle(websocket: WebSocket):
+    await websocket.accept()
     user_id = int(websocket.cookies.get("user_id", 0))
     if not user_id:
         await websocket.close(reason="Cookie user_id required")
@@ -27,7 +28,6 @@ async def start_battle(websocket: WebSocket):
         await websocket.close(reason="Player already in battle")
         return
 
-    await websocket.accept()
     await battle_queue_manager.add_player_to_queue(user_id, websocket)
     battle_manager = await battle_queue_manager.create_battle()
 
@@ -42,9 +42,7 @@ async def start_battle(websocket: WebSocket):
         except WebSocketDisconnect:
             await battle_queue_manager.remove_player_from_queue(user_id)
     else:
-        battle_id = battle_manager.battle.id
-        battle_managers[battle_id] = battle_manager
-        log.info(f"Start battle {battle_id}")
+        log.info(f"Start battle {battle_manager.battle.id}")
 
 
 @router.websocket("/connect/{battle_id}")
@@ -55,7 +53,6 @@ async def connect_player(websocket: WebSocket, battle_id: str):
         return
 
     battle_manager = battle_managers[battle_id]
-    player_managers[user_id] = battle_manager
 
     await battle_manager.connect_player(websocket)
 

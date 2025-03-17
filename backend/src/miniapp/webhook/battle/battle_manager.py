@@ -50,6 +50,7 @@ class BattleManager:
     async def remove_player_from_battle(self, player_id):
         if player_id not in player_managers:
             log.error(f"Player {player_id} not in battle")
+        log.info(f"Remove player {player_id} from battle")
         player_managers.pop(player_id)
         await self.connection_manager.disconnect(player_id)
 

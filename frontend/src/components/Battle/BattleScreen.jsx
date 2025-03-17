@@ -40,6 +40,10 @@ export const BattleScreen = ({id}) => {
         <BattleTimer/>
         <Touchpad handleMove={handleMove}/>
         <Scene/>
+
+        {/*<div className="map">*/}
+        {/*    <Scene/>*/}
+        {/*</div>*/}
         {/*<Map id={id}/>*/}
     </div>
 }
