@@ -7,7 +7,7 @@ from infrastructure.database.repo.base import BaseRepo
 class ProductRepo(BaseRepo):
     async def get_all(self):
         result = await self.session.execute(
-            select(Product.name, Product.price, Product.description)
+            select(Product.product_id, Product.name, Product.price, Product.description)
         )
         return result.mappings().all()
 
