@@ -4,7 +4,7 @@ from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
 from middleware import TimeoutMiddleware
-from route import router
+from routes import router
 
 app = FastAPI()
 prefix_router = APIRouter(prefix="/api")

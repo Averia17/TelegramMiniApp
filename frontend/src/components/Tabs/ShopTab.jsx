@@ -8,6 +8,7 @@ const Product = ({user_id, product}) => {
     const [openSnackbar, setOpenSnackbar] = useState(false);
 
     const handleBuy = () => {
+        setIsLoading(true)
         axios.post(
             `${import.meta.env.VITE_BACKEND_URL}/api/products/${product.product_id}/buy`, {user_id: user_id}
         ).then(({data}) => {

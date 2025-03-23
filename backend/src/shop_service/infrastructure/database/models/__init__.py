@@ -1,2 +1,2 @@
 from .base import Base
-from .products import Product
+from .products import Product, OrderedProduct
