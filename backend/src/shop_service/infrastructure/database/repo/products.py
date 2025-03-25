@@ -12,8 +12,9 @@ class ProductRepo(BaseRepo):
         return result.mappings().all()
 
     async def get_by_id(self, product_id: int):
-        return (await self.session.execute(select(Product).where(Product.product_id == product_id))).scalar_one_or_none()
-
+        result = await self.session.execute(select(Product).where(Product.product_id == product_id))
+        await self.session.commit()
+        return result.scalar_one_or_none()
 
 class OrderedProductRepo(BaseRepo):
     async def create(self, user_id: int, product_id: int, commit=True):

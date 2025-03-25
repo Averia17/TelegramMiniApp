@@ -1,2 +1,5 @@
-class PaymentFailedError(Exception):
+class InternalError(Exception):
+    pass
+
+class PaymentFailedError(InternalError):
     pass

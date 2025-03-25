@@ -2,8 +2,10 @@ import logging
 from fastapi import HTTPException
 
 from fastapi import APIRouter, Depends, status
+from sqlalchemy.exc import ArgumentError, NoResultFound
 from starlette.requests import Request
 
+from exeptions import PaymentFailedError, InternalError
 from infrastructure.database.repo.requests import RequestsRepo
 from utils import get_repo, process_payment
 
@@ -20,24 +22,29 @@ async def get_products(repo: RequestsRepo = Depends(get_repo)):
 async def buy_product(product_id: int, request: Request, repo: RequestsRepo = Depends(get_repo)):
     user_id = (await request.json())["user_id"]
 
-    async with repo.session.begin() as transaction:
-        try:
-            product = await repo.products.get_by_id(product_id)
-            if not product:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    product = await repo.products.get_by_id(product_id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
-            ordered_product = await repo.ordered_products.create(user_id, product_id, commit=False)
-            if not ordered_product:
-                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create order")
+    try:
+        async with repo.session.begin() as transaction:
+            try:
+                ordered_product = await repo.ordered_products.create(user_id, product_id, commit=False)
+                if not ordered_product:
+                    raise InternalError("Failed to create order product")
 
-            await process_payment(user_id, product)
+                await process_payment(user_id, product)
 
-            await transaction.commit()
-            log.info(f"User {user_id}, product {product_id}. Transaction committed successfully")
+                await transaction.commit()
+                log.info(f"User {user_id}, product {product_id}. Transaction committed successfully")
 
-            return {"ordered_product_id": ordered_product.id}
+                return {"ordered_product_id": ordered_product.id}
 
-        except Exception as e:
-            await transaction.rollback()
-            log.error(f"User {user_id}, product {product_id}. Transaction failed: {e}")
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Transaction failed")
+            except Exception as e:
+                await transaction.rollback()
+                log.error(f"User {user_id}, product {product_id}. Transaction failed: {e}")
+                raise
+    except PaymentFailedError:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="Payment failed")
+    except InternalError as err:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
