@@ -1,7 +1,6 @@
-from sqlalchemy import insert, select
-
 from infrastructure.database.models.products import OrderedProduct, Product
 from infrastructure.database.repo.base import BaseRepo
+from sqlalchemy import insert, select
 
 
 class ProductRepo(BaseRepo):
@@ -15,6 +14,7 @@ class ProductRepo(BaseRepo):
         result = await self.session.execute(select(Product).where(Product.product_id == product_id))
         await self.session.commit()
         return result.scalar_one_or_none()
+
 
 class OrderedProductRepo(BaseRepo):
     async def create(self, user_id: int, product_id: int, commit=True):

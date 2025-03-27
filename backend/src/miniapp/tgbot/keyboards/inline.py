@@ -19,5 +19,3 @@ def main_menu(domain: str):
 
     kb.adjust(1)
     return kb.as_markup()
-
-

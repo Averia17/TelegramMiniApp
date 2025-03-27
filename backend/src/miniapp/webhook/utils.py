@@ -2,13 +2,13 @@ import hashlib
 import hmac
 import logging
 import time
-from urllib.parse import unquote, parse_qsl
+from urllib.parse import parse_qsl, unquote
 
 from aiogram import Bot
 
 from miniapp.infrastructure.database.repo.requests import RequestsRepo
-from miniapp.infrastructure.database.setup import create_session_pool, create_engine
-from miniapp.tgbot.config import load_config, Config
+from miniapp.infrastructure.database.setup import create_engine, create_session_pool
+from miniapp.tgbot.config import Config, load_config
 
 config: Config = load_config()
 engine = create_engine(config.db)
@@ -34,25 +34,18 @@ def validate_telegram_data(init_data: str) -> bool:
 
     received_hash = parsed_data.pop("hash")
     # Constructing the data-check-string
-    fields = sorted(
-        [(key, unquote(value)) for key, value in parsed_data.items() if key != "hash"]
-    )
+    fields = sorted([(key, unquote(value)) for key, value in parsed_data.items() if key != "hash"])
     # Constructing the data-check-string using the sorted order
     data_check_string = "\n".join(f"{k}={v}" for k, v in fields)
 
     print(data_check_string)
     # Computing the secret key
-    secret_key = hmac.new(
-        b"WebAppData", config.tg_bot.token.encode(), hashlib.sha256
-    ).digest()
+    secret_key = hmac.new(b"WebAppData", config.tg_bot.token.encode(), hashlib.sha256).digest()
 
     # Comparing received hash with computed hash
-    computed_hash = hmac.new(
-        secret_key, data_check_string.encode(), hashlib.sha256
-    ).hexdigest()
+    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
     if computed_hash != received_hash:
         return False
-
 
     return True

@@ -5,6 +5,7 @@ import betterlogging as bl
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import DefaultKeyBuilder, RedisStorage
 from aiogram_dialog import setup_dialogs
+
 from miniapp.infrastructure.database.setup import create_engine, create_session_pool
 from miniapp.tgbot.config import load_config
 from miniapp.tgbot.handlers import routers_list

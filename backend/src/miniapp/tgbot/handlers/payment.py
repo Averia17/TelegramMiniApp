@@ -1,25 +1,26 @@
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import Message, LabeledPrice
+from aiogram.types import LabeledPrice, Message
 
 
 # @router.message(Command("start"))
 async def process_pay_command(message: Message) -> None:
     bot = None
     try:
-        prices = [LabeledPrice(label='Stars Payment', amount=10)]
+        prices = [LabeledPrice(label="Stars Payment", amount=10)]
         await bot.send_invoice(
             chat_id=message.chat.id,
-            title='Stars Payment Example',
-            description='Payment for services via Stars.',
+            title="Stars Payment Example",
+            description="Payment for services via Stars.",
             provider_token="",
             currency="XTR",
             prices=prices,
-            start_parameter='stars-payment',
-            payload='stars-payment-payload'
+            start_parameter="stars-payment",
+            payload="stars-payment-payload",
         )
         await message.delete()
     except TelegramAPIError:
         await message.answer("❌ <b>Failed to create payment invoice</b>")
+
 
 # @router.message(F.successful_payment)
 # async def process_successful_payment(message: Message) -> None:

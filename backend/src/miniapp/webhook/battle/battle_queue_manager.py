@@ -5,7 +5,11 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 from starlette.websockets import WebSocket
 
-from miniapp.webhook.battle.battle_manager import BattleManager, battle_managers, player_managers
+from miniapp.webhook.battle.battle_manager import (
+    BattleManager,
+    battle_managers,
+    player_managers,
+)
 from miniapp.webhook.constants import TIMEZONE
 
 log = logging.getLogger(__name__)
@@ -17,9 +21,7 @@ class QueueItem(BaseModel):
     start_time: datetime
 
     class Config:
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat()
-        }
+        json_encoders = {datetime: lambda dt: dt.isoformat()}
         arbitrary_types_allowed = True
 
 
@@ -48,7 +50,7 @@ class BattleQueueManager:
                 return None
 
             log.info(f"Queue length {len(self.queue)}. Queue: {[q_item.player_id for q_item in self.queue]}.")
-            players = self.queue[:self.TEAM_SIZE]
+            players = self.queue[: self.TEAM_SIZE]
 
             battle_manager = BattleManager()
             for player in players:

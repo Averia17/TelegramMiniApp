@@ -1,12 +1,10 @@
 import logging
-from fastapi import HTTPException
 
-from fastapi import APIRouter, Depends, status
+from exeptions import InternalError, PaymentFailedError
+from fastapi import APIRouter, Depends, HTTPException, status
+from infrastructure.database.repo.requests import RequestsRepo
 from sqlalchemy.exc import ArgumentError, NoResultFound
 from starlette.requests import Request
-
-from exeptions import PaymentFailedError, InternalError
-from infrastructure.database.repo.requests import RequestsRepo
 from utils import get_repo, process_payment
 
 log = logging.getLogger(__name__)
@@ -17,6 +15,7 @@ router = APIRouter(prefix="/products")
 @router.get("/")
 async def get_products(repo: RequestsRepo = Depends(get_repo)):
     return await repo.products.get_all()
+
 
 @router.post("/{product_id}/buy")
 async def buy_product(product_id: int, request: Request, repo: RequestsRepo = Depends(get_repo)):

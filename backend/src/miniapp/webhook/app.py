@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import FastAPI, APIRouter
+from fastapi import APIRouter, FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from miniapp.webhook import routers
@@ -29,7 +29,7 @@ logging.getLogger(__name__).setLevel(log_level)
 logging.basicConfig(
     level=log_level,
     format="%(levelname)-8s %(asctime)s %(message)s",
-    datefmt="%H:%M:%S"
+    datefmt="%H:%M:%S",
 )
 
 app.include_router(battle_router)

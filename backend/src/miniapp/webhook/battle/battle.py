@@ -30,7 +30,10 @@ class Battle:
 
     def init_player(self, player_id):
         if not self._players[player_id]["location"]:
-            self._players[player_id]["location"] = [randint(50, MAX_X_LOCATION), randint(50, MAX_Y_LOCATION)]
+            self._players[player_id]["location"] = [
+                randint(50, MAX_X_LOCATION),
+                randint(50, MAX_Y_LOCATION),
+            ]
 
     def get_players(self):
         return self._players
@@ -78,13 +81,13 @@ class Battle:
             attacker["level"] += camp["level"]
             changes["player"][user_id]["level"] = attacker["level"]
         return changes
-    
+
     def move(self, user_id: int, direction: str):
         direction_map = {
             Directions.TOP.value: (0, 10),
             Directions.BOTTOM.value: (0, -10),
             Directions.RIGHT.value: (10, 0),
-            Directions.LEFT.value: (-10, 0)
+            Directions.LEFT.value: (-10, 0),
         }
 
         x, y = direction_map.get(direction, (0, 0))

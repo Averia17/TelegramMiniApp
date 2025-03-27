@@ -1,10 +1,9 @@
 import logging
 
-from fastapi import FastAPI, APIRouter
-from starlette.middleware.cors import CORSMiddleware
-
+from fastapi import APIRouter, FastAPI
 from middleware import TimeoutMiddleware
 from routes import router
+from starlette.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 prefix_router = APIRouter(prefix="/api")
@@ -31,7 +30,7 @@ logging.getLogger(__name__).setLevel(log_level)
 logging.basicConfig(
     level=log_level,
     format="%(levelname)-8s %(asctime)s %(message)s",
-    datefmt="%H:%M:%S"
+    datefmt="%H:%M:%S",
 )
 
 prefix_router.include_router(router)

@@ -5,6 +5,12 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 package-dir = { "" = "src" }
 
+[tool.black]
+line-length = 119
+
+[tool.isort]
+profile = "black"
+
 [project]
 name = "MiniApp"
 version = "0.0.1"

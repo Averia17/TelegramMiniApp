@@ -3,8 +3,8 @@ from asyncio import create_task
 
 from starlette.websockets import WebSocket
 
-from miniapp.webhook.battle.connection_manager import ConnectionManager
 from miniapp.webhook.battle.battle import Battle
+from miniapp.webhook.battle.connection_manager import ConnectionManager
 
 log = logging.getLogger(__name__)
 
@@ -24,9 +24,13 @@ class BattleManager:
         self.battle.init_player(player_id)
 
         await self.connection_manager.send_broadcast({"player": self.battle.get_players()})
-        await self.connection_manager.send_personal_data(player_id, {
-            "camp": self.battle.get_camps(), "start_time": str(self.battle.start_time)
-        })
+        await self.connection_manager.send_personal_data(
+            player_id,
+            {
+                "camp": self.battle.get_camps(),
+                "start_time": str(self.battle.start_time),
+            },
+        )
         log.info(f"Player {player_id} connected to battle {self.battle.id}")
 
     async def attack_player(self, user_id: int, player_id: int):

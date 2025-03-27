@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .products import ProductRepo, OrderedProductRepo
+from .products import OrderedProductRepo, ProductRepo
 
 
 @dataclass

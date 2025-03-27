@@ -1,7 +1,7 @@
 import logging
 from itertools import chain
 
-from fastapi import WebSocket, WebSocketDisconnect, APIRouter
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from miniapp.webhook.battle.battle_manager import battle_managers, player_managers
 from miniapp.webhook.battle.battle_queue_manager import BattleQueueManager
@@ -21,9 +21,9 @@ async def start_battle(websocket: WebSocket):
         await websocket.close(reason="Cookie user_id required")
         return
 
-    players_in_battle = list(chain.from_iterable(
-        battle_manager.battle.get_players_ids() for battle_manager in battle_managers.values()
-    ))
+    players_in_battle = list(
+        chain.from_iterable(battle_manager.battle.get_players_ids() for battle_manager in battle_managers.values())
+    )
     if user_id in players_in_battle:
         await websocket.close(reason="Player already in battle")
         return
@@ -79,10 +79,11 @@ async def player_state(played_id: int):
         return {"battle_id": battle_manager.battle.id}
     return {}
 
+
 @router.get("/server_state")
 async def server_state():
     return {
         "players_in_battle": list(player_managers.keys()),
         "battles": list(battle_managers.keys()),
-        "queue": battle_queue_manager.queue
+        "queue": battle_queue_manager.queue,
     }

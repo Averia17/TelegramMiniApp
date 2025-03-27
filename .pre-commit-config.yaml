@@ -1,0 +1,24 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+        language: python
+  - repo: https://github.com/pycqa/isort
+    rev: 6.0.1
+    hooks:
+      - id: isort
+        name: isort
+        entry: isort
+        language: python
+#  - repo: local
+#    hooks:
+#    - id: pytest
+#      name: pytest
+#      entry: docker-compose run backend pytest
+#      exclude: ^migrations
+#      language: system
+#      types: [python]
+#      pass_filenames: false
+#      always_run: true
+#      verbose: true

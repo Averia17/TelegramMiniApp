@@ -1,6 +1,5 @@
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-
 from config import DbConfig
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
 def create_engine(db: DbConfig, echo=False):

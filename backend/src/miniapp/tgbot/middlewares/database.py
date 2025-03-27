@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Any, Awaitable
+from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
 from aiogram.types import Message
@@ -23,9 +23,7 @@ class DatabaseMiddleware(BaseMiddleware):
                 return await handler(event, data)
 
             user = await repo.users.get_or_create_user(
-                event_from_user.id,
-                event_from_user.full_name,
-                event_from_user.username
+                event_from_user.id, event_from_user.full_name, event_from_user.username
             )
 
             data["session"] = session
