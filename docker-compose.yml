@@ -22,7 +22,12 @@ services:
     stop_signal: SIGINT
     depends_on:
       - webhook
-
+  frontend_battle:
+    container_name: "frontend_battle"
+    image: "frontend_battle"
+    build:
+      context: ./frontend/battle
+      dockerfile: Dockerfile
   bot:
     container_name: "bot"
     image: "bot"
