@@ -3,7 +3,9 @@
     "version": "0.0.1",
     "private": true,
     "workspaces": [
-        "packages/*"
+        "client",
+        "server",
+        "common"
     ],
     "scripts": {
         "client": "yarn workspace @battle/client",
@@ -11,8 +13,8 @@
         "server": "yarn workspace @battle/server",
         "clean": "sh ./scripts/clean.sh",
         "dev": "sh ./scripts/dev.sh",
-        "build": "ts-node ./build.ts",
-        "serve": "node ./server/src/index.ts"
+        "build": "ts-node ./scripts/build.ts",
+        "serve": "sh ./scripts/serve.sh"
     },
     "devDependencies": {
         "@types/compression": "^1.7.0",

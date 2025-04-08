@@ -1,7 +1,6 @@
 import {
     Box,
     Button,
-    GitHub,
     IListItem,
     Inline,
     Input,
@@ -213,7 +212,6 @@ export default class Home extends Component<IProps, IState> {
                 <Space size="m" />
                 {this.renderRoom()}
                 <Space size="m" />
-                <GitHub />
             </View>
         );
     }

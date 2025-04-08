@@ -4,15 +4,17 @@ WORKDIR /usr/src/app
 
 ARG REACT_APP_GA_TRACKING_ID
 
-# Dependencies
-COPY ./package.json .
-COPY ./yarn.lock .
+# First copy only package files for better caching
+COPY package.json .
+COPY yarn.lock .
 COPY ./client/package.json ./client/
 COPY ./common/package.json ./common/
 COPY ./server/package.json ./server/
-RUN yarn
 
-# Files
+# Install dependencies for all workspaces
+RUN yarn install --frozen-lockfile
+
+# Copy the rest of the files
 COPY . .
 
 # Build

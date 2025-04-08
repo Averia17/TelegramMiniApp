@@ -1,6 +1,5 @@
 export * from './Box';
 export * from './Button';
-export * from './GitHub';
 export * from './Inline';
 export * from './Input';
 export * from './KeyboardKey';
