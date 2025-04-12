@@ -2,14 +2,14 @@ from datetime import datetime
 from typing import Dict, Any
 import math
 
-from miniapp.webhook.battle.entities import GameState
-from miniapp.webhook.battle.game_state import Constants
+from miniapp.webhook.battle.game_state import GameState
+from miniapp.webhook.constants import Constants
 
 
 class GameRoom:
     def __init__(self):
         self.max_clients = 0
-        self.state = None
+        self.state: GameState = None
         self.clients = {}  # session_id: client
         self.metadata = {}
         self.simulation_interval = None

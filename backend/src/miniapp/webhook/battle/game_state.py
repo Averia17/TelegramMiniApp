@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from miniapp.webhook.battle.entities import Prop, Monster, Bullet, Player, Game
+from miniapp.webhook.constants import Constants
 
 
 class GameMode(Enum):
@@ -109,35 +110,6 @@ class Map:
         return (circle.x < 0 or circle.x > self.width or
                 circle.y < 0 or circle.y > self.height)
 
-
-class Constants:
-    TILE_SIZE = 32
-    PLAYER_SIZE = 32
-    PLAYER_MAX_LIVES = 3
-    PLAYER_SPEED = 5
-    PLAYER_WEAPON_SIZE = 20
-    BULLET_SIZE = 8
-    BULLET_SPEED = 10
-    BULLET_RATE = 500  # ms
-    MONSTER_SIZE = 40
-    MONSTER_LIVES = 3
-    MONSTER_SPEED_PATROL = 1.5
-    MONSTER_SPEED_CHASE = 2.5
-    MONSTER_SIGHT = 300
-    MONSTER_ATTACK_BACKOFF = 2000
-    MONSTER_IDLE_DURATION_MIN = 2000
-    MONSTER_IDLE_DURATION_MAX = 5000
-    MONSTER_PATROL_DURATION_MIN = 3000
-    MONSTER_PATROL_DURATION_MAX = 8000
-    FLASK_SIZE = 20
-    FLASKS_COUNT = 10
-    MONSTERS_COUNT = 5
-    LOBBY_DURATION = 60000
-    GAME_DURATION = 600000
-    ROOM_PLAYERS_MIN=2
-    ROOM_PLAYERS_MAX=10
-    PLAYER_NAME_MAX=10
-    ROOM_NAME_MAX=15
 
 class GameState:
     def __init__(
