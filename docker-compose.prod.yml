@@ -6,12 +6,10 @@ services:
         context: ./frontend
         dockerfile: Dockerfile
     working_dir: "/home/node/app"
-    ports:
-      - "5173:5173"
     volumes:
-      - ./frontend:/home/node/app
-      - /home/node/app/node_modules # remove node_modules from synchronization
-    command: ["npm", "run", "dev", "--host"]
+      - /var/app/miniapp:/home/node/app/dist
+    command: ["npm", "run", "build"]
+
     stop_signal: SIGINT
     depends_on:
       - webhook
@@ -144,6 +142,27 @@ services:
         max-file: "10"
     depends_on:
       - shop_db
+#  mkdocs:
+#    build:
+#      context: mkdocs
+#      dockerfile: Dockerfile
+#    container_name: "mkdocs_container"
+##    ports:
+##      - "3780:8000"
+#    volumes:
+#      - ./mkdocs:/usr/src/mkdocs
+#      - /var/app/mkdocs/public_docs:/usr/src/mkdocs/public_docs
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    restart: unless-stopped
+    environment:
+      - NGROK_CONFIG=/etc/ngrok.yml
+    volumes:
+      - ./ngrok.yml:/etc/ngrok.yml
+    expose:
+      - 443
+
 
 volumes:
   pgdata: { }

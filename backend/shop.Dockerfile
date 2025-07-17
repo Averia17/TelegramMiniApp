@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 RUN pip install -U pip wheel setuptools && mkdir /src && mkdir /src/src
 
