@@ -1,0 +1,9 @@
+{
+    "name": "@battle/common",
+    "version": "0.1.0",
+    "private": true,
+    "main": "./src/index.ts",
+    "dependencies": {
+        "rbush": "^3.0.1"
+    }
+}

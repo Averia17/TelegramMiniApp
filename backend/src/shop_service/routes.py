@@ -1,11 +1,13 @@
 import logging
 
+from consumers import send_kafka_message
+from services import process_transaction
 from exeptions import InternalError, PaymentFailedError
 from fastapi import APIRouter, Depends, HTTPException, status
 from infrastructure.database.repo.requests import RequestsRepo
 from sqlalchemy.exc import ArgumentError, NoResultFound
 from starlette.requests import Request
-from utils import get_repo, process_payment
+from utils import get_repo
 
 log = logging.getLogger(__name__)
 
@@ -26,23 +28,16 @@ async def buy_product(product_id: int, request: Request, repo: RequestsRepo = De
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
     try:
-        async with repo.session.begin() as transaction:
-            try:
-                ordered_product = await repo.ordered_products.create(user_id, product_id, commit=False)
-                if not ordered_product:
-                    raise InternalError("Failed to create order product")
-
-                await process_payment(user_id, product)
-
-                await transaction.commit()
-                log.info(f"User {user_id}, product {product_id}. Transaction committed successfully")
-
-                return {"ordered_product_id": ordered_product.id}
-
-            except Exception as e:
-                await transaction.rollback()
-                log.error(f"User {user_id}, product {product_id}. Transaction failed: {e}")
-                raise
+        ordered_product_id = await process_transaction(repo, user_id, product.product_id, product.price)
+        await send_kafka_message(
+            "order_created",
+            {
+                "user_id": user_id,
+                "product_id": product_id,
+                "order_id": ordered_product_id,
+                "price": str(product.price)
+            }
+        )
     except PaymentFailedError:
         raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="Payment failed")
     except InternalError as err:
