@@ -21,3 +21,10 @@ async def process_payment(user_id: int, price: float):
     await asyncio.sleep(5)
     if random() < 0.05:  # 5% probability
         raise PaymentFailedError("Payment failed")
+
+
+async def refund_payment(user_id: int, price: float):
+    # TODO: refund payment
+    await asyncio.sleep(5)
+    if random() < 0.05:  # 5% probability
+        raise PaymentFailedError("Refund Payment failed")

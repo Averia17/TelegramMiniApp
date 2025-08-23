@@ -1,9 +1,18 @@
+import enum
 from typing import Optional
 
 from sqlalchemy import BIGINT, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TableNameMixin, TimestampMixin
+
+
+class Status(enum.Enum):
+    PENDING = "pending"
+    PAID = "paid"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+    CANCELLED = "cancelled"
 
 
 class Product(Base, TimestampMixin, TableNameMixin):
@@ -20,6 +29,7 @@ class OrderedProduct(Base, TimestampMixin, TableNameMixin):
     id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BIGINT)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.product_id"))
+    status: Mapped[Status] = mapped_column(default=Status.PENDING)
 
     def __repr__(self):
         return f"<OrderedProduct {self.product_id} - {self.user_id}>"
