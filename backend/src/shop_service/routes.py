@@ -28,14 +28,15 @@ async def buy_product(product_id: int, request: Request, repo: RequestsRepo = De
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
     try:
-        ordered_product_id = await process_transaction(repo, user_id, product.product_id, product.price)
+        price = float(product.price)
+        ordered_product_id = await process_transaction(repo, user_id, product.product_id, price)
         await send_kafka_message(
             "order_created",
             {
                 "user_id": user_id,
                 "product_id": product_id,
                 "order_id": ordered_product_id,
-                "price": str(product.price)
+                "price": price
             }
         )
     except PaymentFailedError:

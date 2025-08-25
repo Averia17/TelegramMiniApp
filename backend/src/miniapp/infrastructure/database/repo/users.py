@@ -44,7 +44,7 @@ class UserRepo(BaseRepo):
         await self.session.commit()
         return result.scalar_one()
 
-    async def get_by_id(self, user_id: int):
+    async def get_by_id(self, user_id: int) -> User | None:
         return (await self.session.execute(select(User).where(User.user_id == user_id))).scalar_one_or_none()
 
     async def update_clicks(self, user_id: int, clicks: int):
