@@ -1,38 +1,40 @@
 from fastapi import APIRouter, Depends, HTTPException
 from starlette import status
-from starlette.requests import Request
 
 from miniapp.infrastructure.database.repo.requests import RequestsRepo
-from miniapp.webhook.users.services import PaymentService
+from miniapp.webhook.users.schemas import PaymentRequest
 from miniapp.webhook.utils import get_repo
-
 
 payment_router = APIRouter(prefix="/payment")
 
 
 @payment_router.post("/")
-async def payment(request: Request, repo: RequestsRepo = Depends(get_repo)):
-    data =await request.json()
-    user_id = data["user_id"]
-    amount = data["amount"]
-    user = await repo.users.get_by_id(user_id)
+async def payment(data: PaymentRequest, repo: RequestsRepo = Depends(get_repo)):
+    async with repo.session.begin():
+        user = await repo.users.get_by_id(data.user_id, for_update=True)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        if user.clicks < data.amount:
+            raise HTTPException(status_code=402, detail="Insufficient balance")
 
-    if user.clicks < amount:
-        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="Insufficient balance")
+        user.clicks -= data.amount
 
-    return await PaymentService(repo.users).decrease_balance(user_id, amount)
+        return {
+            "status": "success",
+            "user_id": user.user_id,
+        }
 
 
 @payment_router.post("/refund")
-async def refund(request: Request, repo: RequestsRepo = Depends(get_repo)):
-    data = await request.json()
-    user_id = data["user_id"]
-    amount = data["amount"]
-    user = await repo.users.get_by_id(user_id)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+async def refund(data: PaymentRequest, repo: RequestsRepo = Depends(get_repo)):
+    async with repo.session.begin():
+        user = await repo.users.get_by_id(data.user_id, for_update=True)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        user.clicks += data.amount
 
-    return await PaymentService(repo.users).increase_balance(user_id, amount)
+        return {
+            "status": "success",
+            "user_id": user.user_id,
+        }
