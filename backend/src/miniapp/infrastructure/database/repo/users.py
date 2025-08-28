@@ -1,8 +1,7 @@
 from typing import Optional
 
-from sqlalchemy import desc, select, update
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.sql import func
 
 from miniapp.infrastructure.database.models import User
 from miniapp.infrastructure.database.repo.base import BaseRepo

@@ -6,7 +6,6 @@ from constants import USERS_SERVICE_URL
 from exeptions import InternalError, PaymentFailedError
 from infrastructure.database.models.products import Status
 from infrastructure.database.repo.requests import RequestsRepo
-from starlette import status
 
 log = logging.getLogger(__name__)
 
@@ -34,17 +33,20 @@ class PaymentClient:
         return resp.json()
 
     def _handle_response(self, resp: httpx.Response, endpoint: str) -> None:
-        if resp.status_code == status.HTTP_200_OK:
+        if 200 <= resp.status_code < 300:
             log.debug(f"Successful request to {endpoint}: {resp.status_code}")
             return
 
-        log.warning(f"Failed request to {endpoint}: {resp.status_code}. Response: {resp.text}")
+        log.error(f"Error from payment service. Endpoint {endpoint}: {resp.status_code}. Response: {resp.text}")
 
         try:
             error_data = resp.json()
             error_message = error_data.get("detail", error_data)
         except ValueError:
             error_message = resp.text
+
+        if resp.status_code >= 500:
+            error_message = f"Payment service unavailable. Status code {resp.status_code}"
 
         raise PaymentFailedError(error_message)
 
@@ -66,26 +68,39 @@ payment_client = PaymentClient()
 
 async def process_transaction(repo: RequestsRepo, user_id: int, product_id: int, price: float):
     ordered_product = None
+    payment_done = False
+
     try:
-        ordered_product = await repo.ordered_products.create(user_id, product_id, Status.PENDING, commit=False)
+        ordered_product = await repo.ordered_products.create(user_id, product_id, Status.PENDING)
         if not ordered_product:
             raise InternalError("Failed to create order product")
 
-        await payment_client.process_payment(user_id, price, payment_key=ordered_product.id)
+        await payment_client.process_payment(user_id, price, payment_key=str(ordered_product.id))
+        payment_done = True
 
         await repo.ordered_products.update_status(ordered_product.id, Status.PAID)
 
-        # log.info(f"User {user_id}, product {product_id}. Transaction committed successfully")
-
         return ordered_product.id
 
-    except Exception as e:
-        log.error(f"User {user_id}, product {product_id}. Transaction failed: {e}")
+    except PaymentFailedError as e:
+        if ordered_product:
+            await repo.ordered_products.update_status(ordered_product.id, Status.FAILED)
 
-        if ordered_product and ordered_product.id and not isinstance(e, PaymentFailedError):
+        log.error(
+            f"Payment failed: user={user_id}, product={product_id}, order={getattr(ordered_product, 'id', None)}. error={e}"
+        )
+        raise
+
+    except Exception as e:
+        log.error(f"Unexpected error: user={user_id}, product={product_id}, error={e}")
+        if ordered_product:
+            await repo.ordered_products.update_status(ordered_product.id, Status.FAILED)
+
+        if payment_done:
             try:
-                await payment_client.refund(user_id, price, payment_key=ordered_product.id)
+                await payment_client.refund(user_id, price, payment_key=str(ordered_product.id))
+                log.info(f"Refund success for order {ordered_product.id}")
             except Exception as refund_err:
-                log.error(f"Refund failed for order {ordered_product.id}: {refund_err}")
+                log.critical(f"Refund failed for order {ordered_product.id}: {refund_err}")
                 raise
         raise
