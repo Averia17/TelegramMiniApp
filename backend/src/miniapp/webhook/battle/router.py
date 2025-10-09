@@ -5,6 +5,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from miniapp.webhook.battle.battle_manager import battle_managers, player_managers
 from miniapp.webhook.battle.battle_queue_manager import BattleQueueManager
+from miniapp.webhook.battle.game_room import GameRoom
 
 log = logging.getLogger(__name__)
 
@@ -87,3 +88,47 @@ async def server_state():
         "battles": list(battle_managers.keys()),
         "queue": battle_queue_manager.queue,
     }
+
+
+class WebSocketClient:
+    def __init__(self, websocket: WebSocket):
+        self.websocket = websocket
+        self.session_id = id(self)  # простой идентификатор
+
+    async def send(self, message_type: str, message: dict):
+        await self.websocket.send_json({"type": message_type, "message": message})
+
+
+rooms: dict[str, "GameRoom"] = {}  # имя комнаты -> объект GameRoom
+
+
+@router.websocket("/ws/{room_name}/{player_name}")
+async def websocket_endpoint(websocket: WebSocket, room_name: str, player_name: str):
+    await websocket.accept()
+
+    # Создаём комнату если её нет
+    if room_name not in rooms:
+        # rooms[room_name] = GameRoom()
+        room = GameRoom().on_create(
+            options={
+                "roomName": room_name,
+                "playerName": player_name,
+                "roomMaxPlayers": 4,  # например
+                "mode": "deathmatch",
+            }
+        )
+        rooms[room_name] = room
+
+    room = rooms[room_name]
+
+    client = WebSocketClient(websocket)
+    room.on_join(client, {"playerName": player_name})
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            message_type = data.get("type")
+            message = data.get("message", {})
+            room.on_client_message(client, message_type, message)
+    except WebSocketDisconnect:
+        room.on_leave(client)

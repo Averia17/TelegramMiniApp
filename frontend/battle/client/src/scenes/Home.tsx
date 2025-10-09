@@ -71,21 +71,59 @@ export default class Home extends Component<IProps, IState> {
 
     // BASE
     componentDidMount() {
-        try {
-            const host = window.document.location.host.replace(/:.*/, '');
-            const port = process.env.NODE_ENV !== 'production' ? Constants.WS_PORT : window.location.port;
-            const url = `${window.location.protocol.replace('http', 'ws')}//${host}${port ? `:${port}` : ''}`;
+        // try {
+        //     const host = window.document.location.host.replace(/:.*/, '');
+        //     const port = process.env.NODE_ENV !== 'production' ? Constants.WS_PORT : window.location.port;
+        //     const url = `${window.location.protocol.replace('http', 'ws')}//${host}${port ? `:${port}` : ''}`;
+        //
+        //     this.client = new Client(url);
+        //     this.setState(
+        //         {
+        //             timer: setInterval(this.updateRooms, Constants.ROOM_REFRESH),
+        //         },
+        //         this.updateRooms,
+        //     );
+        // } catch (error) {
+        //     console.error(error);
+        // }
+         try {
+        const host = window.document.location.host.replace(/:.*/, '');
+        // const port = process.env.NODE_ENV !== 'production' ? Constants.WS_PORT : window.location.port;
+         console.log(this.state.roomName)
+         const port = 3779
+         const url = `${window.location.protocol.replace('http', 'ws')}//${host}${port ? `:${port}` : ''}/battle/ws/${this.state.roomName}/${this.state.playerName}`;
+         this.setState(
+            {
+                timer: setInterval(this.updateRooms, Constants.ROOM_REFRESH),
+            },
+            this.updateRooms,
+        );
+        this.client = new WebSocket(url);
 
-            this.client = new Client(url);
-            this.setState(
-                {
-                    timer: setInterval(this.updateRooms, Constants.ROOM_REFRESH),
-                },
-                this.updateRooms,
-            );
-        } catch (error) {
-            console.error(error);
-        }
+        this.client.onopen = () => {
+            console.log("Connected to game server");
+        };
+
+        this.client.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log("Message from server:", data);
+            // тут можно обрабатывать game state
+        };
+
+        this.client.onclose = () => {
+            console.log("Disconnected");
+        };
+
+        this.client.onerror = (err) => {
+            console.error("Socket error:", err);
+        };
+
+        this.setState({
+            timer: setInterval(this.updateRooms, Constants.ROOM_REFRESH),
+        }, this.updateRooms);
+    } catch (error) {
+        console.error(error);
+    }
     }
 
     componentWillUnmount() {
