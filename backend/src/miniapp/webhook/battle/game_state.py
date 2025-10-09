@@ -1,11 +1,11 @@
 import math
 import random
 import time
-from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Callable, Dict, List, Optional
 
-from miniapp.webhook.battle.entities import Prop, Monster, Bullet, Player, Game
+from miniapp.webhook.battle.entities import Bullet, Game, IGame, Monster, Player, Prop
 from miniapp.webhook.constants import Constants
 
 
@@ -107,18 +107,17 @@ class Map:
         return CircleBody(x, y, circle.radius)
 
     def is_circle_outside(self, circle: CircleBody) -> bool:
-        return (circle.x < 0 or circle.x > self.width or
-                circle.y < 0 or circle.y > self.height)
+        return circle.x < 0 or circle.x > self.width or circle.y < 0 or circle.y > self.height
 
 
 class GameState:
     def __init__(
-            self,
-            room_name: str,
-            map_name: str,
-            max_players: int,
-            mode: GameMode,
-            on_message: Callable[[MessageJSON], None],
+        self,
+        room_name: str,
+        map_name: str,
+        max_players: int,
+        mode: GameMode,
+        on_message: Callable[[MessageJSON], None],
     ):
         self.game = Game(
             room_name=room_name,
@@ -197,32 +196,18 @@ class GameState:
         self.send_message("stop")
 
     def send_message(self, msg_type: str, params: Optional[Dict[str, Any]] = None):
-        self.on_message(MessageJSON(
-            type=msg_type,
-            from_="server",
-            ts=self.current_time(),
-            params=params or {}
-        ))
+        self.on_message(MessageJSON(type=msg_type, from_="server", ts=self.current_time(), params=params or {}))
 
     def initialize_map(self, map_name: str):
         self.map = Map(width=1000, height=1000)
 
         for i in range(5):
-            self.walls.insert({
-                "minX": 100 + i * 150,
-                "minY": 100,
-                "maxX": 150 + i * 150,
-                "maxY": 500,
-                "type": "wall"
-            })
+            self.walls.insert({"minX": 100 + i * 150, "minY": 100, "maxX": 150 + i * 150, "maxY": 500, "type": "wall"})
 
         for i in range(4):
-            self.spawners.append(RectangleBody(
-                x=50 + i * 200,
-                y=50,
-                width=Constants.PLAYER_SIZE,
-                height=Constants.PLAYER_SIZE
-            ))
+            self.spawners.append(
+                RectangleBody(x=50 + i * 200, y=50, width=Constants.PLAYER_SIZE, height=Constants.PLAYER_SIZE)
+            )
 
     def player_add(self, player_id: str, name: str):
         spawner = self.get_spawner_randomly()
@@ -233,7 +218,7 @@ class GameState:
             radius=Constants.PLAYER_SIZE / 2,
             lives=0,
             max_lives=Constants.PLAYER_MAX_LIVES,
-            name=name or player_id
+            name=name or player_id,
         )
 
         if self.game.mode == GameMode.TEAM_DEATHMATCH:
@@ -285,27 +270,22 @@ class GameState:
         for bullet in self.bullets:
             if not bullet.active:
                 bullet.reset(
-                    player_id,
-                    player.team,
-                    bullet_x,
-                    bullet_y,
-                    Constants.BULLET_SIZE,
-                    angle,
-                    player.color,
-                    ts
+                    player_id, player.team, bullet_x, bullet_y, Constants.BULLET_SIZE, angle, player.color, ts
                 )
                 return
 
-        self.bullets.append(Bullet(
-            player_id=player_id,
-            team=player.team,
-            x=bullet_x,
-            y=bullet_y,
-            radius=Constants.BULLET_SIZE,
-            rotation=angle,
-            color=player.color,
-            shot_at=ts
-        ))
+        self.bullets.append(
+            Bullet(
+                player_id=player_id,
+                team=player.team,
+                x=bullet_x,
+                y=bullet_y,
+                radius=Constants.BULLET_SIZE,
+                rotation=angle,
+                color=player.color,
+                shot_at=ts,
+            )
+        )
 
     def player_remove(self, player_id: str):
         if player_id in self.players:
@@ -319,10 +299,7 @@ class GameState:
     def set_players_position_randomly(self):
         for player in self.players.values():
             spawner = self.get_spawner_randomly()
-            player.set_position(
-                spawner.x + Constants.PLAYER_SIZE / 2,
-                spawner.y + Constants.PLAYER_SIZE / 2
-            )
+            player.set_position(spawner.x + Constants.PLAYER_SIZE / 2, spawner.y + Constants.PLAYER_SIZE / 2)
             player.ack = 0
 
     def set_players_teams_randomly(self):
@@ -345,7 +322,7 @@ class GameState:
                 radius=Constants.MONSTER_SIZE / 2,
                 map_width=self.map.width,
                 map_height=self.map.height,
-                lives=Constants.MONSTER_LIVES
+                lives=Constants.MONSTER_LIVES,
             )
 
             self.monsters[str(random.randint(0, 1000))] = monster
@@ -358,16 +335,12 @@ class GameState:
         monster.update(self.players)
 
         for player in self.players.values():
-            if (player.is_alive and monster.can_attack and
-                    self.circle_to_circle(monster.body, player.body)):
+            if player.is_alive and monster.can_attack and self.circle_to_circle(monster.body, player.body):
                 monster.attack()
                 player.hurt()
 
                 if not player.is_alive:
-                    self.send_message("killed", {
-                        "killerName": "A bat",
-                        "killedName": player.name
-                    })
+                    self.send_message("killed", {"killerName": "A bat", "killedName": player.name})
 
     def monsters_clear(self):
         self.monsters.clear()
@@ -380,17 +353,17 @@ class GameState:
         bullet.move(Constants.BULLET_SPEED)
 
         for player in self.players.values():
-            if (player.can_bullet_hurt(bullet.player_id, bullet.team) and
-                    self.circle_to_circle(bullet.body, player.body)):
+            if player.can_bullet_hurt(bullet.player_id, bullet.team) and self.circle_to_circle(
+                bullet.body, player.body
+            ):
                 bullet.active = False
                 player.hurt()
 
                 if not player.is_alive:
-                    killer_name = self.players[bullet.player_id].name if bullet.player_id in self.players else "Unknown"
-                    self.send_message("killed", {
-                        "killerName": killer_name,
-                        "killedName": player.name
-                    })
+                    killer_name = (
+                        self.players[bullet.player_id].name if bullet.player_id in self.players else "Unknown"
+                    )
+                    self.send_message("killed", {"killerName": killer_name, "killedName": player.name})
                     if bullet.player_id in self.players:
                         self.players[bullet.player_id].kills += 1
 
@@ -420,12 +393,7 @@ class GameState:
                 y = random.randint(Constants.TILE_SIZE, self.map.height - Constants.TILE_SIZE)
                 body = CircleBody(x, y, Constants.FLASK_SIZE / 2)
 
-            self.props.append(Prop(
-                prop_type=PropType.POTION_RED,
-                x=x,
-                y=y,
-                radius=Constants.FLASK_SIZE / 2
-            ))
+            self.props.append(Prop(prop_type=PropType.POTION_RED, x=x, y=y, radius=Constants.FLASK_SIZE / 2))
 
     def props_clear(self):
         self.props.clear()

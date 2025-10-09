@@ -1,27 +1,106 @@
 import logging
+from typing import Any
 
-from exeptions import InternalError
+import httpx
+from constants import USERS_SERVICE_URL
+from exeptions import InternalError, PaymentFailedError
+from infrastructure.database.models.products import Status
 from infrastructure.database.repo.requests import RequestsRepo
-from utils import process_payment
-
 
 log = logging.getLogger(__name__)
 
-async def process_transaction(repo: RequestsRepo, user_id: int, product_id: int, price: float):
-    async with repo.session.begin() as transaction:
+PAYMENT_ENDPOINT = "/payment/"
+REFUND_ENDPOINT = "/payment/refund"
+TIMEOUT = 30.0
+
+
+class PaymentClient:
+    def __init__(self, base_url: str = USERS_SERVICE_URL, timeout: float = TIMEOUT):
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+
+    async def _make_request(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        url = f"{self.base_url}{endpoint}"
+
         try:
-            ordered_product = await repo.ordered_products.create(user_id, product_id, commit=False)
-            if not ordered_product:
-                raise InternalError("Failed to create order product")
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                resp = await client.post(url, json=payload)
+        except httpx.RequestError as e:
+            log.error(f"Network error during payment request to {url}: {e}")
+            raise PaymentFailedError(f"Network error: {e}") from e
 
-            await process_payment(user_id, price)
+        self._handle_response(resp, endpoint)
+        return resp.json()
 
-            await transaction.commit()
-            log.info(f"User {user_id}, product {product_id}. Transaction committed successfully")
+    def _handle_response(self, resp: httpx.Response, endpoint: str) -> None:
+        if 200 <= resp.status_code < 300:
+            log.debug(f"Successful request to {endpoint}: {resp.status_code}")
+            return
 
-            return ordered_product.id
+        log.error(f"Error from payment service. Endpoint {endpoint}: {resp.status_code}. Response: {resp.text}")
 
-        except Exception as e:
-            await transaction.rollback()
-            log.error(f"User {user_id}, product {product_id}. Transaction failed: {e}")
-            raise
+        try:
+            error_data = resp.json()
+            error_message = error_data.get("detail", error_data)
+        except ValueError:
+            error_message = resp.text
+
+        if resp.status_code >= 500:
+            error_message = f"Payment service unavailable. Status code {resp.status_code}"
+
+        raise PaymentFailedError(error_message)
+
+    async def process_payment(self, user_id: int, amount: float, payment_key: str) -> dict[str, Any]:
+        payload = {"user_id": user_id, "amount": int(amount), "payment_key": payment_key}
+
+        log.info(f"Processing payment for user {user_id}, amount: {amount}")
+        return await self._make_request(PAYMENT_ENDPOINT, payload)
+
+    async def refund(self, user_id: int, amount: float, payment_key: str) -> dict[str, Any]:
+        payload = {"user_id": user_id, "amount": int(amount), "payment_key": payment_key}
+
+        log.info(f"Processing refund for user {user_id}, amount: {amount}")
+        return await self._make_request(REFUND_ENDPOINT, payload)
+
+
+payment_client = PaymentClient()
+
+
+async def process_transaction(repo: RequestsRepo, user_id: int, product_id: int, price: float):
+    ordered_product = None
+    payment_done = False
+
+    try:
+        ordered_product = await repo.ordered_products.create(user_id, product_id, Status.PENDING)
+        if not ordered_product:
+            raise InternalError("Failed to create order product")
+
+        await payment_client.process_payment(user_id, price, payment_key=str(ordered_product.id))
+        payment_done = True
+
+        await repo.ordered_products.update_status(ordered_product.id, Status.PAID)
+
+        return ordered_product.id
+
+    except PaymentFailedError as e:
+        if ordered_product:
+            await repo.ordered_products.update_status(ordered_product.id, Status.FAILED)
+
+        log.error(
+            f"Payment failed: user={user_id}, product={product_id}, order={getattr(ordered_product, 'id', None)}. error={e}"
+        )
+        raise
+
+    except Exception as e:
+        log.error(f"Unexpected error: user={user_id}, product={product_id}, error={e}")
+        if ordered_product:
+            await repo.ordered_products.update_status(ordered_product.id, Status.FAILED)
+
+        if payment_done:
+            try:
+                await payment_client.refund(user_id, price, payment_key=str(ordered_product.id))
+                log.info(f"Refund success for order {ordered_product.id}")
+            except Exception as refund_err:
+                log.critical(f"Refund failed for order {ordered_product.id}: {refund_err}")
+                raise
+        raise

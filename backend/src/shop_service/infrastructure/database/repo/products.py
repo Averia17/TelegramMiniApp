@@ -1,6 +1,6 @@
-from infrastructure.database.models.products import OrderedProduct, Product
+from infrastructure.database.models.products import OrderedProduct, Product, Status
 from infrastructure.database.repo.base import BaseRepo
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 
 
 class ProductRepo(BaseRepo):
@@ -17,10 +17,22 @@ class ProductRepo(BaseRepo):
 
 
 class OrderedProductRepo(BaseRepo):
-    async def create(self, user_id: int, product_id: int, commit=True):
+    async def create(self, user_id: int, product_id: int, status: Status, commit=True):
         result = await self.session.execute(
-            insert(OrderedProduct).values(user_id=user_id, product_id=product_id).returning(OrderedProduct)
+            insert(OrderedProduct)
+            .values(user_id=user_id, product_id=product_id, status=status)
+            .returning(OrderedProduct)
         )
         if commit:
             await self.session.commit()
+        return result.scalar_one()
+
+    async def update_status(self, ordered_product_id: int, status: Status):
+        result = await self.session.execute(
+            update(OrderedProduct)
+            .where(OrderedProduct.id == ordered_product_id)
+            .values(status=status)
+            .returning(OrderedProduct)
+        )
+        await self.session.commit()
         return result.scalar_one()

@@ -1,8 +1,7 @@
 from typing import Optional
 
-from sqlalchemy import desc, select, update
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.sql import func
 
 from miniapp.infrastructure.database.models import User
 from miniapp.infrastructure.database.repo.base import BaseRepo
@@ -44,8 +43,12 @@ class UserRepo(BaseRepo):
         await self.session.commit()
         return result.scalar_one()
 
-    async def get_by_id(self, user_id: int):
-        return (await self.session.execute(select(User).where(User.user_id == user_id))).scalar_one_or_none()
+    async def get_by_id(self, user_id: int, for_update: bool = False) -> User | None:
+        stmt = select(User).where(User.user_id == user_id)
+        if for_update:
+            stmt = stmt.with_for_update()
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def update_clicks(self, user_id: int, clicks: int):
         query = update(User).where(User.user_id == user_id).values(clicks=clicks)

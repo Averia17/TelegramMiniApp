@@ -17,6 +17,7 @@ class User(Base, TimestampMixin, TableNameMixin):
     received_invite: Mapped[list["Invite"]] = relationship(
         back_populates="invitee", foreign_keys="[Invite.invitee_id]"
     )
+    transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")
 
     def __repr__(self):
         return f"<User {self.user_id} {self.username} {self.full_name}>"
