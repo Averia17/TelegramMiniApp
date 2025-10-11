@@ -1,4 +1,3 @@
-from .bullet import *
 from .circle import *
 from .game import *
 from .geometry import *

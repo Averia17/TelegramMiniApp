@@ -1,10 +1,12 @@
 import logging
+from dataclasses import asdict
 from itertools import chain
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from miniapp.webhook.battle.battle_manager import battle_managers, player_managers
 from miniapp.webhook.battle.battle_queue_manager import BattleQueueManager
+from miniapp.webhook.battle.entities import MessageJSON
 from miniapp.webhook.battle.game_room import GameRoom
 
 log = logging.getLogger(__name__)
@@ -95,7 +97,8 @@ class WebSocketClient:
         self.websocket = websocket
         self.session_id = id(self)  # простой идентификатор
 
-    async def send(self, message_type: str, message: dict):
+    async def send(self, message_type: str, message: MessageJSON):
+        message = asdict(message)
         await self.websocket.send_json({"type": message_type, "message": message})
 
 
@@ -105,10 +108,7 @@ rooms: dict[str, "GameRoom"] = {}  # имя комнаты -> объект GameR
 @router.websocket("/ws/{room_name}/{player_name}")
 async def websocket_endpoint(websocket: WebSocket, room_name: str, player_name: str):
     await websocket.accept()
-
-    # Создаём комнату если её нет
     if room_name not in rooms:
-        # rooms[room_name] = GameRoom()
         room = GameRoom().on_create(
             options={
                 "roomName": room_name,

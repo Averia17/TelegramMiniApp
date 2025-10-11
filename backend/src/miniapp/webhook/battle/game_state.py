@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
-from miniapp.webhook.battle.entities import Bullet, Game, IGame, Monster, Player, Prop
+from miniapp.webhook.battle.entities import Bullet, Monster, Player, Prop
+from miniapp.webhook.battle.entities.game import Game, MessageJSON
 from miniapp.webhook.constants import Constants
 
 
@@ -40,14 +41,6 @@ class Vector2:
     @property
     def empty(self) -> bool:
         return self.x == 0 and self.y == 0
-
-
-@dataclass
-class MessageJSON:
-    type: str
-    from_: str
-    ts: int
-    params: Dict[str, Any]
 
 
 @dataclass
@@ -119,6 +112,16 @@ class GameState:
         mode: GameMode,
         on_message: Callable[[MessageJSON], None],
     ):
+        self.players: Dict[str, Player] = {}
+        self.monsters: Dict[str, Monster] = {}
+        self.props: List[Prop] = []
+        self.bullets: List[Bullet] = []
+        self.actions: List[ActionJSON] = []
+        self.on_message = on_message
+        self.walls = TreeCollider()
+        self.spawners: List[RectangleBody] = []
+        self.initialize_map(map_name)
+
         self.game = Game(
             room_name=room_name,
             map_name=map_name,
@@ -129,15 +132,6 @@ class GameState:
             on_game_start=self.handle_game_start,
             on_game_end=self.handle_game_end,
         )
-        self.players: Dict[str, Player] = {}
-        self.monsters: Dict[str, Monster] = {}
-        self.props: List[Prop] = []
-        self.bullets: List[Bullet] = []
-        self.actions: List[ActionJSON] = []
-        self.on_message = on_message
-        self.walls = TreeCollider()
-        self.spawners: List[RectangleBody] = []
-        self.initialize_map(map_name)
 
     def update(self):
         self.update_game()
@@ -211,15 +205,16 @@ class GameState:
 
     def player_add(self, player_id: str, name: str):
         spawner = self.get_spawner_randomly()
-        player = Player(
-            player_id=player_id,
-            x=spawner.x + Constants.PLAYER_SIZE / 2,
-            y=spawner.y + Constants.PLAYER_SIZE / 2,
-            radius=Constants.PLAYER_SIZE / 2,
-            lives=0,
-            max_lives=Constants.PLAYER_MAX_LIVES,
-            name=name or player_id,
-        )
+        player_data = {
+            "player_id": player_id,
+            "x": spawner.x + Constants.PLAYER_SIZE / 2,
+            "y": spawner.y + Constants.PLAYER_SIZE / 2,
+            "radius": Constants.PLAYER_SIZE / 2,
+            "lives": 0,
+            "max_lives": Constants.PLAYER_MAX_LIVES,
+            "name": name or player_id,
+        }
+        player = Player.model_validate(player_data)
 
         if self.game.mode == GameMode.TEAM_DEATHMATCH:
             player.set_team(Team.RED)

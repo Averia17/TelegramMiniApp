@@ -1,17 +1,18 @@
-from datetime import datetime, timedelta
-from enum import Enum
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Callable, Dict, Literal, Optional
 
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, PrivateAttr
 
 GameState = Literal["waiting", "lobby", "game"]
 GameMode = Literal["deathmatch", "team deathmatch"]
 Team = Literal["Red", "Blue"]
 
 
-class MessageJSON(BaseModel):
+@dataclass
+class MessageJSON:
     type: str
-    from_: str = Field(alias="from")
+    from_: str
     ts: int
     params: Dict[str, Any]
 

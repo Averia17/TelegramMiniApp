@@ -86,7 +86,8 @@ export default class Match extends Component<IProps, IState> {
         // Connect
         try {
             const host = window.document.location.host.replace(/:.*/, '');
-            const port = process.env.NODE_ENV !== 'production' ? Constants.WS_PORT : window.location.port;
+            // const port = process.env.NODE_ENV !== 'production' ? Constants.WS_PORT : window.location.port;
+            const port = 3779
             const url = `${window.location.protocol.replace('http', 'ws')}//${host}${port ? `:${port}` : ''}`;
 
             this.client = new Client(url);
