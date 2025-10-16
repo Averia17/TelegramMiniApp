@@ -93,11 +93,11 @@ export default class Match extends Component<IProps, IState> {
             this.client = new Client(url);
             if (isNewRoom) {
                 this.room = await this.client.create(Constants.ROOM_NAME, options);
-
                 // We replace the "new" in the URL with the room's id
                 window.history.replaceState(null, '', `/${this.room.id}`);
             } else {
                 this.room = await this.client.joinById(roomId, options);
+                console.log(this.room)
             }
         } catch (error) {
             navigate('/');

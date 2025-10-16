@@ -4,6 +4,7 @@ from fastapi import APIRouter, FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from miniapp.webhook.battle import router as battle_router
+from miniapp.webhook.battle.router import matchmake_router
 from miniapp.webhook.users.routes import payment_router, users_router
 
 app = FastAPI()
@@ -34,6 +35,7 @@ logging.basicConfig(
 
 app.include_router(battle_router)
 app.include_router(payment_router)
+app.include_router(matchmake_router)
 for router in [
     users_router,
 ]:

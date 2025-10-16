@@ -103,6 +103,98 @@ class WebSocketClient:
 
 
 rooms: dict[str, "GameRoom"] = {}  # имя комнаты -> объект GameRoom
+import uuid
+from datetime import datetime
+
+from fastapi import HTTPException, WebSocket
+from pydantic import BaseModel
+
+
+class RoomOptions(BaseModel):
+    playerName: str
+    roomName: str
+    roomMap: str
+    roomMaxPlayers: int
+    mode: str
+
+
+class JoinOptions(BaseModel):
+    playerName: str
+
+
+matchmake_router = APIRouter(prefix="/matchmake")
+
+
+# HTTP endpoint для создания комнаты (аналог client.create)
+@matchmake_router.post("/create/{room_name}")
+async def create_room(room_name: str, options: RoomOptions):
+    print(126, "CREATE ROOM ", room_name)
+    if room_name in rooms:
+        raise HTTPException(status_code=400, detail="Room already exists")
+
+    # Создаем комнату через ваш существующий механизм
+    room = GameRoom().on_create(
+        options={
+            "roomName": options.roomName,
+            "playerName": options.playerName,
+            "roomMap": options.roomMap,
+            "roomMaxPlayers": options.roomMaxPlayers,
+            "mode": options.mode,
+        }
+    )
+    rooms[room_name] = room
+
+    # Генерируем ответ в формате Colyseus
+    response = {
+        "room": {
+            "clients": 1,
+            "createdAt": datetime.utcnow().isoformat() + "Z",
+            "maxClients": options.roomMaxPlayers,
+            "metadata": {
+                "playerName": options.playerName,
+                "roomName": options.roomName,
+                "roomMap": options.roomMap,
+                "roomMaxPlayers": options.roomMaxPlayers,
+                "mode": options.mode,
+            },
+            "name": room_name,
+            "processId": str(uuid.uuid4())[:8],
+            "roomId": room_name,  # или генерируйте уникальный ID если нужно
+        },
+        "sessionId": str(uuid.uuid4())[:8],
+    }
+
+    return response
+
+
+@matchmake_router.post("/join/{room_id}")
+async def join_room(room_id: str, options: JoinOptions):
+    if room_id not in rooms:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    room = rooms[room_id]
+
+    # Генерируем ответ в формате Colyseus
+    response = {
+        "room": {
+            "clients": len(room.clients) + 1 if hasattr(room, "clients") else 1,
+            "createdAt": datetime.utcnow().isoformat() + "Z",  # В реальности нужно хранить время создания
+            "maxClients": room.max_clients if hasattr(room, "max_clients") else 4,
+            "metadata": {
+                "playerName": options.playerName,
+                "roomName": room_id,
+                "roomMap": getattr(room, "room_map", "small"),
+                "roomMaxPlayers": getattr(room, "max_clients", 4),
+                "mode": getattr(room, "mode", "deathmatch"),
+            },
+            "name": "game",
+            "processId": str(uuid.uuid4())[:8],
+            "roomId": room_id,
+        },
+        "sessionId": str(uuid.uuid4())[:8],
+    }
+
+    return response
 
 
 @router.websocket("/ws/{room_name}/{player_name}")
@@ -113,14 +205,13 @@ async def websocket_endpoint(websocket: WebSocket, room_name: str, player_name: 
             options={
                 "roomName": room_name,
                 "playerName": player_name,
-                "roomMaxPlayers": 4,  # например
+                "roomMaxPlayers": 4,
                 "mode": "deathmatch",
             }
         )
         rooms[room_name] = room
 
     room = rooms[room_name]
-
     client = WebSocketClient(websocket)
     room.on_join(client, {"playerName": player_name})
 
