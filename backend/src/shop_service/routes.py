@@ -28,6 +28,7 @@ async def buy_product(product_id: int, request: Request, repo: RequestsRepo = De
 
     try:
         price = float(product.price)
+        # TODO: add transactional outbox
         ordered_product_id = await process_transaction(repo, user_id, product.product_id, price)
         await send_kafka_message(
             "order_created",

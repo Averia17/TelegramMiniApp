@@ -173,7 +173,42 @@ services:
       DYNAMIC_CONFIG_ENABLED: true
       KAFKA_CLUSTERS_0_AUDIT_TOPICAUDITENABLED: true
       KAFKA_CLUSTERS_0_AUDIT_CONSOLEAUDITENABLED: true
+
+  battle_results_db:
+    container_name: battle_results_db
+    image: postgres:13-alpine
+    ports:
+      - "5462:5432"
+    restart: always
+    volumes:
+      - battle_results_data:/var/lib/postgresql/data
+    command: "postgres -c max_connections=150 -c shared_buffers=512MB -c effective_cache_size=1536MB -c maintenance_work_mem=128MB -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c work_mem=3495kB -c min_wal_size=1GB -c max_wal_size=4GB -c max_worker_processes=2 -c max_parallel_workers_per_gather=1 -c max_parallel_workers=2 -c max_parallel_maintenance_workers=1"
+    env_file:
+      - backend/src/battle_results_service/.env
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+  battle_results_service:
+    container_name: battle_results_service
+    image: battle_results_service
+    build:
+      context: ./backend
+      dockerfile: battle_results.Dockerfile
+    env_file:
+      - backend/src/battle_results_service/.env
+    environment:
+      BATTLE_RESULTS_DB_HOST: battle_results_db
+      BATTLE_RESULTS_DB_PORT: 5432
+    depends_on:
+      - battle_results_db
+      - kafka
+    restart: unless-stopped
+
 volumes:
   pgdata: { }
   shop_db_data: { }
+  battle_results_data: { }
   cache: { }
