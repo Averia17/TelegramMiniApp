@@ -1,9 +1,9 @@
-from typing import Literal, Optional
 import math
+from typing import Literal, Optional
 
-from miniapp.webhook.battle.entities import Circle
+from battle_service.entities.circle import Circle
 
-Team = Literal['Blue', 'Red']
+Team = Literal["Blue", "Red"]
 
 
 class Player(Circle):
@@ -12,37 +12,43 @@ class Player(Circle):
     lives: int
     max_lives: int
     team: Optional[Team] = None
-    color: str = '#FFFFFF'
+    color: str = "#FFFFFF"
     kills: int = 0
     rotation: float = 0.0
     ack: Optional[int] = None
     last_shoot_at: Optional[int] = None
 
     def __init__(
-            self,
-            player_id: str,
-            x: float,
-            y: float,
-            radius: float,
-            lives: int,
-            max_lives: int,
-            name: str,
-            team: Optional[Team] = None,
-            **kwargs
+        self,
+        player_id: str,
+        x: float,
+        y: float,
+        radius: float,
+        lives: int,
+        max_lives: int,
+        name: str,
+        team: Optional[Team] = None,
+        **kwargs,
     ):
-        super().__init__(x=x, y=y, radius=radius, **kwargs)
-        self.player_id = player_id
-        self.lives = lives
-        self.max_lives = max_lives
-        self.name = self._validate_name(name)
-        self.team = team
-        if team:
-            self.color = self._get_team_color(team)
+        init_data = {
+            "x": x,
+            "y": y,
+            "radius": radius,
+            "player_id": player_id,
+            "lives": lives,
+            "max_lives": max_lives,
+            "name": name,
+            "team": team,
+            **kwargs,
+        }
+        super().__init__(**init_data)
+        self.name = self._validate_name(self.name)
+        if self.team:
+            self.color = self._get_team_color(self.team)
         self.kills = 0
         self.rotation = 0.0
         self.last_shoot_at = None
 
-    # Методы
     def move(self, dir_x: float, dir_y: float, speed: float) -> None:
         magnitude = self._normalize_2d(dir_x, dir_y)
 
@@ -112,11 +118,11 @@ class Player(Circle):
 
     @staticmethod
     def _get_team_color(team: Team) -> str:
-        return '#0000FF' if team == 'Blue' else '#FF0000'
+        return "#0000FF" if team == "Blue" else "#FF0000"
 
     @staticmethod
     def _normalize_2d(x: float, y: float) -> float:
-        return math.sqrt(x ** 2 + y ** 2)
+        return math.sqrt(x**2 + y**2)
 
     @staticmethod
     def _round_2_digits(value: float) -> float:

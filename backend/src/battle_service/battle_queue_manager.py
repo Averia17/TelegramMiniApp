@@ -5,12 +5,8 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 from starlette.websockets import WebSocket
 
-from miniapp.webhook.battle.battle_manager import (
-    BattleManager,
-    battle_managers,
-    player_managers,
-)
-from miniapp.webhook.constants import TIMEZONE
+from battle_service.battle_manager import BattleManager, battle_managers, player_managers
+from battle_service.constants import TIMEZONE
 
 log = logging.getLogger(__name__)
 

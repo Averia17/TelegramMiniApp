@@ -3,13 +3,13 @@ from asyncio import create_task
 
 from starlette.websockets import WebSocket
 
-from miniapp.webhook.battle.battle import Battle
-from miniapp.webhook.battle.connection_manager import ConnectionManager
+from battle_service.battle import Battle
+from battle_service.connection_manager import ConnectionManager
 
 log = logging.getLogger(__name__)
 
-battle_managers: dict[str, "BattleManager"] = {}  # battle_id : battle_manager
-player_managers: dict[int, "BattleManager"] = {}  # player_id : battle_manager
+battle_managers: dict[str, "BattleManager"] = {}
+player_managers: dict[int, "BattleManager"] = {}
 
 
 class BattleManager:

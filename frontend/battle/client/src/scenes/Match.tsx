@@ -86,17 +86,18 @@ export default class Match extends Component<IProps, IState> {
         // Connect
         try {
             const host = window.document.location.host.replace(/:.*/, '');
-            const port = process.env.NODE_ENV !== 'production' ? Constants.WS_PORT : window.location.port;
+            // const port = process.env.NODE_ENV !== 'production' ? Constants.WS_PORT : window.location.port;
+            const port = 3779
             const url = `${window.location.protocol.replace('http', 'ws')}//${host}${port ? `:${port}` : ''}`;
 
             this.client = new Client(url);
             if (isNewRoom) {
                 this.room = await this.client.create(Constants.ROOM_NAME, options);
-
                 // We replace the "new" in the URL with the room's id
                 window.history.replaceState(null, '', `/${this.room.id}`);
             } else {
                 this.room = await this.client.joinById(roomId, options);
+                console.log(this.room)
             }
         } catch (error) {
             navigate('/');

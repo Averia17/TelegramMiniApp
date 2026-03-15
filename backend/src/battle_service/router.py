@@ -1,11 +1,16 @@
 import logging
+import uuid
+from dataclasses import asdict
+from datetime import datetime
 from itertools import chain
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
-from miniapp.webhook.battle.battle_manager import battle_managers, player_managers
-from miniapp.webhook.battle.battle_queue_manager import BattleQueueManager
-from miniapp.webhook.battle.game_room import GameRoom
+from battle_service.battle_manager import battle_managers, player_managers
+from battle_service.battle_queue_manager import BattleQueueManager
+from battle_service.entities import MessageJSON
+from battle_service.game_room import GameRoom
 
 log = logging.getLogger(__name__)
 
@@ -83,44 +88,126 @@ async def player_state(played_id: int):
 
 @router.get("/server_state")
 async def server_state():
+    queue_info = [{"player_id": q.player_id, "start_time": q.start_time.isoformat()} for q in battle_queue_manager.queue]
     return {
         "players_in_battle": list(player_managers.keys()),
         "battles": list(battle_managers.keys()),
-        "queue": battle_queue_manager.queue,
+        "queue": queue_info,
     }
 
 
 class WebSocketClient:
     def __init__(self, websocket: WebSocket):
         self.websocket = websocket
-        self.session_id = id(self)  # простой идентификатор
+        self.session_id = id(self)
 
-    async def send(self, message_type: str, message: dict):
-        await self.websocket.send_json({"type": message_type, "message": message})
+    async def send(self, message_type: str, message: MessageJSON):
+        msg_dict = asdict(message)
+        if "from_" in msg_dict:
+            msg_dict["from"] = msg_dict.pop("from_")
+        await self.websocket.send_json({"type": message_type, "message": msg_dict})
 
 
-rooms: dict[str, "GameRoom"] = {}  # имя комнаты -> объект GameRoom
+rooms: dict[str, GameRoom] = {}
+
+
+class RoomOptions(BaseModel):
+    playerName: str
+    roomName: str
+    roomMap: str
+    roomMaxPlayers: int
+    mode: str
+
+
+class JoinOptions(BaseModel):
+    playerName: str
+
+
+matchmake_router = APIRouter(prefix="/matchmake")
+
+
+@matchmake_router.post("/create/{room_name}")
+async def create_room(room_name: str, options: RoomOptions):
+    if room_name in rooms:
+        raise HTTPException(status_code=400, detail="Room already exists")
+
+    room = GameRoom().on_create(
+        options={
+            "roomName": options.roomName,
+            "playerName": options.playerName,
+            "roomMap": options.roomMap,
+            "roomMaxPlayers": options.roomMaxPlayers,
+            "mode": options.mode,
+        }
+    )
+    rooms[room_name] = room
+
+    response = {
+        "room": {
+            "clients": 1,
+            "createdAt": datetime.utcnow().isoformat() + "Z",
+            "maxClients": options.roomMaxPlayers,
+            "metadata": {
+                "playerName": options.playerName,
+                "roomName": options.roomName,
+                "roomMap": options.roomMap,
+                "roomMaxPlayers": options.roomMaxPlayers,
+                "mode": options.mode,
+            },
+            "name": room_name,
+            "processId": str(uuid.uuid4())[:8],
+            "roomId": room_name,
+        },
+        "sessionId": str(uuid.uuid4())[:8],
+    }
+
+    return response
+
+
+@matchmake_router.post("/join/{room_id}")
+async def join_room(room_id: str, options: JoinOptions):
+    if room_id not in rooms:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    room = rooms[room_id]
+
+    response = {
+        "room": {
+            "clients": len(room.clients) + 1 if hasattr(room, "clients") else 1,
+            "createdAt": datetime.utcnow().isoformat() + "Z",
+            "maxClients": room.max_clients if hasattr(room, "max_clients") else 4,
+            "metadata": {
+                "playerName": options.playerName,
+                "roomName": room_id,
+                "roomMap": getattr(room, "room_map", "small"),
+                "roomMaxPlayers": getattr(room, "max_clients", 4),
+                "mode": getattr(room, "mode", "deathmatch"),
+            },
+            "name": "game",
+            "processId": str(uuid.uuid4())[:8],
+            "roomId": room_id,
+        },
+        "sessionId": str(uuid.uuid4())[:8],
+    }
+
+    return response
 
 
 @router.websocket("/ws/{room_name}/{player_name}")
 async def websocket_endpoint(websocket: WebSocket, room_name: str, player_name: str):
     await websocket.accept()
-
-    # Создаём комнату если её нет
     if room_name not in rooms:
-        # rooms[room_name] = GameRoom()
         room = GameRoom().on_create(
             options={
                 "roomName": room_name,
                 "playerName": player_name,
-                "roomMaxPlayers": 4,  # например
+                "roomMaxPlayers": 4,
                 "mode": "deathmatch",
             }
         )
         rooms[room_name] = room
 
     room = rooms[room_name]
-
     client = WebSocketClient(websocket)
     room.on_join(client, {"playerName": player_name})
 

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from random import randint
 
-from miniapp.webhook.constants import MAX_X_LOCATION, MAX_Y_LOCATION, TIMEZONE
+from battle_service.constants import MAX_X_LOCATION, MAX_Y_LOCATION, TIMEZONE
 
 
 class Directions(Enum):
