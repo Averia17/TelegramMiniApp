@@ -1,5 +1,18 @@
-from miniapp.webhook.battle.entities import Circle
 import math
+
+from pydantic import BaseModel
+
+from battle_service.entities.geometry import CircleBody
+
+
+class Circle(BaseModel):
+    x: float
+    y: float
+    radius: float
+
+    @property
+    def body(self) -> CircleBody:
+        return CircleBody(self.x, self.y, self.radius)
 
 
 class Bullet(Circle):
@@ -10,7 +23,7 @@ class Bullet(Circle):
     from_y: float
     active: bool = True
     color: str
-    shot_at: int  # timestamp
+    shot_at: int
 
     def move(self, speed: float) -> None:
         self.x += math.cos(self.rotation) * speed

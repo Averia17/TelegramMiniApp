@@ -8,3 +8,6 @@ Application build on https://github.com/Latand/MedSyncWebApp
 docker compose up
 docker compose exec bot python -m alembic upgrade head
 ```
+
+### Future architecture
+<img src="architecture.png" width="500" alt="System Architecture Diagram">

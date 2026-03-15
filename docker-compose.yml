@@ -33,7 +33,7 @@ services:
     volumes:
       - ./backend/src:/src/  # Volume for bot code
       - /var/app/miniapp:/src/public # Volume for static files, that are shared between bot and frontend
-    restart: always
+#    restart: always
 
     env_file:
       - ".env"
@@ -74,6 +74,7 @@ services:
     depends_on:
       - webhook
       - frontend
+      - battle_service
   webhook:
     container_name: "webhook"
     image: "webhook"
@@ -205,6 +206,19 @@ services:
     depends_on:
       - battle_results_db
       - kafka
+    restart: unless-stopped
+
+
+  battle_service:
+    container_name: battle_service
+    image: battle_service
+    build:
+      context: ./backend
+      dockerfile: battle.Dockerfile
+    ports:
+      - "3780:8000"
+    volumes:
+      - ./backend/src:/app/src
     restart: unless-stopped
 
 volumes:
