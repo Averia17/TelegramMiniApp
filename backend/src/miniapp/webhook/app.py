@@ -3,22 +3,13 @@ import logging
 from fastapi import APIRouter, FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
-from miniapp.webhook.battle import router as battle_router
-from miniapp.webhook.battle.router import matchmake_router
 from miniapp.webhook.users.routes import payment_router, users_router
 
 app = FastAPI()
 prefix_router = APIRouter(prefix="/api")
 
-origins = [
-    # "https://factual-herring-driven.ngrok-free.app",
-    # "http://localhost:80",
-    # "http://localhost",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=origins,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
@@ -33,9 +24,7 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
-app.include_router(battle_router)
 app.include_router(payment_router)
-app.include_router(matchmake_router)
 for router in [
     users_router,
 ]:

@@ -1,13 +1,16 @@
 import logging
+import uuid
 from dataclasses import asdict
+from datetime import datetime
 from itertools import chain
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
-from miniapp.webhook.battle.battle_manager import battle_managers, player_managers
-from miniapp.webhook.battle.battle_queue_manager import BattleQueueManager
-from miniapp.webhook.battle.entities import MessageJSON
-from miniapp.webhook.battle.game_room import GameRoom
+from battle_service.battle_manager import battle_managers, player_managers
+from battle_service.battle_queue_manager import BattleQueueManager
+from battle_service.entities import MessageJSON
+from battle_service.game_room import GameRoom
 
 log = logging.getLogger(__name__)
 
@@ -85,29 +88,27 @@ async def player_state(played_id: int):
 
 @router.get("/server_state")
 async def server_state():
+    queue_info = [{"player_id": q.player_id, "start_time": q.start_time.isoformat()} for q in battle_queue_manager.queue]
     return {
         "players_in_battle": list(player_managers.keys()),
         "battles": list(battle_managers.keys()),
-        "queue": battle_queue_manager.queue,
+        "queue": queue_info,
     }
 
 
 class WebSocketClient:
     def __init__(self, websocket: WebSocket):
         self.websocket = websocket
-        self.session_id = id(self)  # простой идентификатор
+        self.session_id = id(self)
 
     async def send(self, message_type: str, message: MessageJSON):
-        message = asdict(message)
-        await self.websocket.send_json({"type": message_type, "message": message})
+        msg_dict = asdict(message)
+        if "from_" in msg_dict:
+            msg_dict["from"] = msg_dict.pop("from_")
+        await self.websocket.send_json({"type": message_type, "message": msg_dict})
 
 
-rooms: dict[str, "GameRoom"] = {}  # имя комнаты -> объект GameRoom
-import uuid
-from datetime import datetime
-
-from fastapi import HTTPException, WebSocket
-from pydantic import BaseModel
+rooms: dict[str, GameRoom] = {}
 
 
 class RoomOptions(BaseModel):
@@ -125,14 +126,11 @@ class JoinOptions(BaseModel):
 matchmake_router = APIRouter(prefix="/matchmake")
 
 
-# HTTP endpoint для создания комнаты (аналог client.create)
 @matchmake_router.post("/create/{room_name}")
 async def create_room(room_name: str, options: RoomOptions):
-    print(126, "CREATE ROOM ", room_name)
     if room_name in rooms:
         raise HTTPException(status_code=400, detail="Room already exists")
 
-    # Создаем комнату через ваш существующий механизм
     room = GameRoom().on_create(
         options={
             "roomName": options.roomName,
@@ -144,7 +142,6 @@ async def create_room(room_name: str, options: RoomOptions):
     )
     rooms[room_name] = room
 
-    # Генерируем ответ в формате Colyseus
     response = {
         "room": {
             "clients": 1,
@@ -159,7 +156,7 @@ async def create_room(room_name: str, options: RoomOptions):
             },
             "name": room_name,
             "processId": str(uuid.uuid4())[:8],
-            "roomId": room_name,  # или генерируйте уникальный ID если нужно
+            "roomId": room_name,
         },
         "sessionId": str(uuid.uuid4())[:8],
     }
@@ -174,11 +171,10 @@ async def join_room(room_id: str, options: JoinOptions):
 
     room = rooms[room_id]
 
-    # Генерируем ответ в формате Colyseus
     response = {
         "room": {
             "clients": len(room.clients) + 1 if hasattr(room, "clients") else 1,
-            "createdAt": datetime.utcnow().isoformat() + "Z",  # В реальности нужно хранить время создания
+            "createdAt": datetime.utcnow().isoformat() + "Z",
             "maxClients": room.max_clients if hasattr(room, "max_clients") else 4,
             "metadata": {
                 "playerName": options.playerName,

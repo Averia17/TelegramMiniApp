@@ -1,13 +1,13 @@
 import math
 from typing import Literal, Optional
 
-from miniapp.webhook.battle.entities import Circle
+from battle_service.entities.circle import Circle
 
 Team = Literal["Blue", "Red"]
 
 
 class Player(Circle):
-    player_id: int
+    player_id: str
     name: str
     lives: int
     max_lives: int
@@ -20,7 +20,7 @@ class Player(Circle):
 
     def __init__(
         self,
-        player_id: int,
+        player_id: str,
         x: float,
         y: float,
         radius: float,
@@ -30,7 +30,6 @@ class Player(Circle):
         team: Optional[Team] = None,
         **kwargs,
     ):
-        # Collect all data for Pydantic initialization
         init_data = {
             "x": x,
             "y": y,
@@ -42,11 +41,7 @@ class Player(Circle):
             "team": team,
             **kwargs,
         }
-
-        # Initialize using Pydantic's mechanism
         super().__init__(**init_data)
-
-        # Custom initialization after validation
         self.name = self._validate_name(self.name)
         if self.team:
             self.color = self._get_team_color(self.team)
@@ -54,7 +49,6 @@ class Player(Circle):
         self.rotation = 0.0
         self.last_shoot_at = None
 
-    # Методы
     def move(self, dir_x: float, dir_y: float, speed: float) -> None:
         magnitude = self._normalize_2d(dir_x, dir_y)
 

@@ -2,15 +2,15 @@ import asyncio
 from datetime import datetime
 from typing import Any, Dict
 
-from miniapp.webhook.battle.game_state import GameState
-from miniapp.webhook.constants import Constants
+from battle_service.game_state import GameState
+from battle_service.constants import Constants
 
 
 class GameRoom:
     def __init__(self):
         self.max_clients = 0
         self.state: GameState = None
-        self.clients = {}  # session_id: client
+        self.clients = {}
         self.metadata = {}
         self.simulation_interval = None
 
@@ -33,13 +33,15 @@ class GameRoom:
         room_name = options.get("roomName", "")[: Constants.ROOM_NAME_MAX]
         room_map = options.get("roomMap", "default")
 
+        self.mode = options.get("mode", "deathmatch")
+        self.room_map = room_map
         self.set_metadata(
             {
                 "playerName": player_name,
                 "roomName": room_name,
                 "roomMap": room_map,
                 "roomMaxPlayers": self.max_clients,
-                "mode": options.get("mode", "deathmatch"),
+                "mode": self.mode,
             }
         )
 
@@ -87,7 +89,6 @@ class GameRoom:
             self.state.player_push_action(action)
 
     def handle_tick(self):
-        """Обработка игрового тика"""
         self.state.update()
 
         current_time = datetime.now().timestamp()
@@ -97,7 +98,7 @@ class GameRoom:
                 self.simulation_interval["last_time"] = current_time
                 self.simulation_interval["callback"]()
 
-    def handle_message(self, message: Dict[str, Any]):
+    def handle_message(self, message):
         self.broadcast(message.type, message)
 
     @staticmethod

@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
-from miniapp.webhook.battle.entities import Bullet, Monster, Player, Prop
-from miniapp.webhook.battle.entities.game import Game, MessageJSON
-from miniapp.webhook.constants import Constants
+from battle_service.entities import Bullet, Monster, Player, Prop
+from battle_service.entities.game import Game, MessageJSON
+from battle_service.constants import Constants
 
 
 class GameMode(Enum):
@@ -109,7 +109,7 @@ class GameState:
         room_name: str,
         map_name: str,
         max_players: int,
-        mode: GameMode,
+        mode: str,
         on_message: Callable[[MessageJSON], None],
     ):
         self.players: Dict[str, Player] = {}
@@ -172,7 +172,7 @@ class GameState:
         self.send_message("lobby")
 
     def handle_game_start(self):
-        if self.game.mode == GameMode.TEAM_DEATHMATCH:
+        if self.game.mode == GameMode.TEAM_DEATHMATCH.value:
             self.set_players_teams_randomly()
 
         self.set_players_position_randomly()
@@ -216,8 +216,8 @@ class GameState:
         }
         player = Player.model_validate(player_data)
 
-        if self.game.mode == GameMode.TEAM_DEATHMATCH:
-            player.set_team(Team.RED)
+        if self.game.mode == GameMode.TEAM_DEATHMATCH.value:
+            player.set_team(Team.RED.value)
 
         self.players[player_id] = player
         self.send_message("joined", {"name": player.name})
@@ -241,7 +241,7 @@ class GameState:
         if player.is_alive:
             for prop in self.props:
                 if prop.active and self.circle_to_circle(player.body, prop.body):
-                    if prop.type == PropType.POTION_RED and not player.is_full_lives:
+                    if prop.type == PropType.POTION_RED.value and not player.is_full_lives:
                         prop.active = False
                         player.heal()
 
@@ -251,7 +251,7 @@ class GameState:
 
     def player_shoot(self, player_id: str, ts: int, angle: float):
         player = self.players.get(player_id)
-        if not player or not player.is_alive or self.game.state != GameStateType.GAME:
+        if not player or not player.is_alive or self.game.state != GameStateType.GAME.value:
             return
 
         if player.last_shoot_at and ts - player.last_shoot_at < Constants.BULLET_RATE:
@@ -304,7 +304,7 @@ class GameState:
         half = len(player_ids) // 2
         for i, player_id in enumerate(player_ids):
             team = Team.BLUE if i < half else Team.RED
-            self.players[player_id].set_team(team)
+            self.players[player_id].set_team(team.value)
 
     def monsters_add(self, count: int):
         for _ in range(count):
@@ -388,13 +388,18 @@ class GameState:
                 y = random.randint(Constants.TILE_SIZE, self.map.height - Constants.TILE_SIZE)
                 body = CircleBody(x, y, Constants.FLASK_SIZE / 2)
 
-            self.props.append(Prop(prop_type=PropType.POTION_RED, x=x, y=y, radius=Constants.FLASK_SIZE / 2))
+            self.props.append(Prop(type="potion-red", x=x, y=y, radius=Constants.FLASK_SIZE / 2))
 
     def props_clear(self):
         self.props.clear()
 
     def get_spawner_randomly(self) -> RectangleBody:
         return random.choice(self.spawners)
+
+    def player_push_action(self, action: dict):
+        self.actions.append(
+            ActionJSON(type=action["type"], playerId=action["playerId"], ts=action["ts"], value=action["value"])
+        )
 
     @staticmethod
     def circle_to_circle(c1: CircleBody, c2: CircleBody) -> bool:
