@@ -1,7 +1,7 @@
 import logging
 import uuid
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, UTC
 from itertools import chain
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -11,6 +11,7 @@ from battle_service.battle_manager import battle_managers, player_managers
 from battle_service.battle_queue_manager import BattleQueueManager
 from battle_service.entities import MessageJSON
 from battle_service.game_room import GameRoom
+from battle_service.producer import send_kafka_message
 
 log = logging.getLogger(__name__)
 
@@ -85,6 +86,40 @@ async def player_state(played_id: int):
         return {"battle_id": battle_manager.battle.id}
     return {}
 
+
+@router.post("/battle/finish")
+async def finish_battle():
+    """
+    Now it is a test action
+    """
+    player_ids = [
+        "6f8d29a5-7b3e-41a2-9e4c-821f093a4b67",
+        "d52e18c4-9a1b-4f05-8d2a-736c92e81f54",
+        "a1b2c3d4-e5f6-4071-89ab-cdef01234567",
+        "98765432-10ab-4cde-b001-23456789abcd",
+        "f4e3d2c1-b0a9-4876-9543-210fedcba987"
+    ]
+    winner_id = "d52e18c4-9a1b-4f05-8d2a-736c92e81f54"
+    battle_id = "123"
+    try:
+        battle_data = {
+            "battle_id": battle_id,
+            "players": player_ids,
+            "winner_id": winner_id,
+            "finished_at": datetime.now(UTC).isoformat()
+        }
+
+        await send_kafka_message("battle_finished", battle_data)
+
+        return {
+            "status": "success",
+            "message": f"Battle {battle_id} finished",
+            "data": battle_data
+        }
+
+    except Exception as e:
+        log.error(f"Error finishing battle {battle_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to finish battle")
 
 @router.get("/server_state")
 async def server_state():

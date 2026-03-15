@@ -89,19 +89,14 @@ func processMessage(ctx context.Context, repo *BattleResultRepository, payload [
 	}
 
 	if m.WinnerID == "" {
-		return nil // skip invalid messages
+		return nil
 	}
 
 	br := &models.BattleResult{
-		WinnerID: m.WinnerID,
-		LoserID:  m.LoserID,
-		RoomID:   m.RoomID,
-		Score:    m.Score,
-		Mode:     m.Mode,
+        WinnerID:  m.WinnerID,
+        Players:   m.Players,
+        RoomID:    m.BattleID,
+        FinishedAt: m.FinishedAt,
 	}
-	if br.Score == "" {
-		br.Score = "1-0"
-	}
-
 	return repo.Insert(ctx, br)
 }
