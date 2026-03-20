@@ -93,10 +93,10 @@ func processMessage(ctx context.Context, repo *BattleResultRepository, payload [
 	}
 
 	br := &models.BattleResult{
-        WinnerID:  m.WinnerID,
-        Players:   m.Players,
-        RoomID:    m.BattleID,
-        FinishedAt: m.FinishedAt,
+		WinnerID:   m.WinnerID,
+		Players:    m.Players,
+		BattleID:   m.BattleID,
+		FinishedAt: m.FinishedAt,
 	}
 	return repo.Insert(ctx, br)
 }

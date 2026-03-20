@@ -4,7 +4,8 @@ import (
 	"battle_results/models"
 	"context"
 	"database/sql"
-	"time"
+
+	"github.com/lib/pq"
 )
 
 const battleResultsTable = "battle_results"
@@ -21,19 +22,17 @@ func NewBattleResultRepository(db *sql.DB) *BattleResultRepository {
 
 // Insert saves a battle result to the database
 func (r *BattleResultRepository) Insert(ctx context.Context, br *models.BattleResult) error {
-	query := `INSERT INTO battle_results (winner_id, loser_id, room_id, score, mode, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id`
+	query := `INSERT INTO battle_results (battle_id, players, winner_id, finished_at)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id`
 
-	br.CreatedAt = time.Now()
 	err := r.db.QueryRowContext(ctx, query,
+		br.BattleID,
+		pq.Array(br.Players),
 		br.WinnerID,
-		nullString(br.LoserID),
-		nullString(br.RoomID),
-		br.Score,
-		nullString(br.Mode),
-		br.CreatedAt,
+		br.FinishedAt,
 	).Scan(&br.ID)
+
 	return err
 }
 
