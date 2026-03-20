@@ -15,7 +15,7 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-// RunConsumer starts the Kafka consumer and processes battle_ended messages
+// RunConsumer starts the Kafka consumer and processes battle_finished messages
 func RunConsumer(ctx context.Context, repo *BattleResultRepository) error {
 	brokers := common.Config.KafkaBrokers
 	if len(brokers) == 0 {
@@ -23,7 +23,7 @@ func RunConsumer(ctx context.Context, repo *BattleResultRepository) error {
 	}
 	topic := common.Config.KafkaTopic
 	if topic == "" {
-		topic = "battle_ended"
+		topic = "battle_finished"
 	}
 	groupID := common.Config.KafkaGroup
 	if groupID == "" {

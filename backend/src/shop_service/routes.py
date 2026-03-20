@@ -1,11 +1,12 @@
 import logging
 
-from consumers import send_kafka_message
 from exeptions import InternalError, PaymentFailedError
 from fastapi import APIRouter, Depends, HTTPException, status
 from infrastructure.database.repo.requests import RequestsRepo
 from services import process_transaction
 from starlette.requests import Request
+
+from shop_service.producers import get_kafka_manager, KafkaProducerManager
 from utils import get_repo
 
 log = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ async def get_products(repo: RequestsRepo = Depends(get_repo)):
 
 
 @router.post("/{product_id}/buy")
-async def buy_product(product_id: int, request: Request, repo: RequestsRepo = Depends(get_repo)):
+async def buy_product(product_id: int, request: Request, repo: RequestsRepo = Depends(get_repo), producer: KafkaProducerManager = Depends(get_kafka_manager)):
     user_id = (await request.json())["user_id"]
 
     product = await repo.products.get_by_id(product_id)
@@ -30,7 +31,7 @@ async def buy_product(product_id: int, request: Request, repo: RequestsRepo = De
         price = float(product.price)
         # TODO: add transactional outbox
         ordered_product_id = await process_transaction(repo, user_id, product.product_id, price)
-        await send_kafka_message(
+        await producer.send_message(
             "order_created",
             {"user_id": user_id, "product_id": product_id, "order_id": ordered_product_id, "price": price},
         )

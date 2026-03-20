@@ -1,11 +1,21 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
+from battle_service.producer import kafka_manager
 from battle_service.router import matchmake_router, router as battle_router
 
-app = FastAPI(title="Battle Service")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await kafka_manager.start()
+    yield
+    await kafka_manager.stop()
+
+
+app = FastAPI(title="Battle Service", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

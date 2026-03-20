@@ -3,6 +3,7 @@ import uuid
 from dataclasses import asdict
 from datetime import datetime, UTC
 from itertools import chain
+from fastapi import Depends
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -11,7 +12,7 @@ from battle_service.battle_manager import battle_managers, player_managers
 from battle_service.battle_queue_manager import BattleQueueManager
 from battle_service.entities import MessageJSON
 from battle_service.game_room import GameRoom
-from battle_service.producer import send_kafka_message
+from battle_service.producer import KafkaProducerManager, get_kafka_manager
 
 log = logging.getLogger(__name__)
 
@@ -87,8 +88,8 @@ async def player_state(played_id: int):
     return {}
 
 
-@router.post("/battle/finish")
-async def finish_battle():
+@router.post("/finish")
+async def finish_battle(producer: KafkaProducerManager = Depends(get_kafka_manager)):
     """
     Now it is a test action
     """
@@ -109,7 +110,7 @@ async def finish_battle():
             "finished_at": datetime.now(UTC).isoformat()
         }
 
-        await send_kafka_message("battle_finished", battle_data)
+        await producer.send_message("battle_finished", battle_data)
 
         return {
             "status": "success",

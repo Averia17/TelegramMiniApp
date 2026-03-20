@@ -38,7 +38,7 @@ func LoadConfig() error {
 		PgDbUsername: getEnv("BATTLE_RESULTS_DB_USER", "battle_results_user"),
 		PgDbPassword: getEnv("BATTLE_RESULTS_DB_PASSWORD", "battle_results_pass"),
 		KafkaBrokers: splitEnv("KAFKA_BROKERS", []string{"localhost:9092"}),
-		KafkaTopic:   getEnv("KAFKA_TOPIC", "battle_ended"),
+		KafkaTopic:   getEnv("KAFKA_TOPIC", "battle_finished"),
 		KafkaGroup:   getEnv("KAFKA_GROUP", "battle-results-service"),
 	}
 

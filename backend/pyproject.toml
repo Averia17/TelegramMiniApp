@@ -52,5 +52,6 @@ battle = [
     "uvicorn[standard]~=0.34",
     "fastapi~=0.115",
     "python-dateutil",
+    "aiokafka~=0.12",
 ]
 

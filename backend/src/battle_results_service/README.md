@@ -1,6 +1,6 @@
 # Battle Results Service
 
-Сервис на Go, который слушает Kafka-топик `battle_ended`, принимает сообщения об окончании боя и сохраняет их в PostgreSQL.
+Сервис на Go, который слушает Kafka-топик `battle_finished`, принимает сообщения об окончании боя и сохраняет их в PostgreSQL.
 
 ## Формат сообщения Kafka
 
@@ -46,7 +46,7 @@ docker-compose up -d battle_results_db battle_results_service kafka
 
 ```bash
 # Через kafka-ui (http://localhost:8080) или kafkacat:
-echo '{"winner_id":"user1","loser_id":"user2","score":"3-1"}' | kafkacat -b localhost:9092 -t battle_ended -P
+echo '{"winner_id":"user1","loser_id":"user2","score":"3-1"}' | kafkacat -b localhost:9092 -t battle_finished -P
 ```
 
 ## Интеграция

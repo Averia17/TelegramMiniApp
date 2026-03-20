@@ -1,9 +1,21 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
+
+from shop_service.producers import kafka_manager
 from middleware import TimeoutMiddleware
 from routes import router
 from starlette.middleware.cors import CORSMiddleware
+
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await kafka_manager.start()
+    yield
+    await kafka_manager.stop()
+
 
 app = FastAPI()
 prefix_router = APIRouter(prefix="/api")

@@ -29,7 +29,10 @@ class KafkaProducerManager:
             raise RuntimeError("Kafka producer not initialized")
 
         try:
-            await self.producer.send(topic, event_data)
+            await self.producer.send(
+                topic,
+                {**event_data, "timestamp": datetime.datetime.now(datetime.UTC).isoformat()}
+            )
             log.debug(f"Message sent to {topic}: {event_data}")
         except Exception as e:
             log.error(f"Failed to send Kafka event: {e}")
