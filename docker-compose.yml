@@ -36,30 +36,18 @@ services:
 #    restart: always
 
     env_file:
-      - ".env"
-
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "200k"
-        max-file: "10"
+      - .env
 
   pg_database:
-    container_name: "pg_database"
     image: postgres:13-alpine
+    container_name: pg_database
     ports:
-      - "5452:5432" # Change if you like! 5439 is external to container
-    restart: always
+      - "5452:5432"
+    env_file:
+      - .env
     volumes:
       - pgdata:/var/lib/postgresql/data
-    command: "postgres -c max_connections=150 -c shared_buffers=512MB -c effective_cache_size=1536MB -c maintenance_work_mem=128MB -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c work_mem=3495kB -c min_wal_size=1GB -c max_wal_size=4GB -c max_worker_processes=2 -c max_parallel_workers_per_gather=1 -c max_parallel_workers=2 -c max_parallel_maintenance_workers=1"
-    env_file:
-      - '.env'
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "200k"
-        max-file: "10"
+    restart: unless-stopped
 
   nginx:
     container_name: "nginx"
@@ -75,27 +63,23 @@ services:
       - webhook
       - frontend
       - battle_service
+      - battle_results_service
+      - shop_api
+
   webhook:
-    container_name: "webhook"
-    image: "webhook"
-    stop_signal: SIGINT
+    container_name: webhook
     build:
       context: ./backend
-      dockerfile: ./web.Dockerfile
+      dockerfile: web.Dockerfile
+    volumes:
+      - ./backend/src/miniapp:/app/src/miniapp
     ports:
       - "3779:8000"
-    volumes:
-      - ./backend/src/miniapp:/src/miniapp
-    restart: always
     env_file:
-      - ".env"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "200k"
-        max-file: "10"
+      - .env
     depends_on:
       - pg_database
+    restart: unless-stopped
 
   redis_cache:
     container_name: "redis_cache"
@@ -103,64 +87,53 @@ services:
     restart: always
     command: redis-server --port $REDIS_PORT --save 20 1 --loglevel warning --requirepass $REDIS_PASSWORD
     env_file:
-      - ".env"
+      - .env
     volumes:
       - cache:/data
 
   shop_db:
-    container_name: "shop_db"
     image: postgres:13-alpine
+    container_name: shop_db
     ports:
       - "5555:5432"
-    restart: always
+    env_file:
+      - .env
     volumes:
       - shop_db_data:/var/lib/postgresql/data
-    command: "postgres -c max_connections=150 -c shared_buffers=512MB -c effective_cache_size=1536MB -c maintenance_work_mem=128MB -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c work_mem=3495kB -c min_wal_size=1GB -c max_wal_size=4GB -c max_worker_processes=2 -c max_parallel_workers_per_gather=1 -c max_parallel_workers=2 -c max_parallel_maintenance_workers=1"
-    env_file:
-      - '.env'
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "200k"
-        max-file: "10"
+    restart: unless-stopped
 
   shop_api:
-    container_name: "shop_api"
-    image: "shop_api"
-    stop_signal: SIGINT
+    container_name: shop_api
     build:
       context: ./backend
-      dockerfile: ./shop.Dockerfile
+      dockerfile: shop.Dockerfile
+    volumes:
+      - ./backend/src/shop_service:/app/src/shop_service
     ports:
       - "8888:8000"
-    volumes:
-      - ./backend/src/shop_service:/src
-    restart: always
     env_file:
-      - ".env"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "200k"
-        max-file: "10"
+      - .env
     depends_on:
-      - shop_db
+      battle_results_db:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
   kafka:
     image: confluentinc/cp-kafka:7.4.10
     container_name: kafka
     ports:
       - "9092:9092"
-      - "29093:29093"
     environment:
       CLUSTER_ID: "MkU3o6n8QrO2VZk5eY1hnA"
       KAFKA_PROCESS_ROLES: "controller,broker"
       KAFKA_NODE_ID: 1
-      KAFKA_BROKER_ID: 1
       KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
-      KAFKA_LISTENERS: "CONTROLLER://:29093,PLAINTEXT://:9092"
+      KAFKA_LISTENERS: "CONTROLLER://:29093,PLAINTEXT://:9092,PLAINTEXT_HOST://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
       KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
@@ -169,8 +142,11 @@ services:
       KAFKA_NUM_PARTITIONS: "1"
       KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
       KAFKA_MIN_INSYNC_REPLICAS: "1"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      test: [ "CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list" ]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -178,66 +154,64 @@ services:
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
-    restart: always
     container_name: kafka-ui
     ports:
-      - '8080:8080'
+      - "8080:8080"
     environment:
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-      DYNAMIC_CONFIG_ENABLED: true
-      KAFKA_CLUSTERS_0_AUDIT_TOPICAUDITENABLED: true
-      KAFKA_CLUSTERS_0_AUDIT_CONSOLEAUDITENABLED: true
+      KAFKA_CLUSTERS_0_NAME: "local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
+      DYNAMIC_CONFIG_ENABLED: "true"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
 
   battle_results_db:
-    container_name: battle_results_db
     image: postgres:13-alpine
+    container_name: battle_results_db
     ports:
       - "5462:5432"
-    restart: always
-    volumes:
-      - battle_results_data:/var/lib/postgresql/data
-    command: "postgres -c max_connections=150 -c shared_buffers=512MB -c effective_cache_size=1536MB -c maintenance_work_mem=128MB -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c work_mem=3495kB -c min_wal_size=1GB -c max_wal_size=4GB -c max_worker_processes=2 -c max_parallel_workers_per_gather=1 -c max_parallel_workers=2 -c max_parallel_maintenance_workers=1"
     env_file:
       - backend/src/battle_results_service/.env
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "200k"
-        max-file: "10"
+    volumes:
+      - battle_results_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   battle_results_service:
     container_name: battle_results_service
-    image: battle_results_service
     build:
       context: ./backend
       dockerfile: battle_results.Dockerfile
+    volumes:
+      - ./backend/src/battle_service:/app/src/battle_service
     env_file:
       - backend/src/battle_results_service/.env
-    environment:
-      BATTLE_RESULTS_DB_HOST: battle_results_db
-      BATTLE_RESULTS_DB_PORT: 5432
     depends_on:
-      - battle_results_db
-      - kafka
+      battle_results_db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     restart: unless-stopped
 
   battle_service:
     container_name: battle_service
-    image: battle_service
     build:
       context: ./backend
       dockerfile: battle.Dockerfile
+    volumes:
+      - ./backend/src:/app/src
     ports:
       - "3780:8000"
-    volumes:
-      - ./backend/src/battle_service:/app/src/battle_service
-    restart: unless-stopped
+    env_file:
+      - .env
     depends_on:
       kafka:
         condition: service_healthy
+    restart: unless-stopped
 
 volumes:
-  pgdata: { }
-  shop_db_data: { }
-  battle_results_data: { }
-  cache: { }
+  pgdata:
+  shop_db_data:
+  battle_results_data:
+  kafka_data:
+  cache:

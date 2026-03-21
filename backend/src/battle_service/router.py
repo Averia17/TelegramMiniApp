@@ -1,4 +1,5 @@
 import logging
+import random
 import uuid
 from dataclasses import asdict
 from datetime import datetime, UTC
@@ -93,19 +94,25 @@ async def finish_battle(producer: KafkaProducerManager = Depends(get_kafka_manag
     """
     Now it is a test action
     """
-    player_ids = [
+    all_players = [
         "6f8d29a5-7b3e-41a2-9e4c-821f093a4b67",
         "d52e18c4-9a1b-4f05-8d2a-736c92e81f54",
         "a1b2c3d4-e5f6-4071-89ab-cdef01234567",
         "98765432-10ab-4cde-b001-23456789abcd",
-        "f4e3d2c1-b0a9-4876-9543-210fedcba987"
+        "f4e3d2c1-b0a9-4876-9543-210fedcba987",
+        "123e4567-e89b-12d3-a456-426614174000",
+        "987fcdeb-51a2-43c7-9d8e-0a1b2c3d4e5f",
+        "abcdef01-2345-6789-abcd-ef0123456789",
+        "11223344-5566-7788-99aa-bbccddeeff00",
+        "ffeeddcc-bbaa-9988-7766-554433221100"
     ]
-    winner_id = "d52e18c4-9a1b-4f05-8d2a-736c92e81f54"
-    battle_id = "123"
+    players_in_battle = random.sample(all_players, 3)
+    winner_id = random.choice(players_in_battle)
+    battle_id = random.randint(1, 1000000)
     try:
         battle_data = {
             "battle_id": battle_id,
-            "players": player_ids,
+            "players": players_in_battle,
             "winner_id": winner_id,
             "finished_at": datetime.now(UTC).isoformat()
         }

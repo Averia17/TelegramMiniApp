@@ -3,7 +3,7 @@ import logging
 from exeptions import InternalError, PaymentFailedError
 from fastapi import APIRouter, Depends, HTTPException, status
 from infrastructure.database.repo.requests import RequestsRepo
-from services import process_transaction
+from shop_service.services import process_transaction
 from starlette.requests import Request
 
 from shop_service.producers import get_kafka_manager, KafkaProducerManager

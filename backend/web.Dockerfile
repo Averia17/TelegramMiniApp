@@ -1,13 +1,15 @@
 FROM python:3.13-slim
 
-RUN pip install -U pip wheel setuptools && mkdir /src && mkdir /src/src
+RUN pip install -U pip wheel setuptools
 
-COPY pyproject.toml /src/
+WORKDIR /app
 
-RUN pip install '/src[web]'
+COPY pyproject.toml .
+COPY src ./src
 
-WORKDIR /src
+RUN pip install '.[web]'
 
-COPY src /src/src
+ENV PYTHONPATH=/app/src
+ENV PYTHONUNBUFFERED=1
 
 CMD ["uvicorn", "miniapp.webhook.app:app", "--host", "0.0.0.0", "--reload", "--port", "8000", "--workers", "4"]

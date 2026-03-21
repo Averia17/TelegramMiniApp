@@ -4,8 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 
 from shop_service.producers import kafka_manager
-from middleware import TimeoutMiddleware
-from routes import router
+from shop_service.middleware import TimeoutMiddleware
+from shop_service.routes import router
 from starlette.middleware.cors import CORSMiddleware
 
 

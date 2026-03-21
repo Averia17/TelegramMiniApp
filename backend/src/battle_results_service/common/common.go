@@ -25,7 +25,7 @@ var Config *Configuration
 // LoadConfig loads configuration from .env file and environment variables
 func LoadConfig() error {
 	// Загрузка .env: сначала из директории сервиса, затем из родительских каталогов
-	paths := []string{".env", "../.env", "../../.env"}
+	paths := []string{"../../.env", "../.env", ".env"}
 	for _, p := range paths {
 		if err := godotenv.Load(p); err == nil {
 			break
@@ -33,10 +33,10 @@ func LoadConfig() error {
 	}
 
 	Config = &Configuration{
-		PgAddrs:      getEnv("BATTLE_RESULTS_DB_HOST", "localhost") + ":" + getEnv("BATTLE_RESULTS_DB_PORT", "5462"),
-		PgDbName:     getEnv("BATTLE_RESULTS_DB_NAME", "battle_results"),
-		PgDbUsername: getEnv("BATTLE_RESULTS_DB_USER", "battle_results_user"),
-		PgDbPassword: getEnv("BATTLE_RESULTS_DB_PASSWORD", "battle_results_pass"),
+		PgAddrs:      getEnv("DB_HOST", "localhost") + ":" + getEnv("DB_PORT", "5462"),
+		PgDbName:     getEnv("POSTGRES_DB", "battle_results"),
+		PgDbUsername: getEnv("POSTGRES_USER", "battle_results_user"),
+		PgDbPassword: getEnv("POSTGRES_PASSWORD", "battle_results_pass"),
 		KafkaBrokers: splitEnv("KAFKA_BROKERS", []string{"localhost:9092"}),
 		KafkaTopic:   getEnv("KAFKA_TOPIC", "battle_finished"),
 		KafkaGroup:   getEnv("KAFKA_GROUP", "battle-results-service"),
