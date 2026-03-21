@@ -3,8 +3,8 @@ import datetime
 import logging
 from aiokafka import AIOKafkaProducer
 
-
 log = logging.getLogger(__name__)
+
 
 class KafkaProducerManager:
     def __init__(self):
@@ -14,6 +14,7 @@ class KafkaProducerManager:
     async def start(self):
         self.producer = AIOKafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
+            key_serializer=lambda k: k.encode('utf-8') if isinstance(k, str) else str(k).encode('utf-8'),
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
         await self.producer.start()
@@ -24,12 +25,12 @@ class KafkaProducerManager:
             await self.producer.stop()
             log.info("Kafka producer stopped")
 
-    async def send_message(self, topic: str, event_data: dict):
+    async def send_message(self, topic: str, event_data: dict, key: str | None = None):
         if not self.producer:
             raise RuntimeError("Kafka producer not initialized")
 
         try:
-            await self.producer.send(topic, event_data)
+            await self.producer.send(topic, value=event_data, key=key)
             log.debug(f"Message sent to {topic}: {event_data}")
         except Exception as e:
             log.error(f"Failed to send Kafka event: {e}")
@@ -37,6 +38,7 @@ class KafkaProducerManager:
 
 
 kafka_manager = KafkaProducerManager()
+
 
 def get_kafka_manager():
     return kafka_manager

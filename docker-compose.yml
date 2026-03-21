@@ -188,7 +188,7 @@ services:
       - backend/src/battle_results_service/.env
     depends_on:
       battle_results_db:
-        condition: service_healthy
+        condition: service_started
       kafka:
         condition: service_healthy
     restart: unless-stopped

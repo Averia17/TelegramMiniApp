@@ -12,4 +12,4 @@ RUN pip install '.[shop]'
 ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
 
-CMD ["uvicorn", "shop_service.app:app", "--host", "0.0.0.0", "--reload", "--port", "8000", "--workers", "4"]
+CMD ["uvicorn", "shop_service.app:app", "--host", "0.0.0.0", "--reload", "--port", "8000"]

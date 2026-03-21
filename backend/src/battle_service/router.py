@@ -108,7 +108,7 @@ async def finish_battle(producer: KafkaProducerManager = Depends(get_kafka_manag
     ]
     players_in_battle = random.sample(all_players, 3)
     winner_id = random.choice(players_in_battle)
-    battle_id = random.randint(1, 1000000)
+    battle_id = str(random.randint(1, 1000000))
     try:
         battle_data = {
             "battle_id": battle_id,
@@ -117,7 +117,7 @@ async def finish_battle(producer: KafkaProducerManager = Depends(get_kafka_manag
             "finished_at": datetime.now(UTC).isoformat()
         }
 
-        await producer.send_message("battle_finished", battle_data)
+        await producer.send_message("battle_finished", battle_data, key=battle_id)
 
         return {
             "status": "success",

@@ -18,17 +18,8 @@ import (
 // RunConsumer starts the Kafka consumer and processes battle_finished messages
 func RunConsumer(ctx context.Context, repo *BattleResultRepository) error {
 	brokers := common.Config.KafkaBrokers
-	if len(brokers) == 0 {
-		brokers = []string{"localhost:9092"}
-	}
 	topic := common.Config.KafkaTopic
-	if topic == "" {
-		topic = "battle_finished"
-	}
 	groupID := common.Config.KafkaGroup
-	if groupID == "" {
-		groupID = "battle-results-service"
-	}
 
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        brokers,
