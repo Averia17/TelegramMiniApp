@@ -4,8 +4,8 @@ from typing import Any
 import httpx
 from shop_service.constants import USERS_SERVICE_URL
 from shop_service.exeptions import InternalError, PaymentFailedError
-from infrastructure.database.models.products import Status
-from infrastructure.database.repo.requests import RequestsRepo
+from shop_service.infrastructure.database.models.products import Status
+from shop_service.infrastructure.database.repo.requests import RequestsRepo
 
 log = logging.getLogger(__name__)
 

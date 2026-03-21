@@ -90,7 +90,7 @@ async def player_state(played_id: int):
 
 
 @router.post("/finish")
-async def finish_battle(producer: KafkaProducerManager = Depends(get_kafka_manager)):
+async def finish_battle(battle_id: str | None = None, producer: KafkaProducerManager = Depends(get_kafka_manager)):
     """
     Now it is a test action
     """
@@ -108,7 +108,7 @@ async def finish_battle(producer: KafkaProducerManager = Depends(get_kafka_manag
     ]
     players_in_battle = random.sample(all_players, 3)
     winner_id = random.choice(players_in_battle)
-    battle_id = str(random.randint(1, 1000000))
+    battle_id = battle_id or str(random.randint(1, 1000000))
     try:
         battle_data = {
             "battle_id": battle_id,

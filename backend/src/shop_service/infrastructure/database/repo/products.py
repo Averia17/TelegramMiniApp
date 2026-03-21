@@ -1,5 +1,5 @@
-from infrastructure.database.models.products import OrderedProduct, Product, Status
-from infrastructure.database.repo.base import BaseRepo
+from shop_service.infrastructure.database.models.products import OrderedProduct, Product, Status
+from shop_service.infrastructure.database.repo.base import BaseRepo
 from sqlalchemy import insert, select, update
 
 

@@ -1,13 +1,13 @@
 import logging
 
-from exeptions import InternalError, PaymentFailedError
+from shop_service.exeptions import InternalError, PaymentFailedError
 from fastapi import APIRouter, Depends, HTTPException, status
-from infrastructure.database.repo.requests import RequestsRepo
+from shop_service.infrastructure.database.repo.requests import RequestsRepo
 from shop_service.services import process_transaction
 from starlette.requests import Request
 
 from shop_service.producers import get_kafka_manager, KafkaProducerManager
-from utils import get_repo
+from shop_service.utils import get_repo
 
 log = logging.getLogger(__name__)
 
