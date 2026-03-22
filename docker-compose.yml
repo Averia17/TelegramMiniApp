@@ -182,8 +182,6 @@ services:
     build:
       context: ./backend
       dockerfile: battle_results.Dockerfile
-    volumes:
-      - ./backend/src/battle_service:/app/src/battle_service
     env_file:
       - backend/src/battle_results_service/.env
     depends_on:
@@ -191,7 +189,10 @@ services:
         condition: service_started
       kafka:
         condition: service_healthy
-    restart: unless-stopped
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend/src/battle_results_service
 
   battle_service:
     container_name: battle_service
@@ -199,7 +200,7 @@ services:
       context: ./backend
       dockerfile: battle.Dockerfile
     volumes:
-      - ./backend/src:/app/src
+      - ./backend/src/battle_service:/app/src/battle_service
     ports:
       - "3780:8000"
     env_file:

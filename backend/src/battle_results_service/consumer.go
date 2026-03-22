@@ -68,6 +68,8 @@ func RunConsumer(ctx context.Context, repo *BattleResultRepository) error {
 		} else {
 			if err := reader.CommitMessages(ctx, msg); err != nil {
 				log.Printf("Commit error: %v", err)
+			} else {
+				log.Printf("Commit success: %v", string(msg.Value))
 			}
 		}
 	}

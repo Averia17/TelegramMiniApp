@@ -23,22 +23,14 @@ func NewBattleResultRepository(db *sql.DB) *BattleResultRepository {
 // Insert saves a battle result to the database
 func (r *BattleResultRepository) Insert(ctx context.Context, br *models.BattleResult) error {
 	query := `INSERT INTO battle_results (battle_id, players, winner_id, finished_at)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id`
+              VALUES ($1, $2, $3, $4)
+              ON CONFLICT (battle_id) DO NOTHING`
 
-	err := r.db.QueryRowContext(ctx, query,
+	_, err := r.db.ExecContext(ctx, query,
 		br.BattleID,
 		pq.Array(br.Players),
 		br.WinnerID,
 		br.FinishedAt,
-	).Scan(&br.ID)
-
+	)
 	return err
-}
-
-func nullString(s string) sql.NullString {
-	if s == "" {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: s, Valid: true}
 }

@@ -7,7 +7,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Configuration stores setting values (loaded from environment)
 type Configuration struct {
 	PgAddrs      string
 	PgDbName     string
@@ -19,19 +18,15 @@ type Configuration struct {
 	KafkaGroup   string
 }
 
-// Config shares the global configuration
 var Config *Configuration
 
-// LoadConfig loads configuration from .env file and environment variables
 func LoadConfig() error {
-	// Загрузка .env: сначала из директории сервиса, затем из родительских каталогов
 	paths := []string{"../../.env", "../.env", ".env"}
 	for _, p := range paths {
 		if err := godotenv.Load(p); err == nil {
 			break
 		}
 	}
-
 	Config = &Configuration{
 		PgAddrs:      getEnv("DB_HOST", "localhost") + ":" + getEnv("DB_PORT", "5462"),
 		PgDbName:     getEnv("POSTGRES_DB", "battle_results"),
