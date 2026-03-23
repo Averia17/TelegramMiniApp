@@ -14,7 +14,12 @@ class KafkaProducerManager:
     async def start(self):
         self.producer = AIOKafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
-            value_serializer=lambda v: json.dumps(v).encode('utf-8')
+            key_serializer=lambda k: k.encode('utf-8') if isinstance(k, str) else str(k).encode('utf-8'),
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+            retries=5,
+            retry_backoff_ms=1000,
+            retry_backoff_max_ms=10000,
+            request_timeout_ms=30000,
         )
         await self.producer.start()
         log.info("Kafka producer started")

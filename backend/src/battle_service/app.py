@@ -30,6 +30,7 @@ logging.basicConfig(
     format="%(levelname)-8s %(asctime)s %(message)s",
     datefmt="%H:%M:%S",
 )
+logging.getLogger('aiokafka').setLevel(logging.INFO)
 
 app.include_router(battle_router)
 app.include_router(matchmake_router)

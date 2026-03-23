@@ -8,19 +8,14 @@ import (
 	"github.com/lib/pq"
 )
 
-const battleResultsTable = "battle_results"
-
-// BattleResultRepository handles battle result persistence
 type BattleResultRepository struct {
 	db *sql.DB
 }
 
-// NewBattleResultRepository creates a new repository
-func NewBattleResultRepository(db *sql.DB) *BattleResultRepository {
-	return &BattleResultRepository{db: db}
+func NewBattleResultRepository(pg *PostgreSQL) *BattleResultRepository {
+	return &BattleResultRepository{db: pg.DB}
 }
 
-// Insert saves a battle result to the database
 func (r *BattleResultRepository) Insert(ctx context.Context, br *models.BattleResult) error {
 	query := `INSERT INTO battle_results (battle_id, players, winner_id, finished_at)
               VALUES ($1, $2, $3, $4)
@@ -33,4 +28,20 @@ func (r *BattleResultRepository) Insert(ctx context.Context, br *models.BattleRe
 		br.FinishedAt,
 	)
 	return err
+}
+
+func (r *BattleResultRepository) GetByID(ctx context.Context, id string) (*models.BattleResult, error) {
+	var br models.BattleResult
+	query := `SELECT battle_id, players, winner_id, finished_at FROM battle_results WHERE battle_id = $1`
+
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&br.BattleID,
+		pq.Array(&br.Players),
+		&br.WinnerID,
+		&br.FinishedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &br, nil
 }

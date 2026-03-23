@@ -1,18 +1,12 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.26.1-alpine
+
+RUN go install github.com/air-verse/air@v1.64.5
+
 WORKDIR /app
 
-COPY src/battle_results_service/go.mod ./
-COPY src/battle_results_service/go.sum* ./
+COPY src/battle_results_service/go.mod src/battle_results_service/go.sum* ./
+RUN go mod download
 
 COPY src/battle_results_service/ .
 
-RUN go mod tidy && go mod download
-
-RUN CGO_ENABLED=0 go build -o /main .
-
-FROM alpine:3.19
-WORKDIR /app
-COPY --from=builder /main .
-COPY src/battle_results_service/init.sql .
-
-CMD ["./main"]
+CMD ["air"]

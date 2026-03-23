@@ -191,8 +191,11 @@ services:
         condition: service_healthy
     develop:
       watch:
-        - action: rebuild
+        - action: sync
           path: ./backend/src/battle_results_service
+          target: /app
+          ignore:
+            - tmp/
 
   battle_service:
     container_name: battle_service
