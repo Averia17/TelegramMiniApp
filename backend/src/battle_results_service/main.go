@@ -58,9 +58,10 @@ func ProvidePostgreSQL() (*PostgreSQL, error) {
 
 func NewHTTPServer(lc fx.Lifecycle, handler *BattleHandler) *http.Server {
 	mux := http.NewServeMux()
-	srv := &http.Server{Addr: ":8080", Handler: mux}
 
-	mux.HandleFunc("/battle/result", handler.GetResult)
+	mux.HandleFunc("/api/battle_results/battle_history", handler.GetBattleHistory)
+
+	srv := &http.Server{Addr: ":8000", Handler: mux}
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {

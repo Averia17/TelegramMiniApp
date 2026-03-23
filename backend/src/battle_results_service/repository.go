@@ -30,18 +30,34 @@ func (r *BattleResultRepository) Insert(ctx context.Context, br *models.BattleRe
 	return err
 }
 
-func (r *BattleResultRepository) GetByID(ctx context.Context, id string) (*models.BattleResult, error) {
-	var br models.BattleResult
-	query := `SELECT battle_id, players, winner_id, finished_at FROM battle_results WHERE battle_id = $1`
+func (r *BattleResultRepository) GetByPlayerID(ctx context.Context, id string) ([]*models.BattleResult, error) {
+	query := `SELECT battle_id, players, winner_id, finished_at FROM battle_results WHERE $1 = ANY(players)`
 
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&br.BattleID,
-		pq.Array(&br.Players),
-		&br.WinnerID,
-		&br.FinishedAt,
-	)
+	rows, err := r.db.QueryContext(ctx, query, id)
 	if err != nil {
 		return nil, err
 	}
-	return &br, nil
+	defer rows.Close()
+
+	var results []*models.BattleResult
+
+	for rows.Next() {
+		var br models.BattleResult
+		err := rows.Scan(
+			&br.BattleID,
+			pq.Array(&br.Players),
+			&br.WinnerID,
+			&br.FinishedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, &br)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }

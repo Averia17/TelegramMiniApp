@@ -184,6 +184,8 @@ services:
       dockerfile: battle_results.Dockerfile
     env_file:
       - backend/src/battle_results_service/.env
+    ports:
+      - "9999:8000"
     depends_on:
       battle_results_db:
         condition: service_started

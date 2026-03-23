@@ -16,10 +16,8 @@ class KafkaProducerManager:
             bootstrap_servers=self.bootstrap_servers,
             key_serializer=lambda k: k.encode('utf-8') if isinstance(k, str) else str(k).encode('utf-8'),
             value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-            retries=5,
             retry_backoff_ms=1000,
-            retry_backoff_max_ms=10000,
-            request_timeout_ms=30000,
+            request_timeout_ms=15000,
         )
 
         await self.producer.start()
