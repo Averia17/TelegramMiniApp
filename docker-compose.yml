@@ -166,6 +166,19 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  battle_results_redis:
+    container_name: "battle_results_redis"
+    ports:
+      - "6379:6379"
+    image: redis:6.2-alpine
+    restart: always
+    # preventing to use root .env
+    entrypoint: sh -c "redis-server --port $$REDIS_PORT --requirepass $$REDIS_PASSWORD --save 20 1 --loglevel warning"
+    env_file:
+      - backend/src/battle_results_service/.env
+    volumes:
+      - battle_results_redis_data:/data
+
   battle_results_db:
     image: postgres:13-alpine
     container_name: battle_results_db
@@ -221,3 +234,4 @@ volumes:
   battle_results_data:
   kafka_data:
   cache:
+  battle_results_redis_data:

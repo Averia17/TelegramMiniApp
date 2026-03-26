@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"battle_results/common"
+
 	_ "github.com/lib/pq"
 )
 
@@ -54,10 +55,11 @@ func (db *PostgreSQL) Init() error {
 }
 
 // Close the existing connection
-func (db *PostgreSQL) Close() {
+func (db *PostgreSQL) Close() error {
 	if db.DB != nil {
-		db.DB.Close()
+		return db.DB.Close()
 	}
+	return nil
 }
 
 // initSchema runs init.sql to create tables

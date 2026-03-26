@@ -2,6 +2,7 @@ package common
 
 import (
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -16,6 +17,11 @@ type Configuration struct {
 	KafkaBrokers []string
 	KafkaTopic   string
 	KafkaGroup   string
+
+	RedisHost string
+	RedisPort string
+	RedisPass string
+	RedisDB   int
 }
 
 var Config *Configuration
@@ -35,6 +41,10 @@ func LoadConfig() error {
 		KafkaBrokers: splitEnv("KAFKA_BROKERS", []string{"localhost:9092"}),
 		KafkaTopic:   getEnv("KAFKA_TOPIC", "battle_finished"),
 		KafkaGroup:   getEnv("KAFKA_GROUP", "battle-results-service"),
+		RedisHost:    getEnv("REDIS_HOST", "battle_results_redis"),
+		RedisPort:    getEnv("REDIS_PORT", "6379"),
+		RedisPass:    getEnv("REDIS_PASSWORD", "someredispass"),
+		RedisDB:      getEnvInt("REDIS_DB", 0),
 	}
 
 	return nil
@@ -43,6 +53,15 @@ func LoadConfig() error {
 func getEnv(key, defaultVal string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return defaultVal
+}
+
+func getEnvInt(key string, defaultVal int) int {
+	if v := os.Getenv(key); v != "" {
+		if val, err := strconv.Atoi(v); err == nil {
+			return val
+		}
 	}
 	return defaultVal
 }

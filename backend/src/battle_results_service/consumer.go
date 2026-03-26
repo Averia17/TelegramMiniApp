@@ -4,91 +4,81 @@ import (
 	"context"
 	"encoding/json"
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
-	"battle_results/common"
 	"battle_results/models"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
 )
 
-func RunConsumer(ctx context.Context, repo *BattleResultRepository) error {
-	brokers := common.Config.KafkaBrokers
-	topic := common.Config.KafkaTopic
-	groupID := common.Config.KafkaGroup
+func RunConsumer(ctx context.Context, repo *BattleResultRepository, rdb *redis.Client, reader *kafka.Reader) error {
+	msgChan := make(chan []byte, 1000)
 
-	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:        brokers,
-		Topic:          topic,
-		GroupID:        groupID,
-		MinBytes:       10e3, // 10KB
-		MaxBytes:       10e6, // 10MB
-		MaxWait:        1 * time.Second,
-		CommitInterval: time.Second,
-		StartOffset:    kafka.FirstOffset,
-	})
-	defer reader.Close()
-
-	log.Printf("Kafka consumer started: topic=%s group=%s", topic, groupID)
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		cancel()
-	}()
+	for i := 0; i < 5; i++ {
+		go worker(ctx, msgChan, repo, rdb)
+	}
 
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		msg, err := reader.FetchMessage(ctx)
+		msg, err := reader.ReadMessage(ctx)
 		if err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			log.Printf("Kafka fetch error: %v", err)
-			time.Sleep(time.Second)
-			continue
+			return err
 		}
-
-		if err := processMessage(ctx, repo, msg.Value); err != nil {
-			log.Printf("Process message error: %v (payload: %s)", err, string(msg.Value))
-			// Continue anyway - could implement dead letter queue
-		} else {
-			if err := reader.CommitMessages(ctx, msg); err != nil {
-				log.Printf("Commit error: %v", err)
-			} else {
-				log.Printf("Commit success: %v", string(msg.Value))
-			}
-		}
+		msgChan <- msg.Value
 	}
 }
 
-func processMessage(ctx context.Context, repo *BattleResultRepository, payload []byte) error {
-	var m models.BattleEndedMessage
-	if err := json.Unmarshal(payload, &m); err != nil {
-		return err
+func worker(ctx context.Context, msgChan <-chan []byte, repo *BattleResultRepository, rdb *redis.Client) {
+	const batchSize = 100
+	const flushInterval = time.Second
+
+	batch := make([]*models.BattleResult, 0, batchSize)
+	ticker := time.NewTicker(flushInterval)
+	defer ticker.Stop()
+
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+
+		err := updateScore(ctx, rdb, batch)
+		if err != nil {
+			log.Printf("Redis pipeline error: %v", err)
+		}
+
+		if err := repo.BulkInsert(ctx, batch); err != nil {
+			log.Printf("DB bulk insert error: %v", err)
+		}
+
+		batch = batch[:0]
 	}
 
-	if m.WinnerID == "" {
-		return nil
-	}
+	for {
+		select {
+		case payload := <-msgChan:
+			var m models.BattleEndedMessage
 
-	br := &models.BattleResult{
-		WinnerID:   m.WinnerID,
-		Players:    m.Players,
-		BattleID:   m.BattleID,
-		FinishedAt: m.FinishedAt,
+			if err := json.Unmarshal(payload, &m); err != nil {
+				continue
+			}
+
+			batch = append(batch, &models.BattleResult{
+				BattleID:   m.BattleID,
+				Players:    m.Players,
+				WinnerID:   m.WinnerID,
+				FinishedAt: m.FinishedAt,
+			})
+
+			if len(batch) >= batchSize {
+				flush()
+			}
+
+		case <-ticker.C:
+			flush()
+
+		case <-ctx.Done():
+			flush()
+			return
+		}
 	}
-	return repo.Insert(ctx, br)
 }
