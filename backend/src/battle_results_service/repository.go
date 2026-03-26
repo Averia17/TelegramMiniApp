@@ -64,7 +64,7 @@ func (r *BattleResultRepository) BulkInsert(ctx context.Context, results []*mode
 }
 
 func (r *BattleResultRepository) GetByPlayerID(ctx context.Context, id string) ([]*models.BattleResult, error) {
-	query := `SELECT battle_id, players, winner_id, finished_at FROM battle_results WHERE $1 = ANY(players)`
+	query := `SELECT id, battle_id, players, winner_id, finished_at FROM battle_results WHERE $1 = ANY(players)`
 
 	rows, err := r.db.QueryContext(ctx, query, id)
 	if err != nil {
@@ -77,6 +77,7 @@ func (r *BattleResultRepository) GetByPlayerID(ctx context.Context, id string) (
 	for rows.Next() {
 		var br models.BattleResult
 		err := rows.Scan(
+			&br.ID,
 			&br.BattleID,
 			pq.Array(&br.Players),
 			&br.WinnerID,

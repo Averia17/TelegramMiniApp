@@ -8,7 +8,7 @@ type BattleResult struct {
 	BattleID   string    `json:"battle_id"`
 	Players    []string  `json:"players"`
 	WinnerID   string    `json:"winner_id"`
-	FinishedAt time.Time `json:"timestamp"`
+	FinishedAt time.Time `json:"finished_at"`
 }
 
 // BattleEndedMessage represents the Kafka message format
@@ -16,5 +16,5 @@ type BattleEndedMessage struct {
 	BattleID   string    `json:"battle_id"`
 	Players    []string  `json:"players"`
 	WinnerID   string    `json:"winner_id"`
-	FinishedAt time.Time `json:"timestamp"`
+	FinishedAt time.Time `json:"finished_at"`
 }
