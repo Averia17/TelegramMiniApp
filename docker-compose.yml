@@ -28,8 +28,8 @@ services:
     image: "bot"
     stop_signal: SIGINT
     build:
-      context: ./backend
-      dockerfile: ./bot.Dockerfile
+      context: ./backend/src/miniapp/tgbot
+      dockerfile: Dockerfile
     volumes:
       - ./backend/src:/src/  # Volume for bot code
       - /var/app/miniapp:/src/public # Volume for static files, that are shared between bot and frontend
@@ -80,8 +80,8 @@ services:
     image: "webhook"
     stop_signal: SIGINT
     build:
-      context: ./backend
-      dockerfile: ./web.Dockerfile
+      context: ./backend/src/miniapp/webhook
+      dockerfile: Dockerfile
     ports:
       - "3779:8000"
     volumes:
@@ -129,8 +129,8 @@ services:
     image: "shop_api"
     stop_signal: SIGINT
     build:
-      context: ./backend
-      dockerfile: ./shop.Dockerfile
+      context: ./backend/src/shop_service
+      dockerfile: Dockerfile
     ports:
       - "8888:8000"
     volumes:
@@ -179,8 +179,8 @@ services:
     container_name: battle_service
     image: battle_service
     build:
-      context: ./backend
-      dockerfile: battle.Dockerfile
+      context: ./backend/src/battle_service
+      dockerfile: Dockerfile
     ports:
       - "3780:8000"
     volumes:
