@@ -1,0 +1,21 @@
+services:
+  account:
+    container_name: account
+    image: account
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3779:8000"
+    env_file: .env
+    restart: always
+    networks:
+      - app-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+networks:
+  app-net:

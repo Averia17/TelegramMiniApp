@@ -1,0 +1,32 @@
+services:
+  battle:
+    container_name: battle
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3780:8000"
+    environment:
+      - REDIS_ADDR=battle-redis:6379
+    restart: unless-stopped
+    depends_on:
+      - battle-redis
+    networks:
+      - app-net
+
+  battle-redis:
+    container_name: battle-redis
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    restart: always
+    volumes:
+      - battle-redis-data:/data
+    networks:
+      - app-net
+
+networks:
+  app-net:
+
+volumes:
+  battle-redis-data:

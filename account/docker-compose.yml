@@ -1,0 +1,17 @@
+services:
+  account:
+    container_name: account
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3779:8000"
+    volumes:
+      - .:/app
+    env_file: .env
+    restart: unless-stopped
+    networks:
+      - app-net
+
+networks:
+  app-net:

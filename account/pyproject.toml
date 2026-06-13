@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "account"
+version = "0.0.1"
+requires-python = ">=3.12"
+dependencies = [
+    "sqlalchemy~=2.0",
+    "asyncpg",
+    "alembic~=1.0",
+    "environs~=14.2.0",
+    "betterlogging~=0.2",
+    "uvicorn[standard]~=0.34",
+    "fastapi~=0.115",
+    "python-dateutil",
+]
+
+[tool.setuptools]
+py-modules = ["app", "config", "db", "deps", "routes", "schemas"]
+
+[tool.setuptools.packages.find]
+include = ["models*", "repos*"]

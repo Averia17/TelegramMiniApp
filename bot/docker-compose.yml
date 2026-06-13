@@ -1,0 +1,48 @@
+services:
+  bot:
+    container_name: bot
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      - db
+      - redis
+    networks:
+      - app-net
+
+  db:
+    container_name: db
+    image: postgres:13-alpine
+    ports:
+      - "5452:5432"
+    restart: always
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    command: "postgres -c max_connections=150 -c shared_buffers=512MB -c effective_cache_size=1536MB -c maintenance_work_mem=128MB -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c work_mem=3495kB -c min_wal_size=1GB -c max_wal_size=4GB -c max_worker_processes=2 -c max_parallel_workers_per_gather=1 -c max_parallel_workers=2 -c max_parallel_maintenance_workers=1"
+    environment:
+      POSTGRES_USER: someusername
+      POSTGRES_PASSWORD: postgres_pass12345
+      POSTGRES_DB: bot
+    networks:
+      - app-net
+
+  redis:
+    container_name: redis
+    image: redis:6.2-alpine
+    restart: always
+    command: redis-server --port 6388 --save 20 1 --loglevel warning --requirepass someredispass
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-net
+
+networks:
+  app-net:
+
+volumes:
+  db-data:
+  redis-data:

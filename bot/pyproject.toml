@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bot"
+version = "0.0.1"
+requires-python = ">=3.12"
+dependencies = [
+    "sqlalchemy~=2.0",
+    "asyncpg",
+    "alembic~=1.0",
+    "environs~=14.2.0",
+    "betterlogging~=0.2",
+    "aiogram~=3.0",
+    "redis~=5.0",
+    "aiogram-dialog~=2.0",
+    "faker",
+]
+
+[tool.setuptools]
+py-modules = ["bot", "config"]
+
+[tool.setuptools.packages.find]
+include = ["handlers*", "infrastructure*", "keyboards*", "middlewares*"]

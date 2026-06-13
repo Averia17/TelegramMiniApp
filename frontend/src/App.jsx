@@ -1,11 +1,18 @@
 import {useEffect, useState} from "react"
-import {BrowserRouter, Route, Routes} from "react-router-dom"
+import {BrowserRouter, Route, Routes, useParams, useNavigate} from "react-router-dom"
 
 import LandingPage from "./pages/landing-page.jsx"
+import {BattleGame} from "./components/BattleGame/BattleGame.jsx"
 
 import {useHapticFeedback, useShowPopup} from "@vkruglikov/react-telegram-web-app"
 import axios from "axios";
 import {getCookie, setCookie} from "./utils/cookie.js";
+
+const RoomPage = ({id}) => {
+    const {roomId} = useParams();
+    const navigate = useNavigate();
+    return <BattleGame playerId={id} roomId={roomId} onExit={() => navigate("/")}/>;
+};
 
 const App = () => {
     const showPopup = useShowPopup()
@@ -69,7 +76,8 @@ const App = () => {
             {/*{!isInvalidVersion && (*/}
             <BrowserRouter>
                 <Routes>
-                    {<Route path="/" element={id ? <LandingPage id={id}/> : <></>}/>}
+                    <Route path="/" element={id ? <LandingPage id={id}/> : <></>}/>
+                    <Route path="/room/:roomId" element={id ? <RoomPage id={id}/> : <></>}/>
                 </Routes>
             </BrowserRouter>
             {/*)}*/}

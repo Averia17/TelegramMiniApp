@@ -1,0 +1,53 @@
+from typing import Optional
+
+from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
+
+from models import User
+from .base import BaseRepo
+
+
+class UserRepo(BaseRepo):
+    async def get_or_create_user(
+        self,
+        user_id: int,
+        full_name: str,
+        username: Optional[str] = None,
+    ):
+        insert_stmt = (
+            insert(User)
+            .values(
+                user_id=user_id,
+                username=username,
+                full_name=full_name,
+            )
+            .on_conflict_do_update(
+                index_elements=[User.user_id],
+                set_=dict(
+                    username=username,
+                    full_name=full_name,
+                ),
+            )
+            .returning(User)
+        )
+        result = await self.session.execute(insert_stmt)
+
+        await self.session.commit()
+        return result.scalar_one()
+
+    async def get_by_id(self, user_id: int, for_update: bool = False) -> User | None:
+        stmt = select(User).where(User.user_id == user_id)
+        if for_update:
+            stmt = stmt.with_for_update()
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def update_clicks(self, user_id: int, clicks: int):
+        query = update(User).where(User.user_id == user_id).values(clicks=clicks)
+        await self.session.execute(query)
+        await self.session.commit()
+
+    async def update_completed_tasks(self, user_id: int, tasks: list, reward: int):
+        query = update(User).where(User.user_id == user_id).values(completed_tasks=tasks, clicks=User.clicks + reward)
+        await self.session.execute(query)
+        await self.session.commit()
