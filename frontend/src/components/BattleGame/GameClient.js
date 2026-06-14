@@ -64,6 +64,7 @@ export class GameClient {
             case 'stop':
             case 'waiting':
             case 'error':
+            case 'you_died':
                 if (this.onMessage) this.onMessage(msg);
                 break;
             default:
@@ -80,11 +81,12 @@ export class GameClient {
         }));
     }
 
-    join(playerName, roomName, roomMap, maxPlayers, mode) {
+    join(playerName, heroName, roomName, roomMap, maxPlayers, mode) {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
         this.ws.send(JSON.stringify({
             type: 'join',
             playerName: playerName || 'Player',
+            heroName: heroName || '',
             roomName: roomName || '',
             roomMap: roomMap || 'arena',
             maxPlayers: maxPlayers || 8,
@@ -92,12 +94,13 @@ export class GameClient {
         }));
     }
 
-    joinById(roomId, playerName) {
+    joinById(roomId, playerName, heroName) {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
         this.ws.send(JSON.stringify({
             type: 'join_by_id',
             roomId,
             playerName: playerName || 'Player',
+            heroName: heroName || '',
         }));
     }
 
@@ -106,11 +109,12 @@ export class GameClient {
         this.ws.send(JSON.stringify({ type: 'list_rooms' }));
     }
 
-    findMatch(playerName) {
+    findMatch(playerName, heroName) {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
         this.ws.send(JSON.stringify({
             type: 'find_match',
             playerName: playerName || 'Player',
+            heroName: heroName || '',
         }));
     }
 

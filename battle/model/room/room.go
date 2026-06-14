@@ -9,9 +9,14 @@ import (
 )
 
 var Store provider.Store
+var Kafka *provider.KafkaProducer
 
 func SetStore(s provider.Store) {
 	Store = s
+}
+
+func SetKafka(k *provider.KafkaProducer) {
+	Kafka = k
 }
 
 func (r *Room) Run() {
@@ -20,12 +25,14 @@ func (r *Room) Run() {
 	defer ticker.Stop()
 	defer redisTicker.Stop()
 
+	frame := 0
+
 	for {
 		select {
 		case client := <-r.Register:
 			r.mu.Lock()
 			r.Clients[client.Id] = client
-			r.State.PlayerAdd(client.Id, client.Name)
+			r.State.PlayerAdd(client.Id, client.Name, client.HeroName)
 			if Store != nil {
 				playerRecord := &provider.PlayerRecord{
 					PlayerId: client.Id,
@@ -72,7 +79,10 @@ func (r *Room) Run() {
 		case <-ticker.C:
 			r.mu.Lock()
 			r.State.Update()
-			r.sendStateUpdate()
+			frame++
+			if frame%3 == 0 {
+				r.sendStateUpdate()
+			}
 			r.mu.Unlock()
 
 		case <-redisTicker.C:
@@ -106,8 +116,27 @@ func (r *Room) BroadcastMsg(msgType string, params interface{}) {
 	}
 }
 
+func (r *Room) SendToPlayer(playerId string, msgType string, params interface{}) {
+	msg := game.NewServerMessage(msgType, params)
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	if client, ok := r.Clients[playerId]; ok {
+		select {
+		case client.Send <- data:
+		default:
+		}
+	}
+}
+
 func (r *Room) sendStateUpdate() {
-	players := make(map[string]game.PlayerJSON)
+	if len(r.Clients) == 0 {
+		return
+	}
+
+	playerCount := len(r.State.Players)
+	players := make(map[string]game.PlayerJSON, playerCount)
 	for id, p := range r.State.Players {
 		players[id] = game.PlayerJSON{
 			X:        p.X,
@@ -126,17 +155,20 @@ func (r *Room) sendStateUpdate() {
 		}
 	}
 
-	monsters := make(map[string]game.MonsterJSON)
-	for id, m := range r.State.Monsters {
-		monsters[id] = game.MonsterJSON{
-			X:        m.X,
-			Y:        m.Y,
-			Radius:   m.Radius,
-			Rotation: m.Rotation,
+	var monsters map[string]game.MonsterJSON
+	if len(r.State.Monsters) > 0 {
+		monsters = make(map[string]game.MonsterJSON, len(r.State.Monsters))
+		for id, m := range r.State.Monsters {
+			monsters[id] = game.MonsterJSON{
+				X:        m.X,
+				Y:        m.Y,
+				Radius:   m.Radius,
+				Rotation: m.Rotation,
+			}
 		}
 	}
 
-	bullets := make([]game.BulletJSON, 0)
+	var bullets []game.BulletJSON
 	for _, b := range r.State.Bullets {
 		if b.Active {
 			bullets = append(bullets, game.BulletJSON{
@@ -151,15 +183,17 @@ func (r *Room) sendStateUpdate() {
 		}
 	}
 
-	props := make([]game.PropJSON, 0)
+	var props []game.PropJSON
 	for _, p := range r.State.Props {
-		props = append(props, game.PropJSON{
-			X:      p.X,
-			Y:      p.Y,
-			Radius: p.Radius,
-			Type:   p.Type,
-			Active: p.Active,
-		})
+		if p.Active {
+			props = append(props, game.PropJSON{
+				X:      p.X,
+				Y:      p.Y,
+				Radius: p.Radius,
+				Type:   p.Type,
+				Active: p.Active,
+			})
+		}
 	}
 
 	gameState := game.GameStateJSON{

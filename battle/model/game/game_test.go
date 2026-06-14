@@ -60,7 +60,7 @@ func TestInitGameState(t *testing.T) {
 func TestPlayerAdd(t *testing.T) {
 	gs := newTestGameState()
 
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 	if len(gs.Players) != 1 {
 		t.Errorf("Players count = %v, want 1", len(gs.Players))
 	}
@@ -84,7 +84,7 @@ func TestPlayerAddTeamMode(t *testing.T) {
 	gs := newTestGameState()
 	gs.Mode = ModeTeamDeathmatch
 
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 	p := gs.Players["p1"]
 	if p.Team != "Red" {
 		t.Errorf("Team = %v, want Red (default)", p.Team)
@@ -93,7 +93,7 @@ func TestPlayerAddTeamMode(t *testing.T) {
 
 func TestPlayerRemove(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 	gs.PlayerRemove("p1")
 
 	if len(gs.Players) != 0 {
@@ -117,7 +117,7 @@ func TestPlayerPushAction(t *testing.T) {
 
 func TestGameStatePlayerMove(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 	p := gs.Players["p1"]
 	startX := p.X
 
@@ -136,7 +136,7 @@ func TestGameStatePlayerMoveNonexistent(t *testing.T) {
 
 func TestGameStatePlayerMoveZeroDirection(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 	p := gs.Players["p1"]
 	startX := p.X
 
@@ -148,7 +148,7 @@ func TestGameStatePlayerMoveZeroDirection(t *testing.T) {
 
 func TestPlayerRotate(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 
 	gs.playerRotate("p1", 100, 1.5)
 	if gs.Players["p1"].Rotation != 1.5 {
@@ -159,7 +159,7 @@ func TestPlayerRotate(t *testing.T) {
 func TestPlayerShoot(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 
 	gs.playerShoot("p1", 1000, 0)
 	if len(gs.Bullets) != 1 {
@@ -178,7 +178,7 @@ func TestPlayerShoot(t *testing.T) {
 func TestPlayerShootRateLimit(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 
 	gs.playerShoot("p1", 1000, 0)
 	gs.playerShoot("p1", 1050, 0) // too fast (50ms < 800ms)
@@ -191,7 +191,7 @@ func TestPlayerShootRateLimit(t *testing.T) {
 func TestPlayerShootRecycle(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 
 	gs.playerShoot("p1", 1000, 0)
 	gs.Bullets[0].Active = false
@@ -208,7 +208,7 @@ func TestPlayerShootRecycle(t *testing.T) {
 func TestPlayerShootNotInGame(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateLobby
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 
 	gs.playerShoot("p1", 1000, 0)
 	if len(gs.Bullets) != 0 {
@@ -218,8 +218,8 @@ func TestPlayerShootNotInGame(t *testing.T) {
 
 func TestSetPlayersActive(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice")
-	gs.PlayerAdd("p2", "Bob")
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
 
 	gs.setPlayersActive(true)
 	for _, p := range gs.Players {
@@ -243,7 +243,7 @@ func TestSetPlayersTeamsRandomly(t *testing.T) {
 	gs := newTestGameState()
 	gs.Mode = ModeTeamDeathmatch
 	for i := 0; i < 4; i++ {
-		gs.PlayerAdd("p"+string(rune('0'+i)), "Player")
+		gs.PlayerAdd("p"+string(rune('0'+i)), "Player", "")
 	}
 
 	gs.setPlayersTeamsRandomly()
@@ -266,9 +266,9 @@ func TestSetPlayersTeamsRandomly(t *testing.T) {
 
 func TestCountActivePlayers(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice")
-	gs.PlayerAdd("p2", "Bob")
-	gs.PlayerAdd("p3", "Eve")
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
+	gs.PlayerAdd("p3", "Eve", "")
 
 	gs.setPlayersActive(true)
 	if gs.countActivePlayers() != 3 {
@@ -283,8 +283,8 @@ func TestCountActivePlayers(t *testing.T) {
 
 func TestGetWinningPlayer(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice")
-	gs.PlayerAdd("p2", "Bob")
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
 
 	gs.setPlayersActive(true)
 	winner := gs.getWinningPlayer()
@@ -304,8 +304,8 @@ func TestGetWinningTeam(t *testing.T) {
 	gs := newTestGameState()
 	gs.Mode = ModeTeamDeathmatch
 
-	gs.PlayerAdd("p1", "Alice")
-	gs.PlayerAdd("p2", "Bob")
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
 	gs.Players["p1"].Team = "Red"
 	gs.Players["p2"].Team = "Red"
 
@@ -384,8 +384,8 @@ func TestMonstersClear(t *testing.T) {
 func TestGameStartLobby(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateWaiting
-	gs.PlayerAdd("p1", "Alice")
-	gs.PlayerAdd("p2", "Bob")
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
 
 	gs.startLobby()
 	if gs.State != GameStateLobby {
@@ -399,8 +399,8 @@ func TestGameStartLobby(t *testing.T) {
 func TestGameStartGame(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateLobby
-	gs.PlayerAdd("p1", "Alice")
-	gs.PlayerAdd("p2", "Bob")
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
 
 	gs.startGame()
 	if gs.State != GameStateGame {
@@ -420,7 +420,7 @@ func TestGameStartGame(t *testing.T) {
 func TestGameStartWaiting(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 
 	gs.startWaiting()
 	if gs.State != GameStateWaiting {
@@ -434,8 +434,8 @@ func TestGameStartWaiting(t *testing.T) {
 func TestUpdateWaitingToLobby(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateWaiting
-	gs.PlayerAdd("p1", "Alice")
-	gs.PlayerAdd("p2", "Bob")
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
 
 	gs.Update()
 	if gs.State != GameStateLobby {
@@ -447,8 +447,8 @@ func TestUpdateLobbyToGame(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateLobby
 	gs.LobbyEndsAt = time.Now().Add(-1 * time.Second).UnixMilli() // already expired
-	gs.PlayerAdd("p1", "Alice")
-	gs.PlayerAdd("p2", "Bob")
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
 
 	gs.Update()
 	if gs.State != GameStateGame {
@@ -460,7 +460,7 @@ func TestUpdateLobbyToWaiting(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateLobby
 	gs.LobbyEndsAt = time.Now().Add(10 * time.Second).UnixMilli()
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 
 	// Remove all players
 	delete(gs.Players, "p1")
@@ -474,8 +474,8 @@ func TestUpdateLobbyToWaiting(t *testing.T) {
 func TestUpdateGameWin(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice")
-	gs.PlayerAdd("p2", "Bob")
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
 	gs.setPlayersActive(true)
 
 	// Kill p2
@@ -491,8 +491,8 @@ func TestUpdateGameTimeout(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.GameEndsAt = time.Now().Add(-1 * time.Second).UnixMilli() // expired
-	gs.PlayerAdd("p1", "Alice")
-	gs.PlayerAdd("p2", "Bob")
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
 
 	gs.Update()
 	if gs.State != GameStateLobby {
@@ -503,8 +503,8 @@ func TestUpdateGameTimeout(t *testing.T) {
 func TestBulletVsPlayer(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice")
-	gs.PlayerAdd("p2", "Bob")
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
 
 	p2 := gs.Players["p2"]
 	startLives := p2.Lives
@@ -523,7 +523,7 @@ func TestBulletVsPlayer(t *testing.T) {
 func TestBulletVsMonster(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 
 	gs.Monsters["m1"] = monster.NewMonster(100, 100, 16, 512, 512, 1)
 	gs.Bullets = append(gs.Bullets, bullet.NewBullet("p1", "", 100, 100, 4, 0, "#FFF"))
@@ -538,7 +538,7 @@ func TestBulletVsMonster(t *testing.T) {
 func TestBulletVsMapBounds(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 
 	gs.Bullets = append(gs.Bullets, bullet.NewBullet("p1", "", -10, -10, 4, 0, "#FFF"))
 	gs.updateBullets()
@@ -551,7 +551,7 @@ func TestBulletVsMapBounds(t *testing.T) {
 func TestMonsterVsPlayer(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice")
+	gs.PlayerAdd("p1", "Alice", "")
 
 	p1 := gs.Players["p1"]
 	startLives := p1.Lives
@@ -573,8 +573,8 @@ func TestTeamDeathmatchStart(t *testing.T) {
 	gs.Mode = ModeTeamDeathmatch
 	gs.State = GameStateLobby
 	gs.LobbyEndsAt = time.Now().Add(-1 * time.Second).UnixMilli()
-	gs.PlayerAdd("p1", "Alice")
-	gs.PlayerAdd("p2", "Bob")
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
 
 	gs.Update()
 

@@ -29,6 +29,7 @@ func NewHandler() *Handler {
 func (h *Handler) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/ws", h.HandleWebSocket)
 	mux.HandleFunc("/health", h.HandleHealth)
+	mux.HandleFunc("/heroes", h.HandleHeroes)
 }
 
 func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +52,13 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"ok"}`))
+}
+
+func (h *Handler) HandleHeroes(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	data, _ := json.Marshal(game.Heroes)
+	w.Write(data)
 }
 
 func clientReadPump(c *mroom.Client) {
@@ -107,6 +115,7 @@ func HandleJoin(c *mroom.Client, data []byte) {
 	var req struct {
 		Type       string `json:"type"`
 		PlayerName string `json:"playerName"`
+		HeroName   string `json:"heroName"`
 		RoomName   string `json:"roomName"`
 		RoomMap    string `json:"roomMap"`
 		MaxPlayers int    `json:"maxPlayers"`
@@ -136,42 +145,11 @@ func HandleJoin(c *mroom.Client, data []byte) {
 	r := mroom.GetOrCreateRoom(req.RoomName, req.RoomName, req.RoomMap, req.Mode, req.MaxPlayers)
 	c.Room = r
 	c.Name = req.PlayerName
+	c.HeroName = req.HeroName
 
 	r.Register <- c
 
-	params := game.RoomJoinedParams{
-		PlayerId:   c.Id,
-		RoomId:     r.Id,
-		RoomName:   r.Name,
-		MapName:    r.MapName,
-		Mode:       r.Mode,
-		MaxPlayers: r.MaxPlayers,
-	}
-	msg := game.NewServerMessage("room_joined", params)
-	msgData, _ := json.Marshal(msg)
-	c.Send <- msgData
-}
-
-func HandleFindMatch(c *mroom.Client, data []byte) {
-	var req struct {
-		Type       string `json:"type"`
-		PlayerName string `json:"playerName"`
-	}
-	if err := json.Unmarshal(data, &req); err != nil {
-		sendError(c, "Invalid match request")
-		return
-	}
-
-	if req.PlayerName == "" {
-		req.PlayerName = c.Id[:8]
-	}
-	c.Name = req.PlayerName
-
-	sroom.AddToMatchQueue(c)
-}
-
-func HandleCancelMatch(c *mroom.Client) {
-	sroom.RemoveFromMatchQueue(c.Id)
+	sendRoomJoined(c, r)
 }
 
 func HandleJoinById(c *mroom.Client, data []byte) {
@@ -179,6 +157,7 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 		Type       string `json:"type"`
 		RoomId     string `json:"roomId"`
 		PlayerName string `json:"playerName"`
+		HeroName   string `json:"heroName"`
 	}
 	if err := json.Unmarshal(data, &req); err != nil {
 		sendError(c, "Invalid join request")
@@ -201,20 +180,35 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 
 	c.Room = r
 	c.Name = req.PlayerName
+	c.HeroName = req.HeroName
 
 	r.Register <- c
 
-	params := game.RoomJoinedParams{
-		PlayerId:   c.Id,
-		RoomId:     r.Id,
-		RoomName:   r.Name,
-		MapName:    r.MapName,
-		Mode:       r.Mode,
-		MaxPlayers: r.MaxPlayers,
+	sendRoomJoined(c, r)
+}
+
+func HandleFindMatch(c *mroom.Client, data []byte) {
+	var req struct {
+		Type       string `json:"type"`
+		PlayerName string `json:"playerName"`
+		HeroName   string `json:"heroName"`
 	}
-	msg := game.NewServerMessage("room_joined", params)
-	msgData, _ := json.Marshal(msg)
-	c.Send <- msgData
+	if err := json.Unmarshal(data, &req); err != nil {
+		sendError(c, "Invalid match request")
+		return
+	}
+
+	if req.PlayerName == "" {
+		req.PlayerName = c.Id[:8]
+	}
+	c.Name = req.PlayerName
+	c.HeroName = req.HeroName
+
+	sroom.AddToMatchQueue(c)
+}
+
+func HandleCancelMatch(c *mroom.Client) {
+	sroom.RemoveFromMatchQueue(c.Id)
 }
 
 func HandleListRooms(c *mroom.Client) {
@@ -248,6 +242,20 @@ func HandleListRooms(c *mroom.Client) {
 	}
 
 	msg := game.NewServerMessage("room_list", items)
+	msgData, _ := json.Marshal(msg)
+	c.Send <- msgData
+}
+
+func sendRoomJoined(c *mroom.Client, r *mroom.Room) {
+	params := game.RoomJoinedParams{
+		PlayerId:   c.Id,
+		RoomId:     r.Id,
+		RoomName:   r.Name,
+		MapName:    r.MapName,
+		Mode:       r.Mode,
+		MaxPlayers: r.MaxPlayers,
+	}
+	msg := game.NewServerMessage("room_joined", params)
 	msgData, _ := json.Marshal(msg)
 	c.Send <- msgData
 }

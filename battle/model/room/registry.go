@@ -2,6 +2,7 @@ package room
 
 import (
 	"battle/model/game"
+	"battle/model/player"
 	"battle/provider"
 	"sync"
 )
@@ -35,6 +36,34 @@ func GetOrCreateRoom(roomId, roomName, mapName, mode string, maxPlayers int) *Ro
 		MaxPlayers: maxPlayers,
 		Mode:       game.GameMode(mode),
 		Broadcast:  r.BroadcastMsg,
+		OnGameEnd: func(players map[string]*player.Player, winner string, duration int64) {
+			if Kafka == nil {
+				return
+			}
+			result := &provider.BattleResult{
+				RoomId:   roomId,
+				MapName:  mapName,
+				Mode:     mode,
+				Duration: duration,
+				Winner:   winner,
+			}
+			for _, p := range players {
+				result.Players = append(result.Players, provider.PlayerResult{
+					PlayerId: p.PlayerId,
+					Name:     p.Name,
+					Hero:     p.HeroName,
+					Kills:    p.Kills,
+					Lives:    p.Lives,
+					Won:      p.Name == winner,
+				})
+			}
+			Kafka.PublishBattleResult(result)
+		},
+		OnPlayerKilled: func(playerId, killerName string) {
+			r.SendToPlayer(playerId, "you_died", map[string]interface{}{
+				"killerName": killerName,
+			})
+		},
 	}
 	game.InitGameState(gs)
 	r.State = gs
@@ -49,6 +78,17 @@ func FindRoom(roomId string) *Room {
 	roomsMu.RLock()
 	defer roomsMu.RUnlock()
 	return rooms[roomId]
+}
+
+func FindLobbyRoom() *Room {
+	roomsMu.RLock()
+	defer roomsMu.RUnlock()
+	for _, r := range rooms {
+		if (r.State.State == "waiting" || r.State.State == "lobby") && len(r.Clients) < r.MaxPlayers {
+			return r
+		}
+	}
+	return nil
 }
 
 func RemoveRoom(roomId string) {

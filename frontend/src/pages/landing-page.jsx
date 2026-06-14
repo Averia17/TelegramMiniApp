@@ -1,88 +1,81 @@
-import * as React from 'react';
+import {useState, useEffect, useCallback} from 'react'
+import {useNavigate, useSearchParams} from 'react-router-dom'
+import {HeroSelect} from '../components/HeroSelect/HeroSelect.jsx'
+import {Leaderboard} from '../components/Tabs/Leaderboard.jsx'
+import {ProfileTab} from '../components/Tabs/ProfileTab.jsx'
+import './landing-page.css'
 
-import {ClickerTab} from "../components/Tabs/ClickerTab.jsx";
-
-import Tabs from '@mui/material/Tabs';
-import Tab from '@mui/material/Tab';
-import Box from '@mui/material/Box';
-import {LeaderboardTab} from "../components/Tabs/Leaderboard.jsx";
-import {TasksTab} from "../components/Tabs/TasksTab.jsx";
-import {ProfileTab} from "../components/Tabs/ProfileTab.jsx";
-import {BattleTab} from "../components/Tabs/BattleTab.jsx";
-import {ShopTab} from "../components/Tabs/ShopTab.jsx";
-
-
-function CustomTabPanel(props) {
-    const {children, value, index, ...other} = props;
-
-    return (
-        <div
-            role="tabpanel"
-            hidden={value !== index}
-            id={`simple-tabpanel-${index}`}
-            aria-labelledby={`simple-tab-${index}`}
-            {...other}
-        >
-            {value === index && <div>{children}</div>}
-        </div>
-    );
-}
-
-function a11yProps(index) {
-    return {
-        id: `simple-tab-${index}`,
-        'aria-controls': `simple-tabpanel-${index}`
-    };
-}
+const TABS = ['play', 'rating', 'profile']
 
 const LandingPage = ({id}) => {
-    const [value, setValue] = React.useState(0);
+    const navigate = useNavigate()
+    const [searchParams, setSearchParams] = useSearchParams()
+    const tabParam = searchParams.get('tab')
+    const [tab, setTab] = useState(() => TABS.includes(tabParam) ? tabParam : 'play')
+    const [selectedHero, setSelectedHero] = useState(null)
 
-    const handleChange = (event, newValue) => {
-        setValue(newValue);
-    };
+    useEffect(() => {
+        if (TABS.includes(tabParam) && tabParam !== tab) {
+            setTab(tabParam)
+        }
+    }, [tabParam])
+
+    const switchTab = useCallback((t) => {
+        setTab(t)
+        setSearchParams({tab: t}, {replace: true})
+    }, [setSearchParams])
+
+    const handlePlay = useCallback(() => {
+        if (!selectedHero) return
+        navigate(`/battle?hero=${encodeURIComponent(selectedHero)}`)
+    }, [selectedHero, navigate])
 
     return (
-        <>
-            <CustomTabPanel value={value} index={0}>
-                <BattleTab id={id}/>
-            </CustomTabPanel>
-            <CustomTabPanel value={value} index={1}>
-                <ShopTab id={id}/>
-            </CustomTabPanel>
-            <CustomTabPanel value={value} index={2}>
-                <ClickerTab/>
-            </CustomTabPanel>
-            <CustomTabPanel value={value} index={3}>
-                <LeaderboardTab/>
-            </CustomTabPanel>
-            <CustomTabPanel value={value} index={4}>
-                <TasksTab onChangeTab={() => handleChange(null, 4)}/>
-            </CustomTabPanel>
-            <CustomTabPanel value={value} index={5}>
-                <ProfileTab/>
-            </CustomTabPanel>
-            <Box sx={{
-                borderBottom: 1,
-                borderColor: 'divider',
-                position: 'fixed',
-                bottom: 0,
-                left: 0,
-                width: '100%',
-                display: 'flex',
-                justifyContent: 'center'
-            }}>
-                <Tabs value={value} onChange={handleChange} aria-label="basic tabs example">
-                    <Tab className="tab-label" label="Battle" {...a11yProps(0)} sx={{flex: 1}}/>
-                    <Tab className="tab-label" label="Shop" {...a11yProps(1)} sx={{flex: 1}}/>
-                    <Tab className="tab-label" label="Clicker" {...a11yProps(2)} sx={{flex: 1}}/>
-                    <Tab className="tab-label" label="Rating" {...a11yProps(3)} sx={{flex: 1}}/>
-                    <Tab className="tab-label" label="Tasks" {...a11yProps(4)} sx={{flex: 1}}/>
-                    <Tab className="tab-label" label="Profile" {...a11yProps(5)} sx={{flex: 1}}/>
-                </Tabs>
-            </Box>
-        </>
+        <div className="lp">
+            <div className="lp-content">
+                {tab === 'play' && (
+                    <div className="lp-play">
+                        <div className="lp-header">
+                            <div className="lp-logo">⚔️</div>
+                            <h1 className="lp-title">Arena Battle</h1>
+                            <p className="lp-subtitle">Choose your hero and fight</p>
+                        </div>
+
+                        <HeroSelect
+                            onSelect={setSelectedHero}
+                            selectedHero={selectedHero}
+                        />
+
+                        <div className="lp-action">
+                            <button
+                                className="lp-play-btn"
+                                disabled={!selectedHero}
+                                onClick={handlePlay}
+                            >
+                                {selectedHero ? `Play as ${selectedHero}` : 'Select a Hero'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {tab === 'rating' && <Leaderboard/>}
+                {tab === 'profile' && <ProfileTab id={id}/>}
+            </div>
+
+            <nav className="lp-nav">
+                <NavBtn icon="⚔️" label="Play" active={tab === 'play'} onClick={() => switchTab('play')}/>
+                <NavBtn icon="🏆" label="Rating" active={tab === 'rating'} onClick={() => switchTab('rating')}/>
+                <NavBtn icon="👤" label="Profile" active={tab === 'profile'} onClick={() => switchTab('profile')}/>
+            </nav>
+        </div>
     )
 }
+
+const NavBtn = ({icon, label, active, onClick}) => (
+    <button className={`lp-nav-btn ${active ? 'lp-nav-btn--active' : ''}`} onClick={onClick}>
+        <span className="lp-nav-icon">{icon}</span>
+        <span className="lp-nav-label">{label}</span>
+    </button>
+)
 
 export default LandingPage

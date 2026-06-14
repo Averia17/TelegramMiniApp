@@ -4,6 +4,7 @@ import (
 	"battle/model/game"
 	"battle/model/room"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -84,8 +85,17 @@ func TestMatchQueueSinglePlayer(t *testing.T) {
 	queueLen := len(matchQueue.queue)
 	matchQueue.mu.Unlock()
 
-	if queueLen != 1 {
-		t.Errorf("queue length = %v, want 1", queueLen)
+	if queueLen != 0 {
+		t.Errorf("queue length = %v, want 0 (single player gets room immediately)", queueLen)
+	}
+
+	select {
+	case msg := <-c1.Send:
+		if !strings.Contains(string(msg), "match_found") {
+			t.Errorf("expected match_found, got: %s", string(msg))
+		}
+	default:
+		t.Error("expected match_found message in send channel")
 	}
 
 	matchQueue.mu.Lock()

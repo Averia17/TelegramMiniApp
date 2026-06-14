@@ -41,21 +41,23 @@ const (
 )
 
 type GameState struct {
-	State       string
-	RoomName    string
-	MapName     string
-	MaxPlayers  int
-	Mode        GameMode
-	LobbyEndsAt int64
-	GameEndsAt  int64
-	Map         *gamemap.GameMap
-	Walls       *geometry.SpatialHash
-	Players     map[string]*player.Player
-	Monsters    map[string]*monster.Monster
-	Bullets     []*bullet.Bullet
-	Props       []*prop.Prop
-	Actions     []Action
-	Broadcast   func(msgType string, params interface{})
+	State         string
+	RoomName      string
+	MapName       string
+	MaxPlayers    int
+	Mode          GameMode
+	LobbyEndsAt   int64
+	GameEndsAt    int64
+	Map           *gamemap.GameMap
+	Walls         *geometry.SpatialHash
+	Players       map[string]*player.Player
+	Monsters      map[string]*monster.Monster
+	Bullets       []*bullet.Bullet
+	Props         []*prop.Prop
+	Actions       []Action
+	Broadcast     func(msgType string, params interface{})
+	OnGameEnd      func(players map[string]*player.Player, winner string, duration int64)
+	OnPlayerKilled func(playerId, killerName string)
 }
 
 func InitGameState(gs *GameState) {
@@ -188,6 +190,9 @@ func (gs *GameState) updateMonsters() {
 					"killerName": "A bat",
 					"killedName": p.Name,
 				})
+				if gs.OnPlayerKilled != nil {
+					gs.OnPlayerKilled(p.PlayerId, "A bat")
+				}
 			}
 		}
 	}
@@ -224,6 +229,9 @@ func (gs *GameState) updateBullets() {
 					"killerName": killerName,
 					"killedName": p.Name,
 				})
+				if gs.OnPlayerKilled != nil {
+					gs.OnPlayerKilled(p.PlayerId, killerName)
+				}
 			}
 		}
 
@@ -280,6 +288,24 @@ func (gs *GameState) startGame() {
 }
 
 func (gs *GameState) onGameEnd(event *ServerEvent) {
+	if gs.OnGameEnd != nil {
+		var winner string
+		if event != nil {
+			if w, ok := event.Params.(map[string]interface{}); ok {
+				if n, ok := w["name"].(string); ok {
+					winner = n
+				}
+			}
+		}
+		duration := int64(0)
+		if gs.GameEndsAt > 0 {
+			duration = gs.GameEndsAt - time.Now().UnixMilli()
+			if duration < 0 {
+				duration = -duration
+			}
+		}
+		gs.OnGameEnd(gs.Players, winner, duration)
+	}
 	if event != nil {
 		gs.Broadcast(event.Type, event.Params)
 	}
@@ -288,8 +314,13 @@ func (gs *GameState) onGameEnd(event *ServerEvent) {
 	gs.Broadcast("stop", map[string]interface{}{})
 }
 
-func (gs *GameState) PlayerAdd(id, name string) {
-	hero := RandomHero()
+func (gs *GameState) PlayerAdd(id, name string, heroName string) {
+	var hero Hero
+	if h := GetHeroByName(heroName); h != nil {
+		hero = *h
+	} else {
+		hero = RandomHero()
+	}
 	spawner := gs.Map.GetRandomSpawner()
 	p := hero.CreatePlayer(id, name, spawner.X+float64(hero.Radius), spawner.Y+float64(hero.Radius))
 	if gs.Mode == ModeTeamDeathmatch {

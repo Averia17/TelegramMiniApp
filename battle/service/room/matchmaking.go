@@ -42,19 +42,22 @@ func (mq *MatchQueue) Remove(clientId string) {
 }
 
 func (mq *MatchQueue) tryMatch() {
-	for len(mq.queue) >= 2 {
-		p1 := mq.queue[0]
-		p2 := mq.queue[1]
-		mq.queue = mq.queue[2:]
+	for len(mq.queue) > 0 {
+		p := mq.queue[0]
+		mq.queue = mq.queue[1:]
+
+		existing := room.FindLobbyRoom()
+		if existing != nil {
+			data, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: existing.Id}))
+			p.Send <- data
+			continue
+		}
 
 		roomName := generateRoomId()
 		r := room.GetOrCreateRoom(roomName, roomName, "arena", "deathmatch", 8)
 
-		data1, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: r.Id}))
-		p1.Send <- data1
-
-		data2, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: r.Id}))
-		p2.Send <- data2
+		data, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: r.Id}))
+		p.Send <- data
 	}
 }
 

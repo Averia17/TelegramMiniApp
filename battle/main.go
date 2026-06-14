@@ -13,8 +13,12 @@ import (
 func main() {
 	cfg := config.Load()
 
-	redis := provider.NewRedisProvider(cfg.RedisAddr)
-	mroom.SetStore(redis)
+	store := provider.NewRedisProvider(cfg.RedisAddr)
+	mroom.SetStore(store)
+
+	kafka := provider.NewKafkaProducer(cfg.KafkaAddr)
+	mroom.SetKafka(kafka)
+	defer kafka.Close()
 
 	mux := http.NewServeMux()
 	h := handler.NewHandler()

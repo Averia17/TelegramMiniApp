@@ -1,0 +1,152 @@
+.hero-select {
+    padding: 0 4px;
+}
+
+.hero-select-loading {
+    text-align: center;
+    color: #666;
+    padding: 40px;
+    font-size: 14px;
+}
+
+.hero-select-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.hero-card {
+    position: relative;
+    background: rgba(255, 255, 255, 0.04);
+    border: 2px solid rgba(255, 255, 255, 0.06);
+    border-radius: 14px;
+    padding: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    overflow: hidden;
+}
+
+.hero-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--hero-color, #fff);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.hero-card:active {
+    transform: scale(0.97);
+}
+
+.hero-card--selected {
+    border-color: var(--hero-color, #FFD700);
+    background: rgba(255, 215, 0, 0.06);
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.1);
+}
+
+.hero-card--selected::before {
+    opacity: 1;
+}
+
+.hero-card-icon {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+.hero-card-circle {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 800;
+    color: #fff;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.hero-card-info {
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.hero-card-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 2px;
+}
+
+.hero-card-role {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--hero-color, #888);
+}
+
+.hero-card-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.stat-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stat-bar-label {
+    font-size: 9px;
+    font-weight: 600;
+    color: #666;
+    width: 28px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.stat-bar-track {
+    flex: 1;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.stat-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.hero-card-desc {
+    font-size: 10px;
+    color: #666;
+    line-height: 1.3;
+    text-align: center;
+}
+
+.hero-card-check {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #FFD700;
+    color: #1a1a2e;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

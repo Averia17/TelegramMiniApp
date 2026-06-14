@@ -1,0 +1,127 @@
+.lp {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--tg-theme-bg-color, #0f0f1a);
+    overflow: hidden;
+}
+
+.lp-content {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.lp-play {
+    padding: 0 16px 120px;
+}
+
+.lp-header {
+    text-align: center;
+    padding: 24px 0 20px;
+}
+
+.lp-logo {
+    font-size: 48px;
+    margin-bottom: 8px;
+    filter: drop-shadow(0 4px 12px rgba(255, 215, 0, 0.3));
+}
+
+.lp-title {
+    font-size: 28px;
+    font-weight: 800;
+    color: #fff;
+    margin: 0;
+    letter-spacing: -0.5px;
+}
+
+.lp-subtitle {
+    font-size: 13px;
+    color: #666;
+    margin: 6px 0 0;
+}
+
+.lp-action {
+    position: fixed;
+    bottom: 72px;
+    left: 0;
+    right: 0;
+    padding: 12px 20px;
+    background: linear-gradient(transparent, rgba(15, 15, 26, 0.95) 30%);
+    pointer-events: none;
+    z-index: 5;
+}
+
+.lp-play-btn {
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+    display: block;
+    padding: 16px 32px;
+    font-size: 17px;
+    font-weight: 700;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #FFD700, #FF8C00);
+    color: #1a1a2e;
+    box-shadow: 0 4px 20px rgba(255, 215, 0, 0.3);
+    transition: all 0.2s ease;
+    pointer-events: auto;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.lp-play-btn:disabled {
+    background: #333;
+    color: #666;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+.lp-play-btn:not(:disabled):active {
+    transform: scale(0.97);
+}
+
+.lp-nav {
+    display: flex;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(15, 15, 26, 0.98);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+.lp-nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 10px 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.lp-nav-icon {
+    font-size: 20px;
+    opacity: 0.4;
+    transition: opacity 0.15s;
+}
+
+.lp-nav-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #555;
+    transition: color 0.15s;
+}
+
+.lp-nav-btn--active .lp-nav-icon {
+    opacity: 1;
+}
+
+.lp-nav-btn--active .lp-nav-label {
+    color: #FFD700;
+}
