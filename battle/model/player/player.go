@@ -2,7 +2,6 @@ package player
 
 import (
 	"battle/service/geometry"
-	"strings"
 )
 
 type Player struct {
@@ -17,22 +16,12 @@ type Player struct {
 	Rotation    float64
 	Ack         int64
 	LastShootAt int64
-}
-
-func NewPlayer(id, name string, x, y, radius float64, maxLives int, team string) *Player {
-	p := &Player{
-		CircleBody: geometry.CircleBody{X: x, Y: y, Radius: radius},
-		PlayerId:   id,
-		Name:       ValidateName(name),
-		MaxLives:   maxLives,
-		Lives:      maxLives,
-		Team:       team,
-		Color:      "#FFFFFF",
-	}
-	if team != "" {
-		p.Color = GetTeamColor(team)
-	}
-	return p
+	HeroName    string
+	Speed       float64
+	AttackDmg   int
+	AttackRate  int64
+	BulletSpd   float64
+	BulletSz    float64
 }
 
 func (p *Player) Move(dirX, dirY, speed float64) {
@@ -78,14 +67,6 @@ func (p *Player) CanBulletHurt(otherPlayerId, team string) bool {
 func (p *Player) SetTeam(team string) {
 	p.Team = team
 	p.Color = GetTeamColor(team)
-}
-
-func ValidateName(name string) string {
-	name = strings.TrimSpace(name)
-	if len(name) > 16 {
-		name = name[:16]
-	}
-	return name
 }
 
 func GetTeamColor(team string) string {

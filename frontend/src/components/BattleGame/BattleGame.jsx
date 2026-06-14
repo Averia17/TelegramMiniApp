@@ -50,6 +50,12 @@ export const BattleGame = ({ playerId, roomId, onExit }) => {
             (state) => {
                 setGameState(state);
                 renderer.setState(state);
+                if (state?.game?.state === 'game' && view !== 'game') {
+                    setView('game');
+                }
+                if (state?.game?.state === 'lobby' && view !== 'lobby' && view !== 'menu') {
+                    setView('lobby');
+                }
             },
             (msg) => {
                 addMessage(msg);
@@ -122,7 +128,7 @@ export const BattleGame = ({ playerId, roomId, onExit }) => {
 
     const handleCreateRoom = () => {
         if (clientRef.current) {
-            clientRef.current.join(playerName, '', 'small', 8, 'deathmatch');
+            clientRef.current.join(playerName, '', 'arena', 8, 'deathmatch');
         }
     };
 
@@ -162,9 +168,15 @@ export const BattleGame = ({ playerId, roomId, onExit }) => {
         setView('menu');
         setRoomInfo(null);
         setGameState(null);
+        joinedRef.current = false;
         if (clientRef.current) {
             clientRef.current.disconnect();
             clientRef.current.connect();
+        }
+        if (onExit) {
+            onExit();
+        } else {
+            navigate('/');
         }
     };
 
@@ -257,14 +269,19 @@ export const BattleGame = ({ playerId, roomId, onExit }) => {
                 <div className="battle-lobby-hud">
                     <div className="lobby-info">
                         <h3>Room: {roomInfo.roomName}</h3>
-                        <p>Code: {roomInfo.roomId}</p>
+                        <p>Code: <span className="room-code" onClick={() => {navigator.clipboard.writeText(roomInfo.roomId);}} title="Click to copy">{roomInfo.roomId}</span></p>
                         <p>Map: {roomInfo.mapName} | Mode: {roomInfo.mode}</p>
                         <p>Players: {Object.keys(gameState?.players || {}).length}/{roomInfo.maxPlayers}</p>
+                        {gameState?.players && clientRef.current?.playerId && (() => {
+                            const me = gameState.players[clientRef.current.playerId];
+                            return me?.hero ? <p className="hint">Your hero: {me.hero}</p> : null;
+                        })()}
                         {!connected && <p className="hint">Connecting...</p>}
-                        {connected && gameState?.state === 'waiting' && <p className="hint">Waiting for players...</p>}
-                        {connected && gameState?.state === 'lobby' && gameState?.lobbyEndsAt > 0 && (
-                            <p className="hint">Game starts in {Math.max(0, Math.ceil((gameState.lobbyEndsAt - Date.now()) / 1000))}s</p>
+                        {connected && gameState?.game?.state === 'waiting' && <p className="hint">Waiting for players...</p>}
+                        {connected && gameState?.game?.state === 'lobby' && gameState?.game?.lobbyEndsAt > 0 && (
+                            <p className="hint">Game starts in {Math.max(0, Math.ceil((gameState.game.lobbyEndsAt - Date.now()) / 1000))}s</p>
                         )}
+                        {connected && gameState?.game?.state === 'game' && <p className="hint">Battle in progress!</p>}
                         <button onClick={handleBackToMenu}>Leave</button>
                     </div>
                 </div>
@@ -281,12 +298,18 @@ export const BattleGame = ({ playerId, roomId, onExit }) => {
             )}
 
             {/* Game Messages */}
+            {view === 'game' && (
+                <button className="battle-exit-btn" onClick={handleBackToMenu}>
+                    ✕
+                </button>
+            )}
+
             <div className="battle-messages">
                 {messages.map((msg, i) => (
                     <div key={i} className={`msg-${msg.type}`}>
                         {msg.type === 'killed' && `${msg.params?.killerName} killed ${msg.params?.killedName}`}
                         {msg.type === 'won' && `${msg.params?.name} won!`}
-                        {msg.type === 'joined' && `${msg.params?.name} joined`}
+                        {msg.type === 'joined' && `${msg.params?.name} joined as ${msg.params?.hero || 'Unknown'}`}
                         {msg.type === 'left' && `${msg.params?.name} left`}
                         {msg.type === 'start' && 'Game started!'}
                         {msg.type === 'stop' && 'Game over'}

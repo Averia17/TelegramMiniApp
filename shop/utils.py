@@ -1,5 +1,5 @@
 from config import Config, load_config
-from infrastructure.database.repo.requests import RequestsRepo
+from infrastructure import RequestsRepo
 from infrastructure.database.setup import create_engine, create_session_pool
 
 config: Config = load_config()

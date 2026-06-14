@@ -10,12 +10,16 @@ import (
 //go:embed assets/maps/small.json
 var smallMapJSON []byte
 
-//go:embed assets/maps/gigantic.json
-var giganticMapJSON []byte
+//go:embed assets/maps/huge.json
+var hugeMapJSON []byte
+
+//go:embed assets/maps/arena.json
+var arenaMapJSON []byte
 
 var mapData = map[string][]byte{
-	"small":    smallMapJSON,
-	"gigantic": giganticMapJSON,
+	"small": smallMapJSON,
+	"huge":  hugeMapJSON,
+	"arena": arenaMapJSON,
 }
 
 type TiledMap struct {

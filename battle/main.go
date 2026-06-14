@@ -14,7 +14,7 @@ func main() {
 	cfg := config.Load()
 
 	redis := provider.NewRedisProvider(cfg.RedisAddr)
-	mroom.SetRedis(redis)
+	mroom.SetStore(redis)
 
 	mux := http.NewServeMux()
 	h := handler.NewHandler()

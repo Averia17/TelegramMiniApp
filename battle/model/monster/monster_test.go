@@ -75,7 +75,13 @@ func TestMonsterAttack(t *testing.T) {
 
 func TestMonsterChasePlayer(t *testing.T) {
 	m := NewMonster(100, 100, 16, 512, 512, 3)
-	p := player.NewPlayer("p1", "Test", 150, 100, 16, 3, "")
+	p := &player.Player{
+		CircleBody: geometry.CircleBody{X: 150, Y: 100, Radius: 16},
+		PlayerId:   "p1",
+		Name:       "Test",
+		MaxLives:   3,
+		Lives:      3,
+	}
 
 	players := map[string]*player.Player{"p1": p}
 	m.Update(players)
@@ -90,7 +96,13 @@ func TestMonsterChasePlayer(t *testing.T) {
 
 func TestMonsterChaseTooFar(t *testing.T) {
 	m := NewMonster(0, 0, 16, 512, 512, 3)
-	p := player.NewPlayer("p1", "Test", 500, 500, 16, 3, "")
+	p := &player.Player{
+		CircleBody: geometry.CircleBody{X: 500, Y: 500, Radius: 16},
+		PlayerId:   "p1",
+		Name:       "Test",
+		MaxLives:   3,
+		Lives:      3,
+	}
 
 	players := map[string]*player.Player{"p1": p}
 	m.Update(players)
@@ -106,8 +118,13 @@ func TestMonsterChaseDeadPlayer(t *testing.T) {
 	m.State = MonsterChase
 	m.TargetPlayerId = "p1"
 
-	p := player.NewPlayer("p1", "Test", 110, 100, 16, 3, "")
-	p.Lives = 0
+	p := &player.Player{
+		CircleBody: geometry.CircleBody{X: 110, Y: 100, Radius: 16},
+		PlayerId:   "p1",
+		Name:       "Test",
+		MaxLives:   3,
+		Lives:      0,
+	}
 
 	players := map[string]*player.Player{"p1": p}
 	m.Update(players)

@@ -165,10 +165,12 @@ func (m *Monster) CanAttack() bool {
 
 func GetClosestPlayerId(x, y float64, players map[string]*player.Player) string {
 	var closestId string
+	closestDist := MonsterSight
 	for id, p := range players {
 		if p.IsAlive() {
 			dist := geometry.GetDistance(x, y, p.X, p.Y)
-			if dist <= MonsterSight {
+			if dist <= closestDist {
+				closestDist = dist
 				closestId = id
 			}
 		}

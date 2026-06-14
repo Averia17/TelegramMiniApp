@@ -25,6 +25,6 @@ type Room struct {
 	Broadcast  chan []byte
 	Register   chan *Client
 	Unregister chan *Client
-	done       chan struct{}
 	mu         sync.RWMutex
+	mapSent    bool
 }

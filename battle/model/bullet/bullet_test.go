@@ -6,7 +6,7 @@ import (
 )
 
 func TestNewBullet(t *testing.T) {
-	b := NewBullet("p1", "Red", 100, 200, 4, 1.5, "#FF0000", 12345)
+	b := NewBullet("p1", "Red", 100, 200, 4, 1.5, "#FF0000")
 
 	if b.PlayerId != "p1" {
 		t.Errorf("PlayerId = %v, want p1", b.PlayerId)
@@ -29,23 +29,17 @@ func TestNewBullet(t *testing.T) {
 	if b.Color != "#FF0000" {
 		t.Errorf("Color = %v, want #FF0000", b.Color)
 	}
-	if b.ShotAt != 12345 {
-		t.Errorf("ShotAt = %v, want 12345", b.ShotAt)
-	}
-	if b.FromX != 100 || b.FromY != 200 {
-		t.Errorf("From = (%v,%v), want (100,200)", b.FromX, b.FromY)
-	}
 }
 
 func TestBulletMove(t *testing.T) {
-	b := NewBullet("p1", "", 100, 100, 4, 0, "#FFF", 0)
+	b := NewBullet("p1", "", 100, 100, 4, 0, "#FFF")
 
 	b.Move(10)
 	if b.X <= 100 {
 		t.Errorf("Move(10) right: X = %v, should be > 100", b.X)
 	}
 
-	b2 := NewBullet("p1", "", 100, 100, 4, math.Pi/2, "#FFF", 0)
+	b2 := NewBullet("p1", "", 100, 100, 4, math.Pi/2, "#FFF")
 	b2.Move(10)
 	if b2.Y <= 100 {
 		t.Errorf("Move(10) down: Y = %v, should be > 100", b2.Y)
@@ -53,10 +47,10 @@ func TestBulletMove(t *testing.T) {
 }
 
 func TestBulletReset(t *testing.T) {
-	b := NewBullet("p1", "Red", 100, 100, 4, 0, "#FF0000", 1000)
+	b := NewBullet("p1", "Red", 100, 100, 4, 0, "#FF0000")
 	b.Active = false
 
-	b.Reset("p2", "Blue", 200, 200, 6, 1.5, "#0000FF", 2000)
+	b.Reset("p2", "Blue", 200, 200, 6, 1.5, "#0000FF")
 
 	if b.PlayerId != "p2" {
 		t.Errorf("After Reset: PlayerId = %v, want p2", b.PlayerId)
@@ -75,8 +69,5 @@ func TestBulletReset(t *testing.T) {
 	}
 	if b.Color != "#0000FF" {
 		t.Errorf("After Reset: Color = %v, want #0000FF", b.Color)
-	}
-	if b.FromX != 200 || b.FromY != 200 {
-		t.Errorf("After Reset: From = (%v,%v), want (200,200)", b.FromX, b.FromY)
 	}
 }

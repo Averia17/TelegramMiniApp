@@ -51,6 +51,7 @@ type PlayerJSON struct {
 	Kills    int     `json:"kills"`
 	Rotation float64 `json:"rotation"`
 	Ack      int64   `json:"ack"`
+	Hero     string  `json:"hero"`
 }
 
 type MonsterJSON struct {
@@ -67,7 +68,6 @@ type BulletJSON struct {
 	PlayerId string  `json:"playerId"`
 	Team     string  `json:"team"`
 	Rotation float64 `json:"rotation"`
-	Active   bool    `json:"active"`
 	Color    string  `json:"color"`
 }
 
@@ -101,15 +101,6 @@ type RoomJoinedParams struct {
 	MapName    string `json:"mapName"`
 	Mode       string `json:"mode"`
 	MaxPlayers int    `json:"maxPlayers"`
-}
-
-type KillParams struct {
-	KillerName string `json:"killerName"`
-	KilledName string `json:"killedName"`
-}
-
-type WonParams struct {
-	Name string `json:"name"`
 }
 
 type MatchFoundParams struct {

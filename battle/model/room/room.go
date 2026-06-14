@@ -8,37 +8,32 @@ import (
 	"time"
 )
 
-var Redis *provider.RedisProvider
+var Store provider.Store
 
-func SetRedis(r *provider.RedisProvider) {
-	Redis = r
+func SetStore(s provider.Store) {
+	Store = s
 }
 
 func (r *Room) Run() {
 	ticker := time.NewTicker(time.Second / 60)
-	stateTicker := time.NewTicker(time.Second / 20)
 	redisTicker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	defer stateTicker.Stop()
 	defer redisTicker.Stop()
 
 	for {
 		select {
-		case <-r.done:
-			return
 		case client := <-r.Register:
 			r.mu.Lock()
 			r.Clients[client.Id] = client
 			r.State.PlayerAdd(client.Id, client.Name)
-			playerRecord := &provider.PlayerRecord{
-				PlayerId: client.Id,
-				RoomId:   r.Id,
-				Name:     client.Name,
-				JoinedAt: time.Now().UnixMilli(),
-			}
-			if Redis != nil {
-				if err := Redis.AddPlayerToRoom(r.Id, playerRecord); err != nil {
-					log.Printf("Redis add player error: %v", err)
+			if Store != nil {
+				playerRecord := &provider.PlayerRecord{
+					PlayerId: client.Id,
+					RoomId:   r.Id,
+					Name:     client.Name,
+				}
+				if err := Store.AddPlayerToRoom(r.Id, playerRecord); err != nil {
+					log.Printf("Store add player error: %v", err)
 				}
 			}
 			r.mu.Unlock()
@@ -49,9 +44,9 @@ func (r *Room) Run() {
 				r.State.PlayerRemove(client.Id)
 				delete(r.Clients, client.Id)
 				close(client.Send)
-				if Redis != nil {
-					if err := Redis.RemovePlayerFromRoom(r.Id, client.Id); err != nil {
-						log.Printf("Redis remove player error: %v", err)
+				if Store != nil {
+					if err := Store.RemovePlayerFromRoom(r.Id, client.Id); err != nil {
+						log.Printf("Store remove player error: %v", err)
 					}
 				}
 			}
@@ -77,12 +72,8 @@ func (r *Room) Run() {
 		case <-ticker.C:
 			r.mu.Lock()
 			r.State.Update()
-			r.mu.Unlock()
-
-		case <-stateTicker.C:
-			r.mu.RLock()
 			r.sendStateUpdate()
-			r.mu.RUnlock()
+			r.mu.Unlock()
 
 		case <-redisTicker.C:
 			r.mu.RLock()
@@ -94,11 +85,10 @@ func (r *Room) Run() {
 				MaxPlayers:  r.MaxPlayers,
 				PlayerCount: len(r.Clients),
 				Status:      r.State.State,
-				CreatedAt:   time.Now().UnixMilli(),
 			}
 			r.mu.RUnlock()
-			if Redis != nil {
-				Redis.UpdateRoom(roomRecord)
+			if Store != nil {
+				Store.SaveRoom(roomRecord)
 			}
 		}
 	}
@@ -132,6 +122,7 @@ func (r *Room) sendStateUpdate() {
 			Kills:    p.Kills,
 			Rotation: p.Rotation,
 			Ack:      p.Ack,
+			Hero:     p.HeroName,
 		}
 	}
 
@@ -155,7 +146,6 @@ func (r *Room) sendStateUpdate() {
 				PlayerId: b.PlayerId,
 				Team:     b.Team,
 				Rotation: b.Rotation,
-				Active:   b.Active,
 				Color:    b.Color,
 			})
 		}
@@ -184,17 +174,26 @@ func (r *Room) sendStateUpdate() {
 
 	var mapJSON game.MapJSON
 	if r.State.Map != nil {
-		walls := make([]game.WallJSON, 0, len(r.State.Map.Collisions))
-		for _, w := range r.State.Map.Collisions {
-			walls = append(walls, game.WallJSON{
-				MinX: w.MinX, MinY: w.MinY, MaxX: w.MaxX, MaxY: w.MaxY, Type: w.Type,
-			})
-		}
-		mapJSON = game.MapJSON{
-			Width:    r.State.Map.WidthInPixels,
-			Height:   r.State.Map.HeightInPixels,
-			TileSize: game.TileSize,
-			Walls:    walls,
+		if !r.mapSent {
+			walls := make([]game.WallJSON, 0, len(r.State.Map.Collisions))
+			for _, w := range r.State.Map.Collisions {
+				walls = append(walls, game.WallJSON{
+					MinX: w.MinX, MinY: w.MinY, MaxX: w.MaxX, MaxY: w.MaxY, Type: w.Type,
+				})
+			}
+			mapJSON = game.MapJSON{
+				Width:    r.State.Map.WidthInPixels,
+				Height:   r.State.Map.HeightInPixels,
+				TileSize: game.TileSize,
+				Walls:    walls,
+			}
+			r.mapSent = true
+		} else {
+			mapJSON = game.MapJSON{
+				Width:    r.State.Map.WidthInPixels,
+				Height:   r.State.Map.HeightInPixels,
+				TileSize: game.TileSize,
+			}
 		}
 	}
 
@@ -204,14 +203,12 @@ func (r *Room) sendStateUpdate() {
 		return
 	}
 
-	r.mu.RLock()
 	for _, client := range r.Clients {
 		select {
 		case client.Send <- data:
 		default:
 		}
 	}
-	r.mu.RUnlock()
 }
 
 func (r *Room) HandleMessage(client *Client, data []byte) {

@@ -20,13 +20,10 @@ const (
 	LobbyDuration = 10 * time.Second
 	GameDuration  = 90 * time.Second
 
-	FlasksCount   = 3
-	MonstersCount = 3
+	FlasksCount   = 8
+	MonstersCount = 8
 
-	PlayerSpeed      = 1.0
-	PlayerSize       = 32.0
-	PlayerMaxLives   = 3
-	PlayerWeaponSize = 12.0
+	PlayerSize = 32.0
 
 	BulletSize  = 8.0
 	BulletSpeed = 4.0
@@ -94,11 +91,11 @@ func (gs *GameState) Update() {
 func (gs *GameState) updateGame() {
 	switch gs.State {
 	case GameStateWaiting:
-		if len(gs.Players) > 1 {
+		if len(gs.Players) >= 1 {
 			gs.startLobby()
 		}
 	case GameStateLobby:
-		if len(gs.Players) == 1 {
+		if len(gs.Players) == 0 {
 			gs.startWaiting()
 			return
 		}
@@ -106,7 +103,7 @@ func (gs *GameState) updateGame() {
 			gs.startGame()
 		}
 	case GameStateGame:
-		if len(gs.Players) == 1 {
+		if len(gs.Players) == 0 {
 			gs.onGameEnd(nil)
 			gs.startWaiting()
 			return
@@ -120,7 +117,7 @@ func (gs *GameState) updateGame() {
 			return
 		}
 		if gs.Mode == ModeDeathmatch {
-			if gs.countActivePlayers() == 1 {
+			if len(gs.Players) > 1 && gs.countActivePlayers() == 1 {
 				p := gs.getWinningPlayer()
 				if p != nil {
 					gs.onGameEnd(&ServerEvent{
@@ -133,17 +130,19 @@ func (gs *GameState) updateGame() {
 			}
 		}
 		if gs.Mode == ModeTeamDeathmatch {
-			team := gs.getWinningTeam()
-			if team != "" {
-				name := "Red team"
-				if team == "Blue" {
-					name = "Blue team"
+			if len(gs.Players) > 1 {
+				team := gs.getWinningTeam()
+				if team != "" {
+					name := "Red team"
+					if team == "Blue" {
+						name = "Blue team"
+					}
+					gs.onGameEnd(&ServerEvent{
+						Type:   "won",
+						Params: map[string]interface{}{"name": name},
+					})
+					gs.startLobby()
 				}
-				gs.onGameEnd(&ServerEvent{
-					Type:   "won",
-					Params: map[string]interface{}{"name": name},
-				})
-				gs.startLobby()
 			}
 		}
 	}
@@ -207,7 +206,13 @@ func (gs *GameState) updateBullets() {
 				continue
 			}
 			b.Active = false
-			p.Hurt()
+			dmg := b.Damage
+			if dmg <= 0 {
+				dmg = 1
+			}
+			for i := 0; i < dmg; i++ {
+				p.Hurt()
+			}
 			if !p.IsAlive() {
 				killer := gs.Players[b.PlayerId]
 				killerName := "Unknown"
@@ -284,13 +289,14 @@ func (gs *GameState) onGameEnd(event *ServerEvent) {
 }
 
 func (gs *GameState) PlayerAdd(id, name string) {
+	hero := RandomHero()
 	spawner := gs.Map.GetRandomSpawner()
-	p := player.NewPlayer(id, name, spawner.X+PlayerSize/2, spawner.Y+PlayerSize/2, PlayerSize/2, PlayerMaxLives, "")
+	p := hero.CreatePlayer(id, name, spawner.X+float64(hero.Radius), spawner.Y+float64(hero.Radius))
 	if gs.Mode == ModeTeamDeathmatch {
 		p.SetTeam("Red")
 	}
 	gs.Players[id] = p
-	gs.Broadcast("joined", map[string]interface{}{"name": p.Name})
+	gs.Broadcast("joined", map[string]interface{}{"name": p.Name, "hero": p.HeroName})
 }
 
 func (gs *GameState) PlayerRemove(id string) {
@@ -310,7 +316,7 @@ func (gs *GameState) playerMove(id string, ts int64, dirX, dirY float64) {
 	if p == nil || (dirX == 0 && dirY == 0) {
 		return
 	}
-	p.Move(dirX, dirY, PlayerSpeed)
+	p.Move(dirX, dirY, p.Speed)
 
 	clamped := gs.Map.ClampCircle(&p.CircleBody)
 	p.X = clamped.X
@@ -353,24 +359,41 @@ func (gs *GameState) playerShoot(id string, ts int64, angle float64) {
 		return
 	}
 	delta := ts - p.LastShootAt
-	if p.LastShootAt != 0 && delta < BulletRate {
+	rate := p.AttackRate
+	if rate == 0 {
+		rate = BulletRate
+	}
+	if p.LastShootAt != 0 && delta < rate {
 		return
 	}
 	p.LastShootAt = ts
 
-	bulletX := p.X + math.Cos(angle)*PlayerWeaponSize
-	bulletY := p.Y + math.Sin(angle)*PlayerWeaponSize
+	bSize := p.BulletSz
+	if bSize == 0 {
+		bSize = BulletSize
+	}
+	bSpd := p.BulletSpd
+	if bSpd == 0 {
+		bSpd = BulletSpeed
+	}
+	weaponSize := p.Radius + 4
+
+	bulletX := p.X + math.Cos(angle)*weaponSize
+	bulletY := p.Y + math.Sin(angle)*weaponSize
 
 	found := false
 	for _, b := range gs.Bullets {
 		if !b.Active {
-			b.Reset(p.PlayerId, p.Team, bulletX, bulletY, BulletSize, angle, p.Color, time.Now().UnixMilli())
+			b.Reset(p.PlayerId, p.Team, bulletX, bulletY, bSize, angle, p.Color)
+			b.Damage = p.AttackDmg
 			found = true
 			break
 		}
 	}
 	if !found {
-		gs.Bullets = append(gs.Bullets, bullet.NewBullet(p.PlayerId, p.Team, bulletX, bulletY, BulletSize, angle, p.Color, time.Now().UnixMilli()))
+		b := bullet.NewBullet(p.PlayerId, p.Team, bulletX, bulletY, bSize, angle, p.Color)
+		b.Damage = p.AttackDmg
+		gs.Bullets = append(gs.Bullets, b)
 	}
 }
 

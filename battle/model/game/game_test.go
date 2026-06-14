@@ -72,8 +72,11 @@ func TestPlayerAdd(t *testing.T) {
 	if p.Name != "Alice" {
 		t.Errorf("Name = %v, want Alice", p.Name)
 	}
-	if p.Lives != PlayerMaxLives {
-		t.Errorf("Lives = %v, want %v", p.Lives, PlayerMaxLives)
+	if p.Lives != p.MaxLives {
+		t.Errorf("Lives = %v, want %v", p.Lives, p.MaxLives)
+	}
+	if p.HeroName == "" {
+		t.Error("HeroName should be set")
 	}
 }
 
@@ -456,11 +459,15 @@ func TestUpdateLobbyToGame(t *testing.T) {
 func TestUpdateLobbyToWaiting(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateLobby
+	gs.LobbyEndsAt = time.Now().Add(10 * time.Second).UnixMilli()
 	gs.PlayerAdd("p1", "Alice")
+
+	// Remove all players
+	delete(gs.Players, "p1")
 
 	gs.Update()
 	if gs.State != GameStateWaiting {
-		t.Errorf("State = %v, want waiting (only 1 player)", gs.State)
+		t.Errorf("State = %v, want waiting (no players)", gs.State)
 	}
 }
 
@@ -499,17 +506,17 @@ func TestBulletVsPlayer(t *testing.T) {
 	gs.PlayerAdd("p1", "Alice")
 	gs.PlayerAdd("p2", "Bob")
 
-	// Place bullet right next to p2
 	p2 := gs.Players["p2"]
-	gs.Bullets = append(gs.Bullets, bullet.NewBullet("p1", "", p2.X, p2.Y, 4, 0, "#FFF", time.Now().UnixMilli()))
+	startLives := p2.Lives
+	gs.Bullets = append(gs.Bullets, bullet.NewBullet("p1", "", p2.X, p2.Y, 4, 0, "#FFF"))
 
 	gs.updateBullets()
 
 	if gs.Bullets[0].Active {
 		t.Error("bullet should be inactive after hitting player")
 	}
-	if p2.Lives != PlayerMaxLives-1 {
-		t.Errorf("p2 Lives = %v, want %v", p2.Lives, PlayerMaxLives-1)
+	if p2.Lives != startLives-1 {
+		t.Errorf("p2 Lives = %v, want %v", p2.Lives, startLives-1)
 	}
 }
 
@@ -519,7 +526,7 @@ func TestBulletVsMonster(t *testing.T) {
 	gs.PlayerAdd("p1", "Alice")
 
 	gs.Monsters["m1"] = monster.NewMonster(100, 100, 16, 512, 512, 1)
-	gs.Bullets = append(gs.Bullets, bullet.NewBullet("p1", "", 100, 100, 4, 0, "#FFF", time.Now().UnixMilli()))
+	gs.Bullets = append(gs.Bullets, bullet.NewBullet("p1", "", 100, 100, 4, 0, "#FFF"))
 
 	gs.updateBullets()
 
@@ -533,7 +540,7 @@ func TestBulletVsMapBounds(t *testing.T) {
 	gs.State = GameStateGame
 	gs.PlayerAdd("p1", "Alice")
 
-	gs.Bullets = append(gs.Bullets, bullet.NewBullet("p1", "", -10, -10, 4, 0, "#FFF", time.Now().UnixMilli()))
+	gs.Bullets = append(gs.Bullets, bullet.NewBullet("p1", "", -10, -10, 4, 0, "#FFF"))
 	gs.updateBullets()
 
 	if gs.Bullets[0].Active {
@@ -546,17 +553,17 @@ func TestMonsterVsPlayer(t *testing.T) {
 	gs.State = GameStateGame
 	gs.PlayerAdd("p1", "Alice")
 
-	// Place monster on top of player
 	p1 := gs.Players["p1"]
+	startLives := p1.Lives
 	m := monster.NewMonster(p1.X, p1.Y, 16, 512, 512, 3)
 	m.State = monster.MonsterChase
 	m.TargetPlayerId = "p1"
-	m.LastAttackAt = 0 // can attack
+	m.LastAttackAt = 0
 	gs.Monsters["m1"] = m
 
 	gs.updateMonsters()
 
-	if p1.Lives >= PlayerMaxLives {
+	if p1.Lives >= startLives {
 		t.Error("player should have lost a life from monster attack")
 	}
 }

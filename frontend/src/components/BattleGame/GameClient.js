@@ -86,7 +86,7 @@ export class GameClient {
             type: 'join',
             playerName: playerName || 'Player',
             roomName: roomName || '',
-            roomMap: roomMap || 'small',
+            roomMap: roomMap || 'arena',
             maxPlayers: maxPlayers || 8,
             mode: mode || 'deathmatch',
         }));

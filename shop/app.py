@@ -1,7 +1,7 @@
 import logging
 
 from fastapi import APIRouter, FastAPI
-from middleware import TimeoutMiddleware
+from middlewares import TimeoutMiddleware
 from routes import router
 from starlette.middleware.cors import CORSMiddleware
 

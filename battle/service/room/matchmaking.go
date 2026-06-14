@@ -48,7 +48,7 @@ func (mq *MatchQueue) tryMatch() {
 		mq.queue = mq.queue[2:]
 
 		roomName := generateRoomId()
-		r := room.GetOrCreateRoom(roomName, roomName, "small", "deathmatch", 8)
+		r := room.GetOrCreateRoom(roomName, roomName, "arena", "deathmatch", 8)
 
 		data1, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: r.Id}))
 		p1.Send <- data1

@@ -1,7 +1,6 @@
 import {Invite} from "../Tasks/Invite.jsx";
 import {Tasks} from "../Tasks/Tasks.jsx";
 import {Typography} from "@mui/material";
-import React from "react";
 
 export const TasksTab = ({onChangeTab}) => {
     return <div className="tasks">

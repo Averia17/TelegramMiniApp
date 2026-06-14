@@ -57,9 +57,15 @@ func RemoveRoom(roomId string) {
 	delete(rooms, roomId)
 }
 
-func ListRoomsFromRedis() ([]provider.RoomRecord, error) {
-	if Redis == nil {
+func ResetRooms() {
+	roomsMu.Lock()
+	defer roomsMu.Unlock()
+	rooms = make(map[string]*Room)
+}
+
+func ListRoomsFromStore() ([]provider.RoomRecord, error) {
+	if Store == nil {
 		return nil, nil
 	}
-	return Redis.ListRooms()
+	return Store.ListRooms()
 }

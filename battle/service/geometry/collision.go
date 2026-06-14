@@ -3,7 +3,7 @@ package geometry
 import "math"
 
 func CircleToCircle(c1, c2 *CircleBody) bool {
-	dist := math.Abs(GetDistance(c1.X, c1.Y, c2.X, c2.Y))
+	dist := GetDistance(c1.X, c1.Y, c2.X, c2.Y)
 	return dist < c1.Radius+c2.Radius
 }
 
@@ -149,16 +149,11 @@ func CollidesCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType
 	candidates := walls.QueryCircle(body)
 	for _, wall := range candidates {
 		if collisionType != "" && wall.Type != collisionType {
-			wallType := wall.Type
-			if wallType == "" {
-				continue
-			}
+			continue
 		}
 		wallRect := &RectangleBody{X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY}
 		if CircleToRectangle(body, wallRect) {
-			if collisionType == "" || wall.Type == collisionType {
-				return true
-			}
+			return true
 		}
 	}
 	return false

@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
-from routes import payment_router, users_router
+from routes import users_router, payments_router
 
 app = FastAPI()
 
@@ -24,4 +24,4 @@ logging.basicConfig(
 )
 
 app.include_router(users_router)
-app.include_router(payment_router)
+app.include_router(payments_router)

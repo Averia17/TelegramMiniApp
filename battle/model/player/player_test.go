@@ -1,9 +1,27 @@
 package player
 
-import "testing"
+import (
+	"battle/service/geometry"
+	"testing"
+)
+
+func newTestPlayer(id, name string, x, y, radius float64, maxLives int, team string) *Player {
+	p := &Player{
+		CircleBody: geometry.CircleBody{X: x, Y: y, Radius: radius},
+		PlayerId:   id,
+		Name:       name,
+		MaxLives:   maxLives,
+		Lives:      maxLives,
+		Color:      "#FFFFFF",
+	}
+	if team != "" {
+		p.SetTeam(team)
+	}
+	return p
+}
 
 func TestNewPlayer(t *testing.T) {
-	p := NewPlayer("p1", "Alice", 100, 200, 16, 3, "")
+	p := newTestPlayer("p1", "Alice", 100, 200, 16, 3, "")
 
 	if p.PlayerId != "p1" {
 		t.Errorf("PlayerId = %v, want p1", p.PlayerId)
@@ -26,50 +44,33 @@ func TestNewPlayer(t *testing.T) {
 }
 
 func TestNewPlayerWithTeam(t *testing.T) {
-	p := NewPlayer("p1", "Bob", 0, 0, 16, 3, "Red")
+	p := newTestPlayer("p1", "Bob", 0, 0, 16, 3, "Red")
 	if p.Color != "#FF0000" {
 		t.Errorf("Red team color = %v, want #FF0000", p.Color)
 	}
 
-	p2 := NewPlayer("p2", "Eve", 0, 0, 16, 3, "Blue")
+	p2 := newTestPlayer("p2", "Eve", 0, 0, 16, 3, "Blue")
 	if p2.Color != "#0000FF" {
 		t.Errorf("Blue team color = %v, want #0000FF", p2.Color)
 	}
 }
 
-func TestPlayerValidateName(t *testing.T) {
-	tests := []struct {
-		input, want string
-	}{
-		{"  Alice  ", "Alice"},
-		{"VeryLongNameThatExceeds16", "VeryLongNameThat"},
-		{"Short", "Short"},
-		{"", ""},
-	}
-	for _, tt := range tests {
-		got := ValidateName(tt.input)
-		if got != tt.want {
-			t.Errorf("ValidateName(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
 func TestPlayerMove(t *testing.T) {
-	p := NewPlayer("p1", "Test", 100, 100, 16, 3, "")
-	p.Move(1, 0, 1) // move right
+	p := newTestPlayer("p1", "Test", 100, 100, 16, 3, "")
+	p.Move(1, 0, 1)
 	if p.X <= 100 {
 		t.Errorf("Move right: X = %v, should be > 100", p.X)
 	}
 
-	p2 := NewPlayer("p2", "Test", 100, 100, 16, 3, "")
-	p2.Move(0, -1, 1) // move up
+	p2 := newTestPlayer("p2", "Test", 100, 100, 16, 3, "")
+	p2.Move(0, -1, 1)
 	if p2.Y >= 100 {
 		t.Errorf("Move up: Y = %v, should be < 100", p2.Y)
 	}
 }
 
 func TestPlayerMoveZeroDirection(t *testing.T) {
-	p := NewPlayer("p1", "Test", 100, 100, 16, 3, "")
+	p := newTestPlayer("p1", "Test", 100, 100, 16, 3, "")
 	p.Move(0, 0, 1)
 	if p.X != 100 || p.Y != 100 {
 		t.Errorf("Move(0,0) changed position to (%v,%v)", p.X, p.Y)
@@ -77,7 +78,7 @@ func TestPlayerMoveZeroDirection(t *testing.T) {
 }
 
 func TestPlayerHurtHeal(t *testing.T) {
-	p := NewPlayer("p1", "Test", 0, 0, 16, 3, "")
+	p := newTestPlayer("p1", "Test", 0, 0, 16, 3, "")
 
 	p.Hurt()
 	if p.Lives != 2 {
@@ -91,7 +92,7 @@ func TestPlayerHurtHeal(t *testing.T) {
 }
 
 func TestPlayerIsAlive(t *testing.T) {
-	p := NewPlayer("p1", "Test", 0, 0, 16, 3, "")
+	p := newTestPlayer("p1", "Test", 0, 0, 16, 3, "")
 	if !p.IsAlive() {
 		t.Error("new player should be alive")
 	}
@@ -108,7 +109,7 @@ func TestPlayerIsAlive(t *testing.T) {
 }
 
 func TestPlayerIsFullLives(t *testing.T) {
-	p := NewPlayer("p1", "Test", 0, 0, 16, 3, "")
+	p := newTestPlayer("p1", "Test", 0, 0, 16, 3, "")
 	if !p.IsFullLives() {
 		t.Error("new player should be full lives")
 	}
@@ -120,25 +121,21 @@ func TestPlayerIsFullLives(t *testing.T) {
 }
 
 func TestPlayerCanBulletHurt(t *testing.T) {
-	p := NewPlayer("p1", "Test", 0, 0, 16, 3, "")
+	p := newTestPlayer("p1", "Test", 0, 0, 16, 3, "")
 
-	// Same player
 	if p.CanBulletHurt("p1", "") {
 		t.Error("should not hurt self")
 	}
 
-	// Different player, no team
 	if !p.CanBulletHurt("p2", "") {
 		t.Error("should hurt different player")
 	}
 
-	// Dead player
 	p.Lives = 0
 	if p.CanBulletHurt("p2", "") {
 		t.Error("dead player should not be hurtable")
 	}
 
-	// Team check
 	p.Lives = 3
 	p.Team = "Red"
 	if p.CanBulletHurt("p2", "Red") {
@@ -150,7 +147,7 @@ func TestPlayerCanBulletHurt(t *testing.T) {
 }
 
 func TestPlayerSetTeam(t *testing.T) {
-	p := NewPlayer("p1", "Test", 0, 0, 16, 3, "")
+	p := newTestPlayer("p1", "Test", 0, 0, 16, 3, "")
 
 	p.SetTeam("Red")
 	if p.Team != "Red" || p.Color != "#FF0000" {

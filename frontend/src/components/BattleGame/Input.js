@@ -25,15 +25,15 @@ export class Input {
 
     setupKeyboard() {
         window.addEventListener('keydown', (e) => {
-            this.keys[e.key.toLowerCase()] = true;
-            if (e.key === ' ') {
+            this.keys[e.code] = true;
+            if (e.code === 'Space') {
                 e.preventDefault();
                 this.tryShoot();
             }
         });
 
         window.addEventListener('keyup', (e) => {
-            this.keys[e.key.toLowerCase()] = false;
+            this.keys[e.code] = false;
         });
     }
 
@@ -142,10 +142,10 @@ export class Input {
         let dx = 0;
         let dy = 0;
 
-        if (this.keys['w'] || this.keys['arrowup']) dy -= 1;
-        if (this.keys['s'] || this.keys['arrowdown']) dy += 1;
-        if (this.keys['a'] || this.keys['arrowleft']) dx -= 1;
-        if (this.keys['d'] || this.keys['arrowright']) dx += 1;
+        if (this.keys['KeyW'] || this.keys['ArrowUp']) dy -= 1;
+        if (this.keys['KeyS'] || this.keys['ArrowDown']) dy += 1;
+        if (this.keys['KeyA'] || this.keys['ArrowLeft']) dx -= 1;
+        if (this.keys['KeyD'] || this.keys['ArrowRight']) dx += 1;
 
         if (dx !== 0 || dy !== 0) {
             this.client.move(dx, dy);

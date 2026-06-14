@@ -17,14 +17,12 @@ type RoomRecord struct {
 	MaxPlayers  int    `json:"maxPlayers"`
 	PlayerCount int    `json:"playerCount"`
 	Status      string `json:"status"`
-	CreatedAt   int64  `json:"createdAt"`
 }
 
 type PlayerRecord struct {
 	PlayerId string `json:"playerId"`
 	RoomId   string `json:"roomId"`
 	Name     string `json:"name"`
-	JoinedAt int64  `json:"joinedAt"`
 }
 
 var ctx = context.Background()
@@ -90,10 +88,6 @@ func (p *RedisProvider) GetRoom(roomId string) (*RoomRecord, error) {
 		return nil, err
 	}
 	return &room, nil
-}
-
-func (p *RedisProvider) UpdateRoom(room *RoomRecord) error {
-	return p.SaveRoom(room)
 }
 
 func (p *RedisProvider) ListRooms() ([]RoomRecord, error) {

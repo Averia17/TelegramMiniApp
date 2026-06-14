@@ -121,7 +121,7 @@ func HandleJoin(c *mroom.Client, data []byte) {
 		req.RoomName = "room_" + c.Id[:8]
 	}
 	if req.RoomMap == "" {
-		req.RoomMap = "small"
+		req.RoomMap = "arena"
 	}
 	if req.Mode == "" {
 		req.Mode = "deathmatch"
@@ -218,7 +218,7 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 }
 
 func HandleListRooms(c *mroom.Client) {
-	rooms, err := mroom.ListRoomsFromRedis()
+	rooms, err := mroom.ListRoomsFromStore()
 	if err != nil {
 		sendError(c, "Failed to list rooms")
 		return
