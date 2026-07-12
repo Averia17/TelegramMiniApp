@@ -1,7 +1,7 @@
 import {useEffect, useRef, useState, useCallback} from 'react'
 import {useNavigate} from 'react-router-dom'
 import {GameClient} from './GameClient'
-import {Renderer} from './Renderer'
+import {PixiRenderer} from './PixiRenderer'
 import {Input} from './Input'
 import {WS_URL} from '../../utils/urls.js'
 import './BattleGame.css'
@@ -45,7 +45,7 @@ export const BattleGame = ({playerId, roomId, heroName, onExit}) => {
         resize()
         window.addEventListener('resize', resize)
 
-        const renderer = new Renderer(canvas)
+        const renderer = new PixiRenderer(canvas)
         rendererRef.current = renderer
 
         const client = new GameClient(
