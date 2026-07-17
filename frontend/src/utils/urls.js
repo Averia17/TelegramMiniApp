@@ -1,10 +1,10 @@
 const getBaseUrl = () => {
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${proto}//${window.location.host}`
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
+  return `${proto}//${window.location.host}`
 }
 
 const getHttpUrl = () => {
-    return `${window.location.protocol}//${window.location.host}`
+  return `${window.location.protocol}//${window.location.host}`
 }
 
 export const WS_URL = import.meta.env.VITE_WEBSOCKET_URL || getBaseUrl()

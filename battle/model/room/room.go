@@ -26,11 +26,13 @@ func (r *Room) Run() {
 	defer redisTicker.Stop()
 
 	frame := 0
+	var emptySince time.Time
 
 	for {
 		select {
 		case client := <-r.Register:
 			r.mu.Lock()
+			emptySince = time.Time{}
 			r.Clients[client.Id] = client
 			r.State.PlayerAdd(client.Id, client.Name, client.HeroName)
 			if Store != nil {
@@ -58,9 +60,7 @@ func (r *Room) Run() {
 				}
 			}
 			if len(r.Clients) == 0 {
-				r.mu.Unlock()
-				RemoveRoom(r.Id)
-				return
+				emptySince = time.Now()
 			}
 			r.mu.Unlock()
 
@@ -78,6 +78,15 @@ func (r *Room) Run() {
 
 		case <-ticker.C:
 			r.mu.Lock()
+			if len(r.Clients) == 0 {
+				shouldClose := !emptySince.IsZero() && time.Since(emptySince) >= 30*time.Second
+				r.mu.Unlock()
+				if shouldClose {
+					RemoveRoom(r.Id)
+					return
+				}
+				continue
+			}
 			r.State.Update()
 			frame++
 			if frame%3 == 0 {
@@ -206,40 +215,56 @@ func (r *Room) sendStateUpdate() {
 		GameEndsAt:  r.State.GameEndsAt,
 	}
 
-	var mapJSON game.MapJSON
+	var fullMapJSON game.MapJSON
+	var compactMapJSON game.MapJSON
+	needsFullMap := false
+	for _, client := range r.Clients {
+		if !client.MapSent {
+			needsFullMap = true
+			break
+		}
+	}
 	if r.State.Map != nil {
-		if !r.mapSent {
+		compactMapJSON = game.MapJSON{
+			Width: r.State.Map.WidthInPixels, Height: r.State.Map.HeightInPixels, TileSize: game.TileSize,
+		}
+		if needsFullMap {
 			walls := make([]game.WallJSON, 0, len(r.State.Map.Collisions))
 			for _, w := range r.State.Map.Collisions {
 				walls = append(walls, game.WallJSON{
 					MinX: w.MinX, MinY: w.MinY, MaxX: w.MaxX, MaxY: w.MaxY, Type: w.Type,
 				})
 			}
-			mapJSON = game.MapJSON{
-				Width:    r.State.Map.WidthInPixels,
-				Height:   r.State.Map.HeightInPixels,
-				TileSize: game.TileSize,
-				Walls:    walls,
-			}
-			r.mapSent = true
-		} else {
-			mapJSON = game.MapJSON{
-				Width:    r.State.Map.WidthInPixels,
-				Height:   r.State.Map.HeightInPixels,
-				TileSize: game.TileSize,
-			}
+			fullMapJSON = compactMapJSON
+			fullMapJSON.Walls = walls
 		}
 	}
 
-	msg := game.NewStateUpdate(&gameState, &mapJSON, players, monsters, bullets, props)
-	data, err := json.Marshal(msg)
+	compactState := game.NewStateUpdate(&gameState, &compactMapJSON, players, monsters, bullets, props)
+	compactData, err := json.Marshal(compactState)
 	if err != nil {
 		return
 	}
+	var fullData []byte
+	if needsFullMap {
+		fullState := game.NewStateUpdate(&gameState, &fullMapJSON, players, monsters, bullets, props)
+		fullData, err = json.Marshal(fullState)
+		if err != nil {
+			return
+		}
+	}
 
 	for _, client := range r.Clients {
+		data := compactData
+		sendingMap := !client.MapSent
+		if sendingMap {
+			data = fullData
+		}
 		select {
 		case client.Send <- data:
+			if sendingMap {
+				client.MapSent = true
+			}
 		default:
 		}
 	}

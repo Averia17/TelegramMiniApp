@@ -13,6 +13,7 @@ type Client struct {
 	Conn     *websocket.Conn
 	Room     *Room
 	Send     chan []byte
+	MapSent  bool
 }
 
 type Room struct {
@@ -27,5 +28,4 @@ type Room struct {
 	Register   chan *Client
 	Unregister chan *Client
 	mu         sync.RWMutex
-	mapSent    bool
 }
