@@ -61,11 +61,15 @@ export class CanvasArenaView {
 
   drawGround(ctx) {
     const height = this.map.height * DEPTH
-    ctx.fillStyle = "#e6b85f"
+    const sand = ctx.createLinearGradient(0, 0, 0, height)
+    sand.addColorStop(0, "#f6cf72")
+    sand.addColorStop(0.55, "#e9b957")
+    sand.addColorStop(1, "#d99a45")
+    ctx.fillStyle = sand
     ctx.fillRect(0, 0, this.map.width, height)
 
     const tile = 64
-    ctx.fillStyle = "rgba(255,228,153,.13)"
+    ctx.fillStyle = "rgba(255,238,173,.14)"
     for (let y = 0; y < this.map.height; y += tile) {
       for (let x = 0; x < this.map.width; x += tile) {
         if ((x / tile + y / tile) % 2 === 0) ctx.fillRect(x, y * DEPTH, tile, tile * DEPTH)
@@ -129,19 +133,22 @@ export class CanvasArenaView {
       return
     }
 
-    const height = Math.min(25, Math.max(15, 12 + footprint * 0.16))
+    const height = Math.min(42, Math.max(26, 22 + footprint * 0.2))
     const top = index % 5 === 0 ? "#e89755" : "#f0ad5f"
     const front = index % 5 === 0 ? "#a9493f" : "#bd5a42"
     const side = index % 5 === 0 ? "#843744" : "#954039"
     const line = index % 5 === 0 ? "#74303b" : "#823738"
     const topY = y - height
 
-    ctx.fillStyle = "rgba(74,45,40,.25)"
+    ctx.fillStyle = "rgba(74,45,40,.3)"
     roundedRect(ctx, x + 5, y + footprint + 4, width + 10, 8, 5)
     ctx.fill()
 
-    ctx.fillStyle = front
-    roundedRect(ctx, x, topY + footprint - 2, width, height + 4, 5)
+    const frontGradient = ctx.createLinearGradient(0, topY + footprint, 0, y + footprint + height)
+    frontGradient.addColorStop(0, front)
+    frontGradient.addColorStop(1, side)
+    ctx.fillStyle = frontGradient
+    roundedRect(ctx, x, topY + footprint - 2, width, height + 6, 5)
     ctx.fill()
     ctx.fillStyle = side
     ctx.beginPath()
@@ -153,6 +160,9 @@ export class CanvasArenaView {
     ctx.fill()
     ctx.fillStyle = top
     roundedRect(ctx, x, topY, width, footprint, Math.min(8, width / 4, footprint / 3))
+    ctx.fill()
+    ctx.fillStyle = "rgba(255,222,145,.22)"
+    roundedRect(ctx, x + 3, topY + 3, Math.max(0, width - 6), Math.max(0, footprint * 0.34), 4)
     ctx.fill()
     ctx.strokeStyle = line
     ctx.lineWidth = 2

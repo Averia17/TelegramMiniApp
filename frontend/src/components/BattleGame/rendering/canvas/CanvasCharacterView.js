@@ -31,6 +31,9 @@ export class CanvasCharacterView {
     this.aim = player.rotation || 0
     this.recoil = 0
     this.lastLives = player.lives
+    this.lean = 0
+    this.stepImpact = 0
+    this.previousGait = 0
   }
 
   setState(player) {
@@ -47,16 +50,25 @@ export class CanvasCharacterView {
     const blend = 1 - Math.exp(-13 * delta)
     this.worldX = lerp(this.worldX, this.state.x, blend)
     this.worldY = lerp(this.worldY, this.state.y, blend)
-    const distance = Math.hypot(this.state.x - this.lastTargetX, this.state.y - this.lastTargetY)
-    this.speed = lerp(this.speed, clamp(distance / Math.max(delta * 12, 1), 0, 1), 1 - Math.exp(-10 * delta))
+    const dx = this.state.x - this.lastTargetX
+    const dy = this.state.y - this.lastTargetY
+    const distance = Math.hypot(dx, dy)
+    const targetSpeed = clamp(distance / Math.max(delta * 150, 0.001), 0, 1)
+    this.speed = lerp(this.speed, targetSpeed, 1 - Math.exp(-12 * delta))
+    const targetLean = clamp(dx / Math.max(delta * 520, 1), -0.13, 0.13) * this.speed
+    this.lean = lerp(this.lean, targetLean, 1 - Math.exp(-9 * delta))
     this.lastTargetX = this.state.x
     this.lastTargetY = this.state.y
     this.phase += delta * (3.5 + this.speed * 9)
+    const gaitNow = Math.sin(this.phase)
+    if (this.speed > 0.35 && Math.sign(gaitNow) !== Math.sign(this.previousGait)) this.stepImpact = 1
+    this.previousGait = gaitNow
     let aimDelta = (this.state.rotation || 0) - this.aim
     aimDelta = Math.atan2(Math.sin(aimDelta), Math.cos(aimDelta))
     this.aim += aimDelta * (1 - Math.exp(-15 * delta))
     this.recoil = Math.max(0, this.recoil - delta * 7.5)
     this.hurt = Math.max(0, (this.hurt || 0) - delta * 4)
+    this.stepImpact = Math.max(0, this.stepImpact - delta * 9)
   }
 
   get depth() {
@@ -78,7 +90,7 @@ export class CanvasCharacterView {
     ctx.scale(HERO_SCALE, HERO_SCALE)
     if (this.hurt > 0 && Math.floor(this.hurt * 12) % 2) ctx.globalAlpha = 0.45
 
-    ellipse(ctx, 0, 5, 26 + this.speed * 2, 9, "#182435", 0.28)
+    ellipse(ctx, 7, 8, 29 + this.speed * 4, 10, "#182435", 0.3)
     if (isLocal) {
       ctx.strokeStyle = `rgba(108,244,255,${0.72 + Math.sin(time * 4) * 0.16})`
       ctx.lineWidth = 3
@@ -89,10 +101,12 @@ export class CanvasCharacterView {
 
     ctx.save()
     ctx.translate(0, -bounce * 3 + idle * 0.7)
+    ctx.rotate(this.lean)
+    ctx.scale(1 + this.stepImpact * 0.035, 1 - this.stepImpact * 0.045)
     ctx.scale(direction, 1)
 
-    this.drawLeg(ctx, -9, -16 + Math.max(0, -gait) * 4, gait * 0.45, hex(palette.dark))
-    this.drawLeg(ctx, 9, -16 + Math.max(0, gait) * 4, -gait * 0.45, "#34436b")
+    this.drawLeg(ctx, -9, -16 + Math.max(0, -gait) * 7, gait * 0.7, hex(palette.dark))
+    this.drawLeg(ctx, 9, -16 + Math.max(0, gait) * 7, -gait * 0.7, "#34436b")
 
     ellipse(ctx, 0, -35, 25, 29, hex(palette.dark))
     ctx.fillStyle = hex(palette.main)
@@ -110,11 +124,11 @@ export class CanvasCharacterView {
     rounded(ctx, -23, -34, 46, 10, 5, hex(palette.dark))
     rounded(ctx, -19, -32, 38, 5, 3, hex(palette.accent))
     this.drawHeroBadge(ctx, palette)
-    this.drawHead(ctx, palette, -76 - bounce * 1.5, direction)
+    this.drawHead(ctx, palette, -76 - bounce * 1.5, direction, screenAim)
     ctx.restore()
 
     ctx.save()
-    ctx.translate(0, -45 - bounce * 2 + idle * 0.35)
+    ctx.translate(this.lean * 45, -45 - bounce * 2 + idle * 0.35)
     ctx.rotate(screenAim)
     ctx.scale(1, 0.88 + Math.abs(Math.sin(this.aim)) * 0.12)
     this.drawWeaponRig(ctx, palette)
@@ -151,15 +165,16 @@ export class CanvasCharacterView {
     }
   }
 
-  drawHead(ctx, palette, y) {
+  drawHead(ctx, palette, y, direction, aim) {
+    const look = clamp(Math.cos(aim) * 2.4, -2.4, 2.4)
     ellipse(ctx, 2, y + 5, 24, 25, hex(palette.dark))
     rounded(ctx, -21, y - 20, 42, 42, 17, hex(palette.skin))
     ellipse(ctx, -20, y + 1, 5, 8, hex(palette.skin))
     ellipse(ctx, 20, y + 1, 5, 8, hex(palette.skin))
     ellipse(ctx, -7, y - 2, 6, 7, "#ffffff")
     ellipse(ctx, 7, y - 2, 6, 7, "#ffffff")
-    ellipse(ctx, -6, y - 1, 2.5, 3.5, "#263052")
-    ellipse(ctx, 6, y - 1, 2.5, 3.5, "#263052")
+    ellipse(ctx, -6 + look, y - 1, 2.5, 3.5, "#263052")
+    ellipse(ctx, 6 + look, y - 1, 2.5, 3.5, "#263052")
     ctx.fillStyle = hex(palette.main)
     ctx.beginPath()
     ctx.moveTo(-23, y - 6); ctx.lineTo(-18, y - 27); ctx.lineTo(-8, y - 22)

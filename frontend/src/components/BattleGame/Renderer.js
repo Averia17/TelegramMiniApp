@@ -35,6 +35,8 @@ export class Renderer {
     this.time = 0
     this.lastRenderAt = performance.now()
     this.knownBullets = new Set()
+    this.particles = []
+    this.shake = 0
     this.resize(window.innerWidth, window.innerHeight)
   }
 
@@ -60,7 +62,11 @@ export class Renderer {
     bullets.forEach((bullet, index) => {
       const key = `${bullet.playerId || "bullet"}:${index}`
       active.add(key)
-      if (!this.knownBullets.has(key)) this.players.get(String(bullet.playerId))?.triggerRecoil()
+      if (!this.knownBullets.has(key)) {
+        this.players.get(String(bullet.playerId))?.triggerRecoil()
+        if (String(bullet.playerId) === String(this.localPlayerId)) this.shake = Math.max(this.shake, 4.5)
+        this.spawnMuzzle(bullet)
+      }
     })
     this.knownBullets = active
   }
@@ -89,6 +95,8 @@ export class Renderer {
     this.lastRenderAt = now
     this.time += delta
     this.players.forEach(view => view.update(delta))
+    this.updateParticles(delta)
+    this.shake *= Math.exp(-18 * delta)
     this.updateCamera(delta)
     this.draw()
   }
@@ -116,7 +124,9 @@ export class Renderer {
     ctx.fillStyle = "#e6b85f"
     ctx.fillRect(0, 0, this.width, this.height)
     ctx.save()
-    ctx.translate(this.width / 2, this.height / 2 + 16)
+    const shakeX = (Math.random() - 0.5) * this.shake
+    const shakeY = (Math.random() - 0.5) * this.shake
+    ctx.translate(this.width / 2 + shakeX, this.height / 2 + 42 + shakeY)
     ctx.scale(this.zoom, this.zoom)
     ctx.translate(-this.camera.x, -this.camera.y)
     this.arena.drawGround(ctx)
@@ -137,6 +147,44 @@ export class Renderer {
     depthItems.sort((a, b) => a.depth - b.depth)
     depthItems.forEach(item => item.draw(ctx))
     ;(this.state?.bullets || []).forEach(bullet => this.drawBullet(ctx, bullet))
+    this.particles.forEach(particle => this.drawParticle(ctx, particle))
+    ctx.restore()
+  }
+
+  spawnMuzzle(bullet) {
+    if (!bullet) return
+    for (let i = 0; i < 7; i += 1) {
+      const angle = (bullet.rotation || 0) + (Math.random() - 0.5) * 0.9
+      this.particles.push({
+        x: bullet.x, y: bullet.y, z: 28, age: 0, life: 0.16 + Math.random() * 0.16,
+        vx: Math.cos(angle) * (35 + Math.random() * 80),
+        vy: Math.sin(angle) * (35 + Math.random() * 80),
+        vz: (Math.random() - 0.2) * 45,
+        size: 2 + Math.random() * 4,
+      })
+    }
+  }
+
+  updateParticles(delta) {
+    this.particles.forEach(particle => {
+      particle.age += delta
+      particle.x += particle.vx * delta
+      particle.y += particle.vy * delta
+      particle.z += particle.vz * delta
+      particle.vz -= 150 * delta
+    })
+    this.particles = this.particles.filter(particle => particle.age < particle.life)
+  }
+
+  drawParticle(ctx, particle) {
+    const point = project(particle.x, particle.y)
+    const alpha = 1 - particle.age / particle.life
+    ctx.save()
+    ctx.globalAlpha = alpha
+    ctx.fillStyle = particle.age < particle.life * 0.45 ? "#fff6b0" : "#ff8b32"
+    ctx.beginPath()
+    ctx.arc(point.x, point.y - particle.z, particle.size * alpha, 0, Math.PI * 2)
+    ctx.fill()
     ctx.restore()
   }
 
@@ -191,14 +239,19 @@ export class Renderer {
     const rotation = Math.atan2(Math.sin(bullet.rotation || 0) * DEPTH, Math.cos(bullet.rotation || 0))
     const color = bullet.color || "#ffdd42"
     ctx.save()
-    ctx.translate(point.x, point.y - 28)
+    ctx.translate(point.x, point.y - 32)
     ctx.rotate(rotation)
     const gradient = ctx.createLinearGradient(-20, 0, 8, 0)
     gradient.addColorStop(0, "rgba(255,255,255,0)")
     gradient.addColorStop(1, color)
     ctx.strokeStyle = gradient
-    ctx.lineWidth = 6
-    ctx.beginPath(); ctx.moveTo(-20, 0); ctx.lineTo(0, 0); ctx.stroke()
+    ctx.lineCap = "round"
+    ctx.lineWidth = 9
+    ctx.beginPath(); ctx.moveTo(-30, 0); ctx.lineTo(0, 0); ctx.stroke()
+    ctx.globalAlpha = 0.3
+    ctx.fillStyle = color
+    ctx.beginPath(); ctx.ellipse(-5, 0, 16, 10, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.globalAlpha = 1
     ctx.fillStyle = color
     ctx.beginPath(); ctx.ellipse(0, 0, 7, 5, 0, 0, Math.PI * 2); ctx.fill()
     ctx.fillStyle = "#ffffff"

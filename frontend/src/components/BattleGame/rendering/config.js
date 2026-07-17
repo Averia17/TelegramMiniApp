@@ -1,5 +1,7 @@
-export const DEPTH = 0.88
-export const HERO_SCALE = 1.22
+// The world is rendered as a tilted 2.5D stage. A stronger Y compression is what
+// makes circles become ground ellipses while characters remain upright.
+export const DEPTH = 0.66
+export const HERO_SCALE = 1.08
 
 export const DEFAULT_ARENA_SIZE = {
   width: 1024,
