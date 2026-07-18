@@ -1,11 +1,14 @@
 import {useCallback, useEffect, useState} from "react"
 import {useNavigate, useSearchParams} from "react-router-dom"
+import axios from "axios"
 import {HeroSelect} from "../components/HeroSelect/HeroSelect.jsx"
 import {Leaderboard} from "../components/Tabs/Leaderboard.jsx"
 import {ProfileTab} from "../components/Tabs/ProfileTab.jsx"
+import {StoreTab} from "../components/Tabs/StoreTab.jsx"
 import "./landing-page.css"
+import {API_URL} from "../utils/urls.js"
 
-const TABS = ["play", "rating", "profile"]
+const TABS = ["play", "rating", "profile", "store"]
 
 const LandingPage = ({id}) => {
   const navigate = useNavigate()
@@ -13,6 +16,11 @@ const LandingPage = ({id}) => {
   const tabParam = searchParams.get("tab")
   const [tab, setTab] = useState(() => TABS.includes(tabParam) ? tabParam : "play")
   const [selectedHero, setSelectedHero] = useState(() => window.localStorage.getItem("battle_hero"))
+  const [economy, setEconomy] = useState({energy:100,max_energy:100,gold:0,next_energy_in:0})
+  const [playError, setPlayError] = useState("")
+
+  const refreshEconomy = useCallback(() => axios.get(`${API_URL}/economy/${id}`).then(({data}) => setEconomy(data)).catch(() => {}), [id])
+  useEffect(() => { refreshEconomy(); const timer=setInterval(refreshEconomy,30000); return () => clearInterval(timer) }, [refreshEconomy])
 
   const selectHero = useCallback(hero => {
     setSelectedHero(hero)
@@ -28,9 +36,15 @@ const LandingPage = ({id}) => {
     setSearchParams({tab: nextTab}, {replace: true})
   }, [setSearchParams])
 
-  const handlePlay = useCallback(() => {
-    if (selectedHero) navigate(`/battle?hero=${encodeURIComponent(selectedHero)}`)
-  }, [navigate, selectedHero])
+  const handlePlay = useCallback(async () => {
+    if (!selectedHero) return
+    setPlayError("")
+    try {
+      const {data}=await axios.post(`${API_URL}/economy/${id}/battle`)
+      setEconomy(data)
+      navigate(`/battle?hero=${encodeURIComponent(selectedHero)}`)
+    } catch (error) { setPlayError(error.response?.data?.detail || "Не удалось начать бой") }
+  }, [id,navigate,selectedHero])
 
   const playerTag = `P${String(id || 0).slice(-6)}`
 
@@ -44,15 +58,16 @@ const LandingPage = ({id}) => {
               <div><strong>{playerTag}</strong><small><i>🏆</i> 0</small></div>
             </button>
             <div className="lp-currencies">
-              <Currency icon="⚡" value="20" color="#b663f1"/>
+              <Currency icon="⚡" value={`${economy.energy}/${economy.max_energy}`} color="#b663f1"/>
               <Currency icon="◆" value="0" color="#53e473"/>
-              <Currency icon="●" value="100" color="#ffd340"/>
+              <Currency icon="●" value={economy.gold} color="#ffd340"/>
             </div>
           </header>
 
           <div className="lp-lobby-backdrop"><i/><i/><i/></div>
 
           <nav className="lp-side-nav">
+            <SideButton icon="▣" label="МАГАЗИН" badge="!" onClick={() => switchTab("store")}/>
             <SideButton icon="🏆" label="РЕЙТИНГ" onClick={() => switchTab("rating")}/>
             <SideButton icon="👤" label="ПРОФИЛЬ" onClick={() => switchTab("profile")}/>
             <SideButton icon="☰" label="НОВОСТИ" badge="1"/>
@@ -71,6 +86,7 @@ const LandingPage = ({id}) => {
             <button className="lp-play-btn" disabled={!selectedHero} onClick={handlePlay}>
               В БОЙ!
             </button>
+            {playError && <div className="lp-play-error">{playError}</div>}
           </footer>
         </>
       )}
@@ -79,11 +95,12 @@ const LandingPage = ({id}) => {
         <>
           <header className="lp-page-header">
             <button onClick={() => switchTab("play")}>‹</button>
-            <div><small>{tab === "rating" ? "ЛУЧШИЕ ИГРОКИ" : "КАРТОЧКА ИГРОКА"}</small><h1>{tab === "rating" ? "РЕЙТИНГ" : "ПРОФИЛЬ"}</h1></div>
+            <PageTitle tab={tab}/>
           </header>
           <div className="lp-content lp-content--page">
-            {tab === "rating" && <Leaderboard/>}
+            {tab === "rating" && <Leaderboard playerId={id}/>}
             {tab === "profile" && <ProfileTab id={id}/>}
+            {tab === "store" && <StoreTab userId={id} economy={economy} onEconomyChange={setEconomy}/>}
           </div>
         </>
       )}
@@ -100,5 +117,11 @@ const SideButton = ({icon, label, badge, onClick}) => (
     {badge && <b>{badge}</b>}<span>{icon}</span><small>{label}</small>
   </button>
 )
+
+const PageTitle = ({tab}) => {
+  if (tab === "rating") return <div><small>ЛУЧШИЕ ИГРОКИ</small><h1>РЕЙТИНГ</h1></div>
+  if (tab === "store") return <div><small>ПРЕДЛОЖЕНИЯ АРЕНЫ</small><h1>МАГАЗИН</h1></div>
+  return <div><small>КАРТОЧКА ИГРОКА</small><h1>ПРОФИЛЬ</h1></div>
+}
 
 export default LandingPage

@@ -42,12 +42,16 @@ func GetOrCreateRoom(roomId, roomName, mapName, mode string, maxPlayers int) *Ro
 			}
 			result := &provider.BattleResult{
 				RoomId:   roomId,
+				EndedAt:  provider.NowMillis(),
 				MapName:  mapName,
 				Mode:     mode,
 				Duration: duration,
 				Winner:   winner,
 			}
 			for _, p := range players {
+				if p.IsBot {
+					continue
+				}
 				result.Players = append(result.Players, provider.PlayerResult{
 					PlayerId: p.PlayerId,
 					Name:     p.Name,
@@ -57,7 +61,7 @@ func GetOrCreateRoom(roomId, roomName, mapName, mode string, maxPlayers int) *Ro
 					Won:      p.Name == winner,
 				})
 			}
-			Kafka.PublishBattleResult(result)
+			_ = Kafka.PublishBattleResult(result)
 		},
 		OnPlayerKilled: func(playerId, killerName string) {
 			r.SendToPlayer(playerId, "you_died", map[string]interface{}{

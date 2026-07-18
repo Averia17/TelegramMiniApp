@@ -22,6 +22,12 @@ const removeMissing = (collection, activeKeys) => {
   })
 }
 
+const bushAt = (player, walls = []) => walls.find(wall =>
+  (wall.type === "bush" || wall.type === "half") &&
+  player.x >= wall.minX && player.x <= wall.maxX && player.y >= wall.minY && player.y <= wall.maxY)
+
+const sharesBush = (a, b) => a && b && (a === b || (a.bushGroup !== undefined && a.bushGroup === b.bushGroup))
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas
@@ -43,7 +49,12 @@ export class Renderer {
   setState(state) {
     if (!state) return
     this.state = state
+    if (state.combatShake) {
+      this.shake = Math.max(this.shake, state.combatShake)
+      state.combatShake = 0
+    }
     this.arena.setMap(state.map)
+    this.arena.setVisibilityContext(state.players?.[this.localPlayerId], Object.entries(state.players || {}).filter(([id]) => String(id) !== String(this.localPlayerId)).map(([, player]) => player))
     const activePlayers = new Set(Object.keys(state.players || {}))
     Object.entries(state.players || {}).forEach(([id, player]) => {
       let view = this.players.get(id)
@@ -64,6 +75,7 @@ export class Renderer {
       active.add(key)
       if (!this.knownBullets.has(key)) {
         this.players.get(String(bullet.playerId))?.triggerRecoil()
+        this.players.get(String(bullet.playerId))?.reveal(1000)
         if (String(bullet.playerId) === String(this.localPlayerId)) this.shake = Math.max(this.shake, 4.5)
         this.spawnMuzzle(bullet)
       }
@@ -94,7 +106,8 @@ export class Renderer {
     const delta = Math.min(Math.max((now - this.lastRenderAt) / 1000, 1 / 240), 0.05)
     this.lastRenderAt = now
     this.time += delta
-    this.players.forEach(view => view.update(delta))
+    this.updateBushVisibility(now)
+    this.players.forEach((view, id) => view.update(delta, String(id) === String(this.localPlayerId)))
     this.updateParticles(delta)
     this.shake *= Math.exp(-18 * delta)
     this.updateCamera(delta)
@@ -109,6 +122,9 @@ export class Renderer {
       const point = project(local.worldX, local.worldY)
       targetX = point.x
       targetY = point.y - 34
+      this.camera.x = targetX
+      this.camera.y = targetY
+      return
     }
     this.camera.x ??= targetX
     this.camera.y ??= targetY
@@ -119,6 +135,7 @@ export class Renderer {
 
   draw() {
     const ctx = this.ctx
+    this.arena.time = this.time
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, this.width, this.height)
     ctx.fillStyle = "#e6b85f"
@@ -130,13 +147,11 @@ export class Renderer {
     ctx.scale(this.zoom, this.zoom)
     ctx.translate(-this.camera.x, -this.camera.y)
     this.arena.drawGround(ctx)
+    this.drawAimGuide(ctx)
 
     const depthItems = this.arena.getDepthItems()
-    this.players.forEach((view, id) => {
-      depthItems.push({
-        depth: view.depth,
-        draw: drawContext => view.draw(drawContext, this.time, String(id) === String(this.localPlayerId)),
-      })
+    if (!this.externalCharacterLayer) this.players.forEach((view, id) => {
+      depthItems.push({depth:view.depth,draw:drawContext=>view.draw(drawContext,this.time,String(id)===String(this.localPlayerId))})
     })
     Object.entries(this.state?.monsters || {}).forEach(([id, monster]) => {
       depthItems.push({depth: monster.y * DEPTH, draw: drawContext => this.drawMonster(drawContext, monster, id)})
@@ -144,9 +159,13 @@ export class Renderer {
     ;(this.state?.props || []).forEach((prop, index) => {
       depthItems.push({depth: prop.y * DEPTH, draw: drawContext => this.drawPickup(drawContext, prop, index)})
     })
-    depthItems.sort((a, b) => a.depth - b.depth)
+    // Stable back-to-front painter's order. The sequence fallback prevents
+    // equal-Y walls and actors from flickering between animation frames.
+    depthItems.forEach((item, sequence) => { item.sequence = sequence })
+    depthItems.sort((a, b) => a.depth - b.depth || a.sequence - b.sequence)
     depthItems.forEach(item => item.draw(ctx))
     ;(this.state?.bullets || []).forEach(bullet => this.drawBullet(ctx, bullet))
+    ;(this.state?.effects || []).forEach(effect => this.drawEffect(ctx, effect))
     this.particles.forEach(particle => this.drawParticle(ctx, particle))
     ctx.restore()
   }
@@ -204,7 +223,29 @@ export class Renderer {
     this.drawEye(ctx, 8, -25)
     ctx.fillStyle = "#54327c"
     ctx.beginPath(); ctx.roundRect(-20, -7, 12, 14, 6); ctx.roundRect(8, -7, 12, 14, 6); ctx.fill()
+    const health = Math.max(0, Math.min(1, (monster.lives ?? 1) / (monster.maxLives || monster.lives || 1)))
+    ctx.fillStyle = "#19213c"; ctx.beginPath(); ctx.roundRect(-24, -58, 48, 8, 4); ctx.fill()
+    ctx.fillStyle = health < .4 ? "#ff4b57" : "#63df59"; ctx.beginPath(); ctx.roundRect(-21, -55, 42 * health, 3, 2); ctx.fill()
+    ctx.textAlign = "center"; ctx.font = "800 9px Arial"; ctx.lineWidth = 3; ctx.strokeStyle = "#18213d"; ctx.strokeText("ДИКИЙ ЗВЕРЬ", 0, -65); ctx.fillStyle = "#fff"; ctx.fillText("ДИКИЙ ЗВЕРЬ", 0, -65)
     ctx.restore()
+  }
+
+  updateBushVisibility(now) {
+    const local = this.state?.players?.[this.localPlayerId]
+    const walls = this.state?.map?.walls || []
+    if (!local) return
+    const localBush = bushAt(local, walls)
+    this.players.forEach((view, id) => {
+      if (String(id) === String(this.localPlayerId)) {
+        view.targetVisibility = 1
+        return
+      }
+      const enemy = this.state?.players?.[id]
+      const enemyBush = enemy && bushAt(enemy, walls)
+      const closeEnough = enemy && Math.hypot(enemy.x - local.x, enemy.y - local.y) <= Math.max(90, (this.state.map.tileSize || 40) * 2.5)
+      const concealed = enemyBush && !closeEnough && !sharesBush(localBush, enemyBush) && now >= view.revealedUntil
+      view.targetVisibility = concealed ? 0 : 1
+    })
   }
 
   drawEye(ctx, x, y) {
@@ -241,21 +282,95 @@ export class Renderer {
     ctx.save()
     ctx.translate(point.x, point.y - 32)
     ctx.rotate(rotation)
-    const gradient = ctx.createLinearGradient(-20, 0, 8, 0)
+    const size = bullet.size || 7
+    const gradient = ctx.createLinearGradient(-20 - size, 0, 8, 0)
     gradient.addColorStop(0, "rgba(255,255,255,0)")
     gradient.addColorStop(1, color)
     ctx.strokeStyle = gradient
     ctx.lineCap = "round"
-    ctx.lineWidth = 9
-    ctx.beginPath(); ctx.moveTo(-30, 0); ctx.lineTo(0, 0); ctx.stroke()
+    ctx.lineWidth = bullet.kind === "wave" ? 16 : Math.max(7, size * .8)
+    ctx.beginPath(); ctx.moveTo(-24 - size, 0); ctx.lineTo(0, 0); ctx.stroke()
     ctx.globalAlpha = 0.3
     ctx.fillStyle = color
-    ctx.beginPath(); ctx.ellipse(-5, 0, 16, 10, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.ellipse(-5, 0, size * 1.8, size, 0, 0, Math.PI * 2); ctx.fill()
     ctx.globalAlpha = 1
     ctx.fillStyle = color
-    ctx.beginPath(); ctx.ellipse(0, 0, 7, 5, 0, 0, Math.PI * 2); ctx.fill()
+    if (bullet.kind === "rock") ctx.fillStyle = "#8c674e"
+    ctx.beginPath(); ctx.ellipse(0, 0, size, size * (bullet.kind === "wave" ? .35 : .72), 0, 0, Math.PI * 2); ctx.fill()
     ctx.fillStyle = "#ffffff"
     ctx.beginPath(); ctx.ellipse(1, -1, 3.5, 2.5, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.restore()
+  }
+
+  drawAimGuide(ctx) {
+    const player = this.state?.players?.[this.localPlayerId]
+    if (!player || player.dead || !player.aiming) return
+    const hero = String(player.hero || "blaze").toLowerCase()
+    const ranges = {blaze: 430, frost: 225, viper: 112, titan: 155, shadow: 500, spark: 390, nova: 460, rex: 92, pixel: 650, boulder: 480}
+    const melee = ["frost", "viper", "titan", "rex"].includes(hero)
+    const range = ranges[hero] || 430
+    const start = project(player.x, player.y)
+    const angle = player.rotation || 0
+    const end = project(player.x + Math.cos(angle) * range, player.y + Math.sin(angle) * range)
+    const screenAngle = Math.atan2(end.y - start.y, end.x - start.x)
+    ctx.save(); ctx.translate(start.x, start.y - 24); ctx.rotate(screenAngle)
+    ctx.fillStyle = "rgba(255,255,255,.16)"; ctx.strokeStyle = "rgba(255,255,255,.78)"; ctx.lineWidth = 3
+    if (melee) {
+      const width = hero === "titan" ? range : range * .72
+      ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(range, -width); ctx.quadraticCurveTo(range * 1.08, 0, range, width); ctx.closePath(); ctx.fill(); ctx.stroke()
+    } else {
+      const half = hero === "boulder" || hero === "nova" ? 26 : hero === "blaze" ? 38 : 12
+      ctx.beginPath(); ctx.moveTo(20, -8); ctx.lineTo(range, -half); ctx.lineTo(range, half); ctx.lineTo(20, 8); ctx.closePath(); ctx.fill(); ctx.stroke()
+    }
+    ctx.restore()
+  }
+
+  drawEffect(ctx, effect) {
+    const point = project(effect.x, effect.y)
+    const progress = Math.max(0, Math.min(1, 1 - effect.life / (effect.maxLife || .45)))
+    const alpha = Math.max(0, 1 - progress)
+    ctx.save(); ctx.globalAlpha = alpha
+    ctx.strokeStyle = effect.color || "#fff"; ctx.fillStyle = effect.color || "#fff"
+    ctx.lineCap = "round"; ctx.lineJoin = "round"
+    if (["slash", "bite", "cone"].includes(effect.kind)) {
+      const rotation = Math.atan2(Math.sin(effect.angle || 0) * DEPTH, Math.cos(effect.angle || 0))
+      const range = effect.range || 120
+      ctx.translate(point.x, point.y - 28); ctx.rotate(rotation)
+      if (effect.kind === "cone") {
+        ctx.globalAlpha = alpha * .25
+        ctx.beginPath(); ctx.moveTo(12, 0); ctx.arc(0, 0, range * (.65 + progress * .35), -(effect.arc || .7), effect.arc || .7); ctx.closePath(); ctx.fill()
+      } else {
+        ctx.lineWidth = effect.kind === "bite" ? 18 : 12
+        ctx.beginPath(); ctx.arc(0, 0, range * (.55 + progress * .45), -(effect.arc || .8), effect.arc || .8); ctx.stroke()
+        if (effect.kind === "bite") { ctx.beginPath(); ctx.arc(0, 0, range * .75, -.65, -.18); ctx.arc(0, 0, range * .75, .18, .65); ctx.stroke() }
+      }
+    } else if (effect.kind === "damage") {
+      const bounce = Math.sin(Math.min(1, progress * 1.7) * Math.PI)
+      const scale = .72 + bounce * .5
+      ctx.translate(point.x, point.y - 72 - progress * 42)
+      ctx.scale(scale, scale)
+      ctx.globalAlpha = Math.min(1, alpha * 1.8)
+      ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "900 25px Arial"
+      ctx.lineWidth = 7; ctx.strokeStyle = "#6b1837"; ctx.strokeText(`-${effect.damage}`,0,0)
+      ctx.fillStyle = effect.color || "#fff"; ctx.fillText(`-${effect.damage}`,0,0)
+    } else if (["beam", "lightning"].includes(effect.kind)) {
+      const end = project(effect.toX, effect.toY)
+      ctx.lineWidth = effect.kind === "beam" ? 10 : 6
+      ctx.shadowColor = effect.color; ctx.shadowBlur = 18
+      ctx.beginPath(); ctx.moveTo(point.x, point.y - 32)
+      if (effect.kind === "lightning") {
+        const steps = 7
+        for (let i = 1; i < steps; i += 1) {
+          const t = i / steps
+          ctx.lineTo(point.x + (end.x - point.x) * t + (Math.random() - .5) * 18, point.y + (end.y - point.y) * t - 32 + (Math.random() - .5) * 14)
+        }
+      }
+      ctx.lineTo(end.x, end.y - 32); ctx.stroke()
+      ctx.strokeStyle = "#fff"; ctx.lineWidth *= .3; ctx.stroke()
+    } else {
+      ctx.lineWidth = 12 * (1 - progress) + 2
+      ctx.beginPath(); ctx.ellipse(point.x, point.y, (effect.radius || 80) * progress, (effect.radius || 80) * DEPTH * progress, 0, 0, Math.PI * 2); ctx.stroke()
+    }
     ctx.restore()
   }
 

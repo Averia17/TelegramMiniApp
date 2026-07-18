@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -120,11 +121,13 @@ func HandleJoin(c *mroom.Client, data []byte) {
 		RoomMap    string `json:"roomMap"`
 		MaxPlayers int    `json:"maxPlayers"`
 		Mode       string `json:"mode"`
+		UserId     string `json:"userId"`
 	}
 	if err := json.Unmarshal(data, &req); err != nil {
 		sendError(c, "Invalid join request")
 		return
 	}
+	applyUserId(c, req.UserId)
 
 	if req.RoomName == "" {
 		req.RoomName = "room_" + c.Id[:8]
@@ -136,6 +139,8 @@ func HandleJoin(c *mroom.Client, data []byte) {
 		req.Mode = "deathmatch"
 	}
 	if req.MaxPlayers <= 0 {
+		req.MaxPlayers = 8
+	} else if req.MaxPlayers > 8 {
 		req.MaxPlayers = 8
 	}
 	if req.PlayerName == "" {
@@ -158,11 +163,13 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 		RoomId     string `json:"roomId"`
 		PlayerName string `json:"playerName"`
 		HeroName   string `json:"heroName"`
+		UserId     string `json:"userId"`
 	}
 	if err := json.Unmarshal(data, &req); err != nil {
 		sendError(c, "Invalid join request")
 		return
 	}
+	applyUserId(c, req.UserId)
 
 	if req.RoomId == "" {
 		sendError(c, "Room ID required")
@@ -192,11 +199,13 @@ func HandleFindMatch(c *mroom.Client, data []byte) {
 		Type       string `json:"type"`
 		PlayerName string `json:"playerName"`
 		HeroName   string `json:"heroName"`
+		UserId     string `json:"userId"`
 	}
 	if err := json.Unmarshal(data, &req); err != nil {
 		sendError(c, "Invalid match request")
 		return
 	}
+	applyUserId(c, req.UserId)
 
 	if req.PlayerName == "" {
 		req.PlayerName = c.Id[:8]
@@ -205,6 +214,12 @@ func HandleFindMatch(c *mroom.Client, data []byte) {
 	c.HeroName = req.HeroName
 
 	sroom.AddToMatchQueue(c)
+}
+
+func applyUserId(c *mroom.Client, userId string) {
+	if id, err := strconv.ParseInt(userId, 10, 64); err == nil && id > 0 {
+		c.Id = userId
+	}
 }
 
 func HandleCancelMatch(c *mroom.Client) {

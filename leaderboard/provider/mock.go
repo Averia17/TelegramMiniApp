@@ -25,6 +25,7 @@ func (m *MockStore) Save(score *model.Score) error {
 		existing.Score += score.Score
 		existing.Wins += score.Wins
 		existing.Games += score.Games
+		existing.Kills += score.Kills
 	} else {
 		cp := *score
 		m.scores[score.PlayerId] = &cp

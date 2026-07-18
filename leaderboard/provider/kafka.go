@@ -23,9 +23,10 @@ func NewKafkaConsumer(brokerAddr string, handler BattleResultHandler) *KafkaCons
 	r := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:        []string{brokerAddr},
 		Topic:          BattleResultsTopic,
+		GroupID:        "leaderboard-results",
 		MinBytes:       1,
 		MaxBytes:       10e6,
-		StartOffset:    kafka.LastOffset,
+		StartOffset:    kafka.FirstOffset,
 		CommitInterval: 0,
 	})
 	return &KafkaConsumer{reader: r, handler: handler}

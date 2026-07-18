@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile
     volumes:
       - .:/app
-    env_file: .env
+    env_file: ../.env
     restart: unless-stopped
     depends_on:
       - db
@@ -17,8 +17,6 @@ services:
   db:
     container_name: db
     image: postgres:13-alpine
-    ports:
-      - "5452:5432"
     restart: always
     volumes:
       - db-data:/var/lib/postgresql/data

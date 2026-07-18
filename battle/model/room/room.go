@@ -5,6 +5,7 @@ import (
 	"battle/provider"
 	"encoding/json"
 	"log"
+	"math"
 	"time"
 )
 
@@ -147,20 +148,28 @@ func (r *Room) sendStateUpdate() {
 	playerCount := len(r.State.Players)
 	players := make(map[string]game.PlayerJSON, playerCount)
 	for id, p := range r.State.Players {
+		now := time.Now().UnixMilli()
+		primaryCooldown := math.Max(0, float64(p.LastPrimaryAt+6500-now)/1000)
+		secondaryCooldown := math.Max(0, float64(p.LastSecondaryAt+9000-now)/1000)
 		players[id] = game.PlayerJSON{
-			X:        p.X,
-			Y:        p.Y,
-			Radius:   p.Radius,
-			PlayerId: p.PlayerId,
-			Name:     p.Name,
-			Lives:    p.Lives,
-			MaxLives: p.MaxLives,
-			Team:     p.Team,
-			Color:    p.Color,
-			Kills:    p.Kills,
-			Rotation: p.Rotation,
-			Ack:      p.Ack,
-			Hero:     p.HeroName,
+			X:          p.X,
+			Y:          p.Y,
+			Radius:     p.Radius,
+			PlayerId:   p.PlayerId,
+			Name:       p.Name,
+			Lives:      p.Lives,
+			MaxLives:   p.MaxLives,
+			Team:       p.Team,
+			Color:      p.Color,
+			Kills:      p.Kills,
+			Rotation:   p.Rotation,
+			Ack:        p.Ack,
+			Hero:       p.HeroName,
+			AttackType: p.AttackType,
+			ShieldHP:   p.ShieldHP,
+			Marks:      p.Marks,
+			Cooldowns:  map[string]float64{"primary": primaryCooldown, "secondary": secondaryCooldown},
+			Poisoned:   p.PoisonUntil > time.Now().UnixMilli(),
 		}
 	}
 
@@ -181,13 +190,18 @@ func (r *Room) sendStateUpdate() {
 	for _, b := range r.State.Bullets {
 		if b.Active {
 			bullets = append(bullets, game.BulletJSON{
-				X:        b.X,
-				Y:        b.Y,
-				Radius:   b.Radius,
-				PlayerId: b.PlayerId,
-				Team:     b.Team,
-				Rotation: b.Rotation,
-				Color:    b.Color,
+				X:         b.X,
+				Y:         b.Y,
+				Radius:    b.Radius,
+				PlayerId:  b.PlayerId,
+				Team:      b.Team,
+				Rotation:  b.Rotation,
+				Color:     b.Color,
+				Kind:      b.Kind,
+				Speed:     b.Speed,
+				MaxRange:  b.MaxRange,
+				Travelled: b.Travelled,
+				Returning: b.Returning,
 			})
 		}
 	}
@@ -313,6 +327,11 @@ func (r *Room) HandleMessage(client *Client, data []byte) {
 				Ts:       msg.Ts,
 				Value:    &v,
 			})
+		}
+	case "ability":
+		var v game.AbilityValue
+		if err := json.Unmarshal(msg.Value, &v); err == nil {
+			r.State.PlayerPushAction(game.Action{PlayerId: client.Id, Type: "ability", Ts: msg.Ts, Value: &v})
 		}
 	}
 }

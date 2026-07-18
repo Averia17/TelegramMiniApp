@@ -1,95 +1,64 @@
-import {useEffect, useState} from "react"
+import {useEffect, useMemo, useState} from "react"
 import axios from "axios"
-import CircularProgress from "@mui/material/CircularProgress"
-import Typography from "@mui/material/Typography"
-import Box from "@mui/material/Box"
+import {API_URL, LB_URL} from "../../utils/urls.js"
+import "./Tabs.css"
 
 export const ProfileTab = ({id}) => {
-  const [profile, setProfile] = useState(null)
+  const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const telegramUser = window.Telegram?.WebApp?.initDataUnsafe?.user
 
   useEffect(() => {
-    axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/users/${id}/profile`)
-      .then(({data}) => setProfile(data))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    let active = true
+    Promise.allSettled([
+      axios.get(`${API_URL}/users/${id}/profile`, {timeout: 7000}),
+      axios.get(`${LB_URL}/profile/${id}`, {timeout: 7000}),
+    ]).then(([account, battle]) => {
+      if (!active) return
+      setData({
+        account: account.status === "fulfilled" ? account.value.data : {},
+        battle: battle.status === "fulfilled" ? battle.value.data : {},
+      })
+    }).finally(() => active && setLoading(false))
+    return () => { active = false }
   }, [id])
 
-  if (loading) {
-    return (
-      <Box sx={{display: "flex", justifyContent: "center", alignItems: "center", height: "100%"}}>
-        <CircularProgress sx={{color: "#FFD700"}}/>
-      </Box>
-    )
-  }
+  const profile = useMemo(() => {
+    const account = data?.account || {}, battle = data?.battle || {}
+    return {
+      name: account.full_name || telegramUser?.first_name || battle.name || `БОЕЦ ${id}`,
+      username: account.username || telegramUser?.username,
+      tag: `#${String(id || 0).toUpperCase()}`,
+      score: battle.score || 0, best: battle.score || 0, rank: battle.rank || 0,
+      games: battle.games || 0, wins: battle.wins || 0, kills: battle.kills || 0,
+    }
+  }, [data, id, telegramUser])
 
-  if (!profile) {
-    return (
-      <Box sx={{p: 3, textAlign: "center"}}>
-        <Typography sx={{color: "#888"}}>Failed to load profile</Typography>
-      </Box>
-    )
-  }
+  if (loading) return <State icon="⏳" text="Загружаем профиль..."/>
+  const winRate = profile.games ? Math.round(profile.wins / profile.games * 100) : 0
+  const rank = rankInfo(profile.score)
 
-  return (
-    <Box sx={{p: 2, pb: 10, maxWidth: 480, mx: "auto"}}>
-      <Box sx={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 2,
-        mt: 3,
-        mb: 3,
-      }}>
-        <Box sx={{
-          width: 80,
-          height: 80,
-          borderRadius: "50%",
-          background: "linear-gradient(135deg, #FFD700, #FF8C00)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 32,
-          fontWeight: 700,
-          color: "#1a1a2e",
-        }}>
-          {(profile.full_name || profile.username || "?")[0].toUpperCase()}
-        </Box>
-
-        <Typography sx={{color: "#fff", fontSize: 20, fontWeight: 700}}>
-          {profile.full_name || profile.username || "Player"}
-        </Typography>
-
-        {profile.username && (
-          <Typography sx={{color: "#888", fontSize: 14}}>
-                        @{profile.username}
-          </Typography>
-        )}
-      </Box>
-
-      <Box sx={{display: "flex", flexDirection: "column", gap: 1.5}}>
-        <StatCard label="Rating" value={profile.tokens || 0} icon="⭐"/>
-        <StatCard label="Battles" value={profile.battles || 0} icon="⚔️"/>
-        <StatCard label="Wins" value={profile.wins || 0} icon="🏆"/>
-      </Box>
-    </Box>
-  )
+  return <section className="bs-profile">
+    <div className="bs-player-card">
+      <div className="bs-card-glow"/>
+      <div className="bs-avatar">{profile.name[0]?.toUpperCase()}</div>
+      <div className="bs-identity"><small>{profile.tag}</small><h2>{profile.name}</h2><span>{profile.username ? `@${profile.username}` : "ВНЕ КЛУБА"}</span></div>
+      <div className="bs-title">ЗВЕЗДА АРЕНЫ</div>
+    </div>
+    <div className="bs-profile-grid">
+      <Stat icon="🏆" label="ТРОФЕИ" value={profile.score}/><Stat icon="⭐" label="ЛУЧШИЙ РЕЗУЛЬТАТ" value={profile.best}/>
+    </div>
+    <div className="bs-ranked-card">
+      <div className="bs-rank-emblem">{rank.icon}</div><div><small>РЕЙТИНГОВЫЙ РАНГ</small><h3>{rank.name}</h3><span>{profile.rank ? `#${profile.rank} в глобальном рейтинге` : "Сыграй бой для калибровки"}</span></div>
+      <strong>{profile.score}</strong>
+    </div>
+    <h3 className="bs-section-title">СТАТИСТИКА БОЙЦА</h3>
+    <div className="bs-stats-grid">
+      <Stat icon="⚔" label="БОИ" value={profile.games}/><Stat icon="👑" label="ПОБЕДЫ" value={profile.wins}/><Stat icon="💥" label="УСТРАНЕНИЯ" value={profile.kills}/><Stat icon="%" label="ПОБЕД" value={`${winRate}%`}/>
+    </div>
+  </section>
 }
 
-const StatCard = ({label, value, icon}) => (
-  <Box sx={{
-    display: "flex",
-    alignItems: "center",
-    gap: 2,
-    p: 2,
-    borderRadius: 2,
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.08)",
-  }}>
-    <Typography sx={{fontSize: 24}}>{icon}</Typography>
-    <Box sx={{flex: 1}}>
-      <Typography sx={{color: "#888", fontSize: 12}}>{label}</Typography>
-      <Typography sx={{color: "#fff", fontSize: 18, fontWeight: 600}}>{value}</Typography>
-    </Box>
-  </Box>
-)
+const rankInfo = score => score >= 11250 ? {name:"PRO",icon:"🔥"} : score >= 8500 ? {name:"МАСТЕР",icon:"👑"} : score >= 6000 ? {name:"ЛЕГЕНДА",icon:"🌟"} : score >= 4500 ? {name:"МИФИЧЕСКИЙ",icon:"🔮"} : score >= 3000 ? {name:"АЛМАЗ",icon:"💎"} : score >= 1500 ? {name:"ЗОЛОТО",icon:"🏅"} : score >= 750 ? {name:"СЕРЕБРО",icon:"⚙"} : {name:"БРОНЗА",icon:"🛡"}
+const Stat = ({icon,label,value}) => <div className="bs-stat"><i>{icon}</i><span>{label}</span><b>{value}</b></div>
+const State = ({icon,text}) => <div className="bs-state"><b>{icon}</b><span>{text}</span></div>

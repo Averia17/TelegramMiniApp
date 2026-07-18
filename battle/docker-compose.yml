@@ -4,8 +4,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "3780:8000"
+    expose:
+      - "8000"
     environment:
       - REDIS_ADDR=battle-redis:6379
       - KAFKA_ADDR=kafka:9092
@@ -18,8 +18,6 @@ services:
   battle-redis:
     container_name: battle-redis
     image: redis:7-alpine
-    ports:
-      - "6380:6379"
     restart: always
     volumes:
       - battle-redis-data:/data

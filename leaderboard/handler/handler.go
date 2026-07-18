@@ -21,6 +21,21 @@ func (h *Handler) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/leaderboard", h.HandleLeaderboard)
 	mux.HandleFunc("/leaderboard/score", h.HandleUpdateScore)
 	mux.HandleFunc("/leaderboard/player/", h.HandleGetPlayer)
+	mux.HandleFunc("/leaderboard/profile/", h.HandleGetProfile)
+}
+
+func (h *Handler) HandleGetProfile(w http.ResponseWriter, r *http.Request) {
+	playerId := r.URL.Path[len("/leaderboard/profile/"):]
+	if playerId == "" {
+		http.Error(w, "playerId required", http.StatusBadRequest)
+		return
+	}
+	profile, err := h.svc.Profile(playerId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, profile)
 }
 
 func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {

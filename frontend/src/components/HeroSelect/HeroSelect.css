@@ -34,6 +34,24 @@
 .hp-weapon i { position: absolute; left: 9px; top: 6px; width: 24px; height: 5px; border-radius: 3px; background: #6ff0ff; }
 
 .hero-portrait--titan .hp-body,.hero-portrait--boulder .hp-body { left: 12px; width: 70px; height: 59px; }.hero-portrait--titan .hp-head,.hero-portrait--boulder .hp-head { left: 20px; width: 58px; }.hero-portrait--viper .hp-body,.hero-portrait--pixel .hp-body { left: 23px; width: 50px; }.hero-portrait--viper .hp-weapon { height: 10px; border-radius: 5px; transform: rotate(-28deg); }.hero-portrait--nova .hp-weapon { width: 28px; height: 28px; border-radius: 50%; background: #fff; box-shadow: 0 0 15px #7af2ff; }.hero-portrait--rex .hp-hair { clip-path: polygon(0 30%, 8% 0, 23% 30%, 50% 0, 77% 30%, 92% 0, 100% 30%, 90% 100%, 10% 100%); }
+.hero-portrait--blaze .hp-head,.hero-portrait--pixel .hp-head { border-radius: 12px; background: #34415f; }.hero-portrait--blaze .hp-hair,.hero-portrait--pixel .hp-hair { top: 4px; left: 5px; right: 5px; height: 13px; border: 0; border-radius: 6px; clip-path: none; background: #15203b; }.hero-portrait--blaze .hp-eye,.hero-portrait--pixel .hp-eye { top: 24px; width: 15px; height: 7px; border: 0; border-radius: 4px; background: #68f6ff; }.hero-portrait--blaze .hp-eye::after,.hero-portrait--pixel .hp-eye::after { display:none; }.hero-portrait--blaze .hp-mouth,.hero-portrait--pixel .hp-mouth { display:none; }
+.hero-portrait--frost .hp-head,.hero-portrait--titan .hp-head,.hero-portrait--boulder .hp-head { border-radius: 8px 17px 11px 18px; background: color-mix(in srgb,var(--hero-color),#fff 28%); clip-path: polygon(8% 16%,35% 0,87% 13%,100% 70%,70% 100%,12% 88%,0 45%); }.hero-portrait--frost .hp-hair,.hero-portrait--titan .hp-hair,.hero-portrait--boulder .hp-hair { display:none; }
+.hero-portrait--viper .hp-head,.hero-portrait--rex .hp-head { background: color-mix(in srgb,var(--hero-color),#fff 22%); border-radius: 25px 25px 30px 12px; }.hero-portrait--viper .hp-mouth,.hero-portrait--rex .hp-mouth { left: 15px; width: 28px; border-bottom-width: 5px; }
+.hero-portrait--shadow .hp-head,.hero-portrait--nova .hp-head { border-radius: 50% 50% 43% 43%; background: color-mix(in srgb,var(--hero-color),#29204f 35%); }.hero-portrait--shadow .hp-eye--left,.hero-portrait--nova .hp-eye--left { left: 17px; width: 18px; height: 20px; }.hero-portrait--shadow .hp-eye--right,.hero-portrait--nova .hp-eye--right { display:none; }.hero-portrait--shadow .hp-hair,.hero-portrait--nova .hp-hair { display:none; }
+
+/* Every portrait has its own anatomy. Weapons are part of silhouettes only when the design requires them. */
+.hero-portrait .hp-weapon { display:none; }
+.hero-portrait--viper .hp-body { left:8px; top:38px; width:78px; height:66px; border-radius:45% 45% 34% 34%; background:#332d33; box-shadow:inset 0 0 0 15px #ff632c,inset 0 0 0 25px #3b3035; }
+.hero-portrait--viper .hp-head { left:29px; top:2px; width:42px; height:44px; background:#3b3035; clip-path:polygon(12% 26%,34% 0,83% 13%,100% 78%,70% 100%,8% 86%,0 44%); }
+.hero-portrait--viper .hp-arm { width:31px;height:42px;border-radius:45%;background:#44343a }.hero-portrait--viper .hp-leg{width:20px;background:#332b31}
+.hero-portrait--titan .hp-leg{display:none}.hero-portrait--titan .hp-body{left:14px;top:35px;width:69px;height:68px;clip-path:polygon(10% 0,90% 0,100% 80%,68% 62%,50% 100%,29% 62%,0 82%);background:#34285b}
+.hero-portrait--titan .hp-head{left:24px;top:0;width:50px;height:62px;clip-path:polygon(50% 0,100% 62%,78% 100%,20% 100%,0 62%);background:#242044}.hero-portrait--titan .hp-eye{top:38px;height:6px;background:#58f6e9;border:0}.hero-portrait--titan .hp-mouth{display:none}
+.hero-portrait--shadow .hp-body{left:10px;top:42px;width:76px;height:57px;border-radius:16px;background:#d5a62b}.hero-portrait--shadow .hp-body::after{content:'';position:absolute;inset:7px 9px 12px;border-radius:12px;background:rgba(111,235,158,.5)}
+.hero-portrait--shadow .hp-head{left:24px;top:7px;background:#52b94e;border-radius:50% 50% 28% 28%;clip-path:polygon(50% 0,100% 34%,78% 100%,50% 76%,20% 100%,0 34%)}.hero-portrait--shadow .hp-mouth{left:12px;width:30px;height:17px;border:5px solid #d23d67;border-top:0}.hero-portrait--shadow .hp-leg{width:18px;background:#29374b}
+.hero-portrait--spark .hp-leg{display:none}.hero-portrait--spark .hp-body{left:10px;top:34px;width:76px;height:73px;clip-path:polygon(14% 0,86% 0,100% 100%,71% 78%,50% 100%,27% 78%,0 100%);background:#29203f}.hero-portrait--spark .hp-head{left:25px;top:3px;width:48px;height:49px;background:#dedbef;clip-path:polygon(50% 0,100% 50%,80% 100%,20% 100%,0 50%)}.hero-portrait--spark .hp-hair{background:#2d2349}.hero-portrait--spark .hp-eye{top:27px;height:6px;background:#83ff62;border:0}.hero-portrait--spark .hp-mouth{display:none}
+.hero-portrait--rex .hp-arm{width:18px;height:70px;top:30px;border-radius:12px;background:#77859b;border-color:#293249}.hero-portrait--rex .hp-arm--left{left:-5px;transform:rotate(25deg)}.hero-portrait--rex .hp-arm--right{right:-5px;transform:rotate(-25deg)}.hero-portrait--rex .hp-body{background:#9d2948}.hero-portrait--rex .hp-head{background:#d28d70}
+.hero-portrait--pixel .hp-head{left:24px;top:4px;width:50px;height:42px;background:#303a54}.hero-portrait--pixel .hp-body{left:13px;top:40px;width:72px;height:62px;clip-path:polygon(0 5%,100% 5%,84% 75%,50% 100%,15% 75%);background:#5368c7}.hero-portrait--pixel .hp-body i{left:21px;right:21px;height:18px;clip-path:polygon(50% 0,100% 100%,0 100%);background:#ffe04d}.hero-portrait--pixel .hp-arm{background:#303a54}
+.hero-portrait--boulder .hp-body{left:13px;width:70px;clip-path:polygon(8% 0,92% 0,100% 100%,65% 78%,50% 100%,34% 78%,0 100%);background:#443a36}.hero-portrait--boulder .hp-head{left:20px;top:3px;width:60px;height:57px;background:#e0d5b6;clip-path:polygon(8% 13%,70% 0,100% 55%,68% 70%,100% 84%,25% 100%,0 54%)}.hero-portrait--boulder .hp-eye{top:27px;background:#61e45b}.hero-portrait--boulder .hp-mouth,.hero-portrait--boulder .hp-hair{display:none}
 
 .hero-identity { position: relative; z-index: 4; margin-top: -22px; text-align: center; color: #fff; text-transform: uppercase; text-shadow: 0 3px 0 #172963, 0 5px 9px rgba(19,28,69,.34); }
 .hero-identity h1 { margin: 1px 0 3px; font: 950 clamp(31px, 9vw, 48px)/.95 Impact, system-ui; letter-spacing: 1px; }
@@ -58,3 +76,29 @@
 .hero-card-footer { position: absolute; z-index: 8; left: 0; right: 0; bottom: 0; height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 3px; padding: 0 5px; color: #fff; background: #17245c; text-shadow: 0 2px #0b1231; }.hero-card-footer strong { overflow: hidden; font: 950 11px Impact,system-ui; letter-spacing: .5px; text-overflow: ellipsis; }.hero-card-footer span { white-space: nowrap; font: 800 6px system-ui; }.hero-card-footer b { color: #ffe143; font-size: 10px; }
 .hero-card-check { position: absolute; z-index: 10; top: 5px; right: 5px; display: grid; place-items: center; width: 22px; height: 22px; border: 2px solid #fff; border-radius: 50%; color: #17245c; background: #73ec61; font: 900 13px system-ui; }.hero-card--selected { border-color: #fff; box-shadow: 0 0 0 3px #ffe143,0 6px #8b5b1a; }
 @media (min-width: 620px) { .hero-select-grid { grid-template-columns: repeat(5,1fr); }.hero-card .hero-portrait { transform: translateX(-50%) scale(1.08); } }
+
+/* Production portraits share the same 384x480 frame, so switching between heroes
+   never causes layout shift. The transparent artwork remains billboarded upright. */
+.hero-portrait > img { position:absolute; z-index:2; inset:auto 50% 0 auto; width:128px; height:160px; object-fit:contain; object-position:center bottom; transform:translateX(50%); user-select:none; pointer-events:none; filter:drop-shadow(0 5px 2px rgba(17,24,58,.3)); }
+.hero-portrait--stage > img { width:142px; height:178px; }
+.hero-portrait > img ~ *, .hero-portrait:has(> img) > .hp-leg, .hero-portrait:has(> img) > .hp-body, .hero-portrait:has(> img) > .hp-arm, .hero-portrait:has(> img) > .hp-head, .hero-portrait:has(> img) > .hp-weapon { display:none; }
+.hero-card .hero-portrait > img { width:118px; height:148px; }
+
+.hero-ability-card { z-index:3; width:min(88vw,390px); margin:7px 0 11px; padding:10px 12px; border:2px solid rgba(255,255,255,.42); border-radius:12px; color:#fff; background:linear-gradient(135deg,rgba(22,38,99,.82),rgba(36,57,135,.68)); box-shadow:0 5px rgba(13,27,76,.58); text-align:left; }
+.hero-ability-card > strong { display:block; margin-bottom:7px; color:#ffe14c; font:900 11px/1 system-ui; letter-spacing:.8px; text-transform:uppercase; }
+.hero-ability-card p { display:grid; grid-template-columns:48px 1fr; gap:7px; margin:4px 0; color:#e4efff; font:700 9px/1.25 system-ui; }
+.hero-ability-card p span { color:#71f0ff; font:950 8px/1.35 system-ui; }
+
+@media (max-height:760px) {
+  .hero-showcase { height:300px; margin-top:25px; }
+  .hero-ability-card { margin:5px 0 8px; padding:8px 10px; }
+}
+
+/* Canvas models use the same articulated renderer as the battle arena. */
+.hero-portrait:has(.hero-model-canvas) { width:150px; height:185px; filter:none; }
+.hero-portrait--stage:has(.hero-model-canvas) { width:300px; height:340px; transform:none; animation:model-stage-float 2.4s ease-in-out infinite; }
+.hero-model-canvas { display:block; width:100%; height:100%; }
+.hero-portrait:has(.hero-model-canvas) .hp-shadow { display:none; }
+.hero-card .hero-portrait:has(.hero-model-canvas) { top:8%; transform:translateX(-50%) scale(.78); }
+@keyframes model-stage-float { 50% { transform:translateY(-4px) rotate(-.7deg); } }
+@media (min-width:620px) { .hero-card .hero-portrait:has(.hero-model-canvas) { transform:translateX(-50%) scale(.9); } }

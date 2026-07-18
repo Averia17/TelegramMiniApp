@@ -1,15 +1,16 @@
 import {DEPTH, HERO_PALETTES, HERO_SCALE} from "../config"
-import {clamp, colorFromCss, lerp, project} from "../graphics"
+import {clamp, lerp, project} from "../graphics"
 
 const hex = color => `#${color.toString(16).padStart(6, "0")}`
 
 const ellipse = (ctx, x, y, rx, ry, color, alpha = 1) => {
-  ctx.globalAlpha = alpha
+  const previousAlpha = ctx.globalAlpha
+  ctx.globalAlpha = previousAlpha * alpha
   ctx.fillStyle = color
   ctx.beginPath()
   ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2)
   ctx.fill()
-  ctx.globalAlpha = 1
+  ctx.globalAlpha = previousAlpha
 }
 
 const rounded = (ctx, x, y, width, height, radius, color) => {
@@ -34,22 +35,38 @@ export class CanvasCharacterView {
     this.lean = 0
     this.stepImpact = 0
     this.previousGait = 0
+    this.visibility = 1
+    this.targetVisibility = 1
+    this.revealedUntil = 0
+    this.lastAttackPulse = player.attackPulse
   }
 
   setState(player) {
     if (this.lastLives !== undefined && player.lives < this.lastLives) this.hurt = 1
+    if (this.lastLives !== undefined && player.lives < this.lastLives) this.revealedUntil = performance.now() + 900
+    if (this.lastAttackPulse !== undefined && player.attackPulse !== this.lastAttackPulse) this.revealedUntil = performance.now() + 1000
     this.lastLives = player.lives
+    this.lastAttackPulse = player.attackPulse
     this.state = player
+  }
+
+  reveal(duration = 1000) {
+    this.revealedUntil = Math.max(this.revealedUntil, performance.now() + duration)
   }
 
   triggerRecoil() {
     this.recoil = 1
   }
 
-  update(delta) {
+  update(delta, isLocal = false) {
     const blend = 1 - Math.exp(-13 * delta)
-    this.worldX = lerp(this.worldX, this.state.x, blend)
-    this.worldY = lerp(this.worldY, this.state.y, blend)
+    if (isLocal) {
+      this.worldX = this.state.x
+      this.worldY = this.state.y
+    } else {
+      this.worldX = lerp(this.worldX, this.state.x, blend)
+      this.worldY = lerp(this.worldY, this.state.y, blend)
+    }
     const dx = this.state.x - this.lastTargetX
     const dy = this.state.y - this.lastTargetY
     const distance = Math.hypot(dx, dy)
@@ -69,6 +86,7 @@ export class CanvasCharacterView {
     this.recoil = Math.max(0, this.recoil - delta * 7.5)
     this.hurt = Math.max(0, (this.hurt || 0) - delta * 4)
     this.stepImpact = Math.max(0, this.stepImpact - delta * 9)
+    this.visibility = lerp(this.visibility, this.targetVisibility, 1 - Math.exp(-16 * delta))
   }
 
   get depth() {
@@ -76,19 +94,22 @@ export class CanvasCharacterView {
   }
 
   draw(ctx, time, isLocal) {
+    if (this.visibility < .02) return
     const projected = project(this.worldX, this.worldY)
     const hero = HERO_PALETTES[String(this.state.hero || "default").toLowerCase()] || HERO_PALETTES.default
-    const palette = {...hero, main: colorFromCss(this.state.color, hero.main)}
+    const palette = hero
     const gait = Math.sin(this.phase) * this.speed
     const bounce = Math.abs(Math.sin(this.phase)) * this.speed
     const idle = Math.sin(time * 2.2 + this.phase * 0.1)
     const direction = Math.cos(this.aim) < 0 ? -1 : 1
-    const screenAim = Math.atan2(Math.sin(this.aim) * DEPTH, Math.cos(this.aim))
+    const heroName = String(this.state.hero || "").toLowerCase()
+    const characterScale = ({viper: 1.3, pixel: 1.08, shadow: .98, spark: 1.08, titan: .94, rex: .92, nova: .98, boulder: 1.02, frost: 1.03}[heroName] || 1)
 
     ctx.save()
+    ctx.globalAlpha = this.visibility
     ctx.translate(projected.x, projected.y)
-    ctx.scale(HERO_SCALE, HERO_SCALE)
-    if (this.hurt > 0 && Math.floor(this.hurt * 12) % 2) ctx.globalAlpha = 0.45
+    const modelScale = Number(this.state.renderScale) || 1
+    ctx.scale(HERO_SCALE * characterScale * modelScale, HERO_SCALE * characterScale * modelScale)
 
     ellipse(ctx, 7, 8, 29 + this.speed * 4, 10, "#182435", 0.3)
     if (isLocal) {
@@ -98,6 +119,15 @@ export class CanvasCharacterView {
       ctx.ellipse(0, 5, 30, 13, 0, 0, Math.PI * 2)
       ctx.stroke()
     }
+    if (this.state.shield > 0) {
+      ctx.strokeStyle = `rgba(111,226,255,${.55 + Math.sin(time * 7) * .2})`
+      ctx.lineWidth = 5
+      ctx.beginPath(); ctx.ellipse(0, -42, 39, 58, 0, 0, Math.PI * 2); ctx.stroke()
+    }
+    if (this.state.haste > 0) {
+      ctx.strokeStyle = "rgba(255,224,74,.65)"; ctx.lineWidth = 4
+      for (let trail = 0; trail < 3; trail += 1) { ctx.beginPath(); ctx.moveTo(-34 - trail * 7, -18 - trail * 12); ctx.lineTo(-50 - trail * 8, -12 - trail * 12); ctx.stroke() }
+    }
 
     ctx.save()
     ctx.translate(0, -bounce * 3 + idle * 0.7)
@@ -105,36 +135,18 @@ export class CanvasCharacterView {
     ctx.scale(1 + this.stepImpact * 0.035, 1 - this.stepImpact * 0.045)
     ctx.scale(direction, 1)
 
-    this.drawLeg(ctx, -9, -16 + Math.max(0, -gait) * 7, gait * 0.7, hex(palette.dark))
-    this.drawLeg(ctx, 9, -16 + Math.max(0, gait) * 7, -gait * 0.7, "#34436b")
-
-    ellipse(ctx, 0, -35, 25, 29, hex(palette.dark))
-    ctx.fillStyle = hex(palette.main)
-    ctx.beginPath()
-    ctx.moveTo(-22, -51)
-    ctx.lineTo(-14, -61)
-    ctx.lineTo(14, -61)
-    ctx.lineTo(22, -51)
-    ctx.lineTo(19, -21)
-    ctx.lineTo(0, -15)
-    ctx.lineTo(-19, -21)
-    ctx.closePath()
-    ctx.fill()
-    ellipse(ctx, -10, -47, 8, 12, hex(palette.light), 0.32)
-    rounded(ctx, -23, -34, 46, 10, 5, hex(palette.dark))
-    rounded(ctx, -19, -32, 38, 5, 3, hex(palette.accent))
-    this.drawHeroBadge(ctx, palette)
-    this.drawHead(ctx, palette, -76 - bounce * 1.5, direction, screenAim)
+    this.drawUniqueHero(ctx, palette, heroName, gait, time)
+    if (this.hurt > 0) {
+      ctx.globalCompositeOperation = "source-atop"
+      ctx.globalAlpha = Math.min(1, this.hurt * 1.35)
+      ctx.fillStyle = "#fff"
+      ctx.fillRect(-65, -115, 130, 130)
+      ctx.globalCompositeOperation = "source-over"
+      ctx.globalAlpha = 1
+    }
     ctx.restore()
 
-    ctx.save()
-    ctx.translate(this.lean * 45, -45 - bounce * 2 + idle * 0.35)
-    ctx.rotate(screenAim)
-    ctx.scale(1, 0.88 + Math.abs(Math.sin(this.aim)) * 0.12)
-    this.drawWeaponRig(ctx, palette)
-    ctx.restore()
-
-    this.drawUi(ctx)
+    if (this.visibility > .82 && !this.state.hideUi) this.drawUi(ctx)
     ctx.restore()
   }
 
@@ -166,24 +178,221 @@ export class CanvasCharacterView {
   }
 
   drawHead(ctx, palette, y, direction, aim) {
+    const hero = String(this.state.hero || "").toLowerCase()
     const look = clamp(Math.cos(aim) * 2.4, -2.4, 2.4)
-    ellipse(ctx, 2, y + 5, 24, 25, hex(palette.dark))
-    rounded(ctx, -21, y - 20, 42, 42, 17, hex(palette.skin))
-    ellipse(ctx, -20, y + 1, 5, 8, hex(palette.skin))
-    ellipse(ctx, 20, y + 1, 5, 8, hex(palette.skin))
-    ellipse(ctx, -7, y - 2, 6, 7, "#ffffff")
-    ellipse(ctx, 7, y - 2, 6, 7, "#ffffff")
-    ellipse(ctx, -6 + look, y - 1, 2.5, 3.5, "#263052")
-    ellipse(ctx, 6 + look, y - 1, 2.5, 3.5, "#263052")
-    ctx.fillStyle = hex(palette.main)
-    ctx.beginPath()
-    ctx.moveTo(-23, y - 6); ctx.lineTo(-18, y - 27); ctx.lineTo(-8, y - 22)
-    ctx.lineTo(1, y - 31); ctx.lineTo(9, y - 23); ctx.lineTo(19, y - 27)
-    ctx.lineTo(23, y - 6); ctx.lineTo(13, y - 16); ctx.lineTo(0, y - 14); ctx.lineTo(-13, y - 16)
-    ctx.closePath(); ctx.fill()
-    ctx.strokeStyle = "rgba(90,44,47,.75)"
-    ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(-5, y + 10); ctx.quadraticCurveTo(0, y + 14, 7, y + 9); ctx.stroke()
+    if (["blaze", "pixel"].includes(hero)) {
+      // Compact combat robots: metal casing, glowing visor and antenna details.
+      rounded(ctx, -24, y - 23, 48, 45, 14, hex(palette.dark))
+      rounded(ctx, -20, y - 19, 40, 34, 11, hex(palette.skin))
+      rounded(ctx, -15, y - 9, 30, 14, 7, "#17233e")
+      rounded(ctx, -11 + look, y - 6, 13, 7, 3, hex(palette.accent))
+      ellipse(ctx, -11, y - 15, 5, 3, hex(palette.light), .65)
+      ctx.strokeStyle = hex(palette.dark); ctx.lineWidth = 5
+      ctx.beginPath(); ctx.moveTo(10, y - 22); ctx.lineTo(16, y - 34); ctx.stroke()
+      ellipse(ctx, 17, y - 36, 5, 5, hex(palette.accent))
+      rounded(ctx, -10, y + 10, 20, 7, 3, hex(palette.main))
+      return
+    }
+    if (hero === "spark") {
+      // The roster also includes a human lightning engineer for silhouette variety.
+      ellipse(ctx, 2, y + 5, 24, 25, hex(palette.dark))
+      rounded(ctx, -21, y - 20, 42, 42, 17, "#d99268")
+      ellipse(ctx, -7, y - 2, 6, 7, "#ffffff"); ellipse(ctx, 7, y - 2, 6, 7, "#ffffff")
+      ellipse(ctx, -6 + look, y - 1, 2.5, 3.5, "#263052"); ellipse(ctx, 6 + look, y - 1, 2.5, 3.5, "#263052")
+      ctx.fillStyle = hex(palette.main); ctx.beginPath(); ctx.moveTo(-23, y - 6); ctx.lineTo(-18, y - 27); ctx.lineTo(-7, y - 20); ctx.lineTo(1, y - 32); ctx.lineTo(11, y - 20); ctx.lineTo(21, y - 27); ctx.lineTo(23, y - 6); ctx.closePath(); ctx.fill()
+      ctx.strokeStyle = "#7d3b31"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(1, y + 7, 8, .2, Math.PI - .2); ctx.stroke()
+      return
+    }
+    if (["frost", "titan", "boulder"].includes(hero)) {
+      // Elemental golems use an asymmetric faceted rock/ice silhouette.
+      ctx.fillStyle = hex(palette.skin)
+      ctx.beginPath()
+      ctx.moveTo(-25, y + 9); ctx.lineTo(-22, y - 16); ctx.lineTo(-10, y - 29)
+      ctx.lineTo(7, y - 25); ctx.lineTo(24, y - 13); ctx.lineTo(27, y + 10)
+      ctx.lineTo(13, y + 24); ctx.lineTo(-12, y + 21); ctx.closePath(); ctx.fill()
+      ctx.strokeStyle = hex(palette.dark); ctx.lineWidth = 5; ctx.stroke()
+      ctx.fillStyle = hex(palette.light); ctx.globalAlpha = .35
+      ctx.beginPath(); ctx.moveTo(-18, y - 13); ctx.lineTo(-8, y - 23); ctx.lineTo(-3, y + 12); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1
+      ellipse(ctx, -8, y - 2, 6, 5, hex(palette.accent))
+      ellipse(ctx, 10, y - 2, 6, 5, hex(palette.accent))
+      rounded(ctx, -9, y + 12, 20, 5, 2, hex(palette.dark))
+      return
+    }
+    if (["viper", "rex"].includes(hero)) {
+      // Reptilian hunters have a long snout, plated brow and side spikes.
+      ellipse(ctx, 0, y, 25, 27, hex(palette.dark))
+      ellipse(ctx, 0, y - 2, 22, 24, hex(palette.skin))
+      ctx.fillStyle = hex(palette.main)
+      ctx.beginPath(); ctx.moveTo(-20, y - 13); ctx.lineTo(-30, y - 20); ctx.lineTo(-23, y - 4); ctx.closePath(); ctx.fill()
+      ctx.beginPath(); ctx.moveTo(20, y - 13); ctx.lineTo(30, y - 20); ctx.lineTo(23, y - 4); ctx.closePath(); ctx.fill()
+      ellipse(ctx, -8, y - 7, 7, 8, "#f4f05a")
+      ellipse(ctx, 8, y - 7, 7, 8, "#f4f05a")
+      rounded(ctx, -2 + look, y - 11, 3, 9, 2, "#17243a")
+      rounded(ctx, 9 + look, y - 11, 3, 9, 2, "#17243a")
+      ellipse(ctx, 4, y + 11, 19, 10, hex(palette.light))
+      ellipse(ctx, -3, y + 8, 2, 2, hex(palette.dark)); ellipse(ctx, 8, y + 8, 2, 2, hex(palette.dark))
+      return
+    }
+    // Shadow and Nova are floating one-eyed cosmic creatures.
+    ellipse(ctx, 0, y, 27, 28, hex(palette.dark))
+    ctx.fillStyle = hex(palette.skin)
+    ctx.beginPath(); ctx.moveTo(-23, y + 8); ctx.quadraticCurveTo(-29, y - 20, 0, y - 28)
+    ctx.quadraticCurveTo(29, y - 20, 23, y + 8); ctx.quadraticCurveTo(0, y + 30, -23, y + 8); ctx.fill()
+    ellipse(ctx, look, y - 4, 13, 14, "#ffffff")
+    ellipse(ctx, look + 2, y - 3, 6, 8, hex(palette.accent))
+    ellipse(ctx, look + 3, y - 4, 2.5, 4, "#17203c")
+    ctx.strokeStyle = hex(palette.light); ctx.lineWidth = 3
+    ctx.beginPath(); ctx.arc(0, y + 8, 10, .2, Math.PI - .2); ctx.stroke()
+  }
+
+  drawUniqueHero(ctx, p, hero, gait, time) {
+    const main = hex(p.main), dark = hex(p.dark), accent = hex(p.accent)
+    const eye = (x, y, r = 5) => { ellipse(ctx, x, y, r, r + 1, "#fff"); ellipse(ctx, x + 1, y, r * .42, r * .55, "#17233d") }
+    const bootLegs = color => {
+      this.drawLeg(ctx, -11, -18 + Math.max(0, -gait) * 6, gait * .55, color)
+      this.drawLeg(ctx, 11, -18 + Math.max(0, gait) * 6, -gait * .55, color)
+    }
+
+    if (hero === "blaze") {
+      // Kira: every large piece is animated independently like a compact 2D skeleton.
+      bootLegs("#252a42")
+      for (let i = 0; i < 3; i += 1) { ctx.fillStyle = ["#68208c","#9b2db9","#d63be2"][i]; ctx.beginPath(); ctx.moveTo(-16 + i * 8,-61); ctx.quadraticCurveTo(-43 + i * 7,-35 + Math.sin(time * 2.3 + i) * 3,-34 + i * 10,0); ctx.lineTo(-8 + i * 7,-22); ctx.closePath(); ctx.fill() }
+      rounded(ctx, -23, -63, 46, 47, 12, "#303545"); rounded(ctx, -17, -58, 34, 28, 7, main)
+      rounded(ctx, -27, -57, 13, 23, 5, "#171e30"); ellipse(ctx, 20, -50, 12, 14, "#737d8f")
+      ellipse(ctx, 0, -85, 23, 24, "#d99671"); ctx.fillStyle = "#552057"; ctx.beginPath(); ctx.moveTo(-23,-90); ctx.quadraticCurveTo(-8,-117,18,-104); ctx.lineTo(27,-91); ctx.lineTo(6,-97); ctx.lineTo(-8,-82); ctx.closePath(); ctx.fill()
+      eye(-8, -85, 4); eye(8, -85, 4); rounded(ctx, -7, -73, 16, 3, 2, "#7d3142")
+      ctx.save(); ctx.translate(8 - this.recoil * 7,-43); ctx.rotate(-.12 + this.recoil * .05); rounded(ctx,-28,-10,61,21,7,"#151c2b"); rounded(ctx,-22,-7,49,14,5,"#4e4264"); for(let i=0;i<5;i+=1) ellipse(ctx,-13+i*8,-1,3,3,i===4?"#fff":accent); rounded(ctx,25,-5,19,10,3,"#232b3e"); rounded(ctx,-4,7,10,15,3,"#202638"); ctx.restore()
+      return
+    }
+    if (hero === "frost") {
+      bootLegs("#142944"); rounded(ctx,-24,-64,48,47,11,"#e9f5ff"); rounded(ctx,-19,-59,38,35,8,"#247fc0"); ellipse(ctx,0,-41,8,9,accent)
+      ellipse(ctx,0,-84,22,23,"#c98262"); eye(-7,-84,4); eye(7,-84,4)
+      ctx.fillStyle="#f13b9b"; ctx.beginPath(); ctx.moveTo(-15,-99); ctx.lineTo(-9,-123); ctx.lineTo(-1,-103); ctx.lineTo(7,-128); ctx.lineTo(15,-101); ctx.lineTo(22,-111); ctx.lineTo(18,-91); ctx.closePath(); ctx.fill()
+      for(const side of [-1,1]) { const swing=side*gait*.18; ctx.save(); ctx.translate(side*20,-53); ctx.rotate(side*.18+swing); rounded(ctx,side<0?-22:0,-6,22,13,5,"#dcecff"); rounded(ctx,side<0?-31:9,-8,31,17,6,"#1b2940"); rounded(ctx,side<0?-27:12,-5,22,7,3,accent); ellipse(ctx,side<0?-29:31,0,5,5,"#091526"); ctx.restore() }
+      rounded(ctx,-17,-73,34,6,3,"#16243a"); rounded(ctx,-10,-71,20,3,2,accent)
+      return
+    }
+    if (hero === "viper") {
+      // Vulkan: no human anatomy—four volcanic masses around a molten core.
+      this.drawLeg(ctx, -16, -17 + gait * 2, 0, "#392f35"); this.drawLeg(ctx, 16, -17 - gait * 2, 0, "#392f35")
+      ellipse(ctx, 0, -48, 38, 38, "#302c32"); ellipse(ctx, 0, -48, 22, 25, "#ff682c"); ellipse(ctx, 0, -48, 11, 15, "#ffe25c")
+      ellipse(ctx, -38, -50, 23, 27, "#44333a"); ellipse(ctx, 39, -47, 25, 29, "#44333a")
+      ellipse(ctx, -43, -28, 20, 17, "#342a31"); ellipse(ctx, 44, -26, 21, 18, "#342a31")
+      ctx.fillStyle = "#44333a"; ctx.beginPath(); ctx.moveTo(-25, -76); ctx.lineTo(-12, -105); ctx.lineTo(16, -101); ctx.lineTo(29, -75); ctx.closePath(); ctx.fill()
+      rounded(ctx, -16, -93, 32, 15, 6, "#241f28"); ellipse(ctx, -8, -86, 5, 4, "#ffb32e"); ellipse(ctx, 8, -86, 5, 4, "#ffb32e")
+      ctx.strokeStyle = "#ff7b31"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-20, -70); ctx.lineTo(-8, -55); ctx.lineTo(-16, -34); ctx.moveTo(22, -68); ctx.lineTo(9, -52); ctx.stroke()
+      rounded(ctx,-36,-27,72,13,5,"#382c23"); rounded(ctx,-12,-31,24,20,5,"#d69a31"); ellipse(ctx,0,-21,6,6,"#ffdd59")
+      return
+    }
+    if (hero === "titan") {
+      bootLegs("#18253c"); ctx.fillStyle="#294f3e"; ctx.beginPath(); ctx.moveTo(-25,-68);ctx.lineTo(25,-68);ctx.lineTo(20,-21);ctx.lineTo(-20,-21);ctx.closePath();ctx.fill(); rounded(ctx,-22,-61,44,36,9,"#3e865b"); rounded(ctx,-18,-52,36,7,3,"#1f4635")
+      ctx.fillStyle="rgba(91,255,207,.38)"; ctx.beginPath();ctx.moveTo(-27,-73);ctx.lineTo(0,-114);ctx.lineTo(27,-73);ctx.lineTo(18,-60);ctx.lineTo(-18,-60);ctx.closePath();ctx.fill(); rounded(ctx,-15,-79,30,21,8,"#142437"); rounded(ctx,-9,-70,18,4,2,accent)
+      for(let side of [-1,1]) { rounded(ctx,side<0?-31:18,-54,13,31,6,"#2e7652") }
+      ctx.strokeStyle="#2c765b";ctx.lineWidth=11;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-8,-25);for(let i=0;i<5;i+=1){const x=-18-i*9,y=-15+Math.sin(time*2+i*.7)*4+i*3;ctx.lineTo(x,y);ellipse(ctx,x,y,6,6,i%2?main:dark)}ctx.stroke()
+      for(let i=0;i<3;i+=1){const a=time*1.4+i*Math.PI*2/3,x=Math.cos(a)*42,y=-48+Math.sin(a)*18;ctx.save();ctx.translate(x,y);ctx.rotate(a);ellipse(ctx,0,0,12,4,accent,.75);ellipse(ctx,0,0,5,2,"#fff",.8);ctx.restore()}
+      return
+    }
+    if (hero === "shadow") {
+      ellipse(ctx,0,-45,33,38,"#39783d"); ellipse(ctx,-4,-49,27,32,main); rounded(ctx,-28,-55,56,30,9,"#572b79"); rounded(ctx,-22,-49,44,7,3,"#a957d3")
+      eye(-9,-53,5); eye(9,-53,5); rounded(ctx,-8,-39,18,4,2,"#21452b")
+      for(let i=0;i<14;i+=1){const a=i*Math.PI*2/14,x=Math.cos(a)*29,y=-47+Math.sin(a)*34;ctx.fillStyle="#e9f1b0";ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+Math.cos(a)*8,y+Math.sin(a)*8);ctx.lineTo(x-Math.sin(a)*3,y+Math.cos(a)*3);ctx.closePath();ctx.fill()}
+      for(const side of [-1,1]){ctx.strokeStyle=main;ctx.lineWidth=12;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(side*22,-48);ctx.quadraticCurveTo(side*39,-35,side*35,-15+gait*3*side);ctx.stroke()}
+      ctx.save();ctx.translate(Math.sin(time*1.7)*3,-88+Math.sin(time*2)*2);ctx.rotate(Math.sin(time*1.5)*.12);ctx.strokeStyle="#3b8a45";ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(0,15);ctx.lineTo(0,0);ctx.stroke();for(let i=0;i<7;i+=1){const a=i*Math.PI*2/7;ellipse(ctx,Math.cos(a)*11,Math.sin(a)*8,7,5,"#f27ac8")}ellipse(ctx,0,0,5,5,"#ffe263");ctx.restore();ellipse(ctx,-13,-6,11,6,"#274c31");ellipse(ctx,13,-6,11,6,"#274c31")
+      return
+    }
+    if (hero === "spark") {
+      // Reaper: three cape bones trail with delayed phases.
+      for(let i=0;i<3;i+=1){ctx.fillStyle=["#171322","#241832","#342040"][i];ctx.beginPath();ctx.moveTo(-24+i*17,-69);ctx.quadraticCurveTo(-38+i*26,-35+Math.sin(time*2+i)*4,-34+i*33,2);ctx.lineTo(-8+i*15,-18);ctx.closePath();ctx.fill()}
+      ctx.fillStyle = dark; ctx.beginPath(); ctx.moveTo(-26, -81); ctx.lineTo(0, -112); ctx.lineTo(27, -80); ctx.lineTo(19, -54); ctx.lineTo(-19, -54); ctx.closePath(); ctx.fill()
+      rounded(ctx, -18, -85, 36, 28, 10, "#dedbf2"); ellipse(ctx,-8,-75,4,5,accent);ellipse(ctx,8,-75,4,5,accent)
+      ctx.strokeStyle = "#5f6474"; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(21, -61); ctx.lineTo(43, -14); ctx.lineTo(55, -71); ctx.stroke()
+      ctx.strokeStyle = accent; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(45, -73, 26, -2.2, .7); ctx.stroke(); ellipse(ctx, 0, -43, 9, 9, accent, .55)
+      ctx.save();ctx.translate(-34,-25+Math.sin(time*2)*3);rounded(ctx,-7,-11,14,22,5,"#25332b");ellipse(ctx,0,0,5,8,accent,.7);ctx.restore()
+      for(let i=0;i<3;i+=1){const a=time*2+i*2.1;ctx.fillStyle="rgba(79,255,128,.65)";ctx.beginPath();ctx.moveTo(Math.cos(a)*35,-38+Math.sin(a)*16);ctx.lineTo(Math.cos(a)*35-7,-34+Math.sin(a)*16);ctx.lineTo(Math.cos(a)*35,-31+Math.sin(a)*16);ctx.fill()}
+      return
+    }
+    if (hero === "nova") {
+      ctx.shadowColor="#f57cd6";ctx.shadowBlur=9;ellipse(ctx,0,3,34,7,"#f57cd6",.25);ctx.shadowBlur=0
+      for(let i=0;i<4;i+=1){ctx.fillStyle=["#762b82","#ad3d9a","#db59b5","#f28bd0"][i];ctx.beginPath();ctx.ellipse(0,-11-i*9,34-i*3,15,0,0,Math.PI*2);ctx.fill()}
+      rounded(ctx,-18,-68,36,39,10,"#e95dad");rounded(ctx,-4,-65,8,31,4,"#f8d36a");ellipse(ctx,0,-88,22,23,"#d99873");ctx.fillStyle="#f0d7f2";ctx.beginPath();ctx.arc(0,-95,23,Math.PI,Math.PI*2);ctx.fill();eye(-7,-88,4);eye(7,-88,4)
+      ctx.save();ctx.translate(19-this.recoil*5,-53);ctx.rotate(-.28);rounded(ctx,-6,-5,52,11,4,"#1d4f83");rounded(ctx,17,-8,28,17,6,"#378bd0");rounded(ctx,42,-4,15,8,3,"#152d4a");ctx.strokeStyle="#2d6eac";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(-1,-42);ctx.stroke();ctx.fillStyle="#4899db";ctx.beginPath();ctx.arc(-1,-42,29,Math.PI,Math.PI*2);ctx.lineTo(-1,-42);ctx.fill();ctx.strokeStyle="#d8edff";ctx.lineWidth=2;for(let a=0;a<=Math.PI;a+=Math.PI/4){ctx.beginPath();ctx.moveTo(-1,-42);ctx.lineTo(-1+Math.cos(a)*29,-42-Math.sin(a)*29);ctx.stroke()}ctx.restore()
+      return
+    }
+    if (hero === "rex") {
+      // Zero: small human core framed by two independently articulated steel manipulators.
+      bootLegs("#20243a"); rounded(ctx, -21, -61, 42, 43, 13, "#9d2948"); ellipse(ctx, 0, -82, 23, 24, "#d59070")
+      ctx.fillStyle = "#202239"; ctx.beginPath(); ctx.arc(0, -91, 25, Math.PI, Math.PI * 2); ctx.lineTo(8, -83); ctx.lineTo(-18, -80); ctx.closePath(); ctx.fill(); eye(8, -83, 5)
+      for (const side of [-1, 1]) { let px=side*14,py=-57; for(let i=0;i<7;i+=1){const a=-1.48+side*(.23+i*.16)+Math.sin(time*1.8+i*.5)*.025;const nx=px+Math.cos(a)*13,ny=py+Math.sin(a)*13;ctx.strokeStyle="#2c3446";ctx.lineWidth=11;ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(nx,ny);ctx.stroke();ellipse(ctx,nx,ny,6,6,i%2?"#758196":accent);px=nx;py=ny} for(let f=-1;f<=1;f+=1){ctx.strokeStyle="#8994a4";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+side*(9+Math.abs(f)*3),py+f*8);ctx.stroke()} }
+      ellipse(ctx, 0, -44, 8, 8, accent)
+      return
+    }
+    if (hero === "pixel") {
+      // Vector: modular non-human mech with triangular quantum core and digitigrade legs.
+      ctx.strokeStyle = "#252e48"; ctx.lineWidth = 12; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(-13, -29); ctx.lineTo(-18, -5); ctx.lineTo(-28, 3); ctx.moveTo(13, -29); ctx.lineTo(18, -5); ctx.lineTo(28, 3); ctx.stroke()
+      ctx.fillStyle = "#17243c"; ctx.beginPath(); ctx.moveTo(-32,-69);ctx.lineTo(31,-69);ctx.lineTo(24,-23);ctx.lineTo(0,-12);ctx.lineTo(-25,-23);ctx.closePath();ctx.fill()
+      ctx.fillStyle = "#d83b3b";ctx.beginPath();ctx.moveTo(-26,-64);ctx.lineTo(2,-68);ctx.lineTo(3,-22);ctx.lineTo(-21,-29);ctx.closePath();ctx.fill();ctx.fillStyle="#3377c9";ctx.beginPath();ctx.moveTo(2,-68);ctx.lineTo(26,-62);ctx.lineTo(20,-29);ctx.lineTo(3,-22);ctx.closePath();ctx.fill()
+      ctx.save();ctx.translate(0,-43);ctx.rotate(time*.8);ctx.fillStyle="#70eaff";ctx.fillRect(-8,-8,16,16);ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.strokeRect(-8,-8,16,16);ctx.restore()
+      rounded(ctx,-22,-99,44,31,8,"#43516b");ellipse(ctx,-8,-84,7,6,"#ffd946");ellipse(ctx,8,-84,7,6,"#ffd946");rounded(ctx,-5,-75,10,4,2,"#d83b3b")
+      rounded(ctx,-43,-61,17,37,6,"#d83b3b");rounded(ctx,26,-61,17,37,6,"#3377c9");for(const x of [-34,34]){ellipse(ctx,x,-48,6,6,"#1a273d");rounded(ctx,x-5,-37,10,17,4,"#657289")}
+      return
+    }
+    // Toxin: articulated wing-hands, high collar, beaked mask and poison payload.
+    bootLegs("#302b35"); ctx.fillStyle = "#302a34"; ctx.beginPath(); ctx.moveTo(-26, -67); ctx.lineTo(24, -67); ctx.lineTo(39, -8); ctx.lineTo(10, -20); ctx.lineTo(0, 0); ctx.lineTo(-12, -20); ctx.lineTo(-39, -8); ctx.closePath(); ctx.fill()
+    rounded(ctx, -25, -72, 50, 43, 14, "#514033"); ctx.fillStyle = "#e1d7b7"; ctx.beginPath(); ctx.moveTo(-21, -88); ctx.quadraticCurveTo(0, -111, 22, -87); ctx.lineTo(42, -75); ctx.lineTo(17, -65); ctx.lineTo(-18, -66); ctx.closePath(); ctx.fill()
+    ellipse(ctx, -9, -84, 7, 8, "#172323"); ellipse(ctx, 10, -84, 7, 8, "#172323"); ellipse(ctx, -8, -84, 3, 4, accent); ellipse(ctx, 11, -84, 3, 4, accent)
+    for(const side of [-1,1]){ctx.save();ctx.translate(side*20,-55);ctx.rotate(side*(.35+Math.sin(time*2)*.05));for(let i=0;i<4;i+=1){ctx.strokeStyle="#594839";ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(0,i*5);ctx.lineTo(side*(18+i*4),-13+i*8);ctx.stroke();ctx.fillStyle=i%2?"#304b34":"#3f6340";ctx.beginPath();ctx.moveTo(side*(12+i*4),-16+i*8);ctx.lineTo(side*(28+i*5),-20+i*8);ctx.lineTo(side*(20+i*4),-7+i*8);ctx.fill()}ctx.restore()}
+    for(const x of [-10,0,10]){rounded(ctx,x-4,-46,8,22,3,"#1e2826");ellipse(ctx,x,-40,3,8,accent,.75)}
+    ctx.save();ctx.translate(29-this.recoil*4,-34);ctx.rotate(-.18);rounded(ctx,-5,-6,36,13,4,"#34303a");rounded(ctx,14,-4,23,8,3,accent);ctx.restore()
+  }
+
+  drawBodyRig(ctx, palette, hero, gait) {
+    if (["shadow", "nova"].includes(hero)) {
+      // Floating creatures use energy tendrils instead of human legs.
+      ctx.strokeStyle = hex(palette.dark); ctx.lineWidth = 10; ctx.lineCap = "round"
+      ctx.beginPath(); ctx.moveTo(-9, -23); ctx.quadraticCurveTo(-19, -5 + gait * 3, -13, 8); ctx.moveTo(9, -23); ctx.quadraticCurveTo(19, -5 - gait * 3, 13, 8); ctx.stroke()
+      ellipse(ctx, 0, -38, 28, 31, hex(palette.dark)); ellipse(ctx, 0, -41, 23, 27, hex(palette.main))
+      ellipse(ctx, -8, -49, 8, 13, hex(palette.light), .25)
+      rounded(ctx, -19, -35, 38, 8, 4, hex(palette.accent))
+      ellipse(ctx, 0, -7, 13, 6, hex(palette.accent), .35)
+      return
+    }
+    if (["blaze", "pixel"].includes(hero)) {
+      // Robots have a rigid chassis, piston legs and luminous reactor core.
+      this.drawLeg(ctx, -10, -17 + Math.max(0, -gait) * 5, gait * .3, "#28334c")
+      this.drawLeg(ctx, 10, -17 + Math.max(0, gait) * 5, -gait * .3, "#28334c")
+      rounded(ctx, -27, -63, 54, 49, 12, hex(palette.dark)); rounded(ctx, -23, -59, 46, 39, 9, hex(palette.main))
+      rounded(ctx, -18, -53, 36, 9, 4, "rgba(255,255,255,.2)")
+      ellipse(ctx, 0, -34, 10, 10, "#16213c"); ellipse(ctx, 0, -34, 6, 6, hex(palette.accent))
+      rounded(ctx, -31, -49, 9, 24, 4, "#222d47"); rounded(ctx, 22, -49, 9, 24, 4, "#222d47")
+      return
+    }
+    if (["titan", "boulder", "frost"].includes(hero)) {
+      // Golems are broad, asymmetric and built from separate elemental chunks.
+      this.drawLeg(ctx, -13, -19 + Math.max(0, -gait) * 4, gait * .22, hex(palette.dark))
+      this.drawLeg(ctx, 13, -19 + Math.max(0, gait) * 4, -gait * .22, hex(palette.dark))
+      ellipse(ctx, 0, -39, 33, 32, hex(palette.dark)); ellipse(ctx, 0, -41, 28, 27, hex(palette.main))
+      ellipse(ctx, -30, -48, 16, 18, hex(palette.skin)); ellipse(ctx, 30, -45, 18, 20, hex(palette.skin))
+      ctx.strokeStyle = hex(palette.light); ctx.globalAlpha = .38; ctx.lineWidth = 4
+      ctx.beginPath(); ctx.moveTo(-12, -58); ctx.lineTo(-3, -43); ctx.lineTo(-10, -28); ctx.moveTo(12, -55); ctx.lineTo(5, -39); ctx.stroke(); ctx.globalAlpha = 1
+      ellipse(ctx, 0, -38, 8, 8, hex(palette.accent))
+      return
+    }
+    if (["viper", "rex"].includes(hero)) {
+      // Reptiles lean forward and have a visible counterbalancing tail.
+      ctx.strokeStyle = hex(palette.dark); ctx.lineWidth = 16; ctx.lineCap = "round"
+      ctx.beginPath(); ctx.moveTo(-10, -25); ctx.quadraticCurveTo(-38, -17, -43, 4 + gait * 3); ctx.stroke()
+      this.drawLeg(ctx, -10, -16 + Math.max(0, -gait) * 8, gait * .8, hex(palette.dark))
+      this.drawLeg(ctx, 10, -16 + Math.max(0, gait) * 8, -gait * .8, hex(palette.dark))
+      ellipse(ctx, 0, -37, 25, 31, hex(palette.dark)); ellipse(ctx, 2, -39, 21, 27, hex(palette.main))
+      ctx.fillStyle = hex(palette.light); ctx.beginPath(); ctx.moveTo(-20, -48); ctx.lineTo(-31, -43); ctx.lineTo(-20, -34); ctx.closePath(); ctx.fill()
+      rounded(ctx, -18, -35, 36, 7, 3, hex(palette.accent))
+      return
+    }
+    // Spark remains a nimble human engineer with a compact armored vest.
+    this.drawLeg(ctx, -9, -16 + Math.max(0, -gait) * 7, gait * .7, hex(palette.dark))
+    this.drawLeg(ctx, 9, -16 + Math.max(0, gait) * 7, -gait * .7, "#34436b")
+    ellipse(ctx, 0, -35, 25, 29, hex(palette.dark)); rounded(ctx, -21, -60, 42, 43, 15, hex(palette.main))
+    ellipse(ctx, -10, -47, 8, 12, hex(palette.light), .32); rounded(ctx, -19, -32, 38, 5, 3, hex(palette.accent))
   }
 
   drawWeaponRig(ctx, palette) {
@@ -245,8 +454,15 @@ export class CanvasCharacterView {
     ctx.strokeText(name, 0, -105)
     ctx.fillStyle = "#ffffff"
     ctx.fillText(name, 0, -105)
-    rounded(ctx, -25, -97, 50, 8, 4, "#15203e")
+    rounded(ctx, -28, -98, 56, 10, 5, "#11182d")
     ctx.fillStyle = health < 0.35 ? "#ff4b57" : health < 0.65 ? "#ffc934" : "#55df57"
-    ctx.beginPath(); ctx.roundRect(-22, -94, 44 * health, 3, 2); ctx.fill()
+    ctx.beginPath(); ctx.roundRect(-25, -95, 50 * health, 4, 2); ctx.fill()
+    ctx.fillStyle = "rgba(255,255,255,.55)"
+    ctx.beginPath(); ctx.roundRect(-23, -94, 46 * health, 1, 1); ctx.fill()
+
+    const ammo = Math.max(0, Math.min(3, Math.ceil(this.state.ammo ?? 3)))
+    for (let index = 0; index < 3; index += 1) {
+      rounded(ctx, -17 + index * 12, -85, 9, 4, 2, index < ammo ? "#f4c83d" : "#29334d")
+    }
   }
 }

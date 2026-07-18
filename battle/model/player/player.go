@@ -6,22 +6,33 @@ import (
 
 type Player struct {
 	geometry.CircleBody
-	PlayerId    string
-	Name        string
-	Lives       int
-	MaxLives    int
-	Team        string
-	Color       string
-	Kills       int
-	Rotation    float64
-	Ack         int64
-	LastShootAt int64
-	HeroName    string
-	Speed       float64
-	AttackDmg   int
-	AttackRate  int64
-	BulletSpd   float64
-	BulletSz    float64
+	PlayerId        string
+	Name            string
+	Lives           int
+	MaxLives        int
+	Team            string
+	Color           string
+	Kills           int
+	Rotation        float64
+	Ack             int64
+	LastShootAt     int64
+	HeroName        string
+	Speed           float64
+	AttackDmg       int
+	AttackRate      int64
+	BulletSpd       float64
+	BulletSz        float64
+	AttackType      string
+	ShieldHP        int
+	PoisonUntil     int64
+	PoisonTickAt    int64
+	PoisonBy        string
+	Marks           int
+	IsBot           bool
+	LastPrimaryAt   int64
+	LastSecondaryAt int64
+	HasteUntil      int64
+	SlowUntil       int64
 }
 
 func (p *Player) Move(dirX, dirY, speed float64) {
@@ -36,7 +47,23 @@ func (p *Player) Move(dirX, dirY, speed float64) {
 }
 
 func (p *Player) Hurt() {
-	p.Lives--
+	p.TakeDamage(1)
+}
+
+func (p *Player) TakeDamage(amount int) {
+	if amount <= 0 || !p.IsAlive() {
+		return
+	}
+	if p.ShieldHP >= amount {
+		p.ShieldHP -= amount
+		return
+	}
+	amount -= p.ShieldHP
+	p.ShieldHP = 0
+	p.Lives -= amount
+	if p.Lives < 0 {
+		p.Lives = 0
+	}
 }
 
 func (p *Player) Heal() {

@@ -13,8 +13,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     working_dir: /home/node/app
-    ports:
-      - "5173:5173"
+    expose:
+      - "5173"
     volumes:
       - ./frontend:/home/node/app
       - /home/node/app/node_modules
@@ -34,20 +34,22 @@ services:
     ports:
       - "80:80"
     volumes:
-      - /var/app/miniapp:/src/public
+      - ./nginx/dev.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - account
       - frontend
       - battle
+      - shop
+      - leaderboard
     networks:
       - app-net
 
   kafka:
     image: confluentinc/cp-kafka:7.4.10
     container_name: kafka
-    ports:
-      - "9092:9092"
-      - "29093:29093"
+    expose:
+      - "9092"
+      - "29093"
     environment:
       CLUSTER_ID: "MkU3o6n8QrO2VZk5eY1hnA"
       KAFKA_PROCESS_ROLES: "controller,broker"
@@ -67,8 +69,8 @@ services:
     image: provectuslabs/kafka-ui:latest
     restart: always
     container_name: kafka-ui
-    ports:
-      - '8080:8080'
+    expose:
+      - "8080"
     environment:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
       DYNAMIC_CONFIG_ENABLED: true

@@ -4,11 +4,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "3779:8000"
+    expose:
+      - "8000"
     volumes:
       - .:/app
-    env_file: .env
+    env_file: ../.env
     restart: unless-stopped
     networks:
       - app-net

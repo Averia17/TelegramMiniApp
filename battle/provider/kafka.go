@@ -28,6 +28,7 @@ func NewKafkaProducer(brokerAddr string) *KafkaProducer {
 
 type BattleResult struct {
 	RoomId   string         `json:"roomId"`
+	EndedAt  int64          `json:"endedAt"`
 	MapName  string         `json:"mapName"`
 	Mode     string         `json:"mode"`
 	Duration int64          `json:"duration"`
@@ -44,14 +45,14 @@ type PlayerResult struct {
 	Won      bool   `json:"won"`
 }
 
-func (kp *KafkaProducer) PublishBattleResult(result *BattleResult) {
+func (kp *KafkaProducer) PublishBattleResult(result *BattleResult) error {
 	if kp == nil || kp.writer == nil {
-		return
+		return nil
 	}
 	data, err := json.Marshal(result)
 	if err != nil {
 		log.Printf("Kafka marshal error: %v", err)
-		return
+		return err
 	}
 	err = kp.writer.WriteMessages(context.Background(), kafka.Message{
 		Key:   []byte(result.RoomId),
@@ -60,6 +61,7 @@ func (kp *KafkaProducer) PublishBattleResult(result *BattleResult) {
 	if err != nil {
 		log.Printf("Kafka publish error: %v", err)
 	}
+	return err
 }
 
 func (kp *KafkaProducer) Close() {

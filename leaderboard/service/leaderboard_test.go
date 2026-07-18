@@ -166,6 +166,24 @@ func TestApplyBattleResult_AccumulatesAcrossBattles(t *testing.T) {
 	if p1.Games != 2 {
 		t.Errorf("Games = %d, want 2", p1.Games)
 	}
+	if p1.Kills != 5 {
+		t.Errorf("Kills = %d, want 5", p1.Kills)
+	}
+}
+
+func TestProfile_ReturnsRankAndEmptyPlayer(t *testing.T) {
+	svc, _ := setupService(t)
+	svc.Update("p1", "Alice", 100, 1, 1)
+	svc.Update("p2", "Bob", 300, 2, 3)
+
+	profile, err := svc.Profile("p1")
+	if err != nil || profile.Rank != 2 {
+		t.Fatalf("Profile rank = %d, err = %v, want 2", profile.Rank, err)
+	}
+	empty, err := svc.Profile("new-player")
+	if err != nil || empty.PlayerId != "new-player" || empty.Rank != 0 {
+		t.Fatalf("empty Profile = %+v, err = %v", empty, err)
+	}
 }
 
 func TestMockStore_ImplementsInterface(t *testing.T) {

@@ -3,6 +3,7 @@ package game
 import (
 	"battle/model/bullet"
 	"battle/model/monster"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -60,7 +61,7 @@ func TestInitGameState(t *testing.T) {
 func TestPlayerAdd(t *testing.T) {
 	gs := newTestGameState()
 
-	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p1", "Alice", "Nova")
 	if len(gs.Players) != 1 {
 		t.Errorf("Players count = %v, want 1", len(gs.Players))
 	}
@@ -115,6 +116,32 @@ func TestPlayerPushAction(t *testing.T) {
 	}
 }
 
+func TestAbilityAppliesCooldownAndShield(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("p1", "Tank", "Viper")
+	p := gs.Players["p1"]
+	gs.playerAbility("p1", 10_000, "secondary")
+	if p.ShieldHP != 2600 {
+		t.Fatalf("ShieldHP = %d, want 2600", p.ShieldHP)
+	}
+	gs.playerAbility("p1", 11_000, "secondary")
+	if p.ShieldHP != 2600 {
+		t.Fatalf("cooldown allowed duplicate shield: %d", p.ShieldHP)
+	}
+}
+
+func TestAbilityActionIsProcessed(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("p1", "Kira", "Blaze")
+	gs.PlayerPushAction(Action{PlayerId: "p1", Type: "ability", Ts: 10_000, Value: &AbilityValue{Slot: "secondary"}})
+	gs.updatePlayers()
+	if gs.Players["p1"].LastSecondaryAt != 10_000 {
+		t.Fatal("ability action was not processed")
+	}
+}
+
 func TestGameStatePlayerMove(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("p1", "Alice", "")
@@ -159,7 +186,7 @@ func TestPlayerRotate(t *testing.T) {
 func TestPlayerShoot(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p1", "Alice", "Nova")
 
 	gs.playerShoot("p1", 1000, 0)
 	if len(gs.Bullets) != 1 {
@@ -175,10 +202,42 @@ func TestPlayerShoot(t *testing.T) {
 	}
 }
 
+func TestShotgunSpawnsFivePellets(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("p1", "Kira", "Blaze")
+	gs.playerShoot("p1", 1000, 0)
+	if len(gs.Bullets) != 5 {
+		t.Fatalf("shotgun bullets = %d, want 5", len(gs.Bullets))
+	}
+	for _, b := range gs.Bullets {
+		if b.Kind != "pellet" {
+			t.Errorf("kind = %q, want pellet", b.Kind)
+		}
+	}
+}
+
+func TestSlamDealsDamageWithoutProjectile(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("p1", "Vulkan", "Viper")
+	gs.PlayerAdd("p2", "Target", "Nova")
+	source, target := gs.Players["p1"], gs.Players["p2"]
+	target.X, target.Y = source.X+60, source.Y
+	before := target.Lives
+	gs.playerShoot("p1", 1000, 0)
+	if len(gs.Bullets) != 0 {
+		t.Fatalf("slam created %d projectiles", len(gs.Bullets))
+	}
+	if target.Lives >= before {
+		t.Fatal("slam did not damage target")
+	}
+}
+
 func TestPlayerShootRateLimit(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p1", "Alice", "Nova")
 
 	gs.playerShoot("p1", 1000, 0)
 	gs.playerShoot("p1", 1050, 0) // too fast (50ms < 800ms)
@@ -191,12 +250,12 @@ func TestPlayerShootRateLimit(t *testing.T) {
 func TestPlayerShootRecycle(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p1", "Alice", "Nova")
 
 	gs.playerShoot("p1", 1000, 0)
 	gs.Bullets[0].Active = false
 
-	gs.playerShoot("p1", 2000, 0)
+	gs.playerShoot("p1", 2500, 0)
 	if len(gs.Bullets) != 1 {
 		t.Errorf("Bullets count = %v, want 1 (recycled)", len(gs.Bullets))
 	}
@@ -417,6 +476,73 @@ func TestGameStartGame(t *testing.T) {
 	}
 }
 
+func TestBotsFillRoomToHalfCapacity(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("p1", "Alice", "Blaze")
+
+	gs.startGame()
+
+	if len(gs.Players) != 4 {
+		t.Fatalf("players = %d, want 4 (one human and three bots)", len(gs.Players))
+	}
+	bots := 0
+	for _, p := range gs.Players {
+		if p.IsBot {
+			bots++
+		}
+	}
+	if bots != 3 {
+		t.Errorf("bots = %d, want 3", bots)
+	}
+}
+
+func TestBotsNotAddedAtHalfCapacity(t *testing.T) {
+	gs := newTestGameState()
+	for index := 1; index <= 4; index++ {
+		id := fmt.Sprintf("p%d", index)
+		gs.PlayerAdd(id, id, "Blaze")
+	}
+
+	gs.startGame()
+
+	if len(gs.Players) != 4 {
+		t.Fatalf("players = %d, want 4 humans only", len(gs.Players))
+	}
+	for _, p := range gs.Players {
+		if p.IsBot {
+			t.Fatal("bot added even though room was already half full")
+		}
+	}
+}
+
+func TestBotsAdjustWhenHumansJoinAndLeaveDuringGame(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("p1", "Alice", "Blaze")
+	gs.startGame()
+
+	gs.PlayerAdd("p2", "Bob", "Nova")
+	gs.PlayerAdd("p3", "Eve", "Viper")
+	gs.PlayerAdd("p4", "Max", "Titan")
+	if bots := countBots(gs); bots != 0 {
+		t.Fatalf("bots after fourth human joined = %d, want 0", bots)
+	}
+
+	gs.PlayerRemove("p4")
+	if bots := countBots(gs); bots != 3 {
+		t.Fatalf("bots after human left = %d, want 3", bots)
+	}
+}
+
+func countBots(gs *GameState) int {
+	count := 0
+	for _, p := range gs.Players {
+		if p.IsBot {
+			count++
+		}
+	}
+	return count
+}
+
 func TestGameStartWaiting(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
@@ -583,7 +709,7 @@ func TestTeamDeathmatchStart(t *testing.T) {
 		teams[p.Team]++
 	}
 
-	if teams["Blue"]+teams["Red"] != 2 {
+	if teams["Blue"]+teams["Red"] != len(gs.Players) {
 		t.Error("all players should have a team")
 	}
 }

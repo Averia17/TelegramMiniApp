@@ -14,13 +14,13 @@ import (
 var ctx = context.Background()
 
 const (
-	scoresKey      = "leaderboard:scores"
-	playerPrefix   = "leaderboard:player:"
-	processedKey   = "leaderboard:processed"
-	playerTTL      = 30 * 24 * time.Hour
-	processedTTL   = 7 * 24 * time.Hour
-	syncInterval   = 5 * time.Minute
-	scanCount      = 100
+	scoresKey    = "leaderboard:scores"
+	playerPrefix = "leaderboard:player:"
+	processedKey = "leaderboard:processed"
+	playerTTL    = 30 * 24 * time.Hour
+	processedTTL = 7 * 24 * time.Hour
+	syncInterval = 5 * time.Minute
+	scanCount    = 100
 )
 
 type RedisProvider struct {
@@ -73,6 +73,7 @@ func (p *RedisProvider) Save(score *model.Score) error {
 		existing.Score += score.Score
 		existing.Wins += score.Wins
 		existing.Games += score.Games
+		existing.Kills += score.Kills
 		if score.Name != "" {
 			existing.Name = score.Name
 		}

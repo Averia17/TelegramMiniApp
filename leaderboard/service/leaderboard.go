@@ -30,8 +30,30 @@ func (s *LeaderboardService) Update(playerId, name string, score, wins, games in
 	})
 }
 
+func (s *LeaderboardService) Profile(playerId string) (*model.PlayerProfile, error) {
+	score, err := s.store.Get(playerId)
+	if err != nil {
+		return &model.PlayerProfile{Score: model.Score{PlayerId: playerId}}, nil
+	}
+	profile := &model.PlayerProfile{Score: *score}
+	top, err := s.store.Top(10000)
+	if err != nil {
+		return nil, err
+	}
+	for i := range top {
+		if top[i].PlayerId == playerId {
+			profile.Rank = i + 1
+			break
+		}
+	}
+	return profile, nil
+}
+
 func (s *LeaderboardService) ApplyBattleResult(result *model.BattleResult) error {
-	messageId := fmt.Sprintf("%s:%s:%d", result.RoomId, result.Mode, result.Duration)
+	messageId := fmt.Sprintf("%s:%d", result.RoomId, result.EndedAt)
+	if result.EndedAt == 0 {
+		messageId = fmt.Sprintf("%s:%s:%d", result.RoomId, result.Mode, result.Duration)
+	}
 
 	if s.redis != nil && s.redis.IsProcessed(messageId) {
 		log.Printf("Skipping duplicate battle result: %s", messageId)
@@ -49,6 +71,7 @@ func (s *LeaderboardService) ApplyBattleResult(result *model.BattleResult) error
 			Score:    p.Kills * 100,
 			Wins:     wins,
 			Games:    1,
+			Kills:    p.Kills,
 		}); err != nil {
 			log.Printf("Failed to save score for %s: %v", p.PlayerId, err)
 			return err

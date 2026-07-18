@@ -6,10 +6,17 @@ type Score struct {
 	Score    int    `json:"score"`
 	Wins     int    `json:"wins"`
 	Games    int    `json:"games"`
+	Kills    int    `json:"kills"`
+}
+
+type PlayerProfile struct {
+	Score
+	Rank int `json:"rank"`
 }
 
 type BattleResult struct {
 	RoomId   string         `json:"roomId"`
+	EndedAt  int64          `json:"endedAt"`
 	MapName  string         `json:"mapName"`
 	Mode     string         `json:"mode"`
 	Duration int64          `json:"duration"`

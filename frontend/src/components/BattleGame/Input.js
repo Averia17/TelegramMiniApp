@@ -13,7 +13,8 @@ export class Input {
     this.aimStart = null
     this.shooting = false
     this.lastShotAt = 0
-    this.shootCooldown = 800
+    // The battle engine owns each hero's real cadence. Input only debounces noisy pointers.
+    this.shootCooldown = 90
     this.localPlayerId = null
     this.getState = null
     this.events = new AbortController()
@@ -39,6 +40,8 @@ export class Input {
         e.preventDefault()
         this.tryShoot()
       }
+      if (e.code === "KeyQ") this.client.ability?.("primary")
+      if (e.code === "KeyE") this.client.ability?.("secondary")
     }, {signal: this.events.signal})
 
     window.addEventListener("keyup", (e) => {
@@ -56,11 +59,13 @@ export class Input {
 
     this.canvas.addEventListener("mousedown", () => {
       this.shooting = true
+      this.client.setAiming?.(true)
       this.tryShoot()
     }, {signal: this.events.signal})
 
     window.addEventListener("mouseup", () => {
       this.shooting = false
+      this.client.setAiming?.(false)
     }, {signal: this.events.signal})
   }
 
@@ -81,6 +86,7 @@ export class Input {
           this.mouseX = point.x
           this.mouseY = point.y
           this.shooting = true
+          this.client.setAiming?.(true)
           this.sendRotation()
           this.tryShoot()
         }
@@ -122,6 +128,7 @@ export class Input {
           this.aimTouchId = null
           this.aimStart = null
           this.shooting = false
+          this.client.setAiming?.(false)
         }
       }
     }, {passive: false, signal: this.events.signal})
@@ -134,6 +141,7 @@ export class Input {
       this.touchMove = null
       this.aimStart = null
       this.shooting = false
+      this.client.setAiming?.(false)
       this.sendMove(0, 0)
     }, {passive: false, signal: this.events.signal})
   }
@@ -224,6 +232,7 @@ export class Input {
   destroy() {
     this.events.abort()
     this.shooting = false
+    this.client.setAiming?.(false)
     this.keys = {}
     this.sendMove(0, 0)
   }

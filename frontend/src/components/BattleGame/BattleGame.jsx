@@ -3,8 +3,68 @@ import {useNavigate} from "react-router-dom"
 import {GameClient} from "./GameClient"
 import {Renderer} from "./Renderer"
 import {Input} from "./Input"
+import {LocalBattleEngine} from "./LocalBattleEngine"
+import {generateBattleRoyaleMap} from "./MapGenerator"
 import {WS_URL} from "../../utils/urls.js"
 import "./BattleGame.css"
+
+const DEMO_HERO_PROFILES = {
+  blaze: {color: "#c64bff", lives: 5600, maxLives: 5600, moveSpeed: 294, radius: 14},
+  frost: {color: "#35d9ff", lives: 5000, maxLives: 5000, moveSpeed: 310, radius: 14},
+  viper: {color: "#ff7138", lives: 9800, maxLives: 9800, moveSpeed: 215, radius: 18},
+  titan: {color: "#42e3d2", lives: 4700, maxLives: 4700, moveSpeed: 340, radius: 13},
+  shadow: {color: "#75d947", lives: 6200, maxLives: 6200, moveSpeed: 258, radius: 14},
+  spark: {color: "#6d52c7", lives: 5400, maxLives: 5400, moveSpeed: 338, radius: 13},
+  nova: {color: "#fff4d0", lives: 4300, maxLives: 4300, moveSpeed: 275, radius: 12},
+  rex: {color: "#4bc7ff", lives: 7200, maxLives: 7200, moveSpeed: 315, radius: 15},
+  pixel: {color: "#ffd43b", lives: 6600, maxLives: 6600, moveSpeed: 263, radius: 14},
+  boulder: {color: "#59d348", lives: 5200, maxLives: 5200, moveSpeed: 310, radius: 13},
+}
+
+const demoProfile = heroName => DEMO_HERO_PROFILES[String(heroName || "blaze").toLowerCase()] || DEMO_HERO_PROFILES.blaze
+
+const saveBattleResult = result => {
+  try {
+    const history = JSON.parse(window.localStorage.getItem("battle_history") || "[]")
+    window.localStorage.setItem("battle_history", JSON.stringify([{...result, finishedAt: new Date().toISOString()}, ...history].slice(0, 20)))
+    const stats = JSON.parse(window.localStorage.getItem("battle_stats") || "{}")
+    window.localStorage.setItem("battle_stats", JSON.stringify({battles:(stats.battles||0)+1,wins:(stats.wins||0)+(result.won?1:0),kills:(stats.kills||0)+(result.kills||0),monsters:(stats.monsters||0)+(result.monsters||0)}))
+  } catch (error) { console.warn("Could not save battle result", error) }
+}
+
+const createDemoState = (playerName, heroName) => {
+  const botHeroes = Object.keys(DEMO_HERO_PROFILES)
+    .filter(name => name !== String(heroName || "blaze").toLowerCase())
+    .sort(() => Math.random() - .5).slice(0, 3)
+  const createBot = (index, name) => {
+    const hero = botHeroes[index]
+    return {rotation: Math.random() * Math.PI * 2, name, hero, isBot: true, ...demoProfile(hero)}
+  }
+  const state = ({
+    type: "state",
+    game: {state: "game", elapsed: 0},
+    map: generateBattleRoyaleMap(),
+    players: {
+      "demo-player": {rotation: -.35, name: playerName, hero: heroName || "Blaze", ...demoProfile(heroName)},
+      bot1: createBot(0, "СТРАЙКЕР"),
+      bot2: createBot(1, "ВУЛКАН"),
+      bot3: createBot(2, "ПРИЗРАК"),
+    },
+    bullets: [],
+    props: [],
+    monsters: {},
+  })
+  Object.values(state.players).forEach((player, index) => Object.assign(player, state.map.spawns[index]))
+  const monsterSpawns = [
+    {x:state.map.width*.5,y:state.map.height*.5,tier:2},
+    ...state.map.spawns.slice(4).map((spawn,index) => ({...spawn,tier:index === 3 ? 2 : 1})),
+  ]
+  state.monsters = Object.fromEntries(monsterSpawns.map(({x,y,tier}, index) => {
+    const lives = tier === 2 ? 8200 : 6200
+    return [`beast${index+1}`, {x,y,tier,rotation:index,lives,maxLives:lives,attackAt:0}]
+  }))
+  return state
+}
 
 export const BattleGame = ({playerId, roomId, heroName}) => {
   const navigate = useNavigate()
@@ -13,10 +73,12 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const rendererRef = useRef(null)
   const inputRef = useRef(null)
   const animFrameRef = useRef(null)
+  const demoEngineRef = useRef(null)
   const joinedRef = useRef(false)
   const viewRef = useRef(roomId ? "lobby" : "connecting")
   const latestStateRef = useRef(null)
   const lastUiUpdateRef = useRef(0)
+  const savedResultRef = useRef(false)
 
   const [gameState, setGameState] = useState(null)
   const [connected, setConnected] = useState(false)
@@ -24,11 +86,21 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const [messages, setMessages] = useState([])
   const [view, setViewState] = useState(roomId ? "lobby" : "connecting")
   const [deathInfo, setDeathInfo] = useState(null)
+  const [battleResult, setBattleResult] = useState(null)
 
   const setView = useCallback((v) => {
     viewRef.current = v
     setViewState(v)
   }, [])
+
+  const finishBattle = useCallback(result => {
+    if (savedResultRef.current) return
+    savedResultRef.current = true
+    const normalized = {duration:0,kills:0,monsters:0,...result}
+    saveBattleResult(normalized)
+    setBattleResult(normalized)
+    setView(normalized.won ? "result" : "dead")
+  }, [setView])
 
   const playerName = playerId ? `P${String(playerId).slice(0, 6)}` : "Player"
 
@@ -52,6 +124,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
     rendererRef.current = renderer
     renderer.resize(window.innerWidth, window.innerHeight)
 
+    let demoTimer
     const client = new GameClient(
       `${WS_URL}/ws`,
       (state) => {
@@ -82,24 +155,21 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
         }
         if (msg.type === "match_found") {
           if (msg.params?.roomId && clientRef.current) {
-            clientRef.current.joinById(msg.params.roomId, playerName, heroName)
+            clientRef.current.joinById(msg.params.roomId, playerName, heroName, playerId)
           }
         }
         if (msg.type === "start") {
           setView("game")
         }
         if (msg.type === "stop") {
-          setView("lobby")
+          finishBattle({won:false,reason:"Бой завершён сервером"})
+        }
+        if (msg.type === "won") {
+          finishBattle({won:msg.params?.name === playerName,winner:msg.params?.name})
         }
         if (msg.type === "you_died") {
           setDeathInfo({killerName: msg.params?.killerName || "Unknown"})
-          setView("dead")
-          setTimeout(() => {
-            if (clientRef.current) {
-              clientRef.current.disconnect()
-            }
-            navigate("/")
-          }, 4000)
+          finishBattle({won:false,killerName:msg.params?.killerName || "Unknown"})
         }
         if (msg.type === "error" && roomId && msg.params?.message === "Room not found") {
           joinedRef.current = false
@@ -107,11 +177,41 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
           navigate(`/battle${heroQuery}`, {replace: true})
         }
       },
-      () => setConnected(true),
+      () => {
+        clearTimeout(demoTimer)
+        setConnected(true)
+      },
       () => setConnected(false)
     )
     clientRef.current = client
     client.connect()
+
+    demoTimer = setTimeout(() => {
+      if (client.connected) return
+      const demoState = createDemoState(playerName, heroName)
+      client.playerId = "demo-player"
+      client.lastState = demoState
+      latestStateRef.current = demoState
+      renderer.setLocalPlayerId("demo-player")
+      renderer.setState(demoState)
+      setGameState(demoState)
+      setView("game")
+      const engine = new LocalBattleEngine(demoState, (state, updateUi) => {
+        latestStateRef.current = state
+        client.lastState = state
+        renderer.setState(state)
+        if (updateUi) setGameState({...state, players: {...state.players}, bullets: [...state.bullets], props: [...state.props]})
+        if (state.game.result) finishBattle(state.game.result)
+      })
+      demoEngineRef.current = engine
+      client.move = engine.move
+      client.rotate = engine.rotate
+      client.shoot = engine.shoot
+      client.ability = engine.ability
+      client.setAiming = engine.setAiming
+      input.setLocalPlayer("demo-player", () => engine.state)
+      engine.start()
+    }, 1400)
 
     const input = new Input(canvas, client)
     inputRef.current = input
@@ -134,6 +234,8 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
 
     return () => {
       window.removeEventListener("resize", resize)
+      clearTimeout(demoTimer)
+      demoEngineRef.current?.stop()
       cancelAnimationFrame(animFrameRef.current)
       input.destroy()
       client.disconnect()
@@ -157,19 +259,20 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   useEffect(() => {
     if (connected && roomId && !joinedRef.current && clientRef.current) {
       joinedRef.current = true
-      clientRef.current.joinById(roomId, playerName, heroName)
+      clientRef.current.joinById(roomId, playerName, heroName, playerId)
     }
-  }, [connected, roomId, playerName, heroName])
+  }, [connected, roomId, playerName, heroName, playerId])
 
   useEffect(() => {
     if (connected && !roomId && !joinedRef.current && clientRef.current) {
       joinedRef.current = true
-      clientRef.current.findMatch(playerName, heroName)
+      clientRef.current.findMatch(playerName, heroName, playerId)
     }
-  }, [connected, roomId, playerName, heroName])
+  }, [connected, roomId, playerName, heroName, playerId])
 
   const handleBackToMenu = () => {
     joinedRef.current = false
+    demoEngineRef.current?.stop()
     setView("connecting")
     setRoomInfo(null)
     setGameState(null)
@@ -239,6 +342,13 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
               </div>
             </div>
           )}
+          {gameState?.map && <BattleMiniMap state={gameState} localId={clientRef.current?.playerId}/>}
+          {localPlayer && (
+            <div className="battle-abilities">
+              <AbilityButton slot="primary" keyName="Q" label={abilityLabel(localPlayer.hero, "primary")} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper onUse={() => clientRef.current?.ability?.("primary")}/>
+              <AbilityButton slot="secondary" keyName="E" label={abilityLabel(localPlayer.hero, "secondary")} cooldown={localPlayer.cooldowns?.secondary} onUse={() => clientRef.current?.ability?.("secondary")}/>
+            </div>
+          )}
         </>
       )}
 
@@ -254,8 +364,21 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
           <div style={{textAlign: "center", color: "#fff"}}>
             <div className="death-skull">☠</div>
             <h2>ТЫ ВЫБЫЛ</h2>
-            <p>Победитель: {deathInfo?.killerName || "Неизвестный боец"}</p>
-            <small>Возвращаемся в меню...</small>
+            <p>Тебя победил: {battleResult?.killerName || deathInfo?.killerName || "Неизвестный боец"}</p>
+            <BattleResultStats result={battleResult}/>
+            <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
+          </div>
+        </div>
+      )}
+
+      {view === "result" && (
+        <div className="battle-overlay battle-result-overlay">
+          <div className="battle-result-card">
+            <div className="battle-result-crown">♛</div>
+            <h2>ПОБЕДА!</h2>
+            <p>Арена зачищена — результат сохранён.</p>
+            <BattleResultStats result={battleResult}/>
+            <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
           </div>
         </div>
       )}
@@ -279,5 +402,49 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
         <div className="control-hint">WASD — движение · мышь — прицел · клик / пробел — атака</div>
       </div>
     </div>
+  )
+}
+
+const BattleResultStats = ({result}) => result && (
+  <div className="battle-result-stats">
+    <span><b>#{result.place || (result.won ? 1 : "—")}</b>место</span>
+    <span><b>{result.kills || 0}</b>бойцов</span>
+    <span><b>{result.monsters || 0}</b>мобов</span>
+    <span><b>{Math.round(result.duration || 0)}с</b>время</span>
+  </div>
+)
+
+const abilityLabel = (hero, slot) => {
+  const name = String(hero || "").toLowerCase()
+  const labels = {
+    blaze:["ДЕТОНАЦИЯ","ТАКТ. ПЕРЕКАТ"],frost:["ПЕРЕГРУЗКА","ФОРСАЖ"],
+    viper:["ИЗВЕРЖЕНИЕ","МАГМА-БРОНЯ"],titan:["ЦИФРОВОЙ СБОЙ","ТРОЙНОЙ ДИСК"],
+    shadow:["ЖИВАЯ ЛИАНА","ФОТОСИНТЕЗ"],spark:["ЖАТВА","РОЙ ТЕНЕЙ"],
+    nova:["ЗВЁЗДНЫЙ ЗАЛП","ОТХОД"],rex:["МАГНИТНЫЙ УДАР","РАЗГОН"],
+    pixel:["РАСЩЕПЛЕНИЕ","ЭВОЛЮЦИЯ"],boulder:["ЧУМНОЙ ДОЖДЬ","ТОКСИЧНЫЙ РЫВОК"],
+  }
+  return labels[name]?.[slot === "primary" ? 0 : 1] || (slot === "primary" ? "ЗАЛП" : "ЩИТ")
+}
+
+const AbilityButton = ({keyName, label, cooldown = 0, charge = 100, isSuper = false, onUse}) => (
+  <button className={`battle-ability${isSuper && charge >= 100 ? " battle-ability--ready" : ""}`} disabled={cooldown > 0 || (isSuper && charge < 100)} onClick={onUse} style={isSuper ? {"--charge": `${charge}%`} : undefined}>
+    {isSuper && <i className="battle-ability__charge"/>}
+    <b>{cooldown > 0 ? cooldown.toFixed(1) : isSuper && charge < 100 ? `${Math.round(charge)}%` : keyName}</b>
+    <span>{label}</span>
+  </button>
+)
+
+const BattleMiniMap = ({state, localId}) => {
+  const width = state.map.width || 1
+  const height = state.map.height || 1
+  return (
+    <aside className="battle-minimap" aria-label="Миникарта">
+      {state.map.walls.map((wall, index) => (
+        <i key={index} className={`mini-obstacle mini-obstacle--${wall.type}`} style={{left: `${wall.minX / width * 100}%`, top: `${wall.minY / height * 100}%`, width: `${(wall.maxX - wall.minX) / width * 100}%`, height: `${Math.max(2.5, (wall.maxY - wall.minY) / height * 100)}%`}}/>
+      ))}
+      {state.players[localId] && (
+        <b className="mini-player mini-player--me" style={{left: `${state.players[localId].x / width * 100}%`, top: `${state.players[localId].y / height * 100}%`}}/>
+      )}
+    </aside>
   )
 }

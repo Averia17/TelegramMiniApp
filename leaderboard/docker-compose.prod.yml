@@ -1,0 +1,33 @@
+services:
+  leaderboard:
+    container_name: leaderboard
+    image: leaderboard
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "8001"
+    environment:
+      - REDIS_ADDR=leaderboard-redis:6379
+      - KAFKA_ADDR=kafka:9092
+    restart: always
+    depends_on:
+      - leaderboard-redis
+    networks:
+      - app-net
+
+  leaderboard-redis:
+    container_name: leaderboard-redis
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --appendonly yes --appendfsync everysec --auto-aof-rewrite-percentage 100 --auto-aof-rewrite-min-size 64mb
+    volumes:
+      - leaderboard-redis-data:/data
+    networks:
+      - app-net
+
+networks:
+  app-net:
+
+volumes:
+  leaderboard-redis-data:

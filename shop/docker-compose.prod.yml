@@ -5,9 +5,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8888:8000"
-    env_file: .env
+    expose:
+      - "8000"
+    env_file: ../.env
     restart: always
     depends_on:
       - shop-db
@@ -22,8 +22,6 @@ services:
   shop-db:
     container_name: shop-db
     image: postgres:13-alpine
-    ports:
-      - "5555:5432"
     restart: always
     volumes:
       - shop-db-data:/var/lib/postgresql/data

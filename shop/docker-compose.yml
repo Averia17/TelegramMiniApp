@@ -4,11 +4,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8888:8000"
+    expose:
+      - "8000"
     volumes:
       - .:/app
-    env_file: .env
+    env_file: ../.env
     restart: unless-stopped
     depends_on:
       - shop-db
@@ -18,8 +18,6 @@ services:
   shop-db:
     container_name: shop-db
     image: postgres:13-alpine
-    ports:
-      - "5555:5432"
     restart: always
     volumes:
       - shop-db-data:/var/lib/postgresql/data

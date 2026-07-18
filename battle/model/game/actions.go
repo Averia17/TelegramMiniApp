@@ -20,6 +20,10 @@ type ShootValue struct {
 	Angle float64 `json:"angle"`
 }
 
+type AbilityValue struct {
+	Slot string `json:"slot"`
+}
+
 type ServerEvent struct {
 	Type   string
 	Params interface{}

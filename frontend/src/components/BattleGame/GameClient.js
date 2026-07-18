@@ -64,22 +64,24 @@ export class GameClient {
     this.ws.send(JSON.stringify({type, ts: Date.now(), value}))
   }
 
-  joinById(roomId, playerName, heroName) {
+  joinById(roomId, playerName, heroName, userId) {
     if (this.ws?.readyState !== WebSocket.OPEN) return
     this.ws.send(JSON.stringify({
       type: "join_by_id",
       roomId,
       playerName: playerName || "Player",
       heroName: heroName || "",
+      userId: String(userId || ""),
     }))
   }
 
-  findMatch(playerName, heroName) {
+  findMatch(playerName, heroName, userId) {
     if (this.ws?.readyState !== WebSocket.OPEN) return
     this.ws.send(JSON.stringify({
       type: "find_match",
       playerName: playerName || "Player",
       heroName: heroName || "",
+      userId: String(userId || ""),
     }))
   }
 
@@ -93,6 +95,10 @@ export class GameClient {
 
   shoot(angle) {
     this.send("shoot", {angle})
+  }
+
+  ability(slot) {
+    this.send("ability", {slot})
   }
 
   disconnect() {

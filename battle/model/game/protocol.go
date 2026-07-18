@@ -28,30 +28,35 @@ type GameStateJSON struct {
 }
 
 type StateUpdate struct {
-	Type     string                         `json:"type"`
-	Ts       int64                          `json:"ts"`
-	Game     GameStateJSON                  `json:"game"`
-	Map      MapJSON                        `json:"map"`
-	Players  map[string]PlayerJSON          `json:"players"`
-	Monsters map[string]MonsterJSON         `json:"monsters"`
-	Bullets  []BulletJSON                   `json:"bullets"`
-	Props    []PropJSON                     `json:"props"`
+	Type     string                 `json:"type"`
+	Ts       int64                  `json:"ts"`
+	Game     GameStateJSON          `json:"game"`
+	Map      MapJSON                `json:"map"`
+	Players  map[string]PlayerJSON  `json:"players"`
+	Monsters map[string]MonsterJSON `json:"monsters"`
+	Bullets  []BulletJSON           `json:"bullets"`
+	Props    []PropJSON             `json:"props"`
 }
 
 type PlayerJSON struct {
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	Radius   float64 `json:"radius"`
-	PlayerId string  `json:"playerId"`
-	Name     string  `json:"name"`
-	Lives    int     `json:"lives"`
-	MaxLives int     `json:"maxLives"`
-	Team     string  `json:"team,omitempty"`
-	Color    string  `json:"color"`
-	Kills    int     `json:"kills"`
-	Rotation float64 `json:"rotation"`
-	Ack      int64   `json:"ack"`
-	Hero     string  `json:"hero"`
+	X          float64            `json:"x"`
+	Y          float64            `json:"y"`
+	Radius     float64            `json:"radius"`
+	PlayerId   string             `json:"playerId"`
+	Name       string             `json:"name"`
+	Lives      int                `json:"lives"`
+	MaxLives   int                `json:"maxLives"`
+	Team       string             `json:"team,omitempty"`
+	Color      string             `json:"color"`
+	Kills      int                `json:"kills"`
+	Rotation   float64            `json:"rotation"`
+	Ack        int64              `json:"ack"`
+	Hero       string             `json:"hero"`
+	AttackType string             `json:"attackType,omitempty"`
+	ShieldHP   int                `json:"shieldHp,omitempty"`
+	Marks      int                `json:"marks,omitempty"`
+	Poisoned   bool               `json:"poisoned,omitempty"`
+	Cooldowns  map[string]float64 `json:"cooldowns,omitempty"`
 }
 
 type MonsterJSON struct {
@@ -62,13 +67,18 @@ type MonsterJSON struct {
 }
 
 type BulletJSON struct {
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	Radius   float64 `json:"radius"`
-	PlayerId string  `json:"playerId"`
-	Team     string  `json:"team"`
-	Rotation float64 `json:"rotation"`
-	Color    string  `json:"color"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Radius    float64 `json:"radius"`
+	PlayerId  string  `json:"playerId"`
+	Team      string  `json:"team"`
+	Rotation  float64 `json:"rotation"`
+	Color     string  `json:"color"`
+	Kind      string  `json:"kind,omitempty"`
+	Speed     float64 `json:"speed,omitempty"`
+	MaxRange  float64 `json:"maxRange,omitempty"`
+	Travelled float64 `json:"travelled,omitempty"`
+	Returning bool    `json:"returning,omitempty"`
 }
 
 type PropJSON struct {

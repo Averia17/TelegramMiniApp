@@ -13,7 +13,8 @@ module.exports = {
     'react-refresh/only-export-components': 'warn',
     "react/prop-types": 0,
     "indent": ["error", 2],
-    "linebreak-style": 1,
+    // Line endings are normalized by Git and vary between developer platforms.
+    "linebreak-style": "off",
     "quotes": ["error", "double"],
     "semi": ["error", "never"],
   },

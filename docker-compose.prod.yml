@@ -3,6 +3,7 @@ include:
   - ./account/docker-compose.prod.yml
   - ./shop/docker-compose.prod.yml
   - ./battle/docker-compose.prod.yml
+  - ./leaderboard/docker-compose.prod.yml
 
 services:
   frontend:
@@ -13,7 +14,7 @@ services:
       dockerfile: Dockerfile
     working_dir: /home/node/app
     volumes:
-      - /var/app/miniapp:/home/node/app/dist
+      - frontend-dist:/home/node/app/dist
     command: ["npm", "run", "build"]
     stop_signal: SIGINT
     depends_on:
@@ -30,20 +31,22 @@ services:
     ports:
       - "80:80"
     volumes:
-      - /var/app/miniapp:/src/public
+      - frontend-dist:/src/public:ro
     depends_on:
       - account
       - frontend
       - battle
+      - shop
+      - leaderboard
     networks:
       - app-net
 
   kafka:
     image: confluentinc/cp-kafka:7.4.10
     container_name: kafka
-    ports:
-      - "9092:9092"
-      - "29093:29093"
+    expose:
+      - "9092"
+      - "29093"
     environment:
       CLUSTER_ID: "MkU3o6n8QrO2VZk5eY1hnA"
       KAFKA_PROCESS_ROLES: "controller,broker"
@@ -63,8 +66,8 @@ services:
     image: provectuslabs/kafka-ui:latest
     restart: always
     container_name: kafka-ui
-    ports:
-      - '8080:8080'
+    expose:
+      - "8080"
     environment:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
       DYNAMIC_CONFIG_ENABLED: true
@@ -73,3 +76,6 @@ services:
 
 networks:
   app-net:
+
+volumes:
+  frontend-dist:

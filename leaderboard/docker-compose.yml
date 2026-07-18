@@ -4,8 +4,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "3781:8001"
+    expose:
+      - "8001"
     environment:
       - REDIS_ADDR=leaderboard-redis:6379
       - KAFKA_ADDR=kafka:9092
@@ -18,8 +18,6 @@ services:
   leaderboard-redis:
     container_name: leaderboard-redis
     image: redis:7-alpine
-    ports:
-      - "6381:6379"
     restart: always
     command: redis-server --appendonly yes --appendfsync everysec --auto-aof-rewrite-percentage 100 --auto-aof-rewrite-min-size 64mb
     volumes:
