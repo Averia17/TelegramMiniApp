@@ -6,6 +6,10 @@ services:
       context: .
       dockerfile: Dockerfile
     env_file: ../.env
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
+    command: ["sh", "-c", "alembic upgrade head && exec python -m bot"]
     restart: always
     depends_on:
       - db

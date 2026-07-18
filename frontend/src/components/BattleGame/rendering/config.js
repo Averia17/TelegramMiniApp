@@ -5,11 +5,6 @@
 export const DEPTH = 0.60
 export const HERO_SCALE = 0.88
 
-export const DEFAULT_ARENA_SIZE = {
-  width: 1024,
-  height: 768,
-}
-
 export const HERO_PALETTES = {
   blaze: {main: 0xc64bff, dark: 0x53234f, light: 0xff7ad9, skin: 0xd99671, accent: 0x62f3ff},
   frost: {main: 0x35aee8, dark: 0x203b68, light: 0xe8f4ff, skin: 0x37445f, accent: 0x54f2ff},
@@ -24,7 +19,3 @@ export const HERO_PALETTES = {
   default: {main: 0x4f91e8, dark: 0x2c4f9a, light: 0x81c9ff, skin: 0xe7a077, accent: 0xffd640, weapon: "blaster"},
 }
 
-export const getRenderScale = width => ({
-  resolution: Math.min(window.devicePixelRatio || 1, width < 700 ? 1.5 : 2),
-  zoom: width < 700 ? 1.05 : 1.2,
-})

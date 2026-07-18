@@ -6,13 +6,6 @@ export const BotState = Object.freeze({
   CAMPING: "STATE_CAMPING",
 })
 
-export const addMatchBots = (humanPlayers, createBot, maxPlayers = 8, maxBots = 3) => {
-  const humans = humanPlayers.filter(player => !player.isBot)
-  if (humans.length >= Math.ceil(maxPlayers / 2)) return [...humans]
-  const botCount = Math.min(maxBots, maxPlayers - humans.length)
-  return [...humans, ...Array.from({length: botCount}, (_, index) => createBot(index))]
-}
-
 const length = vector => Math.hypot(vector.x, vector.y)
 export const normalize = vector => {
   const magnitude = length(vector)

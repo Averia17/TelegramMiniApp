@@ -15,10 +15,11 @@ dependencies = [
     "uvicorn[standard]~=0.34",
     "fastapi~=0.115",
     "python-dateutil",
+    "aiokafka~=0.12",
 ]
 
 [tool.setuptools]
 py-modules = ["app", "config", "db", "deps", "routes", "schemas"]
 
 [tool.setuptools.packages.find]
-include = ["models*", "repos*"]
+include = ["infrastructure*", "routes*", "schemas*", "services*"]

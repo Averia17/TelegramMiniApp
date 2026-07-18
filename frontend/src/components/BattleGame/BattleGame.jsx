@@ -79,6 +79,8 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const latestStateRef = useRef(null)
   const lastUiUpdateRef = useRef(0)
   const savedResultRef = useRef(false)
+  const [mobileMode, setMobileMode] = useState(() => window.matchMedia("(pointer: coarse), (max-width: 700px)").matches)
+  const [touchControls, setTouchControls] = useState({move: null, aim: null})
 
   const [gameState, setGameState] = useState(null)
   const [connected, setConnected] = useState(false)
@@ -109,16 +111,26 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   }, [])
 
   useEffect(() => {
+    const query = window.matchMedia("(pointer: coarse), (max-width: 700px)")
+    const updateMode = () => setMobileMode(query.matches)
+    query.addEventListener?.("change", updateMode)
+    window.Telegram?.WebApp?.expand?.()
+    return () => query.removeEventListener?.("change", updateMode)
+  }, [])
+
+  useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
     const resize = () => {
-      canvas.width = window.innerWidth
-      canvas.height = window.innerHeight
-      rendererRef.current?.resize(window.innerWidth, window.innerHeight)
+      const rect = canvas.parentElement?.getBoundingClientRect()
+      const width = Math.max(1, Math.round(rect?.width || window.innerWidth))
+      const height = Math.max(1, Math.round(rect?.height || window.visualViewport?.height || window.innerHeight))
+      rendererRef.current?.resize(width, height)
     }
     resize()
     window.addEventListener("resize", resize)
+    window.visualViewport?.addEventListener("resize", resize)
 
     const renderer = new Renderer(canvas)
     rendererRef.current = renderer
@@ -213,7 +225,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
       engine.start()
     }, 1400)
 
-    const input = new Input(canvas, client)
+    const input = new Input(canvas, client, setTouchControls)
     inputRef.current = input
 
     let rendererFailed = false
@@ -234,6 +246,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
 
     return () => {
       window.removeEventListener("resize", resize)
+      window.visualViewport?.removeEventListener("resize", resize)
       clearTimeout(demoTimer)
       demoEngineRef.current?.stop()
       cancelAnimationFrame(animFrameRef.current)
@@ -291,7 +304,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const healthPercent = Math.max(0, Math.min(100, (health / maxHealth) * 100))
 
   return (
-    <div className="battle-game">
+    <div className={`battle-game ${mobileMode ? "battle-game--mobile" : "battle-game--desktop"}`}>
       <canvas ref={canvasRef} className="battle-canvas"/>
 
       {view === "connecting" && (
@@ -342,7 +355,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
               </div>
             </div>
           )}
-          {gameState?.map && <BattleMiniMap state={gameState} localId={clientRef.current?.playerId}/>}
+          {gameState?.map && <BattleMiniMap state={gameState} localId={clientRef.current?.playerId} renderer={rendererRef.current}/>}
           {localPlayer && (
             <div className="battle-abilities">
               <AbilityButton slot="primary" keyName="Q" label={abilityLabel(localPlayer.hero, "primary")} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper onUse={() => clientRef.current?.ability?.("primary")}/>
@@ -354,8 +367,8 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
 
       {(view === "game" || (view === "lobby" && roomInfo)) && (
         <>
-          <div className="mobile-stick mobile-stick-move"><span/></div>
-          <div className="mobile-stick mobile-stick-fire"><span>✦</span></div>
+          <TouchStick kind="move" control={touchControls.move}/>
+          <TouchStick kind="fire" control={touchControls.aim}/>
         </>
       )}
 
@@ -405,6 +418,23 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   )
 }
 
+const TouchStick = ({kind, control}) => {
+  let x = 0
+  let y = 0
+  if (control) {
+    const dx = control.current.x - control.start.x
+    const dy = control.current.y - control.start.y
+    const distance = Math.hypot(dx, dy)
+    const scale = distance > 28 ? 28 / distance : 1
+    x = dx * scale
+    y = dy * scale
+  }
+  return <div className={`mobile-stick mobile-stick-${kind}${control ? " mobile-stick--active" : ""}`}
+    style={control ? {left: control.start.x, top: control.start.y, "--stick-x": `${x}px`, "--stick-y": `${y}px`} : undefined}>
+    <span>{kind === "fire" ? "✦" : ""}</span>
+  </div>
+}
+
 const BattleResultStats = ({result}) => result && (
   <div className="battle-result-stats">
     <span><b>#{result.place || (result.won ? 1 : "—")}</b>место</span>
@@ -434,9 +464,11 @@ const AbilityButton = ({keyName, label, cooldown = 0, charge = 100, isSuper = fa
   </button>
 )
 
-const BattleMiniMap = ({state, localId}) => {
+const BattleMiniMap = ({state, localId, renderer}) => {
   const width = state.map.width || 1
   const height = state.map.height || 1
+  const visibleEnemies = Object.entries(state.players || {}).filter(([id]) =>
+    String(id) !== String(localId) && renderer?.isPlayerVisible(id))
   return (
     <aside className="battle-minimap" aria-label="Миникарта">
       {state.map.walls.map((wall, index) => (
@@ -445,6 +477,9 @@ const BattleMiniMap = ({state, localId}) => {
       {state.players[localId] && (
         <b className="mini-player mini-player--me" style={{left: `${state.players[localId].x / width * 100}%`, top: `${state.players[localId].y / height * 100}%`}}/>
       )}
+      {visibleEnemies.map(([id, player]) => (
+        <b key={id} className="mini-player" style={{left: `${player.x / width * 100}%`, top: `${player.y / height * 100}%`}}/>
+      ))}
     </aside>
   )
 }

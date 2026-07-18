@@ -8,6 +8,11 @@ services:
     expose:
       - "8000"
     env_file: ../.env
+    environment:
+      SHOP_DB_HOST: shop-db
+      REDIS_HOST: redis
+      REDIS_PORT: 6388
+      KAFKA_ADDR: kafka:9092
     restart: always
     depends_on:
       - shop-db

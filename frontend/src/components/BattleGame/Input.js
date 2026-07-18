@@ -1,5 +1,5 @@
 export class Input {
-  constructor(canvas, gameClient) {
+  constructor(canvas, gameClient, onTouchControlsChange = null) {
     this.canvas = canvas
     this.canvas.style.touchAction = "none"
     this.client = gameClient
@@ -11,6 +11,7 @@ export class Input {
     this.moveTouchId = null
     this.aimTouchId = null
     this.aimStart = null
+    this.aimCurrent = null
     this.shooting = false
     this.lastShotAt = 0
     // The battle engine owns each hero's real cadence. Input only debounces noisy pointers.
@@ -22,6 +23,7 @@ export class Input {
     this.lastMoveY = null
     this.lastMoveSentAt = 0
     this.moveSendInterval = 50
+    this.onTouchControlsChange = onTouchControlsChange
 
     this.setupKeyboard()
     this.setupMouse()
@@ -80,15 +82,18 @@ export class Input {
           this.moveTouchId = touch.identifier
           this.touchStart = point
           this.touchMove = {...point}
+          this.emitTouchControls()
         } else if (this.aimTouchId === null) {
           this.aimTouchId = touch.identifier
           this.aimStart = point
+          this.aimCurrent = {...point}
           this.mouseX = point.x
           this.mouseY = point.y
           this.shooting = true
           this.client.setAiming?.(true)
           this.sendRotation()
           this.tryShoot()
+          this.emitTouchControls()
         }
       }
     }, {passive: false, signal: this.events.signal})
@@ -101,6 +106,7 @@ export class Input {
         const point = {x: touch.clientX - rect.left, y: touch.clientY - rect.top}
         if (touch.identifier === this.moveTouchId) this.touchMove = point
         if (touch.identifier === this.aimTouchId) {
+          this.aimCurrent = point
           const dx = point.x - this.aimStart.x
           const dy = point.y - this.aimStart.y
           const distance = Math.hypot(dx, dy)
@@ -111,6 +117,7 @@ export class Input {
           }
         }
       }
+      this.emitTouchControls()
       this.sendMoveFromTouch()
     }, {passive: false, signal: this.events.signal})
 
@@ -123,12 +130,15 @@ export class Input {
           this.touchStart = null
           this.touchMove = null
           this.sendMove(0, 0)
+          this.emitTouchControls()
         }
         if (touch.identifier === this.aimTouchId) {
           this.aimTouchId = null
           this.aimStart = null
+          this.aimCurrent = null
           this.shooting = false
           this.client.setAiming?.(false)
+          this.emitTouchControls()
         }
       }
     }, {passive: false, signal: this.events.signal})
@@ -140,10 +150,19 @@ export class Input {
       this.touchStart = null
       this.touchMove = null
       this.aimStart = null
+      this.aimCurrent = null
       this.shooting = false
       this.client.setAiming?.(false)
       this.sendMove(0, 0)
+      this.emitTouchControls()
     }, {passive: false, signal: this.events.signal})
+  }
+
+  emitTouchControls() {
+    this.onTouchControlsChange?.({
+      move: this.touchStart && this.touchMove ? {start: this.touchStart, current: this.touchMove} : null,
+      aim: this.aimStart && this.aimCurrent ? {start: this.aimStart, current: this.aimCurrent} : null,
+    })
   }
 
   sendMoveFromTouch() {
@@ -235,5 +254,6 @@ export class Input {
     this.client.setAiming?.(false)
     this.keys = {}
     this.sendMove(0, 0)
+    this.onTouchControlsChange?.({move: null, aim: null})
   }
 }

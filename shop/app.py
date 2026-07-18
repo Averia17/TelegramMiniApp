@@ -1,23 +1,9 @@
-import asyncio
 import logging
-from contextlib import asynccontextmanager
-
 from fastapi import APIRouter, FastAPI
 from middlewares import TimeoutMiddleware
 from routes import router
-from consumers import consume_battle_results
-from utils import session_pool
 from starlette.middleware.cors import CORSMiddleware
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    task = asyncio.create_task(consume_battle_results(session_pool))
-    yield
-    task.cancel()
-    try: await task
-    except asyncio.CancelledError: pass
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 prefix_router = APIRouter(prefix="/api")
 
 

@@ -248,6 +248,20 @@ export class Renderer {
     })
   }
 
+  isPlayerVisible(id) {
+    if (String(id) === String(this.localPlayerId)) return true
+    const player = this.state?.players?.[id]
+    const view = this.players.get(String(id))
+    if (!player || !view || view.targetVisibility < .5) return false
+
+    const point = project(player.x, player.y)
+    const screenX = (point.x - this.camera.x) * this.zoom + this.width / 2
+    const screenY = (point.y - this.camera.y) * this.zoom + this.height / 2 + 42
+    const margin = Math.max(24, (player.radius || 14) * this.zoom * 2)
+    return screenX >= -margin && screenX <= this.width + margin &&
+      screenY >= -margin && screenY <= this.height + margin
+  }
+
   drawEye(ctx, x, y) {
     ctx.fillStyle = "#ffffff"
     ctx.beginPath(); ctx.ellipse(x, y, 7, 8, 0, 0, Math.PI * 2); ctx.fill()
