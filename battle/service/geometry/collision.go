@@ -158,3 +158,45 @@ func CollidesCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType
 	}
 	return false
 }
+
+func IsBlockingWall(wallType string) bool {
+	return wallType != "half" && wallType != "bush"
+}
+
+func CorrectCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) {
+	candidates := walls.QueryCircle(body)
+	box := body.Box()
+	for _, wall := range candidates {
+		if !IsBlockingWall(wall.Type) {
+			continue
+		}
+		wallRect := &RectangleBody{X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY}
+		switch circleToRectangleSide(body, wallRect) {
+		case "left":
+			box.SetRight(wallRect.Left())
+			body.X = box.CenterX()
+		case "top":
+			box.SetBottom(wallRect.Top())
+			body.Y = box.CenterY()
+		case "right":
+			box.SetLeft(wallRect.Right())
+			body.X = box.CenterX()
+		case "bottom":
+			box.SetTop(wallRect.Bottom())
+			body.Y = box.CenterY()
+		}
+	}
+}
+
+func CollidesCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) bool {
+	for _, wall := range walls.QueryCircle(body) {
+		if !IsBlockingWall(wall.Type) {
+			continue
+		}
+		wallRect := &RectangleBody{X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY}
+		if CircleToRectangle(body, wallRect) {
+			return true
+		}
+	}
+	return false
+}

@@ -37,10 +37,10 @@ type RectangleBody struct {
 	Height float64
 }
 
-func (r *RectangleBody) Left() float64   { return r.X }
-func (r *RectangleBody) Top() float64    { return r.Y }
-func (r *RectangleBody) Right() float64  { return r.X + r.Width }
-func (r *RectangleBody) Bottom() float64 { return r.Y + r.Height }
+func (r *RectangleBody) Left() float64    { return r.X }
+func (r *RectangleBody) Top() float64     { return r.Y }
+func (r *RectangleBody) Right() float64   { return r.X + r.Width }
+func (r *RectangleBody) Bottom() float64  { return r.Y + r.Height }
 func (r *RectangleBody) CenterX() float64 { return r.X + r.Width/2 }
 func (r *RectangleBody) CenterY() float64 { return r.Y + r.Height/2 }
 
@@ -72,7 +72,7 @@ func Normalize2D(ax, ay float64) float64 {
 }
 
 func Round2Digits(v float64) float64 {
-	return math.Round(math.Round(v*1000) / 10) / 100
+	return math.Round(math.Round(v*1000)/10) / 100
 }
 
 func GetRandomInt(min, max int) int {

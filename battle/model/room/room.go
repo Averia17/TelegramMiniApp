@@ -149,28 +149,39 @@ func (r *Room) sendStateUpdate() {
 	players := make(map[string]game.PlayerJSON, playerCount)
 	for id, p := range r.State.Players {
 		now := time.Now().UnixMilli()
-		primaryCooldown := math.Max(0, float64(p.LastPrimaryAt+6500-now)/1000)
-		secondaryCooldown := math.Max(0, float64(p.LastSecondaryAt+9000-now)/1000)
+		primaryCooldown := math.Max(0, float64(p.LastPrimaryAt+game.AbilityCooldownMs(p.HeroName, "primary")-now)/1000)
+		secondaryCooldown := math.Max(0, float64(p.LastSecondaryAt+game.AbilityCooldownMs(p.HeroName, "secondary")-now)/1000)
 		players[id] = game.PlayerJSON{
-			X:          p.X,
-			Y:          p.Y,
-			Radius:     p.Radius,
-			PlayerId:   p.PlayerId,
-			Name:       p.Name,
-			Lives:      p.Lives,
-			MaxLives:   p.MaxLives,
-			Team:       p.Team,
-			Color:      p.Color,
-			Kills:      p.Kills,
-			Rotation:   p.Rotation,
-			Ack:        p.Ack,
-			Hero:       p.HeroName,
-			AttackType: p.AttackType,
-			ShieldHP:   p.ShieldHP,
-			Marks:      p.Marks,
-			Cooldowns:  map[string]float64{"primary": primaryCooldown, "secondary": secondaryCooldown},
-			Poisoned:   p.PoisonUntil > time.Now().UnixMilli(),
-			RegenRate:  p.RegenRate,
+			X:                p.X,
+			Y:                p.Y,
+			Radius:           p.Radius,
+			PlayerId:         p.PlayerId,
+			Name:             p.Name,
+			Lives:            p.Lives,
+			MaxLives:         p.MaxLives,
+			Team:             p.Team,
+			Color:            p.Color,
+			Kills:            p.Kills,
+			Rotation:         p.Rotation,
+			Ack:              p.Ack,
+			Hero:             p.HeroName,
+			AttackType:       p.AttackType,
+			ShieldHP:         p.ShieldHP,
+			Marks:            p.Marks,
+			SuperCharge:      p.SuperCharge,
+			Heat:             p.Heat,
+			AttackPulse:      p.AttackPulse,
+			Aiming:           p.Aiming,
+			Shield:           secondsRemaining(p.ShieldUntil, now),
+			Haste:            secondsRemaining(p.HasteUntil, now),
+			Stealth:          secondsRemaining(p.StealthUntil, now),
+			Invulnerable:     secondsRemaining(p.InvulnerableUntil, now),
+			Evolution:        p.Evolution,
+			PowerCores:       p.PowerCores,
+			DamageMultiplier: p.DamageMultiplier,
+			Cooldowns:        map[string]float64{"primary": primaryCooldown, "secondary": secondaryCooldown},
+			Poisoned:         p.PoisonUntil > time.Now().UnixMilli(),
+			RegenRate:        p.RegenRate,
 		}
 	}
 
@@ -183,6 +194,9 @@ func (r *Room) sendStateUpdate() {
 				Y:        m.Y,
 				Radius:   m.Radius,
 				Rotation: m.Rotation,
+				Lives:    m.Lives,
+				MaxLives: m.MaxLives,
+				Tier:     m.Tier,
 			}
 		}
 	}
@@ -219,6 +233,15 @@ func (r *Room) sendStateUpdate() {
 			})
 		}
 	}
+	var effects []game.EffectJSON
+	now := time.Now().UnixMilli()
+	for _, effect := range r.State.Effects {
+		if effect == nil || effect.ExpiresAt <= now {
+			continue
+		}
+		maxLife := float64(effect.ExpiresAt-effect.CreatedAt) / 1000
+		effects = append(effects, game.EffectJSON{Kind: effect.Kind, X: effect.X, Y: effect.Y, ToX: effect.ToX, ToY: effect.ToY, Radius: effect.Radius, Angle: effect.Angle, Range: effect.Range, Arc: effect.Arc, Color: effect.Color, Damage: effect.Damage, Life: float64(effect.ExpiresAt-now) / 1000, MaxLife: maxLife})
+	}
 
 	gameState := game.GameStateJSON{
 		State:       r.State.State,
@@ -234,7 +257,7 @@ func (r *Room) sendStateUpdate() {
 	var compactMapJSON game.MapJSON
 	needsFullMap := false
 	for _, client := range r.Clients {
-		if !client.MapSent {
+		if client.MapRevision != r.State.MapRevision {
 			needsFullMap = true
 			break
 		}
@@ -255,14 +278,14 @@ func (r *Room) sendStateUpdate() {
 		}
 	}
 
-	compactState := game.NewStateUpdate(&gameState, &compactMapJSON, players, monsters, bullets, props)
+	compactState := game.NewStateUpdate(&gameState, &compactMapJSON, players, monsters, bullets, props, effects)
 	compactData, err := json.Marshal(compactState)
 	if err != nil {
 		return
 	}
 	var fullData []byte
 	if needsFullMap {
-		fullState := game.NewStateUpdate(&gameState, &fullMapJSON, players, monsters, bullets, props)
+		fullState := game.NewStateUpdate(&gameState, &fullMapJSON, players, monsters, bullets, props, effects)
 		fullData, err = json.Marshal(fullState)
 		if err != nil {
 			return
@@ -271,18 +294,25 @@ func (r *Room) sendStateUpdate() {
 
 	for _, client := range r.Clients {
 		data := compactData
-		sendingMap := !client.MapSent
+		sendingMap := client.MapRevision != r.State.MapRevision
 		if sendingMap {
 			data = fullData
 		}
 		select {
 		case client.Send <- data:
 			if sendingMap {
-				client.MapSent = true
+				client.MapRevision = r.State.MapRevision
 			}
 		default:
 		}
 	}
+}
+
+func secondsRemaining(until, now int64) float64 {
+	if until <= now {
+		return 0
+	}
+	return float64(until-now) / 1000
 }
 
 func (r *Room) HandleMessage(client *Client, data []byte) {
@@ -333,6 +363,13 @@ func (r *Room) HandleMessage(client *Client, data []byte) {
 		var v game.AbilityValue
 		if err := json.Unmarshal(msg.Value, &v); err == nil {
 			r.State.PlayerPushAction(game.Action{PlayerId: client.Id, Type: "ability", Ts: msg.Ts, Value: &v})
+		}
+	case "aiming":
+		var v game.AimingValue
+		if err := json.Unmarshal(msg.Value, &v); err == nil {
+			if player := r.State.Players[client.Id]; player != nil {
+				player.Aiming = v.Aiming
+			}
 		}
 	}
 }

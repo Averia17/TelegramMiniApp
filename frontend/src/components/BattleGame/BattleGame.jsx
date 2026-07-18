@@ -8,6 +8,8 @@ import {generateBattleRoyaleMap} from "./MapGenerator"
 import {WS_URL} from "../../utils/urls.js"
 import "./BattleGame.css"
 
+const isLocalReferenceMode = () => new URLSearchParams(window.location.search).get("engine") === "local"
+
 const DEMO_HERO_PROFILES = {
   blaze: {color: "#c64bff", lives: 5600, maxLives: 5600, moveSpeed: 294, radius: 14, regenRate: .010},
   frost: {color: "#35d9ff", lives: 5000, maxLives: 5000, moveSpeed: 310, radius: 14, regenRate: .009},
@@ -196,10 +198,12 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
       () => setConnected(false)
     )
     clientRef.current = client
-    client.connect()
+    const localReferenceMode = isLocalReferenceMode()
+    if (!localReferenceMode) client.connect()
 
     demoTimer = setTimeout(() => {
-      if (client.connected) return
+      // This is an explicit comparison harness only. Normal /battle is always server-authoritative.
+      if (!localReferenceMode || client.connected) return
       const demoState = createDemoState(playerName, heroName)
       client.playerId = "demo-player"
       client.lastState = demoState
@@ -223,7 +227,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
       client.setAiming = engine.setAiming
       input.setLocalPlayer("demo-player", () => engine.state)
       engine.start()
-    }, 2500)
+    }, localReferenceMode ? 0 : 2500)
 
     const input = new Input(canvas, client, setTouchControls)
     inputRef.current = input

@@ -41,9 +41,7 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &mroom.Client{
-		Id:   uuid.New().String(),
-		Conn: conn,
-		Send: make(chan []byte, 256),
+		Id: uuid.New().String(), Conn: conn, Send: make(chan []byte, 256), MapRevision: -1,
 	}
 
 	go clientWritePump(client)
@@ -133,7 +131,7 @@ func HandleJoin(c *mroom.Client, data []byte) {
 		req.RoomName = "room_" + c.Id[:8]
 	}
 	if req.RoomMap == "" {
-		req.RoomMap = "arena"
+		req.RoomMap = "battle-royale"
 	}
 	if req.Mode == "" {
 		req.Mode = "deathmatch"

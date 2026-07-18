@@ -3,6 +3,7 @@ package gamemap
 import (
 	_ "embed"
 	"encoding/json"
+	"time"
 
 	"battle/service/geometry"
 )
@@ -89,6 +90,9 @@ type TilesetEntry struct {
 }
 
 func LoadMap(name string) (*GameMap, error) {
+	if name == "battle-royale" {
+		return GenerateBattleRoyale(time.Now().UnixNano()), nil
+	}
 	data, ok := mapData[name]
 	if !ok {
 		data = smallMapJSON

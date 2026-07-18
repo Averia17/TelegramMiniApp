@@ -17,11 +17,16 @@ type RotateValue struct {
 }
 
 type ShootValue struct {
-	Angle float64 `json:"angle"`
+	Angle       float64 `json:"angle"`
+	AimDistance float64 `json:"aimDistance,omitempty"`
 }
 
 type AbilityValue struct {
 	Slot string `json:"slot"`
+}
+
+type AimingValue struct {
+	Aiming bool `json:"aiming"`
 }
 
 type ServerEvent struct {

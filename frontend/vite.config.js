@@ -12,5 +12,13 @@ export default defineConfig({
         host: '0.0.0.0',
         strictPort: true,
         port: 5173,
+        proxy: {
+            '/api/battle': {
+                target: 'http://battle:8000',
+                changeOrigin: true,
+                ws: true,
+                rewrite: path => path.replace(/^\/api\/battle/, ''),
+            },
+        },
     }
 })

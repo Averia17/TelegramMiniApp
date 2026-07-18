@@ -45,7 +45,7 @@ func TestRectangleBodyBounds(t *testing.T) {
 func TestCalculateAngle(t *testing.T) {
 	tests := []struct {
 		x1, y1, x2, y2 float64
-		want            float64
+		want           float64
 	}{
 		{1, 0, 0, 0, 0},
 		{0, 1, 0, 0, math.Pi / 2},

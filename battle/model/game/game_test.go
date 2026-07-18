@@ -4,6 +4,7 @@ import (
 	"battle/model/bullet"
 	"battle/model/monster"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 )
@@ -141,12 +142,12 @@ func TestAbilityAppliesCooldownAndShield(t *testing.T) {
 	gs.PlayerAdd("p1", "Tank", "Viper")
 	p := gs.Players["p1"]
 	gs.playerAbility("p1", 10_000, "secondary")
-	if p.ShieldHP != 2600 {
-		t.Fatalf("ShieldHP = %d, want 2600", p.ShieldHP)
+	if p.ShieldUntil != 12_200 {
+		t.Fatalf("ShieldUntil = %d, want 12200", p.ShieldUntil)
 	}
 	gs.playerAbility("p1", 11_000, "secondary")
-	if p.ShieldHP != 2600 {
-		t.Fatalf("cooldown allowed duplicate shield: %d", p.ShieldHP)
+	if p.ShieldUntil != 12_200 {
+		t.Fatalf("cooldown allowed duplicate shield: %d", p.ShieldUntil)
 	}
 }
 
@@ -175,6 +176,30 @@ func TestGameStatePlayerMove(t *testing.T) {
 	_ = startX // position may be adjusted by wall collision
 }
 
+func TestMovementMatchesLocalEnginePixelsPerSecond(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("p1", "Alice", "Blaze")
+	p := gs.Players["p1"]
+	p.X, p.Y = 256, 256
+
+	gs.playerMove("p1", 100, 1, 0)
+	gs.updatePlayerMovement()
+
+	want := 256.0 + 294.0/60.0
+	if math.Abs(p.X-want) > .01 {
+		t.Fatalf("x = %.3f, want %.3f (294 px/s at 60 Hz)", p.X, want)
+	}
+}
+
+func TestScreenAngleUsesIsometricWorldProjection(t *testing.T) {
+	angle := math.Pi / 4
+	want := math.Atan2(math.Sin(angle)/.66, math.Cos(angle))
+	if got := worldAngleFromScreen(angle); math.Abs(got-want) > 1e-9 {
+		t.Fatalf("world angle = %.6f, want %.6f", got, want)
+	}
+}
+
 func TestGameStatePlayerMoveNonexistent(t *testing.T) {
 	gs := newTestGameState()
 	gs.playerMove("nonexistent", 100, 1, 0) // should not panic
@@ -197,8 +222,9 @@ func TestPlayerRotate(t *testing.T) {
 	gs.PlayerAdd("p1", "Alice", "")
 
 	gs.playerRotate("p1", 100, 1.5)
-	if gs.Players["p1"].Rotation != 1.5 {
-		t.Errorf("Rotation = %v, want 1.5", gs.Players["p1"].Rotation)
+	want := worldAngleFromScreen(1.5)
+	if math.Abs(gs.Players["p1"].Rotation-want) > 1e-9 {
+		t.Errorf("Rotation = %v, want %v", gs.Players["p1"].Rotation, want)
 	}
 }
 
@@ -233,6 +259,55 @@ func TestShotgunSpawnsFivePellets(t *testing.T) {
 		if b.Kind != "pellet" {
 			t.Errorf("kind = %q, want pellet", b.Kind)
 		}
+	}
+}
+
+func TestHeroCombatProfilesMatchLocalBattleEngine(t *testing.T) {
+	want := map[string]struct {
+		speed  float64
+		damage int
+		rate   int64
+	}{
+		"Blaze": {294, 260, 520}, "Frost": {310, 180, 620}, "Viper": {215, 1250, 790},
+		"Titan": {340, 650, 650}, "Shadow": {258, 750, 720}, "Spark": {338, 1050, 540},
+		"Nova": {275, 900, 860}, "Rex": {315, 1200, 480}, "Pixel": {263, 850, 650},
+		"Boulder": {310, 320, 590},
+	}
+	for name, expected := range want {
+		hero := GetHeroByName(name)
+		if hero == nil || hero.Speed != expected.speed || hero.AttackDamage != expected.damage || hero.AttackRate != expected.rate {
+			t.Fatalf("%s profile = %#v, want speed=%.0f damage=%d rate=%d", name, hero, expected.speed, expected.damage, expected.rate)
+		}
+	}
+}
+
+func TestRexPrimaryMatchesLocalEngineDamage(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("rex", "Rex", "Rex")
+	gs.PlayerAdd("target", "Target", "Viper")
+	gs.State = GameStateGame
+	source, target := gs.Players["rex"], gs.Players["target"]
+	source.X, source.Y, source.Rotation = 1200, 1200, 0
+	target.X, target.Y = 1270, 1200
+	before := target.Lives
+	gs.playerShoot("rex", 1000, 0)
+	if got := before - target.Lives; got != 1200 {
+		t.Fatalf("Rex primary damage = %d, want 1200", got)
+	}
+}
+
+func TestShadowShortAimVaultsWithoutProjectile(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("shadow", "Shadow", "Shadow")
+	gs.State = GameStateGame
+	p := gs.Players["shadow"]
+	p.X, p.Y = 1200, 1200
+	gs.playerShoot("shadow", 1000, 0, 40)
+	if p.X < 1400 {
+		t.Fatalf("Shadow short aim x = %.1f, want a 210px vault", p.X)
+	}
+	if len(gs.Bullets) != 0 {
+		t.Fatalf("short aim created %d projectiles", len(gs.Bullets))
 	}
 }
 
@@ -665,10 +740,26 @@ func TestBulletVsPlayer(t *testing.T) {
 	}
 }
 
+func TestPlayerHitBuildsServerAuthoritativeSuperCharge(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("p1", "Alice", "Nova")
+	gs.PlayerAdd("p2", "Bob", "Viper")
+	gs.State = GameStateGame
+
+	attacker, target := gs.Players["p1"], gs.Players["p2"]
+	beforeCharge := attacker.SuperCharge
+	gs.Bullets = append(gs.Bullets, bullet.NewBullet(attacker.PlayerId, "", target.X, target.Y, 4, 0, "#FFF"))
+	gs.updateBullets()
+
+	if attacker.SuperCharge-beforeCharge != 20 {
+		t.Fatalf("super charge before=%d after=%d, want delta 20", beforeCharge, attacker.SuperCharge)
+	}
+}
+
 func TestBulletVsMonster(t *testing.T) {
 	gs := newTestGameState()
-	gs.State = GameStateGame
 	gs.PlayerAdd("p1", "Alice", "")
+	gs.State = GameStateGame
 
 	gs.Monsters["m1"] = monster.NewMonster(100, 100, 16, 512, 512, 1)
 	gs.Bullets = append(gs.Bullets, bullet.NewBullet("p1", "", 100, 100, 4, 0, "#FFF"))
@@ -695,8 +786,8 @@ func TestBulletVsMapBounds(t *testing.T) {
 
 func TestMonsterVsPlayer(t *testing.T) {
 	gs := newTestGameState()
-	gs.State = GameStateGame
 	gs.PlayerAdd("p1", "Alice", "")
+	gs.State = GameStateGame
 
 	p1 := gs.Players["p1"]
 	startLives := p1.Lives
@@ -709,7 +800,7 @@ func TestMonsterVsPlayer(t *testing.T) {
 	gs.updateMonsters()
 
 	if p1.Lives >= startLives {
-		t.Error("player should have lost a life from monster attack")
+		t.Fatalf("player should have lost life: start=%d after=%d shieldHP=%d shieldUntil=%d invulnerable=%d monster=(%.2f,%.2f) player=(%.2f,%.2f) canAttack=%v state=%s", startLives, p1.Lives, p1.ShieldHP, p1.ShieldUntil, p1.InvulnerableUntil, m.X, m.Y, p1.X, p1.Y, m.CanAttack(), m.State)
 	}
 }
 

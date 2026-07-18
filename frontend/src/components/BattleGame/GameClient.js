@@ -93,6 +93,10 @@ export class GameClient {
     this.send("rotate", {rotation})
   }
 
+  setAiming(aiming) {
+    this.send("aiming", {aiming: Boolean(aiming)})
+  }
+
   shoot(angle, aimDistance = Infinity) {
     this.send("shoot", {angle, aimDistance})
   }

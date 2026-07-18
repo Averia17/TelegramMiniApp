@@ -7,13 +7,13 @@ import (
 )
 
 type Client struct {
-	Id       string
-	Name     string
-	HeroName string
-	Conn     *websocket.Conn
-	Room     *Room
-	Send     chan []byte
-	MapSent  bool
+	Id          string
+	Name        string
+	HeroName    string
+	Conn        *websocket.Conn
+	Room        *Room
+	Send        chan []byte
+	MapRevision int
 }
 
 type Room struct {

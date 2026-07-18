@@ -19,7 +19,9 @@ const (
 	MonsterSpeedPatrol       = 0.75
 	MonsterSpeedChase        = 1.25
 	MonsterSight             = 192.0
-	MonsterLives             = 3
+	MonsterLives             = 6200
+	EliteMonsterLives        = 8200
+	MonsterAttackDamage      = 650
 	MonsterIdleDurationMin   = 1000
 	MonsterIdleDurationMax   = 3000
 	MonsterPatrolDurationMin = 1000
@@ -33,6 +35,8 @@ type Monster struct {
 	MapWidth       float64
 	MapHeight      float64
 	Lives          int
+	MaxLives       int
+	Tier           int
 	State          MonsterState
 	LastActionAt   int64
 	LastAttackAt   int64
@@ -48,6 +52,8 @@ func NewMonster(x, y, radius, mapWidth, mapHeight float64, lives int) *Monster {
 		MapWidth:     mapWidth,
 		MapHeight:    mapHeight,
 		Lives:        lives,
+		MaxLives:     lives,
+		Tier:         1,
 		State:        MonsterIdle,
 		LastActionAt: now,
 		LastAttackAt: now,
@@ -141,8 +147,15 @@ func (m *Monster) lookForPlayer(players map[string]*player.Player) bool {
 	return false
 }
 
-func (m *Monster) Hurt() {
-	m.Lives--
+func (m *Monster) Hurt(amount ...int) {
+	damage := 1
+	if len(amount) > 0 && amount[0] > 0 {
+		damage = amount[0]
+	}
+	m.Lives -= damage
+	if m.Lives < 0 {
+		m.Lives = 0
+	}
 }
 
 func (m *Monster) move(speed, rotation float64) {
