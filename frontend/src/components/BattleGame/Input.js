@@ -223,7 +223,7 @@ export class Input {
       screenY - rect.height / 2,
       screenX - rect.width / 2
     )
-    this.client.shoot(angle)
+    this.client.shoot(angle, Math.hypot(screenX - rect.width / 2, screenY - rect.height / 2))
   }
 
   update() {

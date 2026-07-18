@@ -57,6 +57,7 @@ type PlayerJSON struct {
 	Marks      int                `json:"marks,omitempty"`
 	Poisoned   bool               `json:"poisoned,omitempty"`
 	Cooldowns  map[string]float64 `json:"cooldowns,omitempty"`
+	RegenRate  float64            `json:"regenRate,omitempty"`
 }
 
 type MonsterJSON struct {

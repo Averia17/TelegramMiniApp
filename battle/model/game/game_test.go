@@ -23,6 +23,25 @@ func newTestGameState() *GameState {
 	return gs
 }
 
+func TestUpdateRegenerationUsesHeroRate(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("regen", "Regen", "Blaze")
+	p := gs.Players["regen"]
+	p.Lives = p.MaxLives / 2
+	p.LastDamageAt = time.Now().Add(-4 * time.Second).UnixMilli()
+	start := p.Lives
+
+	for range 60 {
+		gs.updateRegeneration()
+	}
+
+	want := int(float64(p.MaxLives) * p.RegenRate)
+	if got := p.Lives - start; got != want {
+		t.Fatalf("regenerated %d HP in one second, want %d", got, want)
+	}
+}
+
 func TestInitGameState(t *testing.T) {
 	gs := &GameState{
 		RoomName:  "test",

@@ -9,16 +9,16 @@ import {WS_URL} from "../../utils/urls.js"
 import "./BattleGame.css"
 
 const DEMO_HERO_PROFILES = {
-  blaze: {color: "#c64bff", lives: 5600, maxLives: 5600, moveSpeed: 294, radius: 14},
-  frost: {color: "#35d9ff", lives: 5000, maxLives: 5000, moveSpeed: 310, radius: 14},
-  viper: {color: "#ff7138", lives: 9800, maxLives: 9800, moveSpeed: 215, radius: 18},
-  titan: {color: "#42e3d2", lives: 4700, maxLives: 4700, moveSpeed: 340, radius: 13},
-  shadow: {color: "#75d947", lives: 6200, maxLives: 6200, moveSpeed: 258, radius: 14},
-  spark: {color: "#6d52c7", lives: 5400, maxLives: 5400, moveSpeed: 338, radius: 13},
-  nova: {color: "#fff4d0", lives: 4300, maxLives: 4300, moveSpeed: 275, radius: 12},
-  rex: {color: "#4bc7ff", lives: 7200, maxLives: 7200, moveSpeed: 315, radius: 15},
-  pixel: {color: "#ffd43b", lives: 6600, maxLives: 6600, moveSpeed: 263, radius: 14},
-  boulder: {color: "#59d348", lives: 5200, maxLives: 5200, moveSpeed: 310, radius: 13},
+  blaze: {color: "#c64bff", lives: 5600, maxLives: 5600, moveSpeed: 294, radius: 14, regenRate: .010},
+  frost: {color: "#35d9ff", lives: 5000, maxLives: 5000, moveSpeed: 310, radius: 14, regenRate: .009},
+  viper: {color: "#ff7138", lives: 9800, maxLives: 9800, moveSpeed: 215, radius: 18, regenRate: .008},
+  titan: {color: "#42e3d2", lives: 4700, maxLives: 4700, moveSpeed: 340, radius: 13, regenRate: .012},
+  shadow: {color: "#75d947", lives: 6200, maxLives: 6200, moveSpeed: 258, radius: 14, regenRate: .011},
+  spark: {color: "#6d52c7", lives: 5400, maxLives: 5400, moveSpeed: 338, radius: 13, regenRate: .0105},
+  nova: {color: "#fff4d0", lives: 4300, maxLives: 4300, moveSpeed: 275, radius: 12, regenRate: .0095},
+  rex: {color: "#4bc7ff", lives: 7200, maxLives: 7200, moveSpeed: 315, radius: 15, regenRate: .0085},
+  pixel: {color: "#ffd43b", lives: 6600, maxLives: 6600, moveSpeed: 263, radius: 14, regenRate: .010},
+  boulder: {color: "#59d348", lives: 5200, maxLives: 5200, moveSpeed: 310, radius: 13, regenRate: .0115},
 }
 
 const demoProfile = heroName => DEMO_HERO_PROFILES[String(heroName || "blaze").toLowerCase()] || DEMO_HERO_PROFILES.blaze
@@ -465,13 +465,15 @@ const AbilityButton = ({keyName, label, cooldown = 0, charge = 100, isSuper = fa
 )
 
 const BattleMiniMap = ({state, localId, renderer}) => {
-  const width = state.map.width || 1
-  const height = state.map.height || 1
+  const map = state?.map
+  if (!map) return null
+  const width = map.width || 1
+  const height = map.height || 1
   const visibleEnemies = Object.entries(state.players || {}).filter(([id]) =>
     String(id) !== String(localId) && renderer?.isPlayerVisible(id))
   return (
     <aside className="battle-minimap" aria-label="Миникарта">
-      {state.map.walls.map((wall, index) => (
+      {(map.walls || []).map((wall, index) => (
         <i key={index} className={`mini-obstacle mini-obstacle--${wall.type}`} style={{left: `${wall.minX / width * 100}%`, top: `${wall.minY / height * 100}%`, width: `${(wall.maxX - wall.minX) / width * 100}%`, height: `${Math.max(2.5, (wall.maxY - wall.minY) / height * 100)}%`}}/>
       ))}
       {state.players[localId] && (

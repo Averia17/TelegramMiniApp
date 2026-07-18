@@ -93,8 +93,8 @@ export class GameClient {
     this.send("rotate", {rotation})
   }
 
-  shoot(angle) {
-    this.send("shoot", {angle})
+  shoot(angle, aimDistance = Infinity) {
+    this.send("shoot", {angle, aimDistance})
   }
 
   ability(slot) {

@@ -170,6 +170,7 @@ func (r *Room) sendStateUpdate() {
 			Marks:      p.Marks,
 			Cooldowns:  map[string]float64{"primary": primaryCooldown, "secondary": secondaryCooldown},
 			Poisoned:   p.PoisonUntil > time.Now().UnixMilli(),
+			RegenRate:  p.RegenRate,
 		}
 	}
 

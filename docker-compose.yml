@@ -13,12 +13,16 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     working_dir: /home/node/app
-    expose:
-      - "5173"
+    ports:
+      - "5173:5173"
+    environment:
+      # Docker Desktop on Windows may not forward filesystem events reliably.
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
     volumes:
       - ./frontend:/home/node/app
-      - /home/node/app/node_modules
-    command: ["npm", "run", "dev", "--host"]
+      - frontend-node-modules:/home/node/app/node_modules
+    command: ["npm", "run", "dev"]
     stop_signal: SIGINT
     depends_on:
       - account
@@ -79,3 +83,6 @@ services:
 
 networks:
   app-net:
+
+volumes:
+  frontend-node-modules:

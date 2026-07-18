@@ -2,6 +2,7 @@ package player
 
 import (
 	"battle/service/geometry"
+	"time"
 )
 
 type Player struct {
@@ -33,6 +34,9 @@ type Player struct {
 	LastSecondaryAt int64
 	HasteUntil      int64
 	SlowUntil       int64
+	RegenRate       float64
+	RegenCarry      float64
+	LastDamageAt    int64
 }
 
 func (p *Player) Move(dirX, dirY, speed float64) {
@@ -54,6 +58,7 @@ func (p *Player) TakeDamage(amount int) {
 	if amount <= 0 || !p.IsAlive() {
 		return
 	}
+	p.LastDamageAt = time.Now().UnixMilli()
 	if p.ShieldHP >= amount {
 		p.ShieldHP -= amount
 		return

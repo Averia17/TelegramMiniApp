@@ -89,9 +89,44 @@ func (gs *GameState) Update() {
 	gs.updateGame()
 	gs.updatePlayers()
 	gs.updateStatuses()
+	gs.updateRegeneration()
 	gs.updateBots()
 	gs.updateMonsters()
 	gs.updateBullets()
+}
+
+func (gs *GameState) updateRegeneration() {
+	if gs.State != GameStateGame {
+		return
+	}
+	now := time.Now().UnixMilli()
+	for _, p := range gs.Players {
+		if !p.IsAlive() || p.IsFullLives() || p.RegenRate <= 0 || now-p.LastDamageAt < 3000 {
+			continue
+		}
+		rate := p.RegenRate
+		if geometry.CollidesCircleWithWalls(&p.CircleBody, gs.Walls, "half") && gs.isConcealed(p) {
+			rate *= 2
+		}
+		p.RegenCarry += float64(p.MaxLives) * rate / 60
+		heal := int(p.RegenCarry)
+		if heal > 0 {
+			p.Lives = int(math.Min(float64(p.MaxLives), float64(p.Lives+heal)))
+			p.RegenCarry -= float64(heal)
+		}
+	}
+}
+
+func (gs *GameState) isConcealed(source *player.Player) bool {
+	for _, target := range gs.Players {
+		if target == source || !target.IsAlive() || (source.Team != "" && source.Team == target.Team) {
+			continue
+		}
+		if math.Hypot(target.X-source.X, target.Y-source.Y) <= TileSize*2.5 {
+			return false
+		}
+	}
+	return true
 }
 
 func (gs *GameState) updateGame() {

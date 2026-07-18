@@ -177,6 +177,8 @@ export class Renderer {
     ;(this.state?.effects || []).forEach(effect => this.drawEffect(ctx, effect))
     this.particles.forEach(particle => this.drawParticle(ctx, particle))
     ctx.restore()
+    const local=this.state?.players?.[this.localPlayerId]
+    if(local?.blind>0){ctx.save();ctx.fillStyle=`rgba(28,8,43,${Math.min(.82,.48+local.blind*.22)})`;ctx.fillRect(0,0,this.width,this.height);ctx.globalCompositeOperation="destination-out";const glow=ctx.createRadialGradient(this.width/2,this.height/2,20,this.width/2,this.height/2,115);glow.addColorStop(0,"rgba(0,0,0,.9)");glow.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=glow;ctx.fillRect(0,0,this.width,this.height);ctx.restore()}
   }
 
   spawnMuzzle(bullet) {
@@ -367,18 +369,20 @@ export class Renderer {
         ctx.beginPath(); ctx.arc(0, 0, range * (.55 + progress * .45), -(effect.arc || .8), effect.arc || .8); ctx.stroke()
         if (effect.kind === "bite") { ctx.beginPath(); ctx.arc(0, 0, range * .75, -.65, -.18); ctx.arc(0, 0, range * .75, .18, .65); ctx.stroke() }
       }
-    } else if (effect.kind === "damage") {
+    } else if (["damage","heal","evade"].includes(effect.kind)) {
       const bounce = Math.sin(Math.min(1, progress * 1.7) * Math.PI)
-      const scale = .72 + bounce * .5
+      const magnitude=typeof effect.damage==="number"?Math.min(.8,Math.sqrt(effect.damage)/85):.15
+      const scale = .68 + magnitude + bounce * .42
       ctx.translate(point.x, point.y - 72 - progress * 42)
       ctx.scale(scale, scale)
       ctx.globalAlpha = Math.min(1, alpha * 1.8)
       ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "900 25px Arial"
-      ctx.lineWidth = 7; ctx.strokeStyle = "#6b1837"; ctx.strokeText(`-${effect.damage}`,0,0)
-      ctx.fillStyle = effect.color || "#fff"; ctx.fillText(`-${effect.damage}`,0,0)
-    } else if (["beam", "lightning"].includes(effect.kind)) {
+      const label=effect.kind==="heal"?`+${effect.damage}`:effect.kind==="evade"?"EVADE!":`-${effect.damage}`
+      ctx.lineWidth = 7; ctx.strokeStyle = effect.kind==="heal"?"#145b34":"#6b1837"; ctx.strokeText(label,0,0)
+      ctx.fillStyle = effect.color || "#fff"; ctx.fillText(label,0,0)
+    } else if (["beam", "lightning", "grapple"].includes(effect.kind)) {
       const end = project(effect.toX, effect.toY)
-      ctx.lineWidth = effect.kind === "beam" ? 10 : 6
+      ctx.lineWidth = effect.kind === "beam" ? 10 : effect.kind==="grapple"?4:6
       ctx.shadowColor = effect.color; ctx.shadowBlur = 18
       ctx.beginPath(); ctx.moveTo(point.x, point.y - 32)
       if (effect.kind === "lightning") {
@@ -390,6 +394,8 @@ export class Renderer {
       }
       ctx.lineTo(end.x, end.y - 32); ctx.stroke()
       ctx.strokeStyle = "#fff"; ctx.lineWidth *= .3; ctx.stroke()
+    } else if(effect.kind==="clone"){
+      ctx.translate(point.x,point.y-34);ctx.globalAlpha=alpha*.62;ctx.fillStyle="#d9a6ff";ctx.beginPath();ctx.ellipse(0,8,24,10,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(0,-16,17,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-28,14);ctx.quadraticCurveTo(0,38,28,14);ctx.stroke()
     } else {
       ctx.lineWidth = 12 * (1 - progress) + 2
       ctx.beginPath(); ctx.ellipse(point.x, point.y, (effect.radius || 80) * progress, (effect.radius || 80) * DEPTH * progress, 0, 0, Math.PI * 2); ctx.stroke()
