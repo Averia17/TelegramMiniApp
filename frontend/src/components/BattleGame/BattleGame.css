@@ -244,19 +244,22 @@
   .mobile-stick { display: grid; }
   .battle-controls { display: none; }
   .battle-messages { bottom: 126px; max-width: 52vw; }
-  .battle-mode-pill { padding: 9px 12px; font-size: 11px; }
-  .battle-alive { padding: 9px 10px; font-size: 10px; }
+  .battle-topbar { top: max(8px, env(safe-area-inset-top)); grid-template-columns: 38px 1fr auto; }
+  .battle-exit-btn { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-width: 2px; border-radius: 11px; box-shadow: 0 4px 0 #8d1733; }
+  .battle-mode-pill { padding: 6px 9px; border-width: 2px; border-radius: 10px; box-shadow: 0 4px 0 #17265f; font-size: 9px; }
+  .battle-alive { padding: 6px 8px; border-width: 2px; border-radius: 10px; box-shadow: 0 4px 0 #17265f; font-size: 8px; }
+  .battle-player-card { top: max(57px, calc(env(safe-area-inset-top) + 51px)); transform: scale(.82); transform-origin: left top; }
   .battle-minimap { width: 104px; top: 67px; right: 9px; border-width: 3px; }
   .battle-abilities { right: 22px; bottom: 122px; }.battle-ability { width: 62px; height: 62px; }.battle-ability:nth-child(2) { width: 50px; height: 50px; }
 }
 .battle-game--desktop .mobile-stick { display: none; }
 .battle-game--mobile .control-hint { display: none; }
 .battle-game--mobile .battle-ability { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-.battle-game--mobile .battle-exit-btn { min-width: 48px; min-height: 48px; }
+.battle-game--mobile .battle-exit-btn { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .battle-model-canvas { position:absolute; inset:0; z-index:2; width:100%; height:100%; pointer-events:none; }
 
 @media (max-width: 430px) {
-  .battle-topbar { left: 9px; right: 9px; grid-template-columns: 44px 1fr auto; gap: 5px; }
+  .battle-topbar { left: 9px; right: 9px; grid-template-columns: 38px 1fr auto; gap: 5px; }
   .battle-mode-pill { padding-inline: 8px; letter-spacing: 0; }
   .battle-player-card { left: 11px; }
   .mobile-stick { width: 76px; height: 76px; }

@@ -1,5 +1,5 @@
 import {DEPTH} from "./rendering/config"
-import {lerp, project} from "./rendering/graphics"
+import {clamp, lerp, project} from "./rendering/graphics"
 import {CanvasArenaView} from "./rendering/canvas/CanvasArenaView"
 import {CanvasCharacterView} from "./rendering/canvas/CanvasCharacterView"
 
@@ -122,6 +122,12 @@ export class Renderer {
       const point = project(local.worldX, local.worldY)
       targetX = point.x
       targetY = point.y - 34
+      const halfWidth = this.width / (2 * this.zoom)
+      const halfHeight = this.height / (2 * this.zoom)
+      const mapWidth = this.arena.map.width
+      const mapHeight = this.arena.map.height * DEPTH
+      targetX = mapWidth > halfWidth * 2 ? clamp(targetX, halfWidth, mapWidth - halfWidth) : mapWidth / 2
+      targetY = mapHeight > halfHeight * 2 ? clamp(targetY, halfHeight, mapHeight - halfHeight) : mapHeight / 2
       this.camera.x = targetX
       this.camera.y = targetY
       return
@@ -138,7 +144,10 @@ export class Renderer {
     this.arena.time = this.time
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, this.width, this.height)
-    ctx.fillStyle = "#e6b85f"
+    // Match the arena floor outside the finite map bounds. On wide desktop
+    // viewports the camera can see past a spawn-side edge; a different fill
+    // color made that area look like a broken, skewed map.
+    ctx.fillStyle = "#ee9862"
     ctx.fillRect(0, 0, this.width, this.height)
     ctx.save()
     const shakeX = (Math.random() - 0.5) * this.shake

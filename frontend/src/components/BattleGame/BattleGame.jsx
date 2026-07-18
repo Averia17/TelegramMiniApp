@@ -75,7 +75,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const animFrameRef = useRef(null)
   const demoEngineRef = useRef(null)
   const joinedRef = useRef(false)
-  const viewRef = useRef(roomId ? "lobby" : "connecting")
+  const viewRef = useRef("connecting")
   const latestStateRef = useRef(null)
   const lastUiUpdateRef = useRef(0)
   const savedResultRef = useRef(false)
@@ -86,7 +86,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const [connected, setConnected] = useState(false)
   const [roomInfo, setRoomInfo] = useState(null)
   const [messages, setMessages] = useState([])
-  const [view, setViewState] = useState(roomId ? "lobby" : "connecting")
+  const [view, setViewState] = useState("connecting")
   const [deathInfo, setDeathInfo] = useState(null)
   const [battleResult, setBattleResult] = useState(null)
 
@@ -134,7 +134,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
 
     const renderer = new Renderer(canvas)
     rendererRef.current = renderer
-    renderer.resize(window.innerWidth, window.innerHeight)
+    resize()
 
     let demoTimer
     const client = new GameClient(
@@ -223,7 +223,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
       client.setAiming = engine.setAiming
       input.setLocalPlayer("demo-player", () => engine.state)
       engine.start()
-    }, 1400)
+    }, 2500)
 
     const input = new Input(canvas, client, setTouchControls)
     inputRef.current = input
