@@ -56,11 +56,12 @@ func circleToRectangleSide(c *CircleBody, r *RectangleBody) string {
 }
 
 type WallTile struct {
-	MinX float64
-	MinY float64
-	MaxX float64
-	MaxY float64
-	Type string
+	MinX      float64
+	MinY      float64
+	MaxX      float64
+	MaxY      float64
+	Type      string
+	BushGroup int
 }
 
 type SpatialHash struct {

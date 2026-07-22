@@ -40,6 +40,7 @@ type StateUpdate struct {
 }
 
 type EffectJSON struct {
+	Id      string  `json:"id"`
 	Kind    string  `json:"kind,omitempty"`
 	X       float64 `json:"x"`
 	Y       float64 `json:"y"`
@@ -71,16 +72,31 @@ type PlayerJSON struct {
 	Hero             string             `json:"hero"`
 	AttackType       string             `json:"attackType,omitempty"`
 	ShieldHP         int                `json:"shieldHp,omitempty"`
+	ShieldStacks     int                `json:"shieldStacks,omitempty"`
 	Marks            int                `json:"marks,omitempty"`
 	SuperCharge      int                `json:"superCharge"`
 	Heat             int                `json:"heat,omitempty"`
 	AttackPulse      int                `json:"attackPulse,omitempty"`
+	Ammo             int                `json:"ammo"`
+	MaxAmmo          int                `json:"maxAmmo"`
+	ReloadProgress   float64            `json:"reloadProgress,omitempty"`
+	HitImpulseX      float64            `json:"hitImpulseX,omitempty"`
+	HitImpulseY      float64            `json:"hitImpulseY,omitempty"`
 	Aiming           bool               `json:"aiming,omitempty"`
+	AimDistance      float64            `json:"aimDistance,omitempty"`
 	Shield           float64            `json:"shield,omitempty"`
 	Haste            float64            `json:"haste,omitempty"`
 	Stealth          float64            `json:"stealth,omitempty"`
 	Invulnerable     float64            `json:"invulnerable,omitempty"`
+	Blind            float64            `json:"blind,omitempty"`
+	Stun             float64            `json:"stun,omitempty"`
+	Channel          float64            `json:"channel,omitempty"`
+	Vine             float64            `json:"vine,omitempty"`
+	Vortex           float64            `json:"vortex,omitempty"`
+	Flying           float64            `json:"flying,omitempty"`
 	Evolution        int                `json:"evolution,omitempty"`
+	Souls            int                `json:"souls,omitempty"`
+	Deflect          int                `json:"deflect,omitempty"`
 	PowerCores       int                `json:"powerCores,omitempty"`
 	DamageMultiplier float64            `json:"damageMultiplier,omitempty"`
 	Poisoned         bool               `json:"poisoned,omitempty"`
@@ -99,8 +115,10 @@ type MonsterJSON struct {
 }
 
 type BulletJSON struct {
+	ID        uint64  `json:"id"`
 	X         float64 `json:"x"`
 	Y         float64 `json:"y"`
+	Z         float64 `json:"z,omitempty"`
 	Radius    float64 `json:"radius"`
 	PlayerId  string  `json:"playerId"`
 	Team      string  `json:"team"`
@@ -111,6 +129,12 @@ type BulletJSON struct {
 	MaxRange  float64 `json:"maxRange,omitempty"`
 	Travelled float64 `json:"travelled,omitempty"`
 	Returning bool    `json:"returning,omitempty"`
+	Splash    float64 `json:"splash,omitempty"`
+	Chain     int     `json:"chain,omitempty"`
+	Bounces   int     `json:"bounces,omitempty"`
+	Lobbed    bool    `json:"lobbed,omitempty"`
+	TargetX   float64 `json:"targetX,omitempty"`
+	TargetY   float64 `json:"targetY,omitempty"`
 }
 
 type PropJSON struct {
@@ -129,11 +153,12 @@ type MapJSON struct {
 }
 
 type WallJSON struct {
-	MinX float64 `json:"minX"`
-	MinY float64 `json:"minY"`
-	MaxX float64 `json:"maxX"`
-	MaxY float64 `json:"maxY"`
-	Type string  `json:"type"`
+	MinX      float64 `json:"minX"`
+	MinY      float64 `json:"minY"`
+	MaxX      float64 `json:"maxX"`
+	MaxY      float64 `json:"maxY"`
+	Type      string  `json:"type"`
+	BushGroup int     `json:"bushGroup,omitempty"`
 }
 
 type RoomJoinedParams struct {

@@ -112,7 +112,7 @@ export class CanvasArenaView {
 
   getDepthItems() {
     return this.visualWalls.map((wall, index) => ({
-      depth: wall.maxY * DEPTH,
+      depth: wall.maxY,
       draw: ctx => this.drawObstacle(ctx, wall, index),
     }))
   }
@@ -190,10 +190,10 @@ export class CanvasArenaView {
     // top/face proportion used by Brawl-style arena blocks.
     const tile = this.map.tileSize || 40
     const height = Math.min(52, Math.max(32, tile * .88))
-    const top = index % 5 === 0 ? "#e89755" : "#f0ad5f"
-    const front = index % 5 === 0 ? "#a9493f" : "#bd5a42"
-    const side = index % 5 === 0 ? "#843744" : "#954039"
-    const line = index % 5 === 0 ? "#74303b" : "#823738"
+    const top = index % 5 === 0 ? "#d991d8" : "#efb35e"
+    const front = index % 5 === 0 ? "#88459f" : "#bd5b43"
+    const side = index % 5 === 0 ? "#653276" : "#843b3d"
+    const line = index % 5 === 0 ? "#512866" : "#79343b"
     const topY = y - height
 
     const shadow = ctx.createLinearGradient(x, 0, x + width + 22, 0)
@@ -234,11 +234,8 @@ export class CanvasArenaView {
     ctx.lineTo(x + width - 4, topY + 4)
     ctx.stroke()
     ctx.strokeStyle = "rgba(101,43,43,.42)"; ctx.lineWidth = 2
-    for (let crack = 18; crack < width; crack += 58) {
-      ctx.beginPath(); ctx.moveTo(x + crack, topY + 8); ctx.lineTo(x + crack + 7, topY + 13); ctx.lineTo(x + crack + 3, topY + 19); ctx.stroke()
-    }
     ctx.strokeStyle = "rgba(116,48,59,.32)"
-    for (let moduleX = 32; moduleX < width; moduleX += 32) {
+    for (let moduleX = 64; moduleX < width; moduleX += 64) {
       ctx.beginPath()
       ctx.moveTo(x + moduleX, topY + 3)
       ctx.lineTo(x + moduleX, topY + footprint - 3)
@@ -247,18 +244,28 @@ export class CanvasArenaView {
   }
 
   drawBush(ctx, wall, index, x, y, width, footprint) {
-    ctx.fillStyle = "rgba(51,45,29,.22)"
+    ctx.fillStyle = "rgba(37,64,35,.26)"
     ctx.beginPath()
-    ctx.ellipse(x + width / 2 + 3, y + footprint / 2 + 6, width / 2 + 7, footprint / 2 + 7, 0, 0, Math.PI * 2)
+    ctx.ellipse(x + width / 2 + 5, y + footprint / 2 + 8, width / 2 + 9, footprint / 2 + 9, 0, 0, Math.PI * 2)
     ctx.fill()
-    const count = Math.max(5, Math.ceil(width / 13))
-    for (let leaf = 0; leaf < count; leaf += 1) {
-      const px = x + (leaf + .5) / count * width
-      const py = y + footprint * (.35 + leaf % 2 * .25)
-      const blade = 18 + leaf % 3 * 5
-      ctx.fillStyle = ["#55a936", "#6fc142", "#45952f", "#82ce4b"][(index + leaf) % 4]
-      ctx.beginPath(); ctx.moveTo(px - 8, py + 5); ctx.quadraticCurveTo(px - 10, py - blade * .65, px - 3, py - blade); ctx.quadraticCurveTo(px + 1, py - blade * .45, px, py + 5); ctx.fill()
-      ctx.beginPath(); ctx.moveTo(px, py + 5); ctx.quadraticCurveTo(px + 9, py - blade * .55, px + 8, py - blade * .82); ctx.quadraticCurveTo(px + 15, py - blade * .35, px + 10, py + 5); ctx.fill()
+    const columns = Math.max(2, Math.ceil(width / 34))
+    const rows = Math.max(1, Math.ceil(footprint / 27))
+    for (let row = rows - 1; row >= 0; row -= 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const seed = index * 17 + row * 11 + column * 7
+        const px = x + (column + .5) / columns * width + Math.sin(seed) * 4
+        const py = y + (row + .55) / rows * footprint + Math.cos(seed * .7) * 2
+        const radius = 16 + seed % 6
+        const gradient = ctx.createRadialGradient(px - 4, py - radius * .55, 2, px, py, radius)
+        gradient.addColorStop(0, ["#b3e95d", "#9dde50", "#8cd24b"][(seed + 1) % 3])
+        gradient.addColorStop(.58, ["#58ad42", "#65bd46", "#4f9f3c"][seed % 3])
+        gradient.addColorStop(1, "#347c3a")
+        ctx.fillStyle = gradient
+        ctx.beginPath(); ctx.arc(px, py - radius * .35, radius, 0, Math.PI * 2); ctx.fill()
+        ctx.strokeStyle = "rgba(38,104,50,.55)"; ctx.lineWidth = 1.5; ctx.stroke()
+        ctx.strokeStyle = "rgba(233,255,154,.55)"; ctx.lineWidth = 2
+        ctx.beginPath(); ctx.moveTo(px - 1, py - radius * .3); ctx.quadraticCurveTo(px - 7, py - radius, px - 3, py - radius * 1.22); ctx.stroke()
+      }
     }
   }
 }

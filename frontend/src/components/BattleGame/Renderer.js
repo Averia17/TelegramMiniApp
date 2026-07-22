@@ -41,6 +41,7 @@ export class Renderer {
     this.time = 0
     this.lastRenderAt = performance.now()
     this.knownBullets = new Set()
+	this.knownEffects = new Set()
     this.particles = []
     this.shake = 0
     this.resize(window.innerWidth, window.innerHeight)
@@ -66,16 +67,33 @@ export class Renderer {
     })
     removeMissing(this.players, activePlayers)
     this.syncShots(state.bullets || [])
+	this.syncEffects(state.effects || [])
+  }
+
+  syncEffects(effects) {
+	const active = new Set()
+	effects.forEach((effect, index) => {
+	  const key = effect.id || `${effect.kind || "fx"}:${effect.x}:${effect.y}:${index}`
+	  active.add(key)
+	  if (this.knownEffects.has(key)) return
+	  if (["damage", "slash", "slam", "cone", "burst", "collapse", "overload", "thruster"].includes(effect.kind)) {
+		const strength = effect.kind === "damage" ? Math.min(10, 2 + Math.sqrt(effect.damage || 0) / 12) : 7
+		this.shake = Math.max(this.shake, strength)
+	  }
+	})
+	this.knownEffects = active
   }
 
   syncShots(bullets) {
     const active = new Set()
     bullets.forEach((bullet, index) => {
-      const key = `${bullet.playerId || "bullet"}:${index}`
+      // Array indexes are not projectile identities: inactive server-side
+      // objects are recycled and filtered out of snapshots, shifting indexes.
+      const key = bullet.id ?? `${bullet.playerId || "bullet"}:${index}`
       active.add(key)
       if (!this.knownBullets.has(key)) {
         this.players.get(String(bullet.playerId))?.triggerRecoil()
-        this.players.get(String(bullet.playerId))?.reveal(1000)
+        this.players.get(String(bullet.playerId))?.reveal(2000)
         if (String(bullet.playerId) === String(this.localPlayerId)) this.shake = Math.max(this.shake, 4.5)
         this.spawnMuzzle(bullet)
       }
@@ -163,10 +181,10 @@ export class Renderer {
       depthItems.push({depth:view.depth,draw:drawContext=>view.draw(drawContext,this.time,String(id)===String(this.localPlayerId))})
     })
     Object.entries(this.state?.monsters || {}).forEach(([id, monster]) => {
-      depthItems.push({depth: monster.y * DEPTH, draw: drawContext => this.drawMonster(drawContext, monster, id)})
+      depthItems.push({depth: monster.y, draw: drawContext => this.drawMonster(drawContext, monster, id)})
     })
     ;(this.state?.props || []).forEach((prop, index) => {
-      depthItems.push({depth: prop.y * DEPTH, draw: drawContext => this.drawPickup(drawContext, prop, index)})
+      depthItems.push({depth: prop.y, draw: drawContext => this.drawPickup(drawContext, prop, index)})
     })
     // Stable back-to-front painter's order. The sequence fallback prevents
     // equal-Y walls and actors from flickering between animation frames.
@@ -241,6 +259,14 @@ export class Renderer {
     ctx.restore()
   }
 
+  worldToScreen(x, y) {
+    const point = project(x, y)
+    return {
+      x: (point.x - this.camera.x) * this.zoom + this.width / 2,
+      y: (point.y - this.camera.y) * this.zoom + this.height / 2 + 42,
+    }
+  }
+
   updateBushVisibility(now) {
     const local = this.state?.players?.[this.localPlayerId]
     const walls = this.state?.map?.walls || []
@@ -254,8 +280,10 @@ export class Renderer {
       const enemy = this.state?.players?.[id]
       const enemyBush = enemy && bushAt(enemy, walls)
       const closeEnough = enemy && Math.hypot(enemy.x - local.x, enemy.y - local.y) <= Math.max(90, (this.state.map.tileSize || 40) * 2.5)
-      const concealed = enemyBush && !closeEnough && !sharesBush(localBush, enemyBush) && now >= view.revealedUntil
-      view.targetVisibility = concealed ? 0 : 1
+	  const cloaked = enemy?.stealth > 0 && !closeEnough && now >= view.revealedUntil
+	  const concealed = cloaked || (enemyBush && !closeEnough && !sharesBush(localBush, enemyBush) && now >= view.revealedUntil)
+	  const ally = Boolean(local.team && enemy?.team === local.team)
+      view.targetVisibility = concealed ? (ally ? .45 : 0) : 1
     })
   }
 
@@ -305,23 +333,49 @@ export class Renderer {
     const rotation = Math.atan2(Math.sin(bullet.rotation || 0) * DEPTH, Math.cos(bullet.rotation || 0))
     const color = bullet.color || "#ffdd42"
     ctx.save()
-    ctx.translate(point.x, point.y - 32)
+    ctx.translate(point.x, point.y - 32 - (bullet.z || 0))
     ctx.rotate(rotation)
     const size = bullet.size || 7
+    const kind = bullet.kind || "bolt"
     const gradient = ctx.createLinearGradient(-20 - size, 0, 8, 0)
     gradient.addColorStop(0, "rgba(255,255,255,0)")
     gradient.addColorStop(1, color)
     ctx.strokeStyle = gradient
     ctx.lineCap = "round"
-    ctx.lineWidth = bullet.kind === "wave" ? 16 : Math.max(7, size * .8)
+    ctx.lineWidth = kind === "wave" ? 16 : kind === "sniper" || kind === "colt_round" ? 3 : Math.max(5, size * .8)
     ctx.beginPath(); ctx.moveTo(-24 - size, 0); ctx.lineTo(0, 0); ctx.stroke()
     ctx.globalAlpha = 0.3
     ctx.fillStyle = color
     ctx.beginPath(); ctx.ellipse(-5, 0, size * 1.8, size, 0, 0, Math.PI * 2); ctx.fill()
     ctx.globalAlpha = 1
     ctx.fillStyle = color
-    if (bullet.kind === "rock") ctx.fillStyle = "#8c674e"
-    ctx.beginPath(); ctx.ellipse(0, 0, size, size * (bullet.kind === "wave" ? .35 : .72), 0, 0, Math.PI * 2); ctx.fill()
+    if (kind === "rock") ctx.fillStyle = "#8c674e"
+    if (kind === "barley_bottle") {
+      ctx.rotate(this.time * 8)
+      ctx.fillStyle = "#5da8ff"
+      ctx.beginPath(); ctx.roundRect(-size * .55, -size, size * 1.1, size * 1.7, size * .3); ctx.fill()
+      ctx.fillStyle = "#d8efff"; ctx.fillRect(-size * .25, -size * 1.35, size * .5, size * .45)
+    } else if (kind === "colt_round") {
+      ctx.shadowColor = "#71d7ff"; ctx.shadowBlur = 10
+      ctx.fillStyle = "#5bc8ff"; ctx.beginPath(); ctx.roundRect(-size * 1.8, -size * .48, size * 3.4, size * .96, size * .45); ctx.fill()
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.ellipse(size * .7, 0, size * .75, size * .3, 0, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0
+    } else if (kind === "boomerang") {
+      ctx.rotate(this.time * 12)
+      ctx.beginPath(); ctx.moveTo(-size * 1.25, -size * .35); ctx.quadraticCurveTo(0, -size * 1.15, size * 1.25, -size * .35); ctx.lineTo(size * .65, size * .35); ctx.quadraticCurveTo(0, 0, -size * .65, size * .35); ctx.closePath(); ctx.fill()
+    } else if (["spore", "quantum"].includes(kind)) {
+      ctx.rotate(this.time * 4)
+      ctx.beginPath()
+      for (let i = 0; i < 8; i += 1) {
+        const a = i * Math.PI / 4
+        const r = i % 2 ? size * .65 : size * 1.25
+        ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r)
+      }
+      ctx.closePath(); ctx.fill()
+    } else if (kind === "poison") {
+      ctx.beginPath(); ctx.moveTo(size * 1.5, 0); ctx.lineTo(-size, -size * .62); ctx.lineTo(-size * .55, 0); ctx.lineTo(-size, size * .62); ctx.closePath(); ctx.fill()
+    } else {
+      ctx.beginPath(); ctx.ellipse(0, 0, kind === "sniper" ? size * 1.7 : size, size * (kind === "wave" ? .35 : .72), 0, 0, Math.PI * 2); ctx.fill()
+    }
     ctx.fillStyle = "#ffffff"
     ctx.beginPath(); ctx.ellipse(1, -1, 3.5, 2.5, 0, 0, Math.PI * 2); ctx.fill()
     ctx.restore()
@@ -331,16 +385,26 @@ export class Renderer {
     const player = this.state?.players?.[this.localPlayerId]
     if (!player || player.dead || !player.aiming) return
     const hero = String(player.hero || "blaze").toLowerCase()
-    const ranges = {blaze: 430, frost: 225, viper: 112, titan: 155, shadow: 500, spark: 390, nova: 460, rex: 92, pixel: 650, boulder: 480}
+    const attackType = player.attackType || ""
+    const ranges = {shelly: 430, colt: 650, barley: 620, blaze: 430, frost: 225, viper: 112, titan: 155, shadow: 500, spark: 390, nova: 460, rex: 92, pixel: 650, boulder: 480}
     const melee = ["frost", "viper", "titan", "rex"].includes(hero)
-    const range = ranges[hero] || 430
+    const maxRange = ranges[hero] || 430
+    const range = attackType === "barley_lob" ? clamp(player.aimDistance || maxRange, 70, maxRange) : maxRange
     const start = project(player.x, player.y)
     const angle = player.rotation || 0
     const end = project(player.x + Math.cos(angle) * range, player.y + Math.sin(angle) * range)
     const screenAngle = Math.atan2(end.y - start.y, end.x - start.x)
     ctx.save(); ctx.translate(start.x, start.y - 24); ctx.rotate(screenAngle)
     ctx.fillStyle = "rgba(255,255,255,.16)"; ctx.strokeStyle = "rgba(255,255,255,.78)"; ctx.lineWidth = 3
-    if (melee) {
+    if (attackType === "barley_lob") {
+      ctx.setLineDash([10, 9]); ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(range - 38, 0); ctx.stroke(); ctx.setLineDash([])
+      ctx.translate(range, 0); ctx.scale(1, DEPTH); ctx.beginPath(); ctx.arc(0, 0, 60, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    } else if (attackType === "shelly_shotgun") {
+      const half = Math.tan(Math.PI / 12) * range
+      ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(range, -half); ctx.arc(0, 0, range, -Math.PI / 12, Math.PI / 12); ctx.closePath(); ctx.fill(); ctx.stroke()
+    } else if (attackType === "colt_burst") {
+      ctx.beginPath(); ctx.roundRect(18, -9, range - 18, 18, 8); ctx.fill(); ctx.stroke()
+    } else if (melee) {
       const width = hero === "titan" ? range : range * .72
       ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(range, -width); ctx.quadraticCurveTo(range * 1.08, 0, range, width); ctx.closePath(); ctx.fill(); ctx.stroke()
     } else {
@@ -357,15 +421,15 @@ export class Renderer {
     ctx.save(); ctx.globalAlpha = alpha
     ctx.strokeStyle = effect.color || "#fff"; ctx.fillStyle = effect.color || "#fff"
     ctx.lineCap = "round"; ctx.lineJoin = "round"
-    if (["slash", "bite", "cone"].includes(effect.kind)) {
+    if (["slash", "bite", "cone", "scythe", "prism", "shotgun_cone", "super_cone", "burst_line"].includes(effect.kind)) {
       const rotation = Math.atan2(Math.sin(effect.angle || 0) * DEPTH, Math.cos(effect.angle || 0))
       const range = effect.range || 120
       ctx.translate(point.x, point.y - 28); ctx.rotate(rotation)
-      if (effect.kind === "cone") {
+      if (["cone", "prism", "shotgun_cone", "super_cone", "burst_line"].includes(effect.kind)) {
         ctx.globalAlpha = alpha * .25
         ctx.beginPath(); ctx.moveTo(12, 0); ctx.arc(0, 0, range * (.65 + progress * .35), -(effect.arc || .7), effect.arc || .7); ctx.closePath(); ctx.fill()
       } else {
-        ctx.lineWidth = effect.kind === "bite" ? 18 : 12
+        ctx.lineWidth = effect.kind === "bite" ? 18 : effect.kind === "scythe" ? 17 : 12
         ctx.beginPath(); ctx.arc(0, 0, range * (.55 + progress * .45), -(effect.arc || .8), effect.arc || .8); ctx.stroke()
         if (effect.kind === "bite") { ctx.beginPath(); ctx.arc(0, 0, range * .75, -.65, -.18); ctx.arc(0, 0, range * .75, .18, .65); ctx.stroke() }
       }
@@ -394,6 +458,16 @@ export class Renderer {
       }
       ctx.lineTo(end.x, end.y - 32); ctx.stroke()
       ctx.strokeStyle = "#fff"; ctx.lineWidth *= .3; ctx.stroke()
+    } else if (effect.kind === "barley_pool") {
+      ctx.translate(point.x, point.y)
+      ctx.scale(1, DEPTH)
+      const radius = effect.radius || 60
+      const wobble = 1 + Math.sin(this.time * 7) * .035
+      ctx.globalAlpha = Math.min(.78, alpha * 1.35)
+      ctx.fillStyle = "#45aef0";ctx.beginPath()
+      for(let i=0;i<18;i+=1){const a=i*Math.PI*2/18,r=radius*(i%2?wobble:.88);const x=Math.cos(a)*r,y=Math.sin(a)*r;(i?ctx.lineTo(x,y):ctx.moveTo(x,y))}ctx.closePath();ctx.fill()
+      ctx.strokeStyle="#b8efff";ctx.lineWidth=5;ctx.stroke()
+      ctx.fillStyle="rgba(255,255,255,.65)";for(let i=0;i<5;i+=1){const a=i*1.9+this.time,r=radius*(.25+i*.11);ctx.beginPath();ctx.arc(Math.cos(a)*r,Math.sin(a)*r*.65,4+i%2*2,0,Math.PI*2);ctx.fill()}
     } else if(effect.kind==="clone"){
       ctx.translate(point.x,point.y-34);ctx.globalAlpha=alpha*.62;ctx.fillStyle="#d9a6ff";ctx.beginPath();ctx.ellipse(0,8,24,10,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(0,-16,17,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-28,14);ctx.quadraticCurveTo(0,38,28,14);ctx.stroke()
     } else {
@@ -406,6 +480,7 @@ export class Renderer {
   destroy() {
     this.players.clear()
     this.knownBullets.clear()
+	this.knownEffects.clear()
     this.state = null
   }
 }

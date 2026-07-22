@@ -4,6 +4,7 @@ import (
 	"battle/model/game"
 	"battle/provider"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math"
 	"time"
@@ -33,9 +34,18 @@ func (r *Room) Run() {
 		select {
 		case client := <-r.Register:
 			r.mu.Lock()
+			if client.State == nil {
+				client.State = make(chan []byte, 1)
+			}
 			emptySince = time.Time{}
 			r.Clients[client.Id] = client
+			lateJoin := r.State.State == game.GameStateGame
 			r.State.PlayerAdd(client.Id, client.Name, client.HeroName)
+			if lateJoin {
+				if joined := r.State.Players[client.Id]; joined != nil {
+					joined.InvulnerableUntil = time.Now().Add(3 * time.Second).UnixMilli()
+				}
+			}
 			if Store != nil {
 				playerRecord := &provider.PlayerRecord{
 					PlayerId: client.Id,
@@ -90,7 +100,7 @@ func (r *Room) Run() {
 			}
 			r.State.Update()
 			frame++
-			if frame%3 == 0 {
+			if frame%2 == 0 {
 				r.sendStateUpdate()
 			}
 			r.mu.Unlock()
@@ -151,6 +161,10 @@ func (r *Room) sendStateUpdate() {
 		now := time.Now().UnixMilli()
 		primaryCooldown := math.Max(0, float64(p.LastPrimaryAt+game.AbilityCooldownMs(p.HeroName, "primary")-now)/1000)
 		secondaryCooldown := math.Max(0, float64(p.LastSecondaryAt+game.AbilityCooldownMs(p.HeroName, "secondary")-now)/1000)
+		reloadProgress := 0.0
+		if p.Ammo < p.MaxAmmo && p.ReloadTime > 0 && p.NextAmmoAt > 0 {
+			reloadProgress = math.Max(0, math.Min(1, 1-float64(p.NextAmmoAt-now)/float64(p.ReloadTime)))
+		}
 		players[id] = game.PlayerJSON{
 			X:                p.X,
 			Y:                p.Y,
@@ -167,16 +181,31 @@ func (r *Room) sendStateUpdate() {
 			Hero:             p.HeroName,
 			AttackType:       p.AttackType,
 			ShieldHP:         p.ShieldHP,
+			ShieldStacks:     p.ShieldStacks,
 			Marks:            p.Marks,
 			SuperCharge:      p.SuperCharge,
 			Heat:             p.Heat,
 			AttackPulse:      p.AttackPulse,
+			Ammo:             p.Ammo,
+			MaxAmmo:          p.MaxAmmo,
+			ReloadProgress:   reloadProgress,
+			HitImpulseX:      p.HitImpulseX,
+			HitImpulseY:      p.HitImpulseY,
 			Aiming:           p.Aiming,
+			AimDistance:      p.AimDistance,
 			Shield:           secondsRemaining(p.ShieldUntil, now),
 			Haste:            secondsRemaining(p.HasteUntil, now),
 			Stealth:          secondsRemaining(p.StealthUntil, now),
 			Invulnerable:     secondsRemaining(p.InvulnerableUntil, now),
+			Blind:            secondsRemaining(p.BlindUntil, now),
+			Stun:             secondsRemaining(p.StunUntil, now),
+			Channel:          secondsRemaining(p.ChannelUntil, now),
+			Vine:             secondsRemaining(p.VineUntil, now),
+			Vortex:           secondsRemaining(p.VortexUntil, now),
+			Flying:           secondsRemaining(p.FlyingUntil, now),
 			Evolution:        p.Evolution,
+			Souls:            p.Souls,
+			Deflect:          p.Deflect,
 			PowerCores:       p.PowerCores,
 			DamageMultiplier: p.DamageMultiplier,
 			Cooldowns:        map[string]float64{"primary": primaryCooldown, "secondary": secondaryCooldown},
@@ -204,9 +233,16 @@ func (r *Room) sendStateUpdate() {
 	var bullets []game.BulletJSON
 	for _, b := range r.State.Bullets {
 		if b.Active {
+			z := 0.0
+			if b.Lobbed && b.LandsAt > b.SpawnedAt {
+				progress := math.Max(0, math.Min(1, float64(time.Now().UnixMilli()-b.SpawnedAt)/float64(b.LandsAt-b.SpawnedAt)))
+				z = math.Sin(progress*math.Pi) * 90
+			}
 			bullets = append(bullets, game.BulletJSON{
+				ID:        b.ID,
 				X:         b.X,
 				Y:         b.Y,
+				Z:         z,
 				Radius:    b.Radius,
 				PlayerId:  b.PlayerId,
 				Team:      b.Team,
@@ -217,6 +253,12 @@ func (r *Room) sendStateUpdate() {
 				MaxRange:  b.MaxRange,
 				Travelled: b.Travelled,
 				Returning: b.Returning,
+				Splash:    b.Splash,
+				Chain:     b.Chain,
+				Bounces:   b.Bounces,
+				Lobbed:    b.Lobbed,
+				TargetX:   b.TargetX,
+				TargetY:   b.TargetY,
 			})
 		}
 	}
@@ -240,7 +282,7 @@ func (r *Room) sendStateUpdate() {
 			continue
 		}
 		maxLife := float64(effect.ExpiresAt-effect.CreatedAt) / 1000
-		effects = append(effects, game.EffectJSON{Kind: effect.Kind, X: effect.X, Y: effect.Y, ToX: effect.ToX, ToY: effect.ToY, Radius: effect.Radius, Angle: effect.Angle, Range: effect.Range, Arc: effect.Arc, Color: effect.Color, Damage: effect.Damage, Life: float64(effect.ExpiresAt-now) / 1000, MaxLife: maxLife})
+		effects = append(effects, game.EffectJSON{Id: fmt.Sprintf("%d:%s:%.0f:%.0f", effect.CreatedAt, effect.Kind, effect.X, effect.Y), Kind: effect.Kind, X: effect.X, Y: effect.Y, ToX: effect.ToX, ToY: effect.ToY, Radius: effect.Radius, Angle: effect.Angle, Range: effect.Range, Arc: effect.Arc, Color: effect.Color, Damage: effect.Damage, Life: float64(effect.ExpiresAt-now) / 1000, MaxLife: maxLife})
 	}
 
 	gameState := game.GameStateJSON{
@@ -270,7 +312,7 @@ func (r *Room) sendStateUpdate() {
 			walls := make([]game.WallJSON, 0, len(r.State.Map.Collisions))
 			for _, w := range r.State.Map.Collisions {
 				walls = append(walls, game.WallJSON{
-					MinX: w.MinX, MinY: w.MinY, MaxX: w.MaxX, MaxY: w.MaxY, Type: w.Type,
+					MinX: w.MinX, MinY: w.MinY, MaxX: w.MaxX, MaxY: w.MaxY, Type: w.Type, BushGroup: w.BushGroup,
 				})
 			}
 			fullMapJSON = compactMapJSON
@@ -299,11 +341,19 @@ func (r *Room) sendStateUpdate() {
 			data = fullData
 		}
 		select {
-		case client.Send <- data:
-			if sendingMap {
-				client.MapRevision = r.State.MapRevision
-			}
+		case client.State <- data:
 		default:
+			select {
+			case <-client.State:
+			default:
+			}
+			select {
+			case client.State <- data:
+			default:
+			}
+		}
+		if sendingMap {
+			client.MapRevision = r.State.MapRevision
 		}
 	}
 }

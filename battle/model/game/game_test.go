@@ -3,6 +3,7 @@ package game
 import (
 	"battle/model/bullet"
 	"battle/model/monster"
+	"battle/service/geometry"
 	"fmt"
 	"math"
 	"testing"
@@ -40,6 +41,41 @@ func TestUpdateRegenerationUsesHeroRate(t *testing.T) {
 	want := int(float64(p.MaxLives) * p.RegenRate)
 	if got := p.Lives - start; got != want {
 		t.Fatalf("regenerated %d HP in one second, want %d", got, want)
+	}
+}
+
+func TestConnectedBushGroupRevealsPlayersAcrossGrass(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("hidden", "Hidden", "Spark")
+	gs.PlayerAdd("enemy", "Enemy", "Nova")
+	hidden, enemy := gs.Players["hidden"], gs.Players["enemy"]
+	hidden.X, hidden.Y, enemy.X, enemy.Y = 110, 110, 310, 110
+	gs.Map.Collisions = []*geometry.WallTile{
+		{MinX: 100, MinY: 100, MaxX: 140, MaxY: 140, Type: "bush", BushGroup: 7},
+		{MinX: 300, MinY: 100, MaxX: 340, MaxY: 140, Type: "bush", BushGroup: 7},
+	}
+	if gs.isConcealed(hidden) {
+		t.Fatal("player must be revealed by an enemy anywhere in the same connected bush group")
+	}
+	enemy.X, enemy.Y = 600, 600
+	if !gs.isConcealed(hidden) {
+		t.Fatal("player should be concealed when every enemy is far and outside the bush group")
+	}
+}
+
+func TestBotFarmsCrateDuringOpeningInsteadOfStandingStill(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("bot", "Bot", "Spark")
+	bot := gs.Players["bot"]
+	bot.IsBot, bot.X, bot.Y = true, 100, 100
+	gs.Map.Collisions = []*geometry.WallTile{{MinX: 300, MinY: 100, MaxX: 340, MaxY: 140, Type: "crates"}}
+	gs.State = GameStateGame
+	gs.GameEndsAt = time.Now().Add(GameDuration).UnixMilli()
+
+	gs.updateBots()
+
+	if bot.MoveX <= 0 || math.Abs(bot.MoveY) > .2 {
+		t.Fatalf("opening bot move=(%.2f, %.2f), want movement toward crate", bot.MoveX, bot.MoveY)
 	}
 }
 
@@ -162,6 +198,52 @@ func TestAbilityActionIsProcessed(t *testing.T) {
 	}
 }
 
+func TestTitanSecondaryThrowsThreePrismDiscs(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("titan", "Titan", "Titan")
+
+	gs.playerAbility("titan", 10_000, "secondary")
+
+	active := 0
+	for _, projectile := range gs.Bullets {
+		if projectile.Active {
+			active++
+			if projectile.Kind != "boomerang" {
+				t.Fatalf("Titan secondary projectile kind = %q, want boomerang", projectile.Kind)
+			}
+		}
+	}
+	if active != 3 {
+		t.Fatalf("Titan secondary active projectiles = %d, want 3", active)
+	}
+}
+
+func TestSparkSecondaryIsAnAttackNotOnlyAStatBuff(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("spark", "Spark", "Spark")
+	p := gs.Players["spark"]
+	p.X, p.Y, p.Rotation = 1200, 1200, 0
+	startX := p.X
+
+	gs.playerAbility("spark", 10_000, "secondary")
+
+	if p.X <= startX {
+		t.Fatalf("Spark secondary did not move: x = %.1f, start = %.1f", p.X, startX)
+	}
+	foundScythe := false
+	for _, effect := range gs.Effects {
+		if effect.Kind == "scythe" {
+			foundScythe = true
+			break
+		}
+	}
+	if !foundScythe {
+		t.Fatal("Spark secondary did not create a scythe telegraph")
+	}
+}
+
 func TestGameStatePlayerMove(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("p1", "Alice", "")
@@ -186,9 +268,27 @@ func TestMovementMatchesLocalEnginePixelsPerSecond(t *testing.T) {
 	gs.playerMove("p1", 100, 1, 0)
 	gs.updatePlayerMovement()
 
-	want := 256.0 + 294.0/60.0
+	want := 256.0 + p.Speed/60.0
 	if math.Abs(p.X-want) > .01 {
-		t.Fatalf("x = %.3f, want %.3f (294 px/s at 60 Hz)", p.X, want)
+		t.Fatalf("x = %.3f, want %.3f (%.0f px/s at 60 Hz)", p.X, want, p.Speed)
+	}
+}
+
+func TestLobbyAllowsMovementAndStartKeepsHumanPosition(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("human", "Human", "Blaze")
+	gs.startLobby()
+	p := gs.Players["human"]
+	p.X, p.Y = 256, 256
+	gs.playerMove("human", 100, 1, 0)
+	gs.updatePlayerMovement()
+	if p.X <= 256 {
+		t.Fatalf("lobby movement did not advance player: x=%.2f", p.X)
+	}
+	beforeX, beforeY := p.X, p.Y
+	gs.startGame()
+	if p.X != beforeX || p.Y != beforeY {
+		t.Fatalf("game start teleported human from %.2f,%.2f to %.2f,%.2f", beforeX, beforeY, p.X, p.Y)
 	}
 }
 
@@ -262,22 +362,54 @@ func TestShotgunSpawnsFivePellets(t *testing.T) {
 	}
 }
 
-func TestHeroCombatProfilesMatchLocalBattleEngine(t *testing.T) {
+func TestHeroCombatProfiles(t *testing.T) {
 	want := map[string]struct {
 		speed  float64
 		damage int
 		rate   int64
 	}{
-		"Blaze": {294, 260, 520}, "Frost": {310, 180, 620}, "Viper": {215, 1250, 790},
-		"Titan": {340, 650, 650}, "Shadow": {258, 750, 720}, "Spark": {338, 1050, 540},
-		"Nova": {275, 900, 860}, "Rex": {315, 1200, 480}, "Pixel": {263, 850, 650},
-		"Boulder": {310, 320, 590},
+		"Blaze": {290, 260, 220}, "Frost": {290, 180, 180}, "Viper": {235, 1250, 520},
+		"Titan": {325, 650, 300}, "Shadow": {258, 750, 420}, "Spark": {320, 1050, 260},
+		"Nova": {275, 900, 600}, "Rex": {295, 1200, 260}, "Pixel": {263, 850, 360},
+		"Boulder": {285, 320, 280},
 	}
 	for name, expected := range want {
 		hero := GetHeroByName(name)
 		if hero == nil || hero.Speed != expected.speed || hero.AttackDamage != expected.damage || hero.AttackRate != expected.rate {
 			t.Fatalf("%s profile = %#v, want speed=%.0f damage=%d rate=%d", name, hero, expected.speed, expected.damage, expected.rate)
 		}
+	}
+}
+
+func TestAmmoIsServerAuthoritativeAndReloadsSequentially(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("p1", "Alice", "Nova")
+	p := gs.Players["p1"]
+	p.X, p.Y = 1200, 1200
+
+	gs.playerShoot("p1", 1_000, 0)
+	gs.playerShoot("p1", 1_700, 0)
+	gs.playerShoot("p1", 2_400, 0)
+	gs.playerShoot("p1", 3_100, 0)
+	if p.Ammo != 0 {
+		t.Fatalf("ammo after three accepted attacks = %d, want 0", p.Ammo)
+	}
+	if len(gs.Bullets) != 3 {
+		t.Fatalf("projectiles after firing with empty ammo = %d, want 3", len(gs.Bullets))
+	}
+
+	gs.reloadAmmo(p, 3_099)
+	if p.Ammo != 0 {
+		t.Fatalf("ammo reloaded early: %d", p.Ammo)
+	}
+	gs.reloadAmmo(p, 3_100)
+	if p.Ammo != 1 {
+		t.Fatalf("ammo after first reload = %d, want 1", p.Ammo)
+	}
+	gs.reloadAmmo(p, 5_200)
+	if p.Ammo != 2 {
+		t.Fatalf("ammo after second reload = %d, want 2", p.Ammo)
 	}
 }
 
@@ -702,8 +834,8 @@ func TestUpdateGameWin(t *testing.T) {
 	gs.Players["p2"].Lives = 0
 
 	gs.Update()
-	if gs.State != GameStateLobby {
-		t.Errorf("State = %v, want lobby (winner found)", gs.State)
+	if gs.State != GameStateFinished {
+		t.Errorf("State = %v, want finished (winner found)", gs.State)
 	}
 }
 
@@ -715,8 +847,8 @@ func TestUpdateGameTimeout(t *testing.T) {
 	gs.PlayerAdd("p2", "Bob", "")
 
 	gs.Update()
-	if gs.State != GameStateLobby {
-		t.Errorf("State = %v, want lobby (timeout)", gs.State)
+	if gs.State != GameStateFinished {
+		t.Errorf("State = %v, want finished (timeout)", gs.State)
 	}
 }
 
@@ -756,6 +888,104 @@ func TestPlayerHitBuildsServerAuthoritativeSuperCharge(t *testing.T) {
 	}
 }
 
+func TestSparkDashHitsTargetOnlyOnce(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("spark", "Spark", "Spark")
+	gs.PlayerAdd("target", "Target", "Viper")
+	spark, target := gs.Players["spark"], gs.Players["target"]
+	spark.X, spark.Y = 100, 100
+	target.X, target.Y = 280, 100
+	before := target.Lives
+
+	gs.playerShoot("spark", 10_000, 0)
+
+	if got := before - target.Lives; got != spark.AttackDmg {
+		t.Fatalf("Spark dash damage = %d, want one hit of %d", got, spark.AttackDmg)
+	}
+}
+
+func TestViperSlamAddsSlowAndShieldStack(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("viper", "Viper", "Viper")
+	gs.PlayerAdd("target", "Target", "Blaze")
+	viper, target := gs.Players["viper"], gs.Players["target"]
+	viper.X, viper.Y = 100, 100
+	target.X, target.Y = 210, 100
+
+	gs.playerShoot("viper", 10_000, 0)
+
+	if viper.ShieldStacks != 1 || viper.ShieldStackUntil != 14_000 {
+		t.Fatalf("Viper shield stacks=%d until=%d, want 1 until 14000", viper.ShieldStacks, viper.ShieldStackUntil)
+	}
+	if target.SlowUntil != 11_200 {
+		t.Fatalf("target slow until=%d, want 11200", target.SlowUntil)
+	}
+}
+
+func TestPoisonMatchesLocalEngineTotalDamage(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("target", "Target", "Viper")
+	target := gs.Players["target"]
+	target.PoisonUntil = time.Now().Add(5 * time.Second).UnixMilli()
+	before := target.Lives
+	for range 8 {
+		target.PoisonTickAt = 0
+		gs.updateStatuses()
+	}
+	if got := before - target.Lives; got != 640 {
+		t.Fatalf("poison damage=%d, want total 640", got)
+	}
+}
+
+func TestPoisonSpreadsToNearbyPlayer(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("source", "Source", "Boulder")
+	gs.PlayerAdd("near", "Near", "Blaze")
+	gs.PlayerAdd("far", "Far", "Blaze")
+	source, near, far := gs.Players["source"], gs.Players["near"], gs.Players["far"]
+	source.X, source.Y, near.X, near.Y, far.X, far.Y = 100, 100, 220, 100, 300, 100
+	source.PoisonUntil, source.PoisonTickAt, source.PoisonBy = time.Now().Add(4*time.Second).UnixMilli(), 0, "attacker"
+
+	gs.updateStatuses()
+
+	if near.PoisonUntil <= time.Now().UnixMilli() || near.PoisonBy != "attacker" {
+		t.Fatalf("nearby player did not inherit poison: until=%d by=%q", near.PoisonUntil, near.PoisonBy)
+	}
+	if far.PoisonUntil != 0 {
+		t.Fatalf("far player inherited poison: until=%d", far.PoisonUntil)
+	}
+}
+
+func TestRexPassivelyChargesSuper(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("rex", "Rex", "Rex")
+	for range 60 {
+		gs.updateStatuses()
+	}
+	if got := gs.Players["rex"].SuperCharge; got != 7 {
+		t.Fatalf("Rex passive charge=%d after one simulated second, want 7", got)
+	}
+}
+
+func TestFrostMaximumHeatBoostsMovement(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.Walls = geometry.NewSpatialHash(TileSize * 2)
+	gs.PlayerAdd("frost", "Frost", "Frost")
+	p := gs.Players["frost"]
+	p.X, p.Y, p.MoveX, p.MoveY, p.Heat = 500, 500, 1, 0, 5
+	start := p.X
+	gs.updatePlayerMovement()
+	if want := p.Speed / 60 * 1.12; math.Abs((p.X-start)-want) > .02 {
+		t.Fatalf("Frost moved %.3f at max heat, want %.3f", p.X-start, want)
+	}
+}
+
 func TestBulletVsMonster(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("p1", "Alice", "")
@@ -768,6 +998,23 @@ func TestBulletVsMonster(t *testing.T) {
 
 	if _, ok := gs.Monsters["m1"]; ok {
 		t.Error("monster should be removed after death")
+	}
+}
+
+func TestPixelChainCanJumpFromPlayerToMonster(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("pixel", "Pixel", "Pixel")
+	gs.PlayerAdd("first", "First", "Blaze")
+	gs.State = GameStateGame
+	first := gs.Players["first"]
+	first.X, first.Y = 100, 100
+	gs.Monsters["monster"] = monster.NewMonster(230, 100, 16, 512, 512, 1000)
+	before := gs.Monsters["monster"].Lives
+
+	gs.chainDamage("pixel", first, 190, 1, 200)
+
+	if got := gs.Monsters["monster"].Lives; got != before-200 {
+		t.Fatalf("monster lives=%d after chain, want %d", got, before-200)
 	}
 }
 

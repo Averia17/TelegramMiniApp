@@ -5,7 +5,14 @@
 export const DEPTH = 0.60
 export const HERO_SCALE = 0.88
 
+// Populate only with animation-ready 3D exports. Each entry must contain all
+// eight directions and real idle/run/attack/hit frame sequences.
+export const HERO_SPRITESHEETS = {}
+
 export const HERO_PALETTES = {
+  shelly: {main: 0x8e55d9, dark: 0x38245f, light: 0xd8a8ff, skin: 0xb86f52, accent: 0xffd44f},
+  colt: {main: 0xe94d56, dark: 0x26335d, light: 0x5db7ff, skin: 0xd58b68, accent: 0xffe35b},
+  barley: {main: 0x47a7e8, dark: 0x26364e, light: 0xa7ddff, skin: 0xd9e8ef, accent: 0xffc93f},
   blaze: {main: 0xc64bff, dark: 0x53234f, light: 0xff7ad9, skin: 0xd99671, accent: 0x62f3ff},
   frost: {main: 0x35aee8, dark: 0x203b68, light: 0xe8f4ff, skin: 0x37445f, accent: 0x54f2ff},
   viper: {main: 0xff7138, dark: 0x332b31, light: 0xffb13c, skin: 0x44333a, accent: 0xffdf55},

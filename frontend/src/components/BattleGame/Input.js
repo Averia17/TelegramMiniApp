@@ -18,11 +18,17 @@ export class Input {
     this.shootCooldown = 90
     this.localPlayerId = null
     this.getState = null
+    this.getPlayerScreenPosition = null
     this.events = new AbortController()
     this.lastMoveX = null
     this.lastMoveY = null
     this.lastMoveSentAt = 0
     this.moveSendInterval = 50
+    this.lastRotation = null
+    this.lastRotationSentAt = 0
+    this.rotationSendInterval = 33
+    this.attackPointerStart = null
+    this.attackPointerDownAt = 0
     this.onTouchControlsChange = onTouchControlsChange
 
     this.setupKeyboard()
@@ -30,24 +36,37 @@ export class Input {
     this.setupTouch()
   }
 
-  setLocalPlayer(id, stateGetter) {
+  setLocalPlayer(id, stateGetter, screenPositionGetter = null) {
     this.localPlayerId = id
     this.getState = typeof stateGetter === "function" ? stateGetter : () => stateGetter
+    this.getPlayerScreenPosition = screenPositionGetter
+  }
+
+  getAimOrigin(rect, player) {
+    const position = player && this.getPlayerScreenPosition?.(player)
+    return Number.isFinite(position?.x) && Number.isFinite(position?.y)
+      ? position
+      : {x: rect.width / 2, y: rect.height / 2}
   }
 
   setupKeyboard() {
     window.addEventListener("keydown", (e) => {
       this.keys[e.code] = true
+	  if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(e.code)) this.sendKeyboardMove()
       if (e.code === "Space") {
         e.preventDefault()
-        this.tryShoot()
+        this.tryShoot(true)
       }
       if (e.code === "KeyQ") this.client.ability?.("primary")
       if (e.code === "KeyE") this.client.ability?.("secondary")
     }, {signal: this.events.signal})
 
     window.addEventListener("keyup", (e) => {
-      this.keys[e.code] = false
+	  if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(e.code)) {
+		setTimeout(() => { this.keys[e.code] = false; this.sendKeyboardMove() }, 34)
+	  } else {
+		this.keys[e.code] = false
+	  }
     }, {signal: this.events.signal})
   }
 
@@ -59,14 +78,23 @@ export class Input {
       this.sendRotation()
     }, {signal: this.events.signal})
 
-    this.canvas.addEventListener("mousedown", () => {
-      this.shooting = true
+    this.canvas.addEventListener("mousedown", (e) => {
+      const rect = this.canvas.getBoundingClientRect()
+      this.attackPointerStart = {x: e.clientX - rect.left, y: e.clientY - rect.top}
+      this.attackPointerDownAt = performance.now()
       this.client.setAiming?.(true)
-      this.tryShoot()
     }, {signal: this.events.signal})
 
-    window.addEventListener("mouseup", () => {
-      this.shooting = false
+    window.addEventListener("mouseup", (e) => {
+      if (!this.attackPointerStart) return
+      const rect = this.canvas.getBoundingClientRect()
+      const end = {x: e.clientX - rect.left, y: e.clientY - rect.top}
+      const drag = Math.hypot(end.x - this.attackPointerStart.x, end.y - this.attackPointerStart.y)
+      const quickTap = performance.now() - this.attackPointerDownAt < 180 && drag < 10
+      this.mouseX = end.x
+      this.mouseY = end.y
+      this.tryShoot(quickTap)
+      this.attackPointerStart = null
       this.client.setAiming?.(false)
     }, {signal: this.events.signal})
   }
@@ -89,10 +117,9 @@ export class Input {
           this.aimCurrent = {...point}
           this.mouseX = point.x
           this.mouseY = point.y
-          this.shooting = true
+          this.attackPointerDownAt = performance.now()
           this.client.setAiming?.(true)
           this.sendRotation()
-          this.tryShoot()
           this.emitTouchControls()
         }
       }
@@ -111,8 +138,10 @@ export class Input {
           const dy = point.y - this.aimStart.y
           const distance = Math.hypot(dx, dy)
           if (distance > 8) {
-            this.mouseX = rect.width / 2 + (dx / distance) * 100
-            this.mouseY = rect.height / 2 + (dy / distance) * 100
+            const player = this.localPlayerId && this.getState?.()?.players?.[this.localPlayerId]
+            const origin = this.getAimOrigin(rect, player)
+            this.mouseX = origin.x + (dx / distance) * 100
+            this.mouseY = origin.y + (dy / distance) * 100
             this.sendRotation()
           }
         }
@@ -133,6 +162,10 @@ export class Input {
           this.emitTouchControls()
         }
         if (touch.identifier === this.aimTouchId) {
+          const drag = this.aimStart && this.aimCurrent
+            ? Math.hypot(this.aimCurrent.x - this.aimStart.x, this.aimCurrent.y - this.aimStart.y)
+            : 0
+          this.tryShoot(performance.now() - this.attackPointerDownAt < 180 && drag < 10)
           this.aimTouchId = null
           this.aimStart = null
           this.aimCurrent = null
@@ -202,15 +235,25 @@ export class Input {
     const rect = this.canvas.getBoundingClientRect()
     const screenX = this.mouseX
     const screenY = this.mouseY
+    const origin = this.getAimOrigin(rect, player)
 
     const rotation = Math.atan2(
-      screenY - rect.height / 2,
-      screenX - rect.width / 2
+      screenY - origin.y,
+      screenX - origin.x
     )
-    this.client.rotate(rotation)
+    const now = performance.now()
+    const delta = this.lastRotation === null
+      ? Infinity
+      : Math.abs(Math.atan2(Math.sin(rotation - this.lastRotation), Math.cos(rotation - this.lastRotation)))
+    if (delta < 0.01 || now - this.lastRotationSentAt < this.rotationSendInterval) return
+    this.lastRotation = rotation
+    this.lastRotationSentAt = now
+    this.client.rotate(rotation, Math.hypot(screenX - origin.x, screenY - origin.y))
   }
 
-  tryShoot() {
+  tryShoot(autoAim = false) {
+    const player = this.localPlayerId && this.getState?.()?.players?.[this.localPlayerId]
+    if (player && Number(player.ammo) <= 0) return
     const now = Date.now()
     if (now - this.lastShotAt < this.shootCooldown) return
     this.lastShotAt = now
@@ -218,15 +261,21 @@ export class Input {
     const rect = this.canvas.getBoundingClientRect()
     const screenX = this.mouseX
     const screenY = this.mouseY
+    const origin = this.getAimOrigin(rect, player)
 
     const angle = Math.atan2(
-      screenY - rect.height / 2,
-      screenX - rect.width / 2
+      screenY - origin.y,
+      screenX - origin.x
     )
-    this.client.shoot(angle, Math.hypot(screenX - rect.width / 2, screenY - rect.height / 2))
+    this.client.shoot(angle, Math.hypot(screenX - origin.x, screenY - origin.y), autoAim)
   }
 
   update() {
+	this.sendKeyboardMove()
+
+	}
+
+	sendKeyboardMove() {
     let dx = 0
     let dy = 0
 
@@ -242,10 +291,6 @@ export class Input {
     }
     if (this.moveTouchId === null) this.sendMove(dx, dy)
     else this.sendMove(this.lastMoveX || 0, this.lastMoveY || 0)
-
-    if (this.shooting) {
-      this.tryShoot()
-    }
   }
 
   destroy() {

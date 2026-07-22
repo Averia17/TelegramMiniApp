@@ -150,6 +150,11 @@
 .player-vitals small { display: block; margin: 2px 0 0 5px; font: 800 10px system-ui, sans-serif; }
 .health-track { height: 15px; padding: 3px; overflow: hidden; border: 3px solid #fff; border-radius: 9px; background: #251c41; box-shadow: 0 3px 0 #14152d; }
 .health-track span { display: block; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #3dd95a, #a9ef45); transition: width 0.2s ease; }
+.ammo-track { display: flex; gap: 4px; margin: 7px 4px 0; }
+.ammo-track i { position: relative; width: 38px; height: 7px; overflow: hidden; border: 2px solid rgba(255,255,255,.72); border-radius: 5px; background: #282640; box-shadow: 0 2px 0 #14152d; }
+.ammo-track i::after, .ammo-track i span { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, #ff9b28, #ffe24b); transform-origin: left; }
+.ammo-track i:not(.is-ready)::after { display: none; }
+.ammo-track i span { right: auto; background: linear-gradient(90deg, #82532e, #d99e35); transition: width .08s linear; }
 
 .battle-lobby-hud {
   position: absolute;
@@ -256,7 +261,6 @@
 .battle-game--mobile .control-hint { display: none; }
 .battle-game--mobile .battle-ability { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .battle-game--mobile .battle-exit-btn { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-.battle-model-canvas { position:absolute; inset:0; z-index:2; width:100%; height:100%; pointer-events:none; }
 
 @media (max-width: 430px) {
   .battle-topbar { left: 9px; right: 9px; grid-template-columns: 38px 1fr auto; gap: 5px; }

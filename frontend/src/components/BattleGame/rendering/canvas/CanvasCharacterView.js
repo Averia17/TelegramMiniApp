@@ -1,5 +1,6 @@
-import {DEPTH, HERO_PALETTES, HERO_SCALE} from "../config"
+import {DEPTH, HERO_PALETTES, HERO_SCALE, HERO_SPRITESHEETS} from "../config"
 import {clamp, lerp, project} from "../graphics"
+import {drawDirectionalFrame, getDirectionBlend, getSpriteImage} from "./DirectionalSpriteSheet"
 
 const hex = color => `#${color.toString(16).padStart(6, "0")}`
 
@@ -39,12 +40,32 @@ export class CanvasCharacterView {
     this.targetVisibility = 1
     this.revealedUntil = 0
     this.lastAttackPulse = player.attackPulse
+    this.attackMotion = 0
+    this.attackType = player.attackType || ""
+    this.hitFlash = 0
+    this.hitImpulse = 0
+    this.hitImpulseX = 0
+    this.hitImpulseY = 0
+    this.motionState = "idle"
+    this.animationFrame = 0
+    this.airborneVisual = 0
   }
 
   setState(player) {
-    if (this.lastLives !== undefined && player.lives < this.lastLives) this.hurt = 1
-    if (this.lastLives !== undefined && player.lives < this.lastLives) this.revealedUntil = performance.now() + 900
-    if (this.lastAttackPulse !== undefined && player.attackPulse !== this.lastAttackPulse) this.revealedUntil = performance.now() + 1000
+    if (this.lastLives !== undefined && player.lives < this.lastLives) {
+      this.hurt = 1
+      this.hitFlash = .1
+      this.hitImpulse = 1
+      this.hitImpulseX = Number(player.hitImpulseX) || 0
+      this.hitImpulseY = Number(player.hitImpulseY) || 0
+      this.revealedUntil = performance.now() + 2000
+    }
+    if (this.lastAttackPulse !== undefined && player.attackPulse !== this.lastAttackPulse) {
+      this.revealedUntil = performance.now() + 2000
+      this.attackMotion = 1
+      this.attackType = player.attackType || ""
+      this.aim = player.rotation || 0
+    }
     this.lastLives = player.lives
     this.lastAttackPulse = player.attackPulse
     this.state = player
@@ -59,24 +80,26 @@ export class CanvasCharacterView {
   }
 
   update(delta, isLocal = false) {
-    const blend = 1 - Math.exp(-13 * delta)
-    if (isLocal) {
-      this.worldX = this.state.x
-      this.worldY = this.state.y
-    } else {
-      this.worldX = lerp(this.worldX, this.state.x, blend)
-      this.worldY = lerp(this.worldY, this.state.y, blend)
-    }
+	// Server snapshots arrive at 30 Hz. Interpolate the authoritative local
+	// player too, otherwise the camera exposes every network step as a hitch.
+	const blend = 1 - Math.exp(-(isLocal ? 28 : 13) * delta)
+	const previousWorldX = this.worldX
+	const previousWorldY = this.worldY
+	this.worldX = lerp(this.worldX, this.state.x, blend)
+	this.worldY = lerp(this.worldY, this.state.y, blend)
     const dx = this.state.x - this.lastTargetX
     const dy = this.state.y - this.lastTargetY
     const distance = Math.hypot(dx, dy)
-    const targetSpeed = clamp(distance / Math.max(delta * 150, 0.001), 0, 1)
+    // Animation follows displacement that actually survived collision and
+    // server reconciliation, not the requested input vector.
+    const actualVelocity = Math.hypot(this.worldX - previousWorldX, this.worldY - previousWorldY) / Math.max(delta, .001)
+    const targetSpeed = clamp(actualVelocity / 150, 0, 1)
     this.speed = lerp(this.speed, targetSpeed, 1 - Math.exp(-12 * delta))
     const targetLean = clamp(dx / Math.max(delta * 520, 1), -0.13, 0.13) * this.speed
     this.lean = lerp(this.lean, targetLean, 1 - Math.exp(-9 * delta))
     this.lastTargetX = this.state.x
     this.lastTargetY = this.state.y
-    this.phase += delta * (3.5 + this.speed * 9)
+    this.phase += delta * (this.speed > .08 ? this.speed * 12.5 : 2.2)
     const gaitNow = Math.sin(this.phase)
     if (this.speed > 0.35 && Math.sign(gaitNow) !== Math.sign(this.previousGait)) this.stepImpact = 1
     this.previousGait = gaitNow
@@ -84,13 +107,42 @@ export class CanvasCharacterView {
     aimDelta = Math.atan2(Math.sin(aimDelta), Math.cos(aimDelta))
     this.aim += aimDelta * (1 - Math.exp(-15 * delta))
     this.recoil = Math.max(0, this.recoil - delta * 7.5)
+    this.attackMotion = Math.max(0, this.attackMotion - delta * 5.8)
+    this.hitFlash = Math.max(0, this.hitFlash - delta)
+    this.hitImpulse = Math.max(0, this.hitImpulse - delta * 11)
     this.hurt = Math.max(0, (this.hurt || 0) - delta * 4)
     this.stepImpact = Math.max(0, this.stepImpact - delta * 9)
     this.visibility = lerp(this.visibility, this.targetVisibility, 1 - Math.exp(-16 * delta))
+    this.motionState = this.hitFlash > 0 ? "hit" : this.attackMotion > 0 ? "attack" : this.speed > .08 ? "run" : "idle"
+    const configuredAtlas = HERO_SPRITESHEETS[String(this.state.hero || "").toLowerCase()]
+    const atlas = configuredAtlas?.enabled === false ? null : configuredAtlas
+    const clip = atlas?.animations[this.motionState] || atlas?.animations.idle
+    const playbackRate = this.motionState === "run" ? this.speed : 1
+    this.animationFrame = (this.animationFrame + delta * (clip?.fps || 0) * playbackRate) % Math.max(1, clip?.frames || 1)
+    const airborne = clamp(Math.max(Number(this.state.airborne) || 0, Number(this.state.flying) || 0), 0, 1)
+    this.airborneVisual = lerp(this.airborneVisual, airborne, 1 - Math.exp(-12 * delta))
   }
 
   get depth() {
-    return this.worldY * DEPTH
+    return this.worldY
+  }
+
+  drawShadow(ctx) {
+    const projected = project(this.worldX, this.worldY)
+    const lift = this.airborneVisual
+    const lightX = -0.7
+    const lightY = -0.45
+    const offset = 6 + lift * 16
+    const scale = 1 - lift * .38
+    ctx.save()
+    ctx.globalAlpha = this.visibility * (.34 - lift * .2)
+    ctx.fillStyle = "#142033"
+    ctx.translate(projected.x - lightX * offset, projected.y - lightY * offset)
+    ctx.scale(1, DEPTH)
+    ctx.beginPath()
+    ctx.ellipse(0, 0, (30 + this.speed * 3) * scale, 15 * scale, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
   }
 
   draw(ctx, time, isLocal) {
@@ -102,16 +154,43 @@ export class CanvasCharacterView {
     const bounce = Math.abs(Math.sin(this.phase)) * this.speed
     const idle = Math.sin(time * 2.2 + this.phase * 0.1)
     const direction = Math.cos(this.aim) < 0 ? -1 : 1
+    const weaponAngle = Math.atan2(Math.sin(this.aim) * DEPTH, Math.abs(Math.cos(this.aim)))
     const heroName = String(this.state.hero || "").toLowerCase()
-    const characterScale = ({viper: 1.3, pixel: 1.08, shadow: .98, spark: 1.08, titan: .94, rex: .92, nova: .98, boulder: 1.02, frost: 1.03}[heroName] || 1)
+    const configuredAtlas = HERO_SPRITESHEETS[heroName]
+    const atlas = configuredAtlas?.enabled === false ? null : configuredAtlas
+    const sprite = getSpriteImage(atlas?.source)
+    const characterScale = ({shelly: 1.1, colt: 1.06, barley: 1.04, viper: 1.08, pixel: 1.02, shadow: .98, spark: 1.02, titan: .94, rex: .92, nova: .98, boulder: 1, frost: 1.03}[heroName] || 1)
 
+
+    this.drawShadow(ctx)
     ctx.save()
-    ctx.globalAlpha = this.visibility
-    ctx.translate(projected.x, projected.y)
+	ctx.globalAlpha = this.visibility * (this.state.stealth > 0 ? .42 : 1)
+	if (this.hitFlash > 0) ctx.filter = "brightness(0) invert(1)"
+    ctx.translate(projected.x + this.hitImpulseX * this.hitImpulse * 5, projected.y + this.hitImpulseY * DEPTH * this.hitImpulse * 5)
     const modelScale = Number(this.state.renderScale) || 1
-    ctx.scale(HERO_SCALE * characterScale * modelScale, HERO_SCALE * characterScale * modelScale)
+	ctx.scale(HERO_SCALE * characterScale * modelScale, HERO_SCALE * characterScale * modelScale)
+	const strike = Math.sin(this.attackMotion * Math.PI)
+	ctx.rotate(this.lean * .45)
+	if (this.attackType === "slam") {
+	  ctx.translate(Math.cos(this.aim) * strike * 9, strike * 5)
+	  ctx.scale(1 + strike * .12, 1 - strike * .08)
+	} else if (this.attackType === "dash") {
+	  ctx.rotate(Math.sin(this.aim) * strike * .16)
+	  ctx.translate(strike * 13, -strike * 4)
+	} else if (this.attackType === "double_melee") {
+	  const side = (this.lastAttackPulse || 0) % 2 ? -1 : 1
+	  ctx.rotate(side * strike * .13)
+	  ctx.translate(strike * 7, 0)
+	} else if (this.attackType === "boomerang") {
+	  ctx.rotate(-strike * .1)
+	  ctx.translate(strike * 8, -strike * 3)
+	} else if (strike > 0) {
+	  ctx.translate(-strike * 3, 0)
+	}
+	const airborne = this.state.airborne > 0 || this.state.flying > 0
+	if (airborne) ctx.translate(0, -12 - this.airborneVisual * 12 - Math.abs(Math.sin(time * 7)) * 4)
+	if (this.state.stun > 0) ctx.rotate(Math.sin(time * 24) * .055)
 
-    ellipse(ctx, 7, 8, 29 + this.speed * 4, 10, "#182435", 0.3)
     if (isLocal) {
       ctx.strokeStyle = `rgba(108,244,255,${0.72 + Math.sin(time * 4) * 0.16})`
       ctx.lineWidth = 3
@@ -124,18 +203,40 @@ export class CanvasCharacterView {
       ctx.lineWidth = 5
       ctx.beginPath(); ctx.ellipse(0, -42, 39, 58, 0, 0, Math.PI * 2); ctx.stroke()
     }
+	if (this.state.invulnerable > 0) {
+	  ctx.strokeStyle = `rgba(255,255,255,${.65 + Math.sin(time * 11) * .25})`
+	  ctx.lineWidth = 6
+	  ctx.beginPath(); ctx.ellipse(0, -42, 43, 62, 0, 0, Math.PI * 2); ctx.stroke()
+	}
     if (this.state.haste > 0) {
       ctx.strokeStyle = "rgba(255,224,74,.65)"; ctx.lineWidth = 4
       for (let trail = 0; trail < 3; trail += 1) { ctx.beginPath(); ctx.moveTo(-34 - trail * 7, -18 - trail * 12); ctx.lineTo(-50 - trail * 8, -12 - trail * 12); ctx.stroke() }
     }
+	if (this.state.vine > 0) {
+	  ctx.strokeStyle = "rgba(139,255,98,.7)"; ctx.lineWidth = 4
+	  ctx.beginPath(); ctx.ellipse(0, 1, 31 + Math.sin(time * 8) * 4, 12, 0, 0, Math.PI * 2); ctx.stroke()
+	}
+	if (this.state.vortex > 0 || this.state.channel > 0) {
+	  ctx.strokeStyle = this.state.vortex > 0 ? "rgba(119,82,225,.72)" : "rgba(93,242,255,.72)"
+	  ctx.lineWidth = 4
+	  for (let ring = 0; ring < 2; ring += 1) { ctx.beginPath(); ctx.arc(0, -42, 34 + ring * 9, time * 4 + ring * Math.PI, time * 4 + ring * Math.PI + 4.4); ctx.stroke() }
+	}
 
     ctx.save()
     ctx.translate(0, -bounce * 3 + idle * 0.7)
     ctx.rotate(this.lean)
     ctx.scale(1 + this.stepImpact * 0.035, 1 - this.stepImpact * 0.045)
-    ctx.scale(direction, 1)
+    // Legacy vector heroes still mirror their procedural pose. True
+    // directional sheets already contain left/right silhouettes.
+    if (!sprite) ctx.scale(direction, 1)
 
-    this.drawUniqueHero(ctx, palette, heroName, gait, time)
+    if (sprite) {
+      const blendDirection = getDirectionBlend(this.aim)
+      drawDirectionalFrame(ctx, sprite, atlas, this.motionState, blendDirection.from, this.animationFrame, 1 - blendDirection.mix)
+      drawDirectionalFrame(ctx, sprite, atlas, this.motionState, blendDirection.to, this.animationFrame, blendDirection.mix)
+    } else {
+      this.drawUniqueHero(ctx, palette, heroName, gait, time, weaponAngle)
+    }
     if (this.hurt > 0) {
       ctx.globalCompositeOperation = "source-atop"
       ctx.globalAlpha = Math.min(1, this.hurt * 1.35)
@@ -153,9 +254,37 @@ export class CanvasCharacterView {
   drawLeg(ctx, x, y, rotation, color) {
     ctx.save()
     ctx.translate(x, y)
-    ctx.rotate(rotation)
-    rounded(ctx, -5, 0, 10, 21, 5, color)
-    ellipse(ctx, 0, 21, 6, 4, "#20263f")
+    const thighAngle = rotation * .72
+    const shinAngle = -rotation * .48
+    ctx.rotate(thighAngle)
+    rounded(ctx, -6, -2, 12, 14, 6, color)
+    ellipse(ctx, 0, 11, 6.5, 6, "#1c2540")
+    ctx.translate(0, 11)
+    ctx.rotate(shinAngle)
+    rounded(ctx, -5, 0, 10, 13, 5, color)
+    ctx.translate(0, 12)
+    ctx.rotate(-thighAngle * .25)
+    ellipse(ctx, 3, 2, 8, 5, "#20263f")
+    ellipse(ctx, 5, 0, 3, 1.5, "rgba(255,255,255,.22)")
+    ctx.restore()
+  }
+
+  drawArm(ctx, x, y, upperAngle, elbowAngle, sleeve, skin, scale = 1) {
+    const upper = 15 * scale
+    const lower = 14 * scale
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.rotate(upperAngle)
+    ctx.strokeStyle = "#202944"; ctx.lineWidth = 12 * scale; ctx.lineCap = "round"
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(upper, 0); ctx.stroke()
+    ctx.strokeStyle = sleeve; ctx.lineWidth = 8 * scale; ctx.stroke()
+    ellipse(ctx, upper, 0, 6 * scale, 6 * scale, "#202944")
+    ctx.translate(upper, 0)
+    ctx.rotate(elbowAngle)
+    ctx.strokeStyle = "#202944"; ctx.lineWidth = 10 * scale
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(lower, 0); ctx.stroke()
+    ctx.strokeStyle = skin; ctx.lineWidth = 7 * scale; ctx.stroke()
+    ellipse(ctx, lower, 0, 5.5 * scale, 5 * scale, skin)
     ctx.restore()
   }
 
@@ -245,12 +374,54 @@ export class CanvasCharacterView {
     ctx.beginPath(); ctx.arc(0, y + 8, 10, .2, Math.PI - .2); ctx.stroke()
   }
 
-  drawUniqueHero(ctx, p, hero, gait, time) {
+  drawUniqueHero(ctx, p, hero, gait, time, weaponAngle = 0) {
     const main = hex(p.main), dark = hex(p.dark), accent = hex(p.accent)
+    const outlinedRounded = (x,y,w,h,r,fill,stroke=dark,line=4) => { rounded(ctx,x,y,w,h,r,fill);ctx.strokeStyle=stroke;ctx.lineWidth=line;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.stroke() }
+    const outlinedEllipse = (x,y,rx,ry,fill,stroke=dark,line=4) => { ellipse(ctx,x,y,rx,ry,fill);ctx.strokeStyle=stroke;ctx.lineWidth=line;ctx.beginPath();ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2);ctx.stroke() }
     const eye = (x, y, r = 5) => { ellipse(ctx, x, y, r, r + 1, "#fff"); ellipse(ctx, x + 1, y, r * .42, r * .55, "#17233d") }
     const bootLegs = color => {
       this.drawLeg(ctx, -11, -18 + Math.max(0, -gait) * 6, gait * .55, color)
       this.drawLeg(ctx, 11, -18 + Math.max(0, gait) * 6, -gait * .55, color)
+    }
+    const attackPose = Math.sin(this.attackMotion * Math.PI)
+    const breathe = Math.sin(time * 2.4 + this.phase * .08)
+
+    if (hero === "shelly") {
+      bootLegs("#30264d")
+      ctx.fillStyle="#7841aa";ctx.beginPath();ctx.moveTo(-29,-61);ctx.quadraticCurveTo(-37,-37,-23,-13);ctx.lineTo(24,-13);ctx.quadraticCurveTo(36,-38,27,-62);ctx.closePath();ctx.fill();ctx.strokeStyle=dark;ctx.lineWidth=5;ctx.stroke()
+      outlinedRounded(-24,-65,48,47,14,"#8b4dc7");rounded(ctx,-18,-59,36,11,6,"rgba(255,255,255,.18)")
+      outlinedEllipse(0,-89+breathe*.7,25,26,"#c57b58");ellipse(ctx,-8,-88+breathe*.7,6,7,"#fff");ellipse(ctx,8,-88+breathe*.7,6,7,"#fff");ellipse(ctx,-7,-87+breathe*.7,2.8,4,"#222a46");ellipse(ctx,9,-87+breathe*.7,2.8,4,"#222a46")
+      ctx.fillStyle="#542474";ctx.beginPath();ctx.moveTo(-26,-96);ctx.quadraticCurveTo(-15,-119,5,-115);ctx.quadraticCurveTo(26,-111,29,-92);ctx.lineTo(15,-97);ctx.lineTo(5,-83);ctx.lineTo(-5,-96);ctx.lineTo(-25,-84);ctx.closePath();ctx.fill();ctx.strokeStyle="#351747";ctx.lineWidth=4;ctx.stroke()
+      rounded(ctx,-8,-75,17,4,2,"#7c3542")
+      this.drawArm(ctx,-18,-54,weaponAngle-.15, .5+attackPose*.18,"#8b4dc7","#c57b58",1.02)
+      this.drawArm(ctx,17,-53,weaponAngle+.28,-.62-attackPose*.14,"#8b4dc7","#c57b58",1.02)
+      ctx.save();ctx.translate(5-this.recoil*10,-48);ctx.rotate(weaponAngle-.07);outlinedRounded(-30,-10,67,20,7,"#313a5b","#171d34",5);rounded(ctx,-20,-6,43,7,3,"#59688b");outlinedRounded(7,-13,34,26,9,"#8d6bb0","#45365d",4);rounded(ctx,36,-7,23,14,5,"#e3b64e");rounded(ctx,-5,8,11,17,4,"#252c47");ctx.restore()
+      return
+    }
+    if (hero === "colt") {
+      bootLegs("#27365d")
+      outlinedRounded(-23,-65,46,49,13,"#df4650");rounded(ctx,-17,-59,34,13,6,"#f56c72");rounded(ctx,-19,-34,38,8,4,"#26365c");ellipse(ctx,0,-30,5,5,"#ffdf53")
+      outlinedEllipse(0,-88+breathe*.65,24,25,"#dc946e");eye(-8,-87+breathe*.65,4.5);eye(8,-87+breathe*.65,4.5);rounded(ctx,-8,-74+breathe*.4,17,4,2,"#8b403a")
+      ctx.fillStyle="#2169aa";ctx.beginPath();ctx.moveTo(-24,-94);ctx.lineTo(-18,-113);ctx.lineTo(-7,-104);ctx.lineTo(2,-123);ctx.lineTo(10,-103);ctx.lineTo(20,-113);ctx.lineTo(25,-91);ctx.lineTo(12,-96);ctx.lineTo(1,-84);ctx.lineTo(-9,-97);ctx.closePath();ctx.fill();ctx.strokeStyle="#173b70";ctx.lineWidth=4;ctx.stroke()
+      this.drawArm(ctx,-18,-52,weaponAngle+.12,.46+attackPose*.12,"#df4650","#dc946e")
+      this.drawArm(ctx,18,-53,weaponAngle-.08,-.5-attackPose*.15,"#df4650","#dc946e")
+      ctx.save();ctx.translate(10-this.recoil*9,-48);ctx.rotate(weaponAngle-.06);outlinedRounded(-4,-8,43,16,5,"#3a4767","#172039",4);rounded(ctx,30,-5,15,10,3,"#69c8ff");rounded(ctx,5,6,8,16,3,"#8b4a35");ctx.restore()
+      ctx.save();ctx.translate(12-this.recoil*11,-35);ctx.rotate(weaponAngle+.07);outlinedRounded(-3,-7,40,15,5,"#303c5d","#172039",4);rounded(ctx,29,-4,14,9,3,"#69c8ff");rounded(ctx,6,5,8,15,3,"#8b4a35");ctx.restore()
+      if (Math.abs(weaponAngle) > .58) {
+        outlinedEllipse(0,-88+breathe*.65,24,25,"#dc946e");eye(-8,-87+breathe*.65,4.5);eye(8,-87+breathe*.65,4.5);rounded(ctx,-8,-74+breathe*.4,17,4,2,"#8b403a")
+        ctx.fillStyle="#2169aa";ctx.beginPath();ctx.moveTo(-24,-94);ctx.lineTo(-18,-113);ctx.lineTo(-7,-104);ctx.lineTo(2,-123);ctx.lineTo(10,-103);ctx.lineTo(20,-113);ctx.lineTo(25,-91);ctx.lineTo(12,-96);ctx.lineTo(1,-84);ctx.lineTo(-9,-97);ctx.closePath();ctx.fill();ctx.strokeStyle="#173b70";ctx.lineWidth=4;ctx.stroke()
+      }
+      return
+    }
+    if (hero === "barley") {
+      this.drawLeg(ctx,-11,-17+gait*3,gait*.35,"#28364d");this.drawLeg(ctx,11,-17-gait*3,-gait*.35,"#28364d")
+      outlinedRounded(-27,-68,54,52,16,"#334862");rounded(ctx,-21,-62,42,37,11,"#4ba9df");rounded(ctx,-16,-57,32,9,5,"rgba(255,255,255,.2)");outlinedEllipse(0,-41,10,11,"#ffcf45","#26364c",3)
+      ctx.save();ctx.translate(0,breathe*.75);outlinedRounded(-23,-108,46,45,15,"#dcecf2");rounded(ctx,-18,-99,36,18,8,"#273950");ellipse(ctx,-8,-90,5,5,"#ffe763");ellipse(ctx,8,-90,5,5,"#ffe763");ellipse(ctx,-7,-91,2,2,"#fff");rounded(ctx,-12,-76,24,5,2,"#7894a1");ctx.restore()
+      ctx.strokeStyle="#26364c";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(0,-108);ctx.lineTo(0,-117);ctx.stroke();ellipse(ctx,0,-120,5,5,"#ffcf45")
+      this.drawArm(ctx,-21,-55,-2.55-gait*.12,.35,"#4ba9df","#91aebb",.92)
+      this.drawArm(ctx,20,-55,weaponAngle-.55-attackPose*.28,.3,"#4ba9df","#91aebb",.92)
+      ctx.save();ctx.translate(30-this.recoil*7,-49);ctx.rotate(weaponAngle-.38-Math.sin(this.attackMotion*Math.PI)*.22);outlinedRounded(-8,-16,16,33,6,"#365370","#203049",4);outlinedRounded(5,-22,17,30,6,"#4bb7ef","#245174",3);rounded(ctx,8,-18,11,8,3,"rgba(255,255,255,.45)");rounded(ctx,10,-28,7,9,2,"#edfaff");ctx.restore()
+      return
     }
 
     if (hero === "blaze") {

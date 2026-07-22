@@ -23,19 +23,27 @@ type Player struct {
 	MoveY             float64
 	AttackDmg         int
 	AttackRate        int64
+	ReloadTime        int64
+	Ammo              int
+	MaxAmmo           int
+	NextAmmoAt        int64
 	BulletSpd         float64
 	BulletSz          float64
 	AttackType        string
 	ShieldHP          int
+	ShieldStacks      int
+	ShieldStackUntil  int64
 	PoisonUntil       int64
 	PoisonTickAt      int64
 	PoisonBy          string
 	Marks             int
 	SuperCharge       int
+	SuperChargeCarry  float64
 	Heat              int
 	HeatUntil         int64
 	AttackPulse       int
 	Aiming            bool
+	AimDistance       float64
 	ShieldUntil       int64
 	InvulnerableUntil int64
 	StealthUntil      int64
@@ -44,7 +52,10 @@ type Player struct {
 	VineUntil         int64
 	VortexUntil       int64
 	FlyingUntil       int64
+	BlindUntil        int64
 	Dodges            int
+	Souls             int
+	Deflect           int
 	Evolution         int
 	LastAbilityTick   int64
 	PowerCores        int
@@ -57,6 +68,8 @@ type Player struct {
 	RegenRate         float64
 	RegenCarry        float64
 	LastDamageAt      int64
+	HitImpulseX       float64
+	HitImpulseY       float64
 }
 
 func (p *Player) Move(dirX, dirY, speed float64) {

@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	GameStateWaiting = "waiting"
-	GameStateLobby   = "lobby"
-	GameStateGame    = "game"
+	GameStateWaiting  = "waiting"
+	GameStateLobby    = "lobby"
+	GameStateGame     = "game"
+	GameStateFinished = "finished"
 
 	LobbyDuration = 10 * time.Second
 	GameDuration  = 90 * time.Second
@@ -63,6 +64,23 @@ type GameState struct {
 	OnPlayerKilled func(playerId, killerName string)
 	MapRevision    int
 	Effects        []*BattleEffect
+	DelayedEffects []*DelayedBattleEffect
+	ScheduledShots []*ScheduledShot
+	DamageZones    []*DamageZone
+	TemporaryWalls map[*geometry.WallTile]int64
+	BotMemory      map[string]*BotPerception
+}
+
+type BotPerception struct {
+	TargetID                string
+	LastSeenX, LastSeenY    float64
+	LastSeenAt, SearchUntil int64
+}
+
+type DelayedBattleEffect struct {
+	Owner     string
+	X, Y      float64
+	TriggerAt int64
 }
 
 type BattleEffect struct {
@@ -80,6 +98,11 @@ func InitGameState(gs *GameState) {
 	gs.Props = make([]*prop.Prop, 0)
 	gs.Actions = make([]Action, 0)
 	gs.Effects = make([]*BattleEffect, 0)
+	gs.DelayedEffects = make([]*DelayedBattleEffect, 0)
+	gs.ScheduledShots = make([]*ScheduledShot, 0)
+	gs.DamageZones = make([]*DamageZone, 0)
+	gs.TemporaryWalls = make(map[*geometry.WallTile]int64)
+	gs.BotMemory = make(map[string]*BotPerception)
 
 	m, err := gamemap.LoadMap(gs.MapName)
 	if err != nil {
@@ -103,6 +126,10 @@ func (gs *GameState) Update() {
 	gs.updatePlayerMovement()
 	gs.updateStatuses()
 	gs.updateActiveAbilities()
+	gs.updateScheduledShots()
+	gs.updateDamageZones()
+	gs.updateDelayedEffects()
+	gs.updateTemporaryWalls()
 	gs.updateRegeneration()
 	gs.updateBots()
 	gs.updateMonsters()
@@ -120,7 +147,7 @@ func (gs *GameState) updateRegeneration() {
 			continue
 		}
 		rate := p.RegenRate
-		if geometry.CollidesCircleWithWalls(&p.CircleBody, gs.Walls, "half") && gs.isConcealed(p) {
+		if geometry.CollidesCircleWithWalls(&p.CircleBody, gs.Walls, "bush") && gs.isConcealed(p) {
 			rate *= 2
 		}
 		p.RegenCarry += float64(p.MaxLives) * rate / 60
@@ -133,11 +160,28 @@ func (gs *GameState) updateRegeneration() {
 }
 
 func (gs *GameState) isConcealed(source *player.Player) bool {
+	var sourceBush *geometry.WallTile
+	for _, wall := range gs.Map.Collisions {
+		if wall.Type == "bush" && source.X >= wall.MinX && source.X <= wall.MaxX && source.Y >= wall.MinY && source.Y <= wall.MaxY {
+			sourceBush = wall
+			break
+		}
+	}
+	if sourceBush == nil {
+		return false
+	}
 	for _, target := range gs.Players {
 		if target == source || !target.IsAlive() || (source.Team != "" && source.Team == target.Team) {
 			continue
 		}
-		if math.Hypot(target.X-source.X, target.Y-source.Y) <= TileSize*2.5 {
+		sameBushGroup := false
+		for _, wall := range gs.Map.Collisions {
+			if wall.Type == "bush" && wall.BushGroup == sourceBush.BushGroup && target.X >= wall.MinX && target.X <= wall.MaxX && target.Y >= wall.MinY && target.Y <= wall.MaxY {
+				sameBushGroup = true
+				break
+			}
+		}
+		if sameBushGroup || math.Hypot(target.X-source.X, target.Y-source.Y) <= TileSize*2.5 {
 			return false
 		}
 	}
@@ -169,7 +213,7 @@ func (gs *GameState) updateGame() {
 				Type:   "timeout",
 				Params: map[string]interface{}{},
 			})
-			gs.startLobby()
+			gs.startFinished()
 			return
 		}
 		if gs.Mode == ModeDeathmatch {
@@ -180,7 +224,7 @@ func (gs *GameState) updateGame() {
 						Type:   "won",
 						Params: map[string]interface{}{"name": p.Name},
 					})
-					gs.startLobby()
+					gs.startFinished()
 					return
 				}
 			}
@@ -197,7 +241,7 @@ func (gs *GameState) updateGame() {
 						Type:   "won",
 						Params: map[string]interface{}{"name": name},
 					})
-					gs.startLobby()
+					gs.startFinished()
 				}
 			}
 		}
@@ -216,11 +260,15 @@ func (gs *GameState) updatePlayers() {
 			}
 		case "rotate":
 			if v, ok := action.Value.(*RotateValue); ok {
-				gs.playerRotate(action.PlayerId, action.Ts, v.Rotation)
+				gs.playerRotate(action.PlayerId, action.Ts, v.Rotation, v.AimDistance)
 			}
 		case "shoot":
 			if v, ok := action.Value.(*ShootValue); ok {
-				gs.playerShoot(action.PlayerId, action.Ts, v.Angle, v.AimDistance)
+				angle := v.Angle
+				if v.AutoAim {
+					angle, v.AimDistance = gs.autoAimTarget(action.PlayerId)
+				}
+				gs.playerShoot(action.PlayerId, action.Ts, angle, v.AimDistance)
 			}
 		case "ability":
 			if v, ok := action.Value.(*AbilityValue); ok {
@@ -287,6 +335,17 @@ func (gs *GameState) updateMonsters() {
 func (gs *GameState) updateStatuses() {
 	now := time.Now().UnixMilli()
 	for _, p := range gs.Players {
+		gs.reloadAmmo(p, now)
+		if p.IsAlive() && p.HeroName == "Rex" && p.SuperCharge < 100 {
+			p.SuperChargeCarry += 7.0 / 60.0
+			if gained := int(p.SuperChargeCarry); gained > 0 {
+				p.SuperCharge = int(math.Min(100, float64(p.SuperCharge+gained)))
+				p.SuperChargeCarry -= float64(gained)
+			}
+		}
+		if p.ShieldStackUntil > 0 && p.ShieldStackUntil <= now {
+			p.ShieldStacks, p.ShieldStackUntil = 0, 0
+		}
 		if p.Heat > 0 && p.HeatUntil > 0 && p.HeatUntil <= now {
 			p.Heat--
 			p.HeatUntil = now + 500
@@ -294,8 +353,18 @@ func (gs *GameState) updateStatuses() {
 		if !p.IsAlive() || p.PoisonUntil <= now || p.PoisonTickAt > now {
 			continue
 		}
-		gs.applyDamage(p, 150)
+		gs.applyDamage(p, 80)
 		p.PoisonTickAt = now + 500
+		for _, adjacent := range gs.Players {
+			if adjacent == p || !adjacent.IsAlive() || math.Hypot(adjacent.X-p.X, adjacent.Y-p.Y) >= 135 {
+				continue
+			}
+			adjacent.PoisonUntil = now + 4000
+			adjacent.PoisonBy = p.PoisonBy
+			if adjacent.PoisonTickAt == 0 || adjacent.PoisonTickAt > now+500 {
+				adjacent.PoisonTickAt = now + 500
+			}
+		}
 		if !p.IsAlive() {
 			killerName := "Poison"
 			if killer := gs.Players[p.PoisonBy]; killer != nil {
@@ -307,6 +376,28 @@ func (gs *GameState) updateStatuses() {
 				gs.OnPlayerKilled(p.PlayerId, killerName)
 			}
 		}
+	}
+}
+
+func (gs *GameState) reloadAmmo(p *player.Player, now int64) {
+	if p == nil || !p.IsAlive() || p.MaxAmmo <= 0 || p.Ammo >= p.MaxAmmo {
+		if p != nil && p.Ammo >= p.MaxAmmo {
+			p.NextAmmoAt = 0
+		}
+		return
+	}
+	if p.ReloadTime <= 0 {
+		p.ReloadTime = 1500
+	}
+	if p.NextAmmoAt == 0 {
+		p.NextAmmoAt = now + p.ReloadTime
+	}
+	for p.Ammo < p.MaxAmmo && now >= p.NextAmmoAt {
+		p.Ammo++
+		p.NextAmmoAt += p.ReloadTime
+	}
+	if p.Ammo >= p.MaxAmmo {
+		p.NextAmmoAt = 0
 	}
 }
 
@@ -322,9 +413,39 @@ func (gs *GameState) applyDamage(target *player.Player, amount int) bool {
 	if target.ShieldUntil > time.Now().UnixMilli() {
 		amount = int(math.Round(float64(amount) * .6))
 	}
+	if target.ShieldStacks > 0 {
+		amount = int(math.Round(float64(amount) * (1 - math.Min(.75, float64(target.ShieldStacks)*.15))))
+	}
 	target.TakeDamage(amount)
 	gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ff6b9f", amount, 520)
 	return true
+}
+
+func (gs *GameState) updateDelayedEffects() {
+	now := time.Now().UnixMilli()
+	kept := gs.DelayedEffects[:0]
+	for _, delayed := range gs.DelayedEffects {
+		if delayed == nil {
+			continue
+		}
+		if delayed.TriggerAt > now {
+			kept = append(kept, delayed)
+			continue
+		}
+		source := gs.Players[delayed.Owner]
+		if source == nil {
+			continue
+		}
+		gs.pullTargets(source, delayed.X, delayed.Y, 260, 150)
+		gs.radialDamage(delayed.Owner, delayed.X, delayed.Y, 150, 650)
+		for _, target := range gs.Players {
+			if target != source && target.IsAlive() && math.Hypot(target.X-delayed.X, target.Y-delayed.Y) < 180 {
+				target.StunUntil = now + 350
+			}
+		}
+		gs.addEffect("collapse", delayed.X, delayed.Y, 0, 0, 150, 0, 0, 0, "#ff7138", 0, 500)
+	}
+	gs.DelayedEffects = kept
 }
 
 func (gs *GameState) addEffect(kind string, x, y, toX, toY, radius, angle, reach, arc float64, color string, damage int, duration int64) {
@@ -363,6 +484,14 @@ func (gs *GameState) updateActiveAbilities() {
 			gs.addEffect("vine", source.X, source.Y, 0, 0, 245, 0, 0, 0, source.Color, 0, 480)
 			gs.pullTargets(source, source.X, source.Y, 260, 16)
 			gs.radialDamage(source.PlayerId, source.X, source.Y, 245, 180)
+		}
+		if source.FlyingUntil > now && (source.FlyingUntil-now)%250 < 20 {
+			gs.addEffect("acid", source.X, source.Y, 0, 0, 110, 0, 0, 0, "#5f2a72", 0, 2200)
+			for _, target := range gs.Players {
+				if target != source && target.IsAlive() && math.Hypot(target.X-source.X, target.Y-source.Y) < 110 {
+					target.BlindUntil = now + 1200
+				}
+			}
 		}
 	}
 }
@@ -404,6 +533,25 @@ func (gs *GameState) updateBullets() {
 		if b == nil || !b.Active {
 			continue
 		}
+		if b.Lobbed {
+			now := time.Now().UnixMilli()
+			duration := math.Max(1, float64(b.LandsAt-b.SpawnedAt))
+			progress := math.Max(0, math.Min(1, float64(now-b.SpawnedAt)/duration))
+			b.X = b.OriginX + (b.TargetX-b.OriginX)*progress
+			b.Y = b.OriginY + (b.TargetY-b.OriginY)*progress
+			b.Travelled = math.Hypot(b.X-b.OriginX, b.Y-b.OriginY)
+			if progress >= 1 {
+				b.Active = false
+				gs.DamageZones = append(gs.DamageZones, &DamageZone{
+					Owner: b.PlayerId, X: b.TargetX, Y: b.TargetY, Radius: b.ZoneRadius,
+					Damage: b.Damage, TicksLeft: b.ZoneTicks, NextTickAt: now,
+					Interval: b.ZoneInterval, ExpiresAt: now + int64(b.ZoneTicks)*b.ZoneInterval + 100,
+					Kind: "barley_pool", Color: b.Color,
+				})
+				gs.addEffect("barley_pool", b.TargetX, b.TargetY, 0, 0, b.ZoneRadius, 0, 0, 0, b.Color, 0, int64(b.ZoneTicks)*b.ZoneInterval+100)
+			}
+			continue
+		}
 		previousX, previousY := b.X, b.Y
 		b.Move(BulletSpeed)
 		if b.MaxRange > 0 && b.Travelled >= b.MaxRange {
@@ -425,6 +573,14 @@ func (gs *GameState) updateBullets() {
 			if b.HitPlayers[p.PlayerId] {
 				continue
 			}
+			if p.Deflect > 0 {
+				p.Deflect--
+				b.PlayerId, b.Team, b.Rotation = p.PlayerId, p.Team, b.Rotation+math.Pi
+				b.HitPlayers = make(map[string]bool)
+				b.X, b.Y = previousX, previousY
+				gs.addEffect("spin", p.X, p.Y, 0, 0, 90, 0, 0, 0, "#e8ffb2", 0, 350)
+				continue
+			}
 			b.HitPlayers[p.PlayerId] = true
 			dmg := b.Damage
 			if b.Kind == "sniper" {
@@ -434,15 +590,28 @@ func (gs *GameState) updateBullets() {
 			if dmg <= 0 {
 				dmg = 1
 			}
+			livesBefore := p.Lives
+			p.HitImpulseX, p.HitImpulseY = math.Cos(b.Rotation), math.Sin(b.Rotation)
 			if !gs.applyDamage(p, dmg) {
 				continue
 			}
 			if attacker := gs.Players[b.PlayerId]; attacker != nil {
-				attacker.SuperCharge = int(math.Min(100, float64(attacker.SuperCharge+20)))
+				if CombatKitFor(attacker.HeroName) != nil {
+					gs.awardSuperFromDamage(attacker, livesBefore-p.Lives)
+				} else {
+					attacker.SuperCharge = int(math.Min(100, float64(attacker.SuperCharge+20)))
+				}
 				if attacker.HeroName == "Frost" {
 					attacker.Heat = int(math.Min(5, float64(attacker.Heat+1)))
 					attacker.HeatUntil = time.Now().Add(2200 * time.Millisecond).UnixMilli()
 				}
+			}
+			if b.Knockback > 0 {
+				p.X += math.Cos(b.Rotation) * b.Knockback
+				p.Y += math.Sin(b.Rotation) * b.Knockback
+				clamped := gs.Map.ClampCircle(&p.CircleBody)
+				p.X, p.Y = clamped.X, clamped.Y
+				geometry.CorrectCircleWithBlockingWalls(&p.CircleBody, gs.Walls)
 			}
 			if b.Poison {
 				p.PoisonUntil = time.Now().Add(4 * time.Second).UnixMilli()
@@ -455,6 +624,12 @@ func (gs *GameState) updateBullets() {
 			if b.Kind == "spore" || b.Kind == "quantum" {
 				gs.radialDamage(b.PlayerId, b.X, b.Y, map[string]float64{"spore": 115, "quantum": 75}[b.Kind], b.Damage)
 			}
+			if b.Splash > 0 && b.Kind != "spore" && b.Kind != "quantum" {
+				gs.radialDamage(b.PlayerId, b.X, b.Y, b.Splash, b.Damage)
+			}
+			if b.Chain > 0 {
+				gs.chainDamage(b.PlayerId, p, 190, b.Chain, 650)
+			}
 			if b.Pierce > 0 {
 				b.Pierce--
 			} else {
@@ -466,6 +641,9 @@ func (gs *GameState) updateBullets() {
 				if killer != nil {
 					killerName = killer.Name
 					killer.Kills++
+					if killer.HeroName == "Blaze" {
+						killer.LastSecondaryAt = 0
+					}
 				}
 				gs.Broadcast("killed", map[string]interface{}{
 					"killerName": killerName,
@@ -490,6 +668,17 @@ func (gs *GameState) updateBullets() {
 		}
 
 		if segmentHitsBlockingWall(previousX, previousY, b.X, b.Y, b.Radius, gs.Walls) {
+			if b.DestroyWalls {
+				gs.destroyWallsInRadius(b.X, b.Y, 55)
+				b.Active = false
+				continue
+			}
+			if b.Bounces > 0 {
+				b.Bounces--
+				b.Rotation += math.Pi * .82
+				b.X, b.Y = previousX, previousY
+				continue
+			}
 			gs.splitProjectile(b)
 			b.Active = false
 			continue
@@ -559,7 +748,18 @@ func (gs *GameState) startLobby() {
 	gs.LobbyEndsAt = time.Now().Add(LobbyDuration).UnixMilli()
 	gs.GameEndsAt = 0
 	gs.State = GameStateLobby
-	gs.setPlayersActive(false)
+	// Lobby is a live warm-up arena: connected players can move, rotate and
+	// inspect the map while waiting. Combat actions remain gated by StateGame.
+	gs.setPlayersActive(true)
+}
+
+func (gs *GameState) startFinished() {
+	gs.LobbyEndsAt = 0
+	gs.GameEndsAt = 0
+	gs.State = GameStateFinished
+	for _, p := range gs.Players {
+		p.MoveX, p.MoveY, p.Aiming = 0, 0, false
+	}
 }
 
 func (gs *GameState) startGame() {
@@ -571,14 +771,69 @@ func (gs *GameState) startGame() {
 	if gs.Mode == ModeTeamDeathmatch {
 		gs.setPlayersTeamsRandomly()
 	}
-	gs.setPlayersPositionRandomly()
+	gs.setBotsPositionAtFreeSpawns()
 	gs.setPlayersActive(true)
+	spawnProtectionUntil := time.Now().Add(1500 * time.Millisecond).UnixMilli()
+	for _, p := range gs.Players {
+		p.InvulnerableUntil = spawnProtectionUntil
+	}
 	gs.propsAdd(FlasksCount)
 	gs.monstersAdd(MonstersCount)
 	gs.Broadcast("start", map[string]interface{}{})
 }
 
+func (gs *GameState) setBotsPositionAtFreeSpawns() {
+	used := make([]*player.Player, 0, len(gs.Players))
+	for _, candidate := range gs.Players {
+		if !candidate.IsBot {
+			used = append(used, candidate)
+		}
+	}
+	for _, bot := range gs.Players {
+		if !bot.IsBot {
+			continue
+		}
+		var best *geometry.RectangleBody
+		bestDistance := -1.0
+		for _, spawn := range gs.Map.Spawners {
+			nearest := math.MaxFloat64
+			for _, other := range used {
+				d := math.Hypot(spawn.CenterX()-other.X, spawn.CenterY()-other.Y)
+				if d < nearest {
+					nearest = d
+				}
+			}
+			if nearest > bestDistance {
+				best, bestDistance = spawn, nearest
+			}
+		}
+		if best != nil {
+			bot.X, bot.Y = best.CenterX(), best.CenterY()
+		}
+		used = append(used, bot)
+	}
+}
+
 func (gs *GameState) onGameEnd(event *ServerEvent) {
+	duration := int64(0)
+	if gs.GameEndsAt > 0 {
+		remaining := gs.GameEndsAt - time.Now().UnixMilli()
+		if remaining < 0 {
+			remaining = 0
+		}
+		duration = GameDuration.Milliseconds() - remaining
+		if duration < 0 {
+			duration = 0
+		}
+		if duration > GameDuration.Milliseconds() {
+			duration = GameDuration.Milliseconds()
+		}
+	}
+	if event != nil {
+		if params, ok := event.Params.(map[string]interface{}); ok {
+			params["duration"] = duration
+		}
+	}
 	if gs.OnGameEnd != nil {
 		var winner string
 		if event != nil {
@@ -586,20 +841,6 @@ func (gs *GameState) onGameEnd(event *ServerEvent) {
 				if n, ok := w["name"].(string); ok {
 					winner = n
 				}
-			}
-		}
-		duration := int64(0)
-		if gs.GameEndsAt > 0 {
-			remaining := gs.GameEndsAt - time.Now().UnixMilli()
-			if remaining < 0 {
-				remaining = 0
-			}
-			duration = GameDuration.Milliseconds() - remaining
-			if duration < 0 {
-				duration = 0
-			}
-			if duration > GameDuration.Milliseconds() {
-				duration = GameDuration.Milliseconds()
 			}
 		}
 		gs.OnGameEnd(gs.Players, winner, duration)
@@ -709,8 +950,54 @@ func (gs *GameState) removeBots() {
 	for id, p := range gs.Players {
 		if p.IsBot {
 			delete(gs.Players, id)
+			delete(gs.BotMemory, id)
 		}
 	}
+}
+
+func (gs *GameState) bushGroupAt(x, y float64) (int, bool) {
+	for _, wall := range gs.Map.Collisions {
+		if wall.Type == "bush" && x >= wall.MinX && x <= wall.MaxX && y >= wall.MinY && y <= wall.MaxY {
+			return wall.BushGroup, true
+		}
+	}
+	return 0, false
+}
+
+func (gs *GameState) botCanSee(observer, target *player.Player, now int64) bool {
+	if observer == nil || target == nil || !target.IsAlive() {
+		return false
+	}
+	distance := math.Hypot(target.X-observer.X, target.Y-observer.Y)
+	if distance > 1050 {
+		return false
+	}
+	targetGroup, targetInBush := gs.bushGroupAt(target.X, target.Y)
+	if !targetInBush {
+		return true
+	}
+	observerGroup, observerInBush := gs.bushGroupAt(observer.X, observer.Y)
+	if observerInBush && observerGroup == targetGroup {
+		return true
+	}
+	if distance <= TileSize*2.5 {
+		return true
+	}
+	// Attacks and received damage briefly reveal a brawler inside grass.
+	return now-target.LastShootAt <= 2000 || now-target.LastDamageAt <= 2000
+}
+
+func (gs *GameState) rememberBotTarget(botID string, target *player.Player, now int64) *BotPerception {
+	memory := gs.BotMemory[botID]
+	if memory == nil {
+		memory = &BotPerception{}
+		gs.BotMemory[botID] = memory
+	}
+	memory.TargetID = target.PlayerId
+	memory.LastSeenX, memory.LastSeenY = target.X, target.Y
+	memory.LastSeenAt = now
+	memory.SearchUntil = now + 2800
+	return memory
 }
 
 func (gs *GameState) updateBots() {
@@ -718,24 +1005,92 @@ func (gs *GameState) updateBots() {
 		return
 	}
 	now := time.Now().UnixMilli()
+	startedAt := gs.GameEndsAt - GameDuration.Milliseconds()
+	opening := startedAt > 0 && now-startedAt < 4000
 	botIndex := 0
 	for id, bot := range gs.Players {
 		if !bot.IsBot || !bot.IsAlive() {
 			continue
 		}
+		if opening {
+			if crate := gs.closestWallOfType(bot.X, bot.Y, "crates"); crate != nil {
+				targetX, targetY := (crate.MinX+crate.MaxX)/2, (crate.MinY+crate.MaxY)/2
+				angle := math.Atan2(targetY-bot.Y, targetX-bot.X)
+				bot.Rotation = angle
+				distance := math.Hypot(targetX-bot.X, targetY-bot.Y)
+				if distance > 105 {
+					gs.playerMove(id, now, math.Cos(angle), math.Sin(angle))
+				} else {
+					gs.playerMove(id, now, 0, 0)
+				}
+				if distance < 520 {
+					gs.playerShoot(id, now, screenAngleFromWorld(angle))
+				}
+				botIndex++
+				continue
+			}
+		}
+		if dodgeX, dodgeY, threatened := gs.botProjectileDodge(bot); threatened {
+			gs.playerMove(id, now, dodgeX, dodgeY)
+			botIndex++
+			continue
+		}
 		var target *player.Player
-		closest := math.MaxFloat64
+		closest, bestScore := math.MaxFloat64, -math.MaxFloat64
 		for otherID, candidate := range gs.Players {
 			if otherID == id || !candidate.IsAlive() || (bot.Team != "" && candidate.Team == bot.Team) {
 				continue
 			}
 			distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
-			if distance < closest {
-				closest = distance
-				target = candidate
+			if !gs.botCanSee(bot, candidate, now) {
+				continue
+			}
+			healthRatio := float64(candidate.Lives) / math.Max(1, float64(candidate.MaxLives))
+			score := 700 - distance
+			if healthRatio < .3 {
+				score += 180
+			}
+			if score > bestScore {
+				closest, bestScore, target = distance, score, candidate
+			}
+		}
+		var memory *BotPerception
+		targetVisible := target != nil
+		if targetVisible {
+			memory = gs.rememberBotTarget(id, target, now)
+		} else {
+			memory = gs.BotMemory[id]
+			if memory != nil && now < memory.SearchUntil {
+				if remembered := gs.Players[memory.TargetID]; remembered == nil || !remembered.IsAlive() {
+					memory = nil
+					delete(gs.BotMemory, id)
+				}
+			} else if memory != nil {
+				delete(gs.BotMemory, id)
+				memory = nil
 			}
 		}
 		if target == nil {
+			if memory != nil {
+				distance := math.Hypot(memory.LastSeenX-bot.X, memory.LastSeenY-bot.Y)
+				if distance > 34 {
+					angle := math.Atan2(memory.LastSeenY-bot.Y, memory.LastSeenX-bot.X)
+					bot.Rotation = angle
+					// A small weave resembles searching instead of perfect tracking.
+					searchPhase := math.Sin(float64(now-memory.LastSeenAt)/240+float64(botIndex)) * .28
+					gs.playerMove(id, now, math.Cos(angle)+math.Cos(angle+math.Pi/2)*searchPhase, math.Sin(angle)+math.Sin(angle+math.Pi/2)*searchPhase)
+				} else {
+					gs.playerMove(id, now, 0, 0)
+					memory.SearchUntil = int64(math.Min(float64(memory.SearchUntil), float64(now+650)))
+				}
+				botIndex++
+				continue
+			}
+			if bush := gs.closestWallOfType(bot.X, bot.Y, "bush"); bush != nil {
+				x, y := (bush.MinX+bush.MaxX)/2, (bush.MinY+bush.MaxY)/2
+				angle := math.Atan2(y-bot.Y, x-bot.X)
+				gs.playerMove(id, now, math.Cos(angle), math.Sin(angle))
+			}
 			continue
 		}
 		angle := math.Atan2(target.Y-bot.Y, target.X-bot.X)
@@ -750,11 +1105,55 @@ func (gs *GameState) updateBots() {
 		dx := math.Cos(angle)*approach + math.Cos(angle+math.Pi/2)*strafe
 		dy := math.Sin(angle)*approach + math.Sin(angle+math.Pi/2)*strafe
 		gs.playerMove(id, now, dx, dy)
-		if closest < 520 {
-			gs.playerShoot(id, now, screenAngleFromWorld(angle))
+		if targetVisible && closest < 520 {
+			if bot.SuperCharge >= 100 {
+				gs.playerAbility(id, now, "primary")
+			} else {
+				gs.playerShoot(id, now, screenAngleFromWorld(angle))
+			}
 		}
 		botIndex++
 	}
+}
+
+func (gs *GameState) closestWallOfType(x, y float64, wallType string) *geometry.WallTile {
+	var closest *geometry.WallTile
+	best := math.MaxFloat64
+	for _, wall := range gs.Map.Collisions {
+		if wall.Type != wallType {
+			continue
+		}
+		distance := math.Hypot((wall.MinX+wall.MaxX)/2-x, (wall.MinY+wall.MaxY)/2-y)
+		if distance < best {
+			closest, best = wall, distance
+		}
+	}
+	return closest
+}
+
+func (gs *GameState) botProjectileDodge(bot *player.Player) (float64, float64, bool) {
+	bestTime := math.MaxFloat64
+	var dodgeX, dodgeY float64
+	for _, shot := range gs.Bullets {
+		if shot == nil || !shot.Active || shot.PlayerId == bot.PlayerId || (bot.Team != "" && shot.Team == bot.Team) {
+			continue
+		}
+		dirX, dirY := math.Cos(shot.Rotation), math.Sin(shot.Rotation)
+		relX, relY := bot.X-shot.X, bot.Y-shot.Y
+		forward := relX*dirX + relY*dirY
+		if forward < 0 || forward > 230 {
+			continue
+		}
+		lateral := math.Abs(relX*(-dirY) + relY*dirX)
+		if lateral > bot.Radius+shot.Radius+20 {
+			continue
+		}
+		timeToHit := forward / math.Max(1, shot.Speed)
+		if timeToHit < bestTime {
+			bestTime, dodgeX, dodgeY = timeToHit, -dirY, dirX
+		}
+	}
+	return dodgeX, dodgeY, bestTime < math.MaxFloat64
 }
 
 func (gs *GameState) PlayerRemove(id string) {
@@ -788,7 +1187,10 @@ func (gs *GameState) updatePlayerMovement() {
 		speed := p.Speed / 60
 		now := time.Now().UnixMilli()
 		if p.HasteUntil > now {
-			speed *= 1.55
+			speed *= 1.22
+		}
+		if p.HeroName == "Frost" && p.Heat >= 5 {
+			speed *= 1.12
 		}
 		if p.SlowUntil > now {
 			speed *= .45
@@ -833,7 +1235,8 @@ func (gs *GameState) collectPickups(p *player.Player) {
 				p.MaxLives += 350
 				p.Lives = int(math.Min(float64(p.MaxLives), float64(p.Lives+900)))
 				p.DamageMultiplier = math.Min(1.35, 1+float64(p.PowerCores)*.07)
-				p.Speed = math.Min(p.Speed*1.025, 310)
+				// Never let a pickup reduce an assassin's native movement speed.
+				p.Speed = math.Max(p.Speed, math.Min(p.Speed*1.012, 325))
 			}
 		}
 	}
@@ -857,6 +1260,17 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 		return
 	}
 	if primary {
+		if kit := CombatKitFor(p.HeroName); kit != nil {
+			if !kit.Super(gs, p, ts, p.Rotation, kit.AttackRange()) {
+				return
+			}
+			p.LastPrimaryAt = ts
+			p.SuperCharge = 0
+			p.AttackPulse++
+			return
+		}
+	}
+	if primary {
 		p.LastPrimaryAt = ts
 		p.SuperCharge = 0
 	} else {
@@ -868,6 +1282,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 	switch p.HeroName {
 	case "Blaze":
 		if primary {
+			gs.addEffect("cone", p.X, p.Y, 0, 0, 0, angle, 390, .78, "#d992ff", 0, 420)
 			for _, target := range gs.Players {
 				if target == p || !target.IsAlive() {
 					continue
@@ -882,9 +1297,13 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 			for index := -3; index <= 3; index++ {
 				gs.spawnAttackBullet(p, angle+float64(index)*.09, "overcharge", 360, 720, 7, 612, 1, false, false)
 			}
-			gs.destroyWallsInRadius(p.X+math.Cos(angle)*190, p.Y+math.Sin(angle)*190, 95)
+			if gs.destroyWallsInRadius(p.X+math.Cos(angle)*190, p.Y+math.Sin(angle)*190, 95) > 0 {
+				p.LastSecondaryAt = 0
+			}
 		} else {
+			originX, originY := p.X, p.Y
 			gs.dashAttack(p, angle, 175, 0, 0)
+			gs.addEffect("clone", originX, originY, 0, 0, 80, angle, 0, 0, "#d38cff", 0, 1400)
 		}
 	case "Frost":
 		if primary {
@@ -897,40 +1316,62 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 		if primary {
 			gs.dashAttack(p, angle, 180, 0, 0)
 			gs.radialDamage(p.PlayerId, p.X, p.Y, 210, 1200)
+			gs.addEffect("collapse", p.X, p.Y, 0, 0, 210, angle, 0, 0, "#ff7138", 0, 650)
+			gs.DelayedEffects = append(gs.DelayedEffects, &DelayedBattleEffect{Owner: p.PlayerId, X: p.X, Y: p.Y, TriggerAt: ts + 1500})
 		} else {
 			p.ShieldUntil = ts + 2200
+			gs.addEffect("guard", p.X, p.Y, 0, 0, 72, angle, 0, 0, "#ffb15c", 0, 700)
 		}
 	case "Titan":
 		if primary {
 			p.StealthUntil = ts + 3200
 			p.Dodges = 2
 			p.HasteUntil = ts + 3200
+		} else {
+			for _, spread := range []float64{-.24, 0, .24} {
+				gs.spawnAttackBullet(p, angle+spread, "boomerang", 430, 610, 8, 680, 0, false, false)
+			}
+			gs.addEffect("prism", p.X, p.Y, 0, 0, 0, angle, 220, .32, "#8ffff1", 0, 420)
 		}
 	case "Shadow":
 		if primary {
 			p.VineUntil = ts + 4000
+			gs.addEffect("vine", p.X, p.Y, 0, 0, 245, angle, 0, 0, "#75d947", 0, 650)
 		} else {
 			gs.dashAttack(p, angle, 170, 0, 0)
 			gs.radialDamage(p.PlayerId, p.X, p.Y, 90, 650)
+			gs.addEffect("spore-jump", p.X, p.Y, 0, 0, 90, angle, 0, 0, "#75d947", 0, 500)
 		}
 	case "Spark":
 		if primary {
 			p.VortexUntil = ts + 4000
 			p.HasteUntil = ts + 4000
+			gs.addEffect("vortex", p.X, p.Y, 0, 0, 125, angle, 0, 0, "#9f73ff", 0, 650)
 		} else {
-			p.HasteUntil = ts + 1400
+			originX, originY := p.X, p.Y
+			gs.dashAttack(p, angle, 145, 0, 0)
+			gs.hitSector(p, angle, 105, .9, 480, false)
+			gs.addEffect("scythe", originX, originY, p.X, p.Y, 0, angle, 190, .9, "#c895ff", 0, 520)
 		}
 	case "Nova":
 		if primary {
+			p.FlyingUntil = ts + 2400
 			for _, spread := range []float64{-.055, 0, .055} {
-				gs.spawnAttackBullet(p, angle+spread, "sniper", 700, 1100, 5, 1540, 1, false, false)
+				gs.spawnAttackBullet(p, angle+spread, "sniper", 700, 1100, 5, 1540, 1, false, false).Splash = 90
 			}
 		} else {
-			gs.dashAttack(p, angle, 240, 0, 0)
+			originX, originY := p.X, p.Y
+			if x, y, ok := gs.closestWallPoint(p, angle, 330); ok {
+				p.X, p.Y = x, y
+			} else {
+				gs.dashAttack(p, angle, 240, 0, 0)
+			}
+			gs.addEffect("grapple", originX, originY, p.X, p.Y, 0, angle, 0, 0, "#8ff4ff", 0, 350)
 		}
 	case "Rex":
 		if primary {
-			gs.dashAttack(p, angle, 230, 0, 0)
+			gs.vaultMove(p, angle, 230)
+			gs.addEffect("thruster", p.X, p.Y, 0, 0, 145, angle, 0, 0, "#7be8ff", 0, 500)
 			gs.radialDamage(p.PlayerId, p.X, p.Y, 145, 1400)
 			gs.destroyWallsInRadius(p.X, p.Y, 175)
 			for _, target := range gs.Players {
@@ -939,22 +1380,28 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 				}
 			}
 		} else {
+			originX, originY := p.X, p.Y
 			gs.dashAttack(p, angle, 165, 0, 0)
+			gs.hitSector(p, angle, 110, 1.05, 600, true)
+			gs.addEffect("grapple", originX, originY, p.X, p.Y, 0, angle, 0, 0, "#7be8ff", 0, 380)
 		}
 	case "Pixel":
 		if primary {
-			gs.dashAttack(p, angle, 220, 0, 0)
+			gs.vaultMove(p, angle, 220)
 			p.InvulnerableUntil = ts + 650
 			p.Evolution = int(math.Min(4, float64(p.Evolution+1)))
 			gs.radialDamage(p.PlayerId, p.X, p.Y, 130, 650)
+			gs.addEffect("thruster", p.X, p.Y, 0, 0, 130, angle, 0, 0, "#65efff", 0, 500)
 		} else {
 			gs.dashAttack(p, angle, 150, 0, 0)
 			gs.radialDamage(p.PlayerId, p.X, p.Y, 90, 600)
+			gs.addEffect("overload", p.X, p.Y, 0, 0, 90, angle, 0, 0, "#65efff", 0, 500)
 		}
 	case "Boulder":
 		if primary {
 			p.FlyingUntil = ts + 2800
 			p.HasteUntil = ts + 2800
+			gs.addEffect("acid", p.X, p.Y, 0, 0, 110, angle, 0, 0, "#5f2a72", 0, 900)
 		} else {
 			p.HasteUntil = ts + 1800
 		}
@@ -978,17 +1425,20 @@ func AbilityCooldownMs(heroName, slot string) int64 {
 	return 6000
 }
 
-func (gs *GameState) playerRotate(id string, ts int64, rotation float64) {
+func (gs *GameState) playerRotate(id string, ts int64, rotation float64, aimDistance ...float64) {
 	p := gs.Players[id]
 	if p == nil {
 		return
 	}
 	p.Rotation = worldAngleFromScreen(rotation)
+	if len(aimDistance) > 0 && aimDistance[0] > 0 {
+		p.AimDistance = aimDistance[0]
+	}
 }
 
 func (gs *GameState) playerShoot(id string, ts int64, screenAngle float64, aimDistance ...float64) {
 	p := gs.Players[id]
-	if p == nil || !p.IsAlive() || p.StunUntil > ts || gs.State != GameStateGame {
+	if p == nil || !p.IsAlive() || p.StunUntil > ts || gs.State != GameStateGame || p.Ammo <= 0 {
 		return
 	}
 	delta := ts - p.LastShootAt
@@ -1003,9 +1453,21 @@ func (gs *GameState) playerShoot(id string, ts int64, screenAngle float64, aimDi
 		return
 	}
 	p.LastShootAt = ts
+	p.Ammo--
+	if p.NextAmmoAt == 0 {
+		p.NextAmmoAt = ts + p.ReloadTime
+	}
 	angle := worldAngleFromScreen(screenAngle)
 	p.Rotation = angle
 	p.AttackPulse++
+	if kit := CombatKitFor(p.HeroName); kit != nil {
+		distance := kit.AttackRange()
+		if len(aimDistance) > 0 && aimDistance[0] > 0 {
+			distance = math.Min(distance, aimDistance[0])
+		}
+		kit.Basic(gs, p, ts, angle, distance)
+		return
+	}
 	switch p.AttackType {
 	case "shotgun":
 		for _, spread := range []float64{-.28, -.14, 0, .14, .28} {
@@ -1020,8 +1482,25 @@ func (gs *GameState) playerShoot(id string, ts int64, screenAngle float64, aimDi
 			gs.spawnAttackBullet(p, angle+spread, kind, p.AttackDmg, p.BulletSpd, p.BulletSz, 656, pierce, false, false)
 		}
 	case "slam":
-		gs.addEffect("cone", p.X, p.Y, 0, 0, 0, angle, 145, .72, p.Color, 0, 420)
-		gs.hitSector(p, angle, 145, .72, p.AttackDmg, true)
+		gs.addEffect("slam", p.X, p.Y, 0, 0, 145, angle, 0, .72, p.Color, 0, 420)
+		hits := gs.hitSector(p, angle, 145, .72, p.AttackDmg, false)
+		if hits > 0 {
+			p.ShieldStacks = int(math.Min(5, float64(p.ShieldStacks+hits)))
+			p.ShieldStackUntil = ts + 4000
+		}
+		for _, target := range gs.Players {
+			if target == p || !target.IsAlive() {
+				continue
+			}
+			dx, dy := target.X-p.X, target.Y-p.Y
+			delta := math.Atan2(math.Sin(math.Atan2(dy, dx)-angle), math.Cos(math.Atan2(dy, dx)-angle))
+			if math.Hypot(dx, dy) <= 145+target.Radius && math.Abs(delta) <= .72 {
+				target.SlowUntil = ts + 1200
+			}
+		}
+		if hits == 0 {
+			gs.createTemporaryRock(p.X+math.Cos(angle)*92, p.Y+math.Sin(angle)*92, ts+3500)
+		}
 	case "boomerang":
 		var disc *bullet.Bullet
 		for _, candidate := range gs.Bullets {
@@ -1038,20 +1517,43 @@ func (gs *GameState) playerShoot(id string, ts int64, screenAngle float64, aimDi
 		}
 	case "spore":
 		if len(aimDistance) > 0 && aimDistance[0] > 0 && aimDistance[0] < 54 {
-			gs.dashAttack(p, angle, 210, 0, 0)
+			gs.vaultMove(p, angle, 210)
+			gs.addEffect("vine", p.X, p.Y, 0, 0, 88, angle, 0, 0, "#b5ff70", 0, 550)
 		} else {
 			gs.spawnAttackBullet(p, angle, "spore", p.AttackDmg, p.BulletSpd, p.BulletSz, 518, 0, false, false)
 		}
 	case "dash":
-		gs.dashAttack(p, angle, 135, 30, p.AttackDmg)
+		originX, originY := p.X, p.Y
+		gs.dashAttack(p, angle, 135, 0, 0)
+		hits := gs.hitSector(p, angle, 135, .95, p.AttackDmg, false)
+		gs.addEffect("scythe", originX, originY, p.X, p.Y, 0, angle, 165, .95, p.Color, 0, 420)
+		p.Souls = int(math.Min(3, float64(p.Souls+hits)))
+		if p.Souls >= 3 {
+			p.Souls = 0
+			p.Deflect = 1
+			gs.radialDamage(p.PlayerId, p.X, p.Y, 105, 600)
+			gs.addEffect("spin", p.X, p.Y, 0, 0, 105, 0, 0, 0, "#d9ff8b", 0, 400)
+		}
 	case "sniper":
 		gs.spawnAttackBullet(p, angle, "sniper", p.AttackDmg, p.BulletSpd, p.BulletSz, 1161, 0, false, false)
 	case "double_melee":
-		gs.addEffect("slash", p.X, p.Y, 0, 0, 0, angle, 92, .82, p.Color, 0, 360)
-		hits := gs.hitSector(p, angle, 92, .82, p.AttackDmg, false)
-		p.ShieldHP += hits * p.AttackDmg
+		if gs.wallAhead(p, angle, 82) {
+			gs.vaultMove(p, angle, 155)
+			gs.addEffect("thruster", p.X, p.Y, 0, 0, 75, angle, 0, 0, "#7be8ff", 0, 400)
+		} else {
+			swing := -.18
+			if p.AttackPulse%2 == 0 {
+				swing = .18
+			}
+			gs.addEffect("slash", p.X, p.Y, 0, 0, 0, angle+swing, 92, .82, p.Color, 0, 360)
+			gs.hitSector(p, angle+swing, 92, .82, p.AttackDmg, false)
+		}
 	case "quantum":
-		gs.spawnAttackBullet(p, angle, "quantum", p.AttackDmg, p.BulletSpd, p.BulletSz, 696, 0, false, false)
+		b := gs.spawnAttackBullet(p, angle, "quantum", p.AttackDmg, p.BulletSpd, p.BulletSz, 696, 0, false, false)
+		if p.Evolution >= 4 {
+			b.Kind, b.Pierce, b.Chain, b.Bounces = "chain", 1, 4, 2
+			b.Splash = 75
+		}
 	case "poison_fan":
 		for _, spread := range []float64{-.18, 0, .18} {
 			gs.spawnAttackBullet(p, angle+spread, "poison", p.AttackDmg, p.BulletSpd, p.BulletSz, 690, 0, false, true)
@@ -1061,7 +1563,7 @@ func (gs *GameState) playerShoot(id string, ts int64, screenAngle float64, aimDi
 	}
 }
 
-func (gs *GameState) spawnAttackBullet(p *player.Player, angle float64, kind string, damage int, speed, size, maxRange float64, pierce int, returning, poison bool) {
+func (gs *GameState) spawnAttackBullet(p *player.Player, angle float64, kind string, damage int, speed, size, maxRange float64, pierce int, returning, poison bool) *bullet.Bullet {
 	if size == 0 {
 		size = BulletSize
 	}
@@ -1089,6 +1591,54 @@ func (gs *GameState) spawnAttackBullet(p *player.Player, angle float64, kind str
 	if kind == "overcharge" {
 		b.Acceleration = 380
 	}
+	return b
+}
+
+func (gs *GameState) chainDamage(owner string, first *player.Player, radius float64, count, damage int) {
+	fromX, fromY := first.X, first.Y
+	hit := map[string]bool{first.PlayerId: true, owner: true}
+	for step := 0; step < count; step++ {
+		var best *player.Player
+		var bestMonsterID string
+		bestDistance := math.MaxFloat64
+		for id, target := range gs.Players {
+			if hit[id] || !target.IsAlive() {
+				continue
+			}
+			distance := math.Hypot(target.X-fromX, target.Y-fromY)
+			if distance <= radius && distance < bestDistance {
+				best, bestDistance = target, distance
+			}
+		}
+		for id, target := range gs.Monsters {
+			if hit[id] || target == nil || !target.IsAlive() {
+				continue
+			}
+			distance := math.Hypot(target.X-fromX, target.Y-fromY)
+			if distance <= radius && distance < bestDistance {
+				best, bestMonsterID, bestDistance = nil, id, distance
+			}
+		}
+		if best == nil && bestMonsterID == "" {
+			break
+		}
+		if best != nil {
+			gs.applyDamage(best, damage)
+			gs.addEffect("lightning", fromX, fromY, best.X, best.Y, 0, 0, 0, 0, "#65efff", 0, 260)
+			hit[best.PlayerId] = true
+			fromX, fromY = best.X, best.Y
+			continue
+		}
+		target := gs.Monsters[bestMonsterID]
+		target.Hurt(damage)
+		gs.addEffect("lightning", fromX, fromY, target.X, target.Y, 0, 0, 0, 0, "#65efff", 0, 260)
+		hit[bestMonsterID] = true
+		fromX, fromY = target.X, target.Y
+		if !target.IsAlive() {
+			gs.Props = append(gs.Props, prop.NewProp("power", target.X, target.Y, FlaskSize/2))
+			delete(gs.Monsters, bestMonsterID)
+		}
+	}
 }
 
 func (gs *GameState) hitSector(source *player.Player, angle, reach, halfArc float64, damage int, pull bool) int {
@@ -1111,6 +1661,24 @@ func (gs *GameState) hitSector(source *player.Player, angle, reach, halfArc floa
 			target.Y -= math.Sin(angle) * 16
 		}
 	}
+	for id, target := range gs.Monsters {
+		if target == nil || !target.IsAlive() {
+			continue
+		}
+		dx, dy := target.X-source.X, target.Y-source.Y
+		delta := math.Atan2(math.Sin(math.Atan2(dy, dx)-angle), math.Cos(math.Atan2(dy, dx)-angle))
+		if math.Hypot(dx, dy) > reach+target.Radius || math.Abs(delta) > halfArc {
+			continue
+		}
+		target.Hurt(damage)
+		hits++
+		source.SuperCharge = int(math.Min(100, float64(source.SuperCharge+20)))
+		gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ffe55c", damage, 520)
+		if !target.IsAlive() {
+			gs.Props = append(gs.Props, prop.NewProp("power", target.X, target.Y, FlaskSize/2))
+			delete(gs.Monsters, id)
+		}
+	}
 	return hits
 }
 
@@ -1122,7 +1690,13 @@ func (gs *GameState) radialDamage(owner string, x, y, radius float64, damage int
 			continue
 		}
 		if math.Hypot(target.X-x, target.Y-y) <= radius+target.Radius {
+			before := target.Lives
+			distance := math.Max(1, math.Hypot(target.X-x, target.Y-y))
+			target.HitImpulseX, target.HitImpulseY = (target.X-x)/distance, (target.Y-y)/distance
 			gs.applyDamage(target, damage)
+			if source != nil && CombatKitFor(source.HeroName) != nil {
+				gs.awardSuperFromDamage(source, before-target.Lives)
+			}
 			hits++
 		}
 	}
@@ -1137,6 +1711,21 @@ func (gs *GameState) radialDamage(owner string, x, y, radius float64, damage int
 		}
 	}
 	return hits
+}
+
+func (gs *GameState) awardSuperFromDamage(source *player.Player, damage int) {
+	if source == nil || damage <= 0 || source.SuperCharge >= 100 {
+		return
+	}
+	// 4000 actual PvP damage fills the meter. Carry preserves strict
+	// proportionality even when individual hits are smaller than one point.
+	source.SuperChargeCarry += float64(damage) / 40.0
+	gained := int(source.SuperChargeCarry)
+	if gained <= 0 {
+		return
+	}
+	source.SuperCharge = int(math.Min(100, float64(source.SuperCharge+gained)))
+	source.SuperChargeCarry -= float64(gained)
 }
 
 func (gs *GameState) destroyWallsInRadius(x, y, radius float64) int {
@@ -1161,6 +1750,47 @@ func (gs *GameState) destroyWallsInRadius(x, y, radius float64) int {
 	return destroyed
 }
 
+func (gs *GameState) createTemporaryRock(x, y float64, expiresAt int64) {
+	const size = 38.0
+	wall := &geometry.WallTile{MinX: x - size/2, MinY: y - size/2, MaxX: x + size/2, MaxY: y + size/2, Type: "temporary-rock"}
+	gs.Map.Collisions = append(gs.Map.Collisions, wall)
+	gs.Walls.Insert(wall)
+	gs.TemporaryWalls[wall] = expiresAt
+	gs.MapRevision++
+	gs.addEffect("rock", x, y, 0, 0, 58, 0, 0, 0, "#b87447", 0, 450)
+}
+
+func (gs *GameState) updateTemporaryWalls() {
+	if len(gs.TemporaryWalls) == 0 {
+		return
+	}
+	now, changed := time.Now().UnixMilli(), false
+	for wall, expiresAt := range gs.TemporaryWalls {
+		if expiresAt <= now {
+			delete(gs.TemporaryWalls, wall)
+			changed = true
+		}
+	}
+	if !changed {
+		return
+	}
+	kept := gs.Map.Collisions[:0]
+	for _, wall := range gs.Map.Collisions {
+		if wall.Type == "temporary-rock" {
+			if _, active := gs.TemporaryWalls[wall]; !active {
+				continue
+			}
+		}
+		kept = append(kept, wall)
+	}
+	gs.Map.Collisions = kept
+	gs.MapRevision++
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	for _, wall := range kept {
+		gs.Walls.Insert(wall)
+	}
+}
+
 func (gs *GameState) dashAttack(p *player.Player, angle, distance, radius float64, damage int) {
 	steps := 5
 	for step := 0; step < steps; step++ {
@@ -1171,12 +1801,47 @@ func (gs *GameState) dashAttack(p *player.Player, angle, distance, radius float6
 	}
 }
 
+func (gs *GameState) vaultMove(p *player.Player, angle, distance float64) {
+	p.X += math.Cos(angle) * distance
+	p.Y += math.Sin(angle) * distance
+	clamped := gs.Map.ClampCircle(&p.CircleBody)
+	p.X, p.Y = clamped.X, clamped.Y
+}
+
+func (gs *GameState) wallAhead(p *player.Player, angle, distance float64) bool {
+	body := geometry.CircleBody{X: p.X + math.Cos(angle)*distance, Y: p.Y + math.Sin(angle)*distance, Radius: p.Radius}
+	return geometry.CollidesCircleWithBlockingWalls(&body, gs.Walls)
+}
+
+func (gs *GameState) closestWallPoint(p *player.Player, angle, maxDistance float64) (float64, float64, bool) {
+	bestDistance := math.MaxFloat64
+	bestX, bestY := 0.0, 0.0
+	for _, wall := range gs.Map.Collisions {
+		if wall == nil || !geometry.IsBlockingWall(wall.Type) {
+			continue
+		}
+		probeX, probeY := p.X+math.Cos(angle)*maxDistance, p.Y+math.Sin(angle)*maxDistance
+		x := math.Max(wall.MinX, math.Min(wall.MaxX, probeX))
+		y := math.Max(wall.MinY, math.Min(wall.MaxY, probeY))
+		distance := math.Hypot(x-p.X, y-p.Y)
+		if distance > maxDistance || distance >= bestDistance {
+			continue
+		}
+		bestDistance = distance
+		travel := math.Max(0, distance-p.Radius-4)
+		bestX, bestY = p.X+math.Cos(angle)*travel, p.Y+math.Sin(angle)*travel
+	}
+	return bestX, bestY, bestDistance < math.MaxFloat64
+}
+
 func (gs *GameState) setPlayersActive(active bool) {
 	for _, p := range gs.Players {
 		if active {
 			p.Lives = p.MaxLives
 			p.Kills = 0
 			p.SuperCharge = 0
+			p.Ammo = p.MaxAmmo
+			p.NextAmmoAt = 0
 		} else {
 			p.Lives = 0
 		}
@@ -1188,9 +1853,8 @@ func (gs *GameState) setPlayersPositionRandomly() {
 	for _, p := range gs.Players {
 		players = append(players, p)
 	}
-	// LocalBattleEngine assigns combatants to the first four arena spawns and
-	// reserves the remaining spawns for monsters. Keep humans first so the
-	// authoritative match follows that exact contract.
+	// Reserve the first four arena spawns for combatants and the remainder for
+	// monsters. Humans are ordered first so reconnects do not reshuffle them.
 	sort.SliceStable(players, func(i, j int) bool {
 		if players[i].IsBot != players[j].IsBot {
 			return !players[i].IsBot
@@ -1269,14 +1933,37 @@ func (gs *GameState) getWinningTeam() string {
 }
 
 func (gs *GameState) monstersAdd(count int) {
+	candidates := make([][2]float64, 0, len(gs.Map.Spawners)+1)
+	candidates = append(candidates, [2]float64{gs.Map.WidthInPixels / 2, gs.Map.HeightInPixels / 2})
+	for _, spawn := range gs.Map.Spawners {
+		candidates = append(candidates, [2]float64{spawn.CenterX(), spawn.CenterY()})
+	}
+	placed := make([][2]float64, 0, count)
 	for i := 0; i < count; i++ {
-		tier, x, y := 1, gs.Map.WidthInPixels/2, gs.Map.HeightInPixels/2
-		if i > 0 && len(gs.Map.Spawners) > 0 {
-			spawn := gs.Map.Spawners[(i+3)%len(gs.Map.Spawners)]
-			x, y = spawn.CenterX(), spawn.CenterY()
-		} else if i == 0 {
+		tier := 1
+		if i == 0 {
 			tier = 2
 		}
+		bestIndex, bestDistance := 0, -1.0
+		for index, point := range candidates {
+			nearest := math.MaxFloat64
+			for _, p := range gs.Players {
+				if d := math.Hypot(point[0]-p.X, point[1]-p.Y); d < nearest {
+					nearest = d
+				}
+			}
+			for _, other := range placed {
+				if d := math.Hypot(point[0]-other[0], point[1]-other[1]); d < nearest {
+					nearest = d
+				}
+			}
+			if nearest > bestDistance {
+				bestIndex, bestDistance = index, nearest
+			}
+		}
+		x, y := candidates[bestIndex][0], candidates[bestIndex][1]
+		placed = append(placed, candidates[bestIndex])
+		candidates = append(candidates[:bestIndex], candidates[bestIndex+1:]...)
 		lives := monster.MonsterLives
 		if tier == 2 {
 			lives = monster.EliteMonsterLives

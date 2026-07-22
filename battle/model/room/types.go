@@ -13,6 +13,7 @@ type Client struct {
 	Conn        *websocket.Conn
 	Room        *Room
 	Send        chan []byte
+	State       chan []byte
 	MapRevision int
 }
 

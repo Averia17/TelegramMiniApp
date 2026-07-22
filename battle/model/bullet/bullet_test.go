@@ -48,6 +48,7 @@ func TestBulletMove(t *testing.T) {
 
 func TestBulletReset(t *testing.T) {
 	b := NewBullet("p1", "Red", 100, 100, 4, 0, "#FF0000")
+	firstID := b.ID
 	b.Active = false
 
 	b.Reset("p2", "Blue", 200, 200, 6, 1.5, "#0000FF")
@@ -69,5 +70,8 @@ func TestBulletReset(t *testing.T) {
 	}
 	if b.Color != "#0000FF" {
 		t.Errorf("After Reset: Color = %v, want #0000FF", b.Color)
+	}
+	if b.ID == firstID {
+		t.Error("After Reset: recycled bullet should have a new ID")
 	}
 }

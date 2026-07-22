@@ -13,12 +13,14 @@ type MoveValue struct {
 }
 
 type RotateValue struct {
-	Rotation float64 `json:"rotation"`
+	Rotation    float64 `json:"rotation"`
+	AimDistance float64 `json:"aimDistance,omitempty"`
 }
 
 type ShootValue struct {
 	Angle       float64 `json:"angle"`
 	AimDistance float64 `json:"aimDistance,omitempty"`
+	AutoAim     bool    `json:"autoAim,omitempty"`
 }
 
 type AbilityValue struct {

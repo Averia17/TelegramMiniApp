@@ -41,7 +41,7 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &mroom.Client{
-		Id: uuid.New().String(), Conn: conn, Send: make(chan []byte, 256), MapRevision: -1,
+		Id: uuid.New().String(), Conn: conn, Send: make(chan []byte, 256), State: make(chan []byte, 1), MapRevision: -1,
 	}
 
 	go clientWritePump(client)
@@ -102,10 +102,26 @@ func clientReadPump(c *mroom.Client) {
 
 func clientWritePump(c *mroom.Client) {
 	defer c.Conn.Close()
-
-	for message := range c.Send {
+	for {
+		var message []byte
+		select {
+		case queued, ok := <-c.Send:
+			if !ok {
+				return
+			}
+			message = queued
+		default:
+			select {
+			case queued, ok := <-c.Send:
+				if !ok {
+					return
+				}
+				message = queued
+			case message = <-c.State:
+			}
+		}
 		if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-			break
+			return
 		}
 	}
 }
