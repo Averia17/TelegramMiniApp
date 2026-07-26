@@ -1,10 +1,11 @@
 import * as THREE from "three"
 import {createHeroModel} from "../three/HeroModelFactory"
 import {assetRegistry} from "../assets/AssetRegistry"
-import {HeroAnimationController} from "./HeroAnimationController"
+import {GLBHeroController} from "./GLBHeroController"
 import {worldToScene} from "../shared/coordinates"
 import {disposeObjectTree} from "../shared/disposal"
 import {createContactShadow} from "../shared/materials"
+import {turnTowardsAngle} from "./turning"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const blend = (speed, delta) => 1 - Math.exp(-speed * delta)
@@ -58,6 +59,25 @@ const setOpacity = (model, opacity) => model.traverse(child => {
   }
 })
 
+const createDeathBurst = heroName => {
+  const group = new THREE.Group()
+  group.visible = false
+  const primary = new THREE.MeshStandardMaterial({color:heroName === "Mandy" ? 0xff70b5 : 0x59d85e, roughness:.7})
+  const accent = new THREE.MeshStandardMaterial({color:heroName === "Mandy" ? 0xffdc55 : 0xf4edb2, roughness:.85})
+  for (let index = 0; index < 12; index += 1) {
+    const material = index % 3 ? primary : accent
+    const geometry = index % 3
+      ? new THREE.SphereGeometry(.11 + index % 2 * .04, 8, 6)
+      : new THREE.ConeGeometry(.07, .34, 7)
+    const particle = new THREE.Mesh(geometry, material)
+    const angle = index * Math.PI * 2 / 12
+    particle.userData.velocity = new THREE.Vector3(Math.cos(angle) * (2.2 + index % 3), 2.7 + index % 4 * .55, Math.sin(angle) * (2.2 + index % 3))
+    particle.userData.spin = new THREE.Vector3(3 + index, 5 - index * .18, 2 + index * .12)
+    group.add(particle)
+  }
+  return group
+}
+
 export class HeroView {
   constructor(id, state, simpleMaterials = false) {
     this.id = id
@@ -66,17 +86,21 @@ export class HeroView {
     this.model = createHeroModel(state.hero, {simple: simpleMaterials})
     this.model.scale.setScalar(0.92)
     this.label = createLabel(state)
-    this.group.add(this.shadow, this.model, this.label)
+    this.deathBurst = createDeathBurst(state.hero)
+    this.deathTime = 0
+    this.group.add(this.shadow, this.model, this.deathBurst, this.label)
     this.x = this.targetX = state.x
     this.y = this.targetY = state.y
     this.aimAngle = Math.PI / 2 - (state.rotation || 0)
     this.bodyAngle = this.aimAngle
     this.lastPulse = state.attackPulse
+    this.lastSuperPulse = state.superPulse
     this.lastLives = state.lives
     this.recoil = 0
     this.hit = 0
     this.animation = null
     this.disposed = false
+    this.result = null
     this.state = state
     this.group.position.copy(worldToScene(state.x, state.y))
     this.loadGlb(state.hero)
@@ -93,8 +117,12 @@ export class HeroView {
       }
       const previous = this.model
       this.model = instance.root
-      this.animation = new HeroAnimationController(instance.root, instance.animations, instance.asset.clips)
-      this.animation.play("idle")
+      this.animation = new GLBHeroController(instance.root, instance.animations, instance.asset.clips, {
+        heroName,
+        attackPulse: this.state.attackPulse,
+        superPulse: this.state.superPulse,
+        fullBodySuper: false,
+      })
       this.group.remove(previous)
       disposeObjectTree(previous)
       this.group.add(this.model)
@@ -113,9 +141,22 @@ export class HeroView {
     }
     if (this.lastPulse !== undefined && state.attackPulse !== this.lastPulse) this.recoil = 1
     if (this.lastLives !== undefined && state.lives < this.lastLives) this.hit = 1
+    if (this.lastLives > 0 && state.lives <= 0) {
+      this.deathTime = .62
+      this.deathBurst.visible = true
+      this.deathBurst.children.forEach(particle => {
+        particle.position.set(0, 1.25, 0)
+        particle.scale.setScalar(1)
+      })
+    }
+    if (this.lastLives <= 0 && state.lives > 0) this.model.visible = true
     this.lastPulse = state.attackPulse
     this.lastLives = state.lives
     updateLabel(this.label, state)
+  }
+
+  setResult(result) {
+    this.result = result
   }
 
   update(delta, time, inBush) {
@@ -127,23 +168,59 @@ export class HeroView {
     const moveX = Number.isFinite(this.state.moveX) ? this.state.moveX : this.x - previousX
     const moveY = Number.isFinite(this.state.moveY) ? this.state.moveY : this.y - previousY
     const moving = Math.hypot(moveX, moveY) > 0.01
-    if (moving) this.bodyAngle = Math.atan2(moveX, moveY)
+    if (moving) {
+      const desiredBodyAngle = Math.atan2(moveX, moveY)
+      this.bodyAngle = turnTowardsAngle(this.bodyAngle, desiredBodyAngle, delta)
+    }
     const desiredAim = this.state.aiming || this.recoil > 0.05
       ? Math.PI / 2 - (this.state.rotation || 0)
       : moving ? this.bodyAngle : this.aimAngle
-    this.aimAngle += Math.atan2(Math.sin(desiredAim - this.aimAngle), Math.cos(desiredAim - this.aimAngle)) * blend(this.state.aiming ? 22 : 15, delta)
+    this.aimAngle = turnTowardsAngle(this.aimAngle, desiredAim, delta, this.state.aiming ? 12 : 9)
     this.group.position.copy(worldToScene(this.x, this.y))
     this.model.rotation.y = this.aimAngle
     this.model.userData.animate?.(time, moving ? 1 : 0.08, this.recoil)
-    this.animation?.play(this.recoil > 0.3 ? "attack" : moving ? "run" : "idle")
-    this.animation?.update(delta)
-    const legDelta = this.bodyAngle - this.aimAngle
-    this.model.userData.bones?.legs?.forEach(leg => { leg.rotation.y = legDelta })
+    if (this.animation) {
+      this.model.rotation.y = moving ? this.bodyAngle : this.aimAngle
+      const networkSpeed = Math.hypot(this.x - previousX, this.y - previousY) / Math.max(delta, 0.001)
+      const effectiveSpeed = moving ? Math.max(networkSpeed, Number(this.state.speed) || 0) : 0
+      const aimDelta = Math.atan2(
+        Math.sin(this.aimAngle - this.model.rotation.y),
+        Math.cos(this.aimAngle - this.model.rotation.y),
+      )
+      this.animation.update(delta, {
+        alive: this.state.lives > 0,
+        moving,
+        speed: effectiveSpeed,
+        referenceSpeed: Number(this.state.speed) || 1,
+        aiming: Boolean(this.state.aiming),
+        superAiming: Number(this.state.channel) > 0,
+        aimYaw: this.state.aiming || this.recoil > 0.05 ? aimDelta : 0,
+        attackPulse: this.state.attackPulse,
+        superPulse: this.state.superPulse,
+        result: this.result,
+      })
+      this.animation.setHitFlash(this.hit)
+    } else {
+      this.model.visible = this.state.lives > 0
+      const legDelta = this.bodyAngle - this.aimAngle
+      this.model.userData.bones?.legs?.forEach(leg => { leg.rotation.y = legDelta })
+    }
+    if (this.deathTime > 0) {
+      this.deathTime = Math.max(0, this.deathTime - delta)
+      this.deathBurst.children.forEach(particle => {
+        particle.position.addScaledVector(particle.userData.velocity, delta)
+        particle.userData.velocity.y -= 8.5 * delta
+        particle.rotation.x += particle.userData.spin.x * delta
+        particle.rotation.y += particle.userData.spin.y * delta
+        particle.scale.setScalar(Math.max(0.01, this.deathTime / .62))
+      })
+      this.deathBurst.visible = this.deathTime > 0
+    }
     this.recoil *= Math.exp(-15 * delta)
     this.hit *= Math.exp(-12 * delta)
     setOpacity(this.model, inBush ? 0.42 : 1)
     this.label.material.opacity = inBush ? 0.42 : 1
-    this.model.traverse(child => {
+    if (!this.animation) this.model.traverse(child => {
       if (child.material?.uniforms?.hit) child.material.uniforms.hit.value = this.hit
     })
   }

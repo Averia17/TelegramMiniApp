@@ -50,6 +50,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
     if (savedResultRef.current) return
     savedResultRef.current = true
     const normalized = {duration:0,kills:0,monsters:0,...result}
+    rendererRef.current?.setOutcome(normalized.won ? "victory" : "defeat")
     saveBattleResult(normalized)
     setBattleResult(normalized)
     setView(normalized.won ? "result" : normalized.timedOut ? "timeout" : "dead")
@@ -364,6 +365,11 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
                     </i>
                   ))}
                 </div>
+                {localPlayer.hero === "Mandy" && (
+                  <div className={`focus-track${localPlayer.focusCharge >= 100 ? " is-ready" : ""}`} aria-label={`Фокус ${localPlayer.focusCharge || 0}%`}>
+                    <span style={{width: `${localPlayer.focusCharge || 0}%`}}/>
+                  </div>
+                )}
                 <small>❤ {health} / {maxHealth}</small>
               </div>
             </div>
@@ -372,7 +378,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
           {localPlayer && (
             <div className="battle-abilities">
               <AbilityButton slot="primary" keyName="Q" label={abilityLabel(localPlayer.hero, "primary")} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper onUse={() => clientRef.current?.ability?.("primary")}/>
-              <AbilityButton slot="secondary" keyName="E" label={abilityLabel(localPlayer.hero, "secondary")} cooldown={localPlayer.cooldowns?.secondary} onUse={() => clientRef.current?.ability?.("secondary")}/>
+              <AbilityButton slot="secondary" keyName="E" label={`${abilityLabel(localPlayer.hero, "secondary")}${localPlayer.hero === "Mandy" ? ` · ${localPlayer.gadgetCharges || 0}` : ""}`} cooldown={localPlayer.cooldowns?.secondary} disabled={localPlayer.hero === "Mandy" && (!localPlayer.gadgetCharges || localPlayer.gadgetArmed)} onUse={() => clientRef.current?.ability?.("secondary")}/>
             </div>
           )}
         </>
@@ -474,12 +480,13 @@ const abilityLabel = (hero, slot) => {
   const labels = {
     viper:["ИЗВЕРЖЕНИЕ","МАГМА-БРОНЯ"],titan:["ЦИФРОВОЙ СБОЙ","ТРОЙНОЙ ДИСК"],
     shadow:["ЖИВАЯ ЛИАНА","ФОТОСИНТЕЗ"],spark:["ЖАТВА","РОЙ ТЕНЕЙ"],
+    mandy:["САХАРНАЯ ВОЛНА","КАРАМЕЛИЗАЦИЯ"],
   }
   return labels[name]?.[slot === "primary" ? 0 : 1] || (slot === "primary" ? "ЗАЛП" : "ЩИТ")
 }
 
-const AbilityButton = ({keyName, label, cooldown = 0, charge = 100, isSuper = false, onUse}) => (
-  <button className={`battle-ability${isSuper && charge >= 100 ? " battle-ability--ready" : ""}`} disabled={cooldown > 0 || (isSuper && charge < 100)} onClick={onUse} style={isSuper ? {"--charge": `${charge}%`} : undefined}>
+const AbilityButton = ({keyName, label, cooldown = 0, charge = 100, isSuper = false, disabled = false, onUse}) => (
+  <button className={`battle-ability${isSuper && charge >= 100 ? " battle-ability--ready" : ""}`} disabled={disabled || cooldown > 0 || (isSuper && charge < 100)} onClick={onUse} style={isSuper ? {"--charge": `${charge}%`} : undefined}>
     {isSuper && <i className="battle-ability__charge"/>}
     <b>{cooldown > 0 ? cooldown.toFixed(1) : isSuper && charge < 100 ? `${Math.round(charge)}%` : keyName}</b>
     <span>{label}</span>

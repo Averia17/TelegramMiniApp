@@ -276,11 +276,17 @@ func TestMovementMatchesLocalEnginePixelsPerSecond(t *testing.T) {
 	}
 }
 
-func TestGameplayTempoAppliesSmallMovementAndProjectileSlowdown(t *testing.T) {
+func TestGameplayTempoAppliesMovementAttackAndProjectilePacing(t *testing.T) {
 	hero := GetHeroByName("Colt")
 	p := hero.CreatePlayer("p1", "Alice", 100, 100)
 	if p.Speed != hero.Speed*PlayerSpeedScale {
 		t.Fatalf("player speed = %.2f, want %.2f", p.Speed, hero.Speed*PlayerSpeedScale)
+	}
+	if p.AttackRate != int64(math.Round(float64(hero.AttackRate)*AttackRateScale)) {
+		t.Fatalf("attack rate = %d, want scaled rate from %d", p.AttackRate, hero.AttackRate)
+	}
+	if p.ReloadTime != int64(math.Round(float64(hero.ReloadTime)*ReloadTimeScale)) {
+		t.Fatalf("reload time = %d, want scaled reload from %d", p.ReloadTime, hero.ReloadTime)
 	}
 
 	gs := newTestGameState()
@@ -350,16 +356,16 @@ func TestPlayerShoot(t *testing.T) {
 	gs.PlayerAdd("p1", "Alice", "Colt")
 
 	gs.playerShoot("p1", 1000, 0)
-	if len(gs.Bullets) != 1 {
-		t.Errorf("Bullets count = %v, want 1", len(gs.Bullets))
+	if len(gs.ScheduledShots) != 6 {
+		t.Fatalf("Scheduled shots = %v, want 6", len(gs.ScheduledShots))
 	}
 
-	b := gs.Bullets[0]
-	if b.PlayerId != "p1" {
-		t.Errorf("Bullet PlayerId = %v, want p1", b.PlayerId)
+	shot := gs.ScheduledShots[0]
+	if shot.Owner != "p1" {
+		t.Errorf("Shot owner = %v, want p1", shot.Owner)
 	}
-	if !b.Active {
-		t.Error("Bullet should be active")
+	if shot.Kind != "colt_round" {
+		t.Errorf("Shot kind = %v, want colt_round", shot.Kind)
 	}
 }
 
@@ -384,9 +390,9 @@ func TestHeroCombatProfiles(t *testing.T) {
 		damage int
 		rate   int64
 	}{
-		"Shelly": {285, 600, 250}, "Colt": {290, 420, 300}, "Barley": {285, 760, 350},
-		"Viper": {235, 1250, 520},
-		"Titan": {325, 650, 300}, "Shadow": {258, 750, 420}, "Spark": {320, 1050, 260},
+		"Shelly": {250, 600, 250}, "Colt": {250, 420, 300}, "Barley": {250, 760, 350},
+		"Viper": {225, 1250, 520},
+		"Titan": {285, 650, 300}, "Shadow": {240, 750, 420}, "Spark": {285, 1050, 260},
 	}
 	for name, expected := range want {
 		hero := GetHeroByName(name)

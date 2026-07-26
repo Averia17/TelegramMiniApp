@@ -14,6 +14,7 @@ const (
 	AttackThrower      = "thrower"
 	AttackDash         = "dash"
 	AttackReturning    = "returning"
+	AttackMeleeCone    = "melee_cone"
 )
 
 type AttackConfig struct {
@@ -37,13 +38,20 @@ type AttackConfig struct {
 }
 
 var heroAttackConfigs = map[string]AttackConfig{
-	"Shelly":  {Archetype: AttackShotgun, AimShape: "cone", Range: 430, ProjectileKind: "shell", ProjectileCount: 5, SpreadDegrees: 30},
-	"Colt":    {Archetype: AttackBurst, AimShape: "line", Range: 650, ProjectileKind: "colt_round", ProjectileCount: 6},
-	"Barley":  {Archetype: AttackThrower, AimShape: "lob", Range: 620, ProjectileKind: "barley_bottle", FlightTimeMs: 650, ImpactRadius: 60, ZoneTicks: 2, ZoneIntervalMs: 1000},
-	"Viper":   {Archetype: AttackPiercingArea, AimShape: "cone", Range: 145, HalfArcDegrees: 41.25, Modifier: "slam"},
-	"Titan":   {Archetype: AttackReturning, AimShape: "line", Range: 858, ProjectileKind: "boomerang", Pierce: 1, Modifier: "recall"},
-	"Shadow":  {Archetype: AttackProjectile, AimShape: "line", Range: 518, ProjectileKind: "spore", Modifier: "short_vault"},
-	"Spark":   {Archetype: AttackDash, AimShape: "cone", Range: 135, HalfArcDegrees: 54.4, DashDistance: 135, Modifier: "souls"},
+	"Shelly":          {Archetype: AttackShotgun, AimShape: "cone", Range: 430, ProjectileKind: "shell", ProjectileCount: 5, SpreadDegrees: 30},
+	"Colt":            {Archetype: AttackBurst, AimShape: "line", Range: 650, ProjectileKind: "colt_round", ProjectileCount: 6},
+	"Barley":          {Archetype: AttackThrower, AimShape: "lob", Range: 620, ProjectileKind: "barley_bottle", FlightTimeMs: 650, ImpactRadius: 60, ZoneTicks: 2, ZoneIntervalMs: 1000},
+	"Viper":           {Archetype: AttackPiercingArea, AimShape: "cone", Range: 145, HalfArcDegrees: 41.25, Modifier: "slam"},
+	"Titan":           {Archetype: AttackReturning, AimShape: "line", Range: 858, ProjectileKind: "boomerang", Pierce: 1, Modifier: "recall"},
+	"Shadow":          {Archetype: AttackProjectile, AimShape: "line", Range: 518, ProjectileKind: "spore", Modifier: "short_vault"},
+	"Spark":           {Archetype: AttackDash, AimShape: "cone", Range: 135, HalfArcDegrees: 54.4, DashDistance: 135, Modifier: "souls"},
+	"Mandy":           {Archetype: AttackMeleeCone, AimShape: "cone", Range: 120, HalfArcDegrees: 42, Modifier: "mandy_focus"},
+	"Fairy Mina":      {Archetype: AttackShotgun, AimShape: "cone", Range: 510, ProjectileKind: "mina_star", ProjectileCount: 3, SpreadDegrees: 24, SplashRadius: 38},
+	"Brock Zeus":      {Archetype: AttackProjectile, AimShape: "line", Range: 760, ProjectileKind: "zeus_lightning", SplashRadius: 72},
+	"Kaze":            {Archetype: AttackMeleeCone, AimShape: "cone", Range: 105, HalfArcDegrees: 55, Modifier: "kaze_double"},
+	"Wukong Mico":     {Archetype: AttackDash, AimShape: "lob", Range: 100, DashDistance: 100, ImpactRadius: 82, Modifier: "mico_jump"},
+	"Damian":          {Archetype: AttackProjectile, AimShape: "line", Range: 640, ProjectileKind: "damian_orb"},
+	"Persephone Lumi": {Archetype: AttackProjectile, AimShape: "line", Range: 600, ProjectileKind: "lumi_orb", Modifier: "slow_trail"},
 }
 
 func withAttackConfigs(heroes []Hero) []Hero {
@@ -71,6 +79,20 @@ func BasicCombatKitFor(hero string) BasicCombatKit {
 		return ColtKit{}
 	case "Barley":
 		return BarleyKit{}
+	case "Mandy":
+		return MandyKit{}
+	case "Fairy Mina":
+		return MinaKit{}
+	case "Brock Zeus":
+		return BrockZeusKit{}
+	case "Kaze":
+		return KazeKit{}
+	case "Wukong Mico":
+		return WukongMicoKit{}
+	case "Damian":
+		return DamianKit{}
+	case "Persephone Lumi":
+		return PersephoneLumiKit{}
 	}
 	config, ok := heroAttackConfigs[hero]
 	if !ok {

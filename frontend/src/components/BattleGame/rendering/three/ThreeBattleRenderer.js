@@ -47,6 +47,11 @@ export class ThreeBattleRenderer {
 
   setLocalPlayerId(id) { this.localPlayerId = String(id) }
 
+  setOutcome(outcome) {
+    const result = outcome === "victory" ? "victory" : "defeat"
+    this.players.forEach(view => view.setResult(view.id === this.localPlayerId ? result : null))
+  }
+
   setState(state) {
     if (!state) return
     this.state = state
@@ -67,7 +72,11 @@ export class ThreeBattleRenderer {
       if (!active.has(id)) { this.actorRoot.remove(view.group); view.dispose(); this.players.delete(id) }
     })
     this.projectiles.sync(state.bullets || [])
-    this.effects.sync(state.effects || [])
+    const totemEffects = (state.totems || []).map(totem => ({
+      id:`totem:${totem.owner}`,kind:"damian_totem",x:totem.x,y:totem.y,radius:24,
+      color:"#8D52D9",life:1,maxLife:1,hp:totem.hp,maxHp:totem.maxHp,
+    }))
+    this.effects.sync([...(state.effects || []), ...totemEffects])
   }
 
   render() {
@@ -75,6 +84,7 @@ export class ThreeBattleRenderer {
     const walls=this.state?.map?.walls||[]
     this.players.forEach((view,id)=>view.update(delta,this.time,(id===this.localPlayerId||Boolean(this.state?.players?.[id]?.team&&this.state.players[id].team===this.state?.players?.[this.localPlayerId]?.team))&&isInsideBush(view.state,walls)))
     this.mapRenderer.update(delta)
+    this.projectiles.update(delta,this.time)
     this.aim.update(this.state?.players?.[this.localPlayerId])
     const local=this.players.get(this.localPlayerId)
     const map=this.state?.map||{width:1024,height:768}

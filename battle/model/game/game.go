@@ -41,8 +41,10 @@ const (
 	BotNavigationProbe      = 28.0
 	BotVisionRange          = 620.0
 	BotRevealRange          = 900.0
-	PlayerSpeedScale        = 0.92
-	ProjectileSpeedScale    = 0.93
+	PlayerSpeedScale        = 0.85
+	ProjectileSpeedScale    = 0.88
+	AttackRateScale         = 1.55
+	ReloadTimeScale         = 1.22
 )
 
 type GameMode string
@@ -53,30 +55,35 @@ const (
 )
 
 type GameState struct {
-	State          string
-	RoomName       string
-	MapName        string
-	MaxPlayers     int
-	Mode           GameMode
-	LobbyEndsAt    int64
-	GameEndsAt     int64
-	Map            *gamemap.GameMap
-	Walls          *geometry.SpatialHash
-	Players        map[string]*player.Player
-	Monsters       map[string]*monster.Monster
-	Bullets        []*bullet.Bullet
-	Props          []*prop.Prop
-	Actions        []Action
-	Broadcast      func(msgType string, params interface{})
-	OnGameEnd      func(players map[string]*player.Player, winner string, duration int64)
-	OnPlayerKilled func(playerId, killerName string)
-	MapRevision    int
-	Effects        []*BattleEffect
-	DelayedEffects []*DelayedBattleEffect
-	ScheduledShots []*ScheduledShot
-	DamageZones    []*DamageZone
-	TemporaryWalls map[*geometry.WallTile]int64
-	BotMemory      map[string]*BotPerception
+	State              string
+	RoomName           string
+	MapName            string
+	MaxPlayers         int
+	Mode               GameMode
+	LobbyEndsAt        int64
+	GameEndsAt         int64
+	Map                *gamemap.GameMap
+	Walls              *geometry.SpatialHash
+	Players            map[string]*player.Player
+	Monsters           map[string]*monster.Monster
+	Bullets            []*bullet.Bullet
+	Props              []*prop.Prop
+	Actions            []Action
+	Broadcast          func(msgType string, params interface{})
+	OnGameEnd          func(players map[string]*player.Player, winner string, duration int64)
+	OnPlayerKilled     func(playerId, killerName string)
+	MapRevision        int
+	Effects            []*BattleEffect
+	DelayedEffects     []*DelayedBattleEffect
+	ScheduledShots     []*ScheduledShot
+	DamageZones        []*DamageZone
+	PendingMandySupers []*PendingMandySuper
+	HeroZones          []*HeroZone
+	LightningStrikes   []*LightningStrike
+	Totems             map[string]*Totem
+	Skyfalls           []*Skyfall
+	TemporaryWalls     map[*geometry.WallTile]int64
+	BotMemory          map[string]*BotPerception
 }
 
 type BotPerception struct {
@@ -109,6 +116,11 @@ func InitGameState(gs *GameState) {
 	gs.DelayedEffects = make([]*DelayedBattleEffect, 0)
 	gs.ScheduledShots = make([]*ScheduledShot, 0)
 	gs.DamageZones = make([]*DamageZone, 0)
+	gs.PendingMandySupers = make([]*PendingMandySuper, 0)
+	gs.HeroZones = make([]*HeroZone, 0)
+	gs.LightningStrikes = make([]*LightningStrike, 0)
+	gs.Totems = make(map[string]*Totem)
+	gs.Skyfalls = make([]*Skyfall, 0)
 	gs.TemporaryWalls = make(map[*geometry.WallTile]int64)
 	gs.BotMemory = make(map[string]*BotPerception)
 
@@ -136,6 +148,9 @@ func (gs *GameState) Update() {
 	gs.updateActiveAbilities()
 	gs.updateScheduledShots()
 	gs.updateDamageZones()
+	gs.updatePendingMandySupers()
+	gs.updateNewHeroSystems()
+	gs.updateMandyFocus()
 	gs.updateDelayedEffects()
 	gs.updateTemporaryWalls()
 	gs.updateRegeneration()
@@ -434,7 +449,9 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int) int {
 	dealt := gs.applyDamageAmount(target, amount)
 	if dealt > 0 {
-		if source != nil && CombatKitFor(source.HeroName) == nil {
+		if source != nil && source.HeroName == "Mandy" {
+			// Mandy charges by successful staff swings, not proportional damage.
+		} else if source != nil && CombatKitFor(source.HeroName) == nil {
 			source.SuperCharge = int(math.Min(100, float64(source.SuperCharge+20)))
 		} else {
 			gs.awardSuperFromDamage(source, dealt)
@@ -576,12 +593,28 @@ func (gs *GameState) updateBullets() {
 		}
 		previousX, previousY := b.X, b.Y
 		b.Move(BulletSpeed)
+		if b.Kind == "lumi_orb" {
+			now := time.Now().UnixMilli()
+			nearTrail := false
+			for index := len(gs.HeroZones) - 1; index >= 0 && index >= len(gs.HeroZones)-12; index-- {
+				zone := gs.HeroZones[index]
+				if zone != nil && zone.Owner == b.PlayerId && zone.Kind == "lumi_trail" && math.Hypot(zone.X-b.X, zone.Y-b.Y) < 34 {
+					nearTrail = true
+					break
+				}
+			}
+			if !nearTrail {
+				gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: b.PlayerId, Kind: "lumi_trail", X: b.X, Y: b.Y, Radius: 34, CreatedAt: now, ExpiresAt: now + 2000, Triggered: map[string]bool{}})
+				gs.addEffect("lumi_slow_trail", b.X, b.Y, 0, 0, 34, 0, 0, 0, b.Color, 0, 2000)
+			}
+		}
 		if b.MaxRange > 0 && b.Travelled >= b.MaxRange {
 			if b.Returning {
 				b.Returning = false
 				b.Rotation = math.Atan2(b.OriginY-b.Y, b.OriginX-b.X)
 				b.Travelled = 0
 			} else {
+				gs.finishNewHeroProjectile(b)
 				gs.splitProjectile(b)
 				b.Active = false
 				continue
@@ -675,6 +708,19 @@ func (gs *GameState) updateBullets() {
 			}
 		}
 
+		for owner, totem := range gs.Totems {
+			source := gs.Players[owner]
+			if totem == nil || source == nil || source.PlayerId == b.PlayerId || (source.Team != "" && source.Team == b.Team) {
+				continue
+			}
+			if segmentHitsCircle(previousX, previousY, b.X, b.Y, totem.X, totem.Y, 20+b.Radius) {
+				totem.HP -= int(math.Max(1, float64(b.Damage)))
+				b.Active = false
+				gs.addEffect("damian_totem_hit", totem.X, totem.Y, 0, 0, 28, 0, 0, 0, source.Color, b.Damage, 320)
+				break
+			}
+		}
+
 		if segmentHitsBlockingWall(previousX, previousY, b.X, b.Y, b.Radius, gs.Walls) {
 			if b.DestroyWalls {
 				gs.destroyWallsInRadius(b.X, b.Y, 55)
@@ -684,6 +730,7 @@ func (gs *GameState) updateBullets() {
 				b.Active = false
 				continue
 			}
+			gs.finishNewHeroProjectile(b)
 			if b.Bounces > 0 {
 				b.Bounces--
 				b.Rotation += math.Pi * .82
@@ -1242,12 +1289,19 @@ func (gs *GameState) playerMove(id string, ts int64, dirX, dirY float64) {
 	if p == nil {
 		return
 	}
+	if p.ChannelUntil > ts {
+		p.MoveX, p.MoveY, p.Ack = 0, 0, ts
+		return
+	}
 	p.MoveX, p.MoveY, p.Ack = dirX, dirY, ts
+	if p.HeroName == "Mandy" && math.Hypot(dirX, dirY) > .01 {
+		p.FocusStartedAt, p.FocusCharge = 0, 0
+	}
 }
 
 func (gs *GameState) updatePlayerMovement() {
 	for _, p := range gs.Players {
-		if !p.IsAlive() || p.StunUntil > time.Now().UnixMilli() || (p.MoveX == 0 && p.MoveY == 0) {
+		if !p.IsAlive() || p.StunUntil > time.Now().UnixMilli() || p.ChannelUntil > time.Now().UnixMilli() || (p.MoveX == 0 && p.MoveY == 0) {
 			continue
 		}
 		speed := p.Speed / 60
@@ -1299,7 +1353,7 @@ func (gs *GameState) collectPickups(p *player.Player) {
 				p.Lives = int(math.Min(float64(p.MaxLives), float64(p.Lives+900)))
 				p.DamageMultiplier = math.Min(1.35, 1+float64(p.PowerCores)*.07)
 				// Never let a pickup reduce an assassin's native movement speed.
-				p.Speed = math.Max(p.Speed, math.Min(p.Speed*1.012, 325*PlayerSpeedScale))
+				p.Speed = math.Max(p.Speed, math.Min(p.Speed*1.012, 285*PlayerSpeedScale))
 			}
 		}
 	}
@@ -1311,6 +1365,22 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 		return
 	}
 	primary := slot == "primary"
+	if !primary {
+		switch p.HeroName {
+		case "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi":
+			gs.useNewHeroGadget(p, ts)
+			return
+		}
+	}
+	if p.HeroName == "Mandy" && !primary {
+		if p.GadgetCharges <= 0 || p.GadgetArmed {
+			return
+		}
+		p.GadgetCharges--
+		p.GadgetArmed = true
+		p.LastSecondaryAt = ts
+		return
+	}
 	if primary && p.SuperCharge < 100 {
 		return
 	}
@@ -1333,7 +1403,9 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 			}
 			p.LastPrimaryAt = ts
 			p.SuperCharge = 0
-			p.AttackPulse++
+			if p.HeroName != "Mandy" {
+				p.SuperPulse++
+			}
 			p.RevealedUntil = time.Now().UnixMilli() + 2000
 			return
 		}
@@ -1341,6 +1413,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 	if primary {
 		p.LastPrimaryAt = ts
 		p.SuperCharge = 0
+		p.SuperPulse++
 	} else {
 		p.LastSecondaryAt = ts
 	}
@@ -1418,7 +1491,7 @@ func (gs *GameState) playerRotate(id string, ts int64, rotation float64, aimDist
 
 func (gs *GameState) playerShoot(id string, ts int64, screenAngle float64, aimDistance ...float64) {
 	p := gs.Players[id]
-	if p == nil || !p.IsAlive() || p.StunUntil > ts || gs.State != GameStateGame || p.Ammo <= 0 {
+	if p == nil || !p.IsAlive() || p.StunUntil > ts || p.ChannelUntil > ts || gs.State != GameStateGame || p.Ammo <= 0 {
 		return
 	}
 	delta := ts - p.LastShootAt
@@ -1437,6 +1510,7 @@ func (gs *GameState) playerShoot(id string, ts int64, screenAngle float64, aimDi
 	angle := worldAngleFromScreen(screenAngle)
 	p.Rotation = angle
 	p.AttackPulse++
+	p.StealthUntil = 0
 	p.RevealedUntil = time.Now().UnixMilli() + 2000
 	if kit := BasicCombatKitFor(p.HeroName); kit != nil {
 		distance := kit.AttackRange()
@@ -1844,6 +1918,8 @@ func (gs *GameState) setPlayersActive(active bool) {
 			p.Lives = p.MaxLives
 			p.Kills = 0
 			p.SuperCharge = 0
+			p.FocusStartedAt, p.FocusCharge = 0, 0
+			p.GadgetArmed, p.GadgetCharges = false, 3
 			p.Ammo = p.MaxAmmo
 			p.NextAmmoAt = 0
 		} else {

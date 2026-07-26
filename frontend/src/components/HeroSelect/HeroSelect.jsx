@@ -2,7 +2,7 @@ import {useEffect, useMemo, useState} from "react"
 import axios from "axios"
 import {BATTLE_URL} from "../../utils/urls.js"
 import {HeroModelPreview} from "./HeroModelPreview.jsx"
-import {normalizeHeroConfig} from "../BattleGame/heroesConfig.js"
+import {HEROES_CONFIG, normalizeHeroConfig} from "../BattleGame/heroesConfig.js"
 import "./HeroSelect.css"
 
 const RARITIES = ["rare", "super-rare", "epic", "mythic", "legendary"]
@@ -14,6 +14,13 @@ const HERO_DISPLAY_NAMES = {
   Titan: "GHOST",
   Shadow: "NEEDLE",
   Spark: "REAPER",
+  Mandy: "MANDY",
+  "Fairy Mina": "FAIRY MINA",
+  "Brock Zeus": "BROCK ZEUS",
+  Kaze: "KAZE",
+  "Wukong Mico": "WUKONG MICO",
+  Damian: "DAMIAN",
+  "Persephone Lumi": "PERSEPHONE LUMI",
 }
 const heroDisplay = hero => HERO_DISPLAY_NAMES[hero?.name] || hero?.name
 
@@ -25,16 +32,19 @@ const HERO_DETAILS = {
   Titan:{title:"Цифровой киллер",attack:"Возвратный диск наносит 850 дважды",super:"Q: цифровой сбой · E: тройной диск",passive:"Самая высокая базовая скорость"},
   Shadow:{title:"Био-стрелок",attack:"1050 урона и 6 осколков при разрыве",super:"Q: замедляющая лиана · E: лечение 1450",passive:"Контролирует проходы и кусты"},
   Spark:{title:"Некро-убийца",attack:"Рывок косой на 1450 урона",super:"Q: Жатва 1750 · E: Рой теней",passive:"Жатва восстанавливает 650 HP"},
+  Mandy:{title:"Сахарный боец ближнего боя",attack:"1700 урона конусным ударом посоха",super:"Q: волна через всю карту · E: Карамелизация",passive:"Стоя 1 секунду, получает +35% к дальности"},
 }
 
 const FALLBACK_HEROES = [
-  {name:"Shelly",color:"#8e55d9",maxLives:7400,speed:285,attackDamage:600,role:"Fighter"},
-  {name:"Colt",color:"#e94d56",maxLives:5600,speed:290,attackDamage:420,role:"Sharpshooter"},
-  {name:"Barley",color:"#47a7e8",maxLives:4800,speed:285,attackDamage:760,role:"Thrower"},
-  {name:"Viper",color:"#ff7138",maxLives:9800,speed:235,attackDamage:1250,role:"Tank"},
-  {name:"Titan",color:"#42e3d2",maxLives:4700,speed:325,attackDamage:650,role:"Assassin"},
-  {name:"Shadow",color:"#75d947",maxLives:6200,speed:258,attackDamage:750,role:"Controller"},
-  {name:"Spark",color:"#6d52c7",maxLives:5400,speed:320,attackDamage:1050,role:"Assassin"},
+  {name:"Shelly",color:"#8e55d9",maxLives:7400,speed:250,attackDamage:600,role:"Fighter"},
+  {name:"Colt",color:"#e94d56",maxLives:5600,speed:250,attackDamage:420,role:"Sharpshooter"},
+  {name:"Barley",color:"#47a7e8",maxLives:4800,speed:250,attackDamage:760,role:"Thrower"},
+  {name:"Viper",color:"#ff7138",maxLives:9800,speed:225,attackDamage:1250,role:"Tank"},
+  {name:"Titan",color:"#42e3d2",maxLives:4700,speed:285,attackDamage:650,role:"Assassin"},
+  {name:"Shadow",color:"#75d947",maxLives:6200,speed:240,attackDamage:750,role:"Controller"},
+  {name:"Spark",color:"#6d52c7",maxLives:5400,speed:285,attackDamage:1050,role:"Assassin"},
+  {name:"Mandy",color:"#f4c542",maxLives:7200,speed:250,attackDamage:1700,role:"Fighter"},
+  ...HEROES_CONFIG.filter(hero => hero.name !== "Mandy"),
 ]
 
 export const HeroSelect = ({onSelect, selectedHero}) => {
@@ -177,7 +187,7 @@ const HeroCard = ({hero, rarity, selected, onClick}) => (
 )
 
 const HeroPortrait = ({hero, stage = false}) => {
-  const slug = hero.name.toLowerCase()
+  const slug = hero.name.toLowerCase().replace(/\s+/g, "-")
   return (
     <div className={`hero-portrait ${stage ? "hero-portrait--stage" : ""} hero-portrait--${slug}`} style={{"--hero-color": hero.color}}>
       <div className="hp-shadow"/>

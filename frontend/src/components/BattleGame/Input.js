@@ -78,7 +78,8 @@ export class Input {
 
     window.addEventListener("keyup", (e) => {
 	  if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(e.code)) {
-		setTimeout(() => { this.keys[e.code] = false; this.sendKeyboardMove() }, 34)
+		this.keys[e.code] = false
+		this.sendKeyboardMove()
 	  } else {
 		this.keys[e.code] = false
 	  }

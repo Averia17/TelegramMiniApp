@@ -189,6 +189,10 @@ func (r *Room) sendStateUpdate() {
 			SuperCharge:      p.SuperCharge,
 			Heat:             p.Heat,
 			AttackPulse:      p.AttackPulse,
+			SuperPulse:       p.SuperPulse,
+			FocusCharge:      p.FocusCharge,
+			GadgetArmed:      p.GadgetArmed,
+			GadgetCharges:    p.GadgetCharges,
 			Ammo:             p.Ammo,
 			MaxAmmo:          p.MaxAmmo,
 			ReloadProgress:   reloadProgress,
@@ -331,6 +335,11 @@ func (r *Room) sendStateUpdate() {
 		}
 		visiblePlayers := visiblePlayersForClient(r.State, client.Id, players, now)
 		clientState := game.NewStateUpdate(&gameState, &mapJSON, visiblePlayers, monsters, bullets, props, effects)
+		for _, totem := range r.State.Totems {
+			if totem != nil {
+				clientState.Totems = append(clientState.Totems, game.TotemJSON{Owner: totem.Owner, X: totem.X, Y: totem.Y, HP: totem.HP, MaxHP: 3000})
+			}
+		}
 		data, err := json.Marshal(clientState)
 		if err != nil {
 			continue

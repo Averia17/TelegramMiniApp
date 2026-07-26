@@ -1,17 +1,21 @@
 const clips = Object.freeze({
   idle: "Idle",
   run: "Run",
+  aim: "Aim",
+  aimSuper: "AimSuper",
   attack: "Attack",
   super: "Super",
-  hit: "Hit",
-  death: "Death",
+  spawn: "Spawn",
+  victory: "Victory",
+  defeat: "Defeat",
 })
 
-const hero = (id, scale = 0.92, rotationOffset = 0) => Object.freeze({
+const hero = (id, scale = 0.92, rotationOffset = 0, available = false, assetId = id.toLowerCase()) => Object.freeze({
   id,
-  url: `/assets/heroes/${id.toLowerCase()}.glb`,
-  available: false,
+  url: `/assets/heroes/${assetId}/${assetId}.glb`,
+  available,
   scale,
+  targetHeight: 2.45,
   rotationOffset,
   clips,
 })
@@ -22,8 +26,15 @@ export const HERO_ASSETS = Object.freeze({
   Barley: hero("Barley"),
   Viper: hero("Viper", 1),
   Titan: hero("Titan", 0.9),
-  Shadow: hero("Shadow", 0.94),
+  Shadow: hero("Shadow", 0.94, 0, true, "needle"),
   Spark: hero("Spark", 0.94),
+  Mandy: hero("Mandy", 0.92, 0, true),
+  "Fairy Mina": hero("Fairy Mina", 0.92, 0, true, "fairy-mina"),
+  "Brock Zeus": hero("Brock Zeus", 0.92, 0, true, "brock-zeus"),
+  Kaze: hero("Kaze", 0.92, 0, true),
+  "Wukong Mico": hero("Wukong Mico", 0.92, 0, true, "wukong-mico"),
+  Damian: hero("Damian", 0.92, 0, true),
+  "Persephone Lumi": hero("Persephone Lumi", 0.92, 0, true, "persephone-lumi"),
 })
 
 const environment = (id, placement, footprint = 40, scale = 1, rotationOffset = 0) => Object.freeze({

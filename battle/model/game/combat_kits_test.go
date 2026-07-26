@@ -209,3 +209,113 @@ func TestCoreCombatSuperChargeIsProportionalToActualPvPDamage(t *testing.T) {
 		t.Fatalf("Super charge = %d after %d actual damage, want %d", source.SuperCharge, dealt, wantCharge)
 	}
 }
+
+func TestMandyFocusExtendsMeleeConeAfterOneSecondStill(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mandy", "Mandy", "Mandy")
+	gs.PlayerAdd("target", "Target", "Shelly")
+	source, target := gs.Players["mandy"], gs.Players["target"]
+	source.X, source.Y = 500, 500
+	target.X, target.Y = 650, 500 // Outside 120 base reach, inside 162 focused reach.
+	source.FocusStartedAt = time.Now().Add(-1100 * time.Millisecond).UnixMilli()
+
+	gs.updateMandyFocus()
+	gs.playerShoot("mandy", time.Now().UnixMilli(), 0)
+
+	if source.FocusCharge != 100 {
+		t.Fatalf("focus charge = %d, want 100", source.FocusCharge)
+	}
+	if target.Lives != target.MaxLives-source.AttackDmg {
+		t.Fatalf("focused target lives = %d, want %d", target.Lives, target.MaxLives-source.AttackDmg)
+	}
+
+	source.MoveX = 1
+	gs.updateMandyFocus()
+	if source.FocusCharge != 0 || source.FocusStartedAt != 0 {
+		t.Fatalf("moving focus = (%d, %d), want reset", source.FocusCharge, source.FocusStartedAt)
+	}
+}
+
+func TestMandySuperChargesInExactlyFourSuccessfulSwings(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mandy", "Mandy", "Mandy")
+	gs.PlayerAdd("target", "Target", "Viper")
+	source, target := gs.Players["mandy"], gs.Players["target"]
+	source.X, source.Y, target.X, target.Y = 500, 500, 570, 500
+
+	for swing := 0; swing < 4; swing++ {
+		gs.playerShoot("mandy", int64(1000+swing*1000), 0)
+		source.Ammo = source.MaxAmmo
+		target.Lives = target.MaxLives
+	}
+
+	if source.SuperCharge != 100 {
+		t.Fatalf("Mandy Super charge = %d after four hits, want 100", source.SuperCharge)
+	}
+}
+
+func TestMandyCaramelizationSlowsEveryTargetHitByNextSwing(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mandy", "Mandy", "Mandy")
+	gs.PlayerAdd("one", "One", "Shelly")
+	gs.PlayerAdd("two", "Two", "Shelly")
+	source := gs.Players["mandy"]
+	source.X, source.Y = 500, 500
+	gs.Players["one"].X, gs.Players["one"].Y = 565, 485
+	gs.Players["two"].X, gs.Players["two"].Y = 570, 515
+	now := time.Now().UnixMilli()
+
+	gs.playerAbility("mandy", now, "secondary")
+	gs.playerShoot("mandy", now+1, 0)
+
+	if source.GadgetArmed {
+		t.Fatal("gadget should be consumed by the next swing")
+	}
+	for _, id := range []string{"one", "two"} {
+		if remaining := gs.Players[id].SlowUntil - now; remaining < 2490 || remaining > 2510 {
+			t.Fatalf("%s slow remaining = %dms, want 2500ms", id, remaining)
+		}
+	}
+}
+
+func TestMandySuperWaits750msThenHitsFullMapRectangleAndBreaksWalls(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mandy", "Mandy", "Mandy")
+	gs.PlayerAdd("inside", "Inside", "Viper")
+	gs.PlayerAdd("outside", "Outside", "Viper")
+	source := gs.Players["mandy"]
+	source.X, source.Y, source.Rotation, source.SuperCharge = 300, 300, math.Pi/4, 100
+	gs.Players["inside"].X, gs.Players["inside"].Y = 520, 520
+	gs.Players["outside"].X, gs.Players["outside"].Y = 520, 650
+	wall := &geometry.WallTile{MinX: 430, MinY: 430, MaxX: 470, MaxY: 470, Type: "destructible"}
+	gs.Map.Collisions = append(gs.Map.Collisions, wall)
+	gs.Walls.Insert(wall)
+	now := time.Now().UnixMilli()
+
+	gs.playerAbility("mandy", now, "primary")
+	if len(gs.PendingMandySupers) != 1 || source.ChannelUntil != now+750 {
+		t.Fatalf("pending supers=%d channelUntil=%d, want one cast ending at %d", len(gs.PendingMandySupers), source.ChannelUntil, now+750)
+	}
+	if gs.Players["inside"].Lives != gs.Players["inside"].MaxLives {
+		t.Fatal("Mandy Super dealt damage before its wind-up finished")
+	}
+
+	gs.PendingMandySupers[0].TriggerAt = time.Now().UnixMilli()
+	gs.updatePendingMandySupers()
+
+	if got := gs.Players["inside"].MaxLives - gs.Players["inside"].Lives; got != 3200 {
+		t.Fatalf("inside damage = %d, want 3200", got)
+	}
+	if gs.Players["outside"].Lives != gs.Players["outside"].MaxLives {
+		t.Fatal("target outside 2.5-tile rectangle was hit")
+	}
+	for _, candidate := range gs.Map.Collisions {
+		if candidate == wall {
+			t.Fatal("Mandy Super did not destroy intersecting wall")
+		}
+	}
+}

@@ -37,6 +37,15 @@ type StateUpdate struct {
 	Bullets  []BulletJSON           `json:"bullets"`
 	Props    []PropJSON             `json:"props"`
 	Effects  []EffectJSON           `json:"effects,omitempty"`
+	Totems   []TotemJSON            `json:"totems,omitempty"`
+}
+
+type TotemJSON struct {
+	Owner string  `json:"owner"`
+	X     float64 `json:"x"`
+	Y     float64 `json:"y"`
+	HP    int     `json:"hp"`
+	MaxHP int     `json:"maxHp"`
 }
 
 type EffectJSON struct {
@@ -80,6 +89,10 @@ type PlayerJSON struct {
 	SuperCharge      int                `json:"superCharge"`
 	Heat             int                `json:"heat,omitempty"`
 	AttackPulse      int                `json:"attackPulse,omitempty"`
+	SuperPulse       int                `json:"superPulse,omitempty"`
+	FocusCharge      int                `json:"focusCharge,omitempty"`
+	GadgetArmed      bool               `json:"gadgetArmed,omitempty"`
+	GadgetCharges    int                `json:"gadgetCharges,omitempty"`
 	Ammo             int                `json:"ammo"`
 	MaxAmmo          int                `json:"maxAmmo"`
 	ReloadProgress   float64            `json:"reloadProgress,omitempty"`

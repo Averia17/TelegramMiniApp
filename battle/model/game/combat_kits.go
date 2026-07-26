@@ -20,6 +20,7 @@ type CombatKit interface {
 type ShellyKit struct{}
 type ColtKit struct{}
 type BarleyKit struct{}
+type MandyKit struct{}
 
 type ScheduledShot struct {
 	Owner        string
@@ -49,6 +50,13 @@ type DamageZone struct {
 	Group      string
 }
 
+type PendingMandySuper struct {
+	Owner     string
+	X, Y      float64
+	Angle     float64
+	TriggerAt int64
+}
+
 func CombatKitFor(hero string) CombatKit {
 	switch hero {
 	case "Shelly":
@@ -57,6 +65,20 @@ func CombatKitFor(hero string) CombatKit {
 		return ColtKit{}
 	case "Barley":
 		return BarleyKit{}
+	case "Mandy":
+		return MandyKit{}
+	case "Fairy Mina":
+		return MinaKit{}
+	case "Brock Zeus":
+		return BrockZeusKit{}
+	case "Kaze":
+		return KazeKit{}
+	case "Wukong Mico":
+		return WukongMicoKit{}
+	case "Damian":
+		return DamianKit{}
+	case "Persephone Lumi":
+		return PersephoneLumiKit{}
 	default:
 		return nil
 	}
@@ -97,6 +119,148 @@ func (ColtKit) AimShape() string       { return "line" }
 func (ColtKit) AttackRange() float64   { return 650 }
 func (BarleyKit) AimShape() string     { return "lob" }
 func (BarleyKit) AttackRange() float64 { return 620 }
+func (MandyKit) AimShape() string      { return "cone" }
+func (MandyKit) AttackRange() float64  { return 120 }
+
+func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ float64) {
+	reach := 120.0
+	if source.FocusCharge >= 100 {
+		reach *= 1.35
+	}
+	halfArc := 42.0 * math.Pi / 180
+	hits := 0
+	slowUntil := int64(0)
+	if source.GadgetArmed {
+		slowUntil = ts + 2500
+		source.GadgetArmed = false
+	}
+	for _, target := range gs.Players {
+		if !target.CanBulletHurt(source.PlayerId, source.Team) || !insideSector(source.X, source.Y, target.X, target.Y, target.Radius, angle, reach, halfArc) {
+			continue
+		}
+		if gs.dealPlayerDamage(source, target, source.AttackDmg) > 0 {
+			hits++
+			if slowUntil > 0 {
+				target.SlowUntil = slowUntil
+			}
+		}
+	}
+	for _, target := range gs.Monsters {
+		if target == nil || !target.IsAlive() || !insideSector(source.X, source.Y, target.X, target.Y, target.Radius, angle, reach, halfArc) {
+			continue
+		}
+		target.Hurt(source.AttackDmg)
+		hits++
+	}
+	if hits > 0 {
+		source.SuperCharge = int(math.Min(100, float64(source.SuperCharge+25)))
+	}
+	gs.addEffect("mandy_staff_swing", source.X, source.Y, 0, 0, reach, angle, reach, halfArc, source.Color, 0, 360)
+}
+
+func (MandyKit) Super(gs *GameState, source *player.Player, ts int64, angle, _ float64) bool {
+	const windup = int64(750)
+	source.MoveX, source.MoveY = 0, 0
+	source.ChannelUntil = ts + windup
+	gs.PendingMandySupers = append(gs.PendingMandySupers, &PendingMandySuper{
+		Owner: source.PlayerId, X: source.X, Y: source.Y, Angle: angle, TriggerAt: ts + windup,
+	})
+	gs.addEffect("mandy_super_charge", source.X, source.Y, 0, 0, 80, angle, 0, 0, "#ffd84d", 0, windup)
+	return true
+}
+
+func insideSector(x, y, targetX, targetY, targetRadius, angle, reach, halfArc float64) bool {
+	dx, dy := targetX-x, targetY-y
+	delta := math.Atan2(math.Sin(math.Atan2(dy, dx)-angle), math.Cos(math.Atan2(dy, dx)-angle))
+	return math.Hypot(dx, dy) <= reach+targetRadius && math.Abs(delta) <= halfArc
+}
+
+func (gs *GameState) updateMandyFocus() {
+	now := time.Now().UnixMilli()
+	for _, source := range gs.Players {
+		if source == nil || source.HeroName != "Mandy" || !source.IsAlive() {
+			continue
+		}
+		if math.Hypot(source.MoveX, source.MoveY) > .01 || source.ChannelUntil > now {
+			source.FocusStartedAt, source.FocusCharge = 0, 0
+			continue
+		}
+		if source.FocusStartedAt == 0 {
+			source.FocusStartedAt = now
+		}
+		source.FocusCharge = int(math.Min(100, float64(now-source.FocusStartedAt)/10))
+	}
+}
+
+func (gs *GameState) updatePendingMandySupers() {
+	now := time.Now().UnixMilli()
+	kept := gs.PendingMandySupers[:0]
+	for _, cast := range gs.PendingMandySupers {
+		if cast == nil {
+			continue
+		}
+		if cast.TriggerAt > now {
+			kept = append(kept, cast)
+			continue
+		}
+		source := gs.Players[cast.Owner]
+		if source == nil || !source.IsAlive() {
+			continue
+		}
+		source.SuperPulse++
+		reach := math.Hypot(gs.Map.WidthInPixels, gs.Map.HeightInPixels) + TileSize
+		for _, target := range gs.Players {
+			if !target.CanBulletHurt(source.PlayerId, source.Team) || !insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {
+				continue
+			}
+			gs.dealPlayerDamage(source, target, 3200)
+		}
+		for _, target := range gs.Monsters {
+			if target != nil && target.IsAlive() && insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {
+				target.Hurt(3200)
+			}
+		}
+		gs.destroyWallsInBeam(cast.X, cast.Y, cast.Angle, reach, 50)
+		gs.addEffect("mandy_super_wave", cast.X, cast.Y, cast.X+math.Cos(cast.Angle)*reach, cast.Y+math.Sin(cast.Angle)*reach, 50, cast.Angle, reach, 0, "#ffd84d", 3200, 700)
+	}
+	gs.PendingMandySupers = kept
+}
+
+func insideBeam(x, y, targetX, targetY, targetRadius, angle, reach, halfWidth float64) bool {
+	dx, dy := targetX-x, targetY-y
+	along := dx*math.Cos(angle) + dy*math.Sin(angle)
+	across := math.Abs(-dx*math.Sin(angle) + dy*math.Cos(angle))
+	return along >= -targetRadius && along <= reach+targetRadius && across <= halfWidth+targetRadius
+}
+
+func (gs *GameState) destroyWallsInBeam(x, y, angle, reach, halfWidth float64) int {
+	kept := gs.Map.Collisions[:0]
+	destroyed := 0
+	cosine, sine := math.Cos(angle), math.Sin(angle)
+	for _, wall := range gs.Map.Collisions {
+		centerX, centerY := (wall.MinX+wall.MaxX)/2, (wall.MinY+wall.MaxY)/2
+		halfX, halfY := (wall.MaxX-wall.MinX)/2, (wall.MaxY-wall.MinY)/2
+		dx, dy := centerX-x, centerY-y
+		along := dx*cosine + dy*sine
+		across := math.Abs(-dx*sine + dy*cosine)
+		alongExtent := math.Abs(cosine)*halfX + math.Abs(sine)*halfY
+		acrossExtent := math.Abs(sine)*halfX + math.Abs(cosine)*halfY
+		if wall.Type == "destructible" && along+alongExtent >= 0 && along-alongExtent <= reach && across <= halfWidth+acrossExtent {
+			destroyed++
+			continue
+		}
+		kept = append(kept, wall)
+	}
+	if destroyed > 0 {
+		gs.Map.Collisions = kept
+		gs.MapRevision++
+		gs.Walls = geometry.NewSpatialHash(TileSize)
+		for _, wall := range kept {
+			gs.Walls.Insert(wall)
+		}
+	}
+	return destroyed
+}
 
 func (ShellyKit) Basic(gs *GameState, source *player.Player, _ int64, angle, _ float64) {
 	// Five independent hitboxes distributed over a 30 degree cone.

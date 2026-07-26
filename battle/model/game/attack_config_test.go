@@ -2,11 +2,10 @@ package game
 
 import "testing"
 
-func TestEveryHeroHasServerAuthoritativeUniqueAttackConfig(t *testing.T) {
-	if len(Heroes) != 7 {
-		t.Fatalf("heroes = %d, want 7", len(Heroes))
+func TestEveryHeroHasServerAuthoritativeAttackConfig(t *testing.T) {
+	if len(Heroes) != 14 {
+		t.Fatalf("heroes = %d, want 14", len(Heroes))
 	}
-	archetypes := make(map[string]string)
 	for _, hero := range Heroes {
 		config := hero.Attack
 		if config.Archetype == "" || config.AimShape == "" || config.Range <= 0 {
@@ -20,10 +19,6 @@ func TestEveryHeroHasServerAuthoritativeUniqueAttackConfig(t *testing.T) {
 			t.Fatalf("%s kit/config mismatch: kit=%s/%.0f config=%s/%.0f",
 				hero.Name, kit.AimShape(), kit.AttackRange(), config.AimShape, config.Range)
 		}
-		if previous, exists := archetypes[config.Archetype]; exists {
-			t.Fatalf("%s and %s share attack archetype %q", previous, hero.Name, config.Archetype)
-		}
-		archetypes[config.Archetype] = hero.Name
 	}
 }
 
@@ -36,6 +31,7 @@ func TestConfiguredHeroesExecuteExpectedBasicAttackArchetype(t *testing.T) {
 		{"Titan", 1},
 		{"Shadow", 1},
 		{"Spark", 0},
+		{"Mandy", 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.hero, func(t *testing.T) {

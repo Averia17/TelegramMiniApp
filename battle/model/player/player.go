@@ -42,6 +42,7 @@ type Player struct {
 	Heat              int
 	HeatUntil         int64
 	AttackPulse       int
+	SuperPulse        int
 	Aiming            bool
 	AimDistance       float64
 	ShieldUntil       int64
@@ -65,6 +66,10 @@ type Player struct {
 	LastSecondaryAt   int64
 	HasteUntil        int64
 	SlowUntil         int64
+	FocusStartedAt    int64
+	FocusCharge       int
+	GadgetArmed       bool
+	GadgetCharges     int
 	RegenRate         float64
 	RegenCarry        float64
 	LastDamageAt      int64
