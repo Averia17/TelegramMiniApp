@@ -3,23 +3,32 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+from consumers import consume_battle_results
 from fastapi import FastAPI
+from routes import auth_router, economy_router, payments_router, users_router
+from routes.deps import session_pool
 from starlette.middleware.cors import CORSMiddleware
 
-from routes import users_router, payments_router, economy_router, auth_router
-from consumers import consume_battle_results
-from routes.deps import session_pool
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task=asyncio.create_task(consume_battle_results(session_pool)); yield; task.cancel()
-    try: await task
-    except asyncio.CancelledError: pass
+    task = asyncio.create_task(consume_battle_results(session_pool))
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
 
 app = FastAPI(lifespan=lifespan)
 allowed_origins = ["*"]
 if os.getenv("APP_ENV", "development").lower() == "production":
-    allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
+    allowed_origins = [
+        origin.strip()
+        for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
 
 app.add_middleware(
     CORSMiddleware,

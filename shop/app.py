@@ -1,9 +1,11 @@
 import logging
 import os
+
 from fastapi import APIRouter, FastAPI
 from middlewares import TimeoutMiddleware
 from routes import router
 from starlette.middleware.cors import CORSMiddleware
+
 app = FastAPI()
 prefix_router = APIRouter(prefix="/api")
 
@@ -14,7 +16,11 @@ origins = [
     # "http://localhost",
 ]
 if os.getenv("APP_ENV", "development").lower() == "production":
-    origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
+    origins = [
+        origin.strip()
+        for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
 else:
     origins = ["*"]
 

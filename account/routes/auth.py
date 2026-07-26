@@ -1,10 +1,10 @@
 import os
 
+from auth import issue_access_token, verify_telegram_init_data
 from fastapi import APIRouter, Depends, Header, HTTPException
+from infrastructure import Repo
 from pydantic import BaseModel
 
-from auth import issue_access_token, verify_telegram_init_data
-from infrastructure import Repo
 from .deps import get_repo
 
 router = APIRouter(prefix="/auth")
@@ -33,5 +33,11 @@ async def telegram_auth(
     else:
         raise HTTPException(status_code=401, detail="Open the game through Telegram")
     if is_development_user:
-        await repo.users.get_or_create_user(user_id, f"Dev Player {user_id}", f"dev_{user_id}")
-    return {"user_id": user_id, "access_token": issue_access_token(user_id), "expires_in": 900}
+        await repo.users.get_or_create_user(
+            user_id, f"Dev Player {user_id}", f"dev_{user_id}"
+        )
+    return {
+        "user_id": user_id,
+        "access_token": issue_access_token(user_id),
+        "expires_in": 900,
+    }

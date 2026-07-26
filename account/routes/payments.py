@@ -1,10 +1,10 @@
+from auth import require_shop_service
 from fastapi import APIRouter, Depends, HTTPException
-
 from infrastructure import Repo
 from infrastructure.database.models import TransactionType
 from schemas import PaymentRequest
+
 from .deps import get_repo
-from auth import require_shop_service
 
 router = APIRouter(prefix="/payment")
 
@@ -16,7 +16,9 @@ async def payment(
     _: None = Depends(require_shop_service),
 ):
     async with repo.session.begin():
-        existing_transaction = await repo.transactions.get_by_payment_key(data.payment_key)
+        existing_transaction = await repo.transactions.get_by_payment_key(
+            data.payment_key
+        )
         if existing_transaction:
             return {
                 "status": "success",
@@ -57,11 +59,15 @@ async def refund(
     _: None = Depends(require_shop_service),
 ):
     async with repo.session.begin():
-        original_transaction = await repo.transactions.get_by_payment_key(data.payment_key)
+        original_transaction = await repo.transactions.get_by_payment_key(
+            data.payment_key
+        )
         if not original_transaction:
             raise HTTPException(status_code=404, detail="Original payment not found")
 
-        refund_transaction = await repo.transactions.get_refund_for_payment(original_transaction.id)
+        refund_transaction = await repo.transactions.get_refund_for_payment(
+            original_transaction.id
+        )
         if refund_transaction:
             return {
                 "status": "success",
@@ -70,14 +76,18 @@ async def refund(
             }
 
         if original_transaction.user_id != data.user_id:
-            raise HTTPException(status_code=400, detail="Refund user does not match payment")
+            raise HTTPException(
+                status_code=400, detail="Refund user does not match payment"
+            )
         user = await repo.users.get_by_id(original_transaction.user_id, for_update=True)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
         refund_amount = -original_transaction.amount
         if refund_amount <= 0:
-            raise HTTPException(status_code=409, detail="Original transaction cannot be refunded")
+            raise HTTPException(
+                status_code=409, detail="Original transaction cannot be refunded"
+            )
         user.clicks += refund_amount
 
         transaction = await repo.transactions.create(

@@ -30,9 +30,13 @@ async def current_user(authorization: str = Header(default="")) -> Authenticated
     secret = _secret()
     try:
         payload, signature = token.split(".", 1)
-        expected = base64.urlsafe_b64encode(
-            hmac.new(secret.encode(), payload.encode(), hashlib.sha256).digest()
-        ).rstrip(b"=").decode()
+        expected = (
+            base64.urlsafe_b64encode(
+                hmac.new(secret.encode(), payload.encode(), hashlib.sha256).digest()
+            )
+            .rstrip(b"=")
+            .decode()
+        )
         if not secret or not hmac.compare_digest(expected, signature):
             raise ValueError
         decoded = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
@@ -41,7 +45,9 @@ async def current_user(authorization: str = Header(default="")) -> Authenticated
             raise ValueError
         return AuthenticatedUser(int(claims["sub"]))
     except (ValueError, KeyError, TypeError, json.JSONDecodeError):
-        raise HTTPException(status_code=401, detail="Invalid or expired access token") from None
+        raise HTTPException(
+            status_code=401, detail="Invalid or expired access token"
+        ) from None
 
 
 def service_token() -> str:
