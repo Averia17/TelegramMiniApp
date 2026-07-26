@@ -19,7 +19,7 @@ func NewHandler(svc *service.LeaderboardService) *Handler {
 func (h *Handler) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", h.HandleHealth)
 	mux.HandleFunc("/leaderboard", h.HandleLeaderboard)
-	mux.HandleFunc("/leaderboard/score", h.HandleUpdateScore)
+	// Scores are updated only from authenticated battle-result events via Kafka.
 	mux.HandleFunc("/leaderboard/player/", h.HandleGetPlayer)
 	mux.HandleFunc("/leaderboard/profile/", h.HandleGetProfile)
 }
@@ -45,7 +45,9 @@ func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleLeaderboard(w http.ResponseWriter, r *http.Request) {
 	limit := 100
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
-		limit = l
+		if l < limit {
+			limit = l
+		}
 	}
 	scores, err := h.svc.Top(limit)
 	if err != nil {

@@ -13,8 +13,9 @@ const GAME_MESSAGES = new Set([
 ])
 
 export class GameClient {
-  constructor(url, onStateUpdate, onMessage, onConnect, onDisconnect) {
+  constructor(url, accessToken, onStateUpdate, onMessage, onConnect, onDisconnect) {
     this.url = url
+    this.accessToken = accessToken
     this.onStateUpdate = onStateUpdate
     this.onMessage = onMessage
     this.onConnect = onConnect
@@ -25,12 +26,14 @@ export class GameClient {
     this.lastState = null
 	this.stateTimes = []
 	this.stateHz = 0
-	this.lastStateBytes = 0
+    this.lastStateBytes = 0
+    this.lastClientTs = 0
   }
 
   connect() {
     this.ws = new WebSocket(this.url)
     this.ws.onopen = () => {
+      this.ws.send(JSON.stringify({type: "auth", token: this.accessToken}))
       this.connected = true
       this.onConnect?.()
     }
@@ -73,33 +76,34 @@ export class GameClient {
   }
 
   send(type, value) {
-    if (this.ws?.readyState !== WebSocket.OPEN) return
-    this.ws.send(JSON.stringify({type, ts: Date.now(), value}))
+    if (this.ws?.readyState !== WebSocket.OPEN) return null
+    const ts = Math.max(Date.now(), this.lastClientTs + 1)
+    this.lastClientTs = ts
+    this.ws.send(JSON.stringify({type, ts, value}))
+    return ts
   }
 
-  joinById(roomId, playerName, heroName, userId) {
+  joinById(roomId, playerName, heroName) {
     if (this.ws?.readyState !== WebSocket.OPEN) return
     this.ws.send(JSON.stringify({
       type: "join_by_id",
       roomId,
       playerName: playerName || "Player",
       heroName: heroName || "",
-      userId: String(userId || ""),
     }))
   }
 
-  findMatch(playerName, heroName, userId) {
+  findMatch(playerName, heroName) {
     if (this.ws?.readyState !== WebSocket.OPEN) return
     this.ws.send(JSON.stringify({
       type: "find_match",
       playerName: playerName || "Player",
       heroName: heroName || "",
-      userId: String(userId || ""),
     }))
   }
 
   move(x, y) {
-    this.send("move", {x, y})
+    return this.send("move", {x, y})
   }
 
   rotate(rotation, aimDistance = 0) {

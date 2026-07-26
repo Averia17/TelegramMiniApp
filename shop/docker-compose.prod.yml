@@ -13,6 +13,8 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6388
       KAFKA_ADDR: kafka:9092
+      APP_ENV: production
+      APP_AUTH_SECRET: "${APP_AUTH_SECRET}"
     restart: always
     depends_on:
       - shop-db

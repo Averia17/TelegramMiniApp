@@ -3,7 +3,9 @@ import {useNavigate} from "react-router-dom"
 import {GameClient} from "./GameClient"
 import {Renderer} from "./Renderer"
 import {Input} from "./Input"
+import {NetworkSimulation} from "./NetworkSimulation"
 import {WS_URL} from "../../utils/urls.js"
+import {getAccessToken} from "../../utils/auth.js"
 import "./BattleGame.css"
 
 const saveBattleResult = result => {
@@ -25,6 +27,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const joinedRef = useRef(false)
   const viewRef = useRef("connecting")
   const latestStateRef = useRef(null)
+  const simulationRef = useRef(null)
   const lastUiUpdateRef = useRef(0)
   const savedResultRef = useRef(false)
   const [mobileMode, setMobileMode] = useState(() => window.matchMedia("(pointer: coarse), (max-width: 700px)").matches)
@@ -83,14 +86,19 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
     window.visualViewport?.addEventListener("resize", resize)
 
     const renderer = new Renderer(canvas)
+    const simulation = new NetworkSimulation()
+    simulationRef.current = simulation
+    if (import.meta.env.DEV) window.__battleSimulation = simulation
     rendererRef.current = renderer
+    if (import.meta.env.DEV) window.__battleRenderer = renderer
     resize()
 
     const client = new GameClient(
       `${WS_URL}/ws`,
+      getAccessToken(),
       (state) => {
         latestStateRef.current = state
-        renderer.setState(state)
+        simulation.ingest(state)
         const now = performance.now()
         if (!lastUiUpdateRef.current || now - lastUiUpdateRef.current >= 100) {
           lastUiUpdateRef.current = now
@@ -116,7 +124,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
         }
         if (msg.type === "match_found") {
           if (msg.params?.roomId && clientRef.current) {
-			clientRef.current.joinById(msg.params.roomId, playerName, heroName, effectivePlayerId)
+			clientRef.current.joinById(msg.params.roomId, playerName, heroName)
           }
         }
         if (msg.type === "start") {
@@ -150,12 +158,48 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
     if (import.meta.env.DEV) window.__battleClient = client
     client.connect()
 
-    const input = new Input(canvas, client, setTouchControls)
+    const input = new Input(canvas, client, setTouchControls, (x, y, ack) => simulation.setInput(x, y, ack))
     inputRef.current = input
 
+    if (import.meta.env.DEV) {
+      window.render_game_to_text = () => {
+        const state = simulation.getDisplayState() || latestStateRef.current
+        const localId = client.playerId
+        const local = state?.players?.[localId]
+        return JSON.stringify({
+          coordinateSystem: "origin top-left; x right; y down",
+          mode: state?.game?.state || viewRef.current,
+          localPlayerId: localId || null,
+          player: local ? {
+            x: local.x,
+            y: local.y,
+            health: local.lives,
+            ammo: local.ammo,
+            hero: local.hero,
+          } : null,
+          visiblePlayers: Object.keys(state?.players || {}).length,
+          projectiles: (state?.bullets || []).length,
+        })
+      }
+      window.advanceTime = milliseconds => {
+        const steps = Math.max(1, Math.round(milliseconds / (1000 / 60)))
+        for (let step = 0; step < steps; step++) simulation.update(1 / 60)
+        const state = simulation.getDisplayState()
+        if (state) renderer.setState(state)
+        renderer.render()
+      }
+    }
+
     let rendererFailed = false
+    let previousFrameAt = performance.now()
     const gameLoop = () => {
+      const frameAt = performance.now()
+      const delta = Math.min(.05, Math.max(0, (frameAt - previousFrameAt) / 1000))
+      previousFrameAt = frameAt
       input.update()
+      simulation.update(delta)
+      const displayState = simulation.getDisplayState()
+      if (displayState) renderer.setState(displayState)
       try {
         renderer.render()
         rendererFailed = false
@@ -176,10 +220,17 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
       input.destroy()
       client.disconnect()
       if (import.meta.env.DEV && window.__battleClient === client) delete window.__battleClient
+      if (import.meta.env.DEV && window.__battleRenderer === renderer) delete window.__battleRenderer
+      if (import.meta.env.DEV && window.__battleSimulation === simulation) delete window.__battleSimulation
+      if (import.meta.env.DEV) {
+        delete window.render_game_to_text
+        delete window.advanceTime
+      }
       renderer.destroy()
       inputRef.current = null
       clientRef.current = null
       rendererRef.current = null
+      simulationRef.current = null
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -188,10 +239,12 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
       const pid = clientRef.current.playerId
       if (pid && gameState.players && gameState.players[pid]) {
         rendererRef.current?.setLocalPlayerId(pid)
+        simulationRef.current?.setLocalPlayerId(pid)
         inputRef.current?.setLocalPlayer(
           pid,
           () => clientRef.current?.lastState || latestStateRef.current || gameState,
           player => rendererRef.current?.worldToScreen(player.x, player.y),
+          (screenX, screenY, player) => rendererRef.current?.screenToAimAngle?.(screenX, screenY, player),
         )
       }
     }
@@ -200,14 +253,14 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   useEffect(() => {
     if (connected && roomId && !joinedRef.current && clientRef.current) {
       joinedRef.current = true
-	  clientRef.current.joinById(roomId, playerName, heroName, effectivePlayerId)
+	  clientRef.current.joinById(roomId, playerName, heroName)
     }
 	}, [connected, roomId, playerName, heroName, effectivePlayerId])
 
   useEffect(() => {
     if (connected && !roomId && !joinedRef.current && clientRef.current) {
       joinedRef.current = true
-	  clientRef.current.findMatch(playerName, heroName, effectivePlayerId)
+	  clientRef.current.findMatch(playerName, heroName)
     }
 	}, [connected, roomId, playerName, heroName, effectivePlayerId])
 
@@ -236,6 +289,10 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
 		connected,
 		stateHz: clientRef.current?.stateHz,
 		stateBytes: clientRef.current?.lastStateBytes,
+		renderer: rendererRef.current?.mode,
+		fps: rendererRef.current?.impl?.fps,
+		drawCalls: rendererRef.current?.impl?.renderer?.info?.render?.calls,
+		triangles: rendererRef.current?.impl?.renderer?.info?.render?.triangles,
 		playerId: clientRef.current?.playerId,
 		state: gameState?.game?.state,
 		x: localPlayer?.x,
@@ -415,11 +472,8 @@ const BattleResultStats = ({result}) => result && (
 const abilityLabel = (hero, slot) => {
   const name = String(hero || "").toLowerCase()
   const labels = {
-    blaze:["ДЕТОНАЦИЯ","ТАКТ. ПЕРЕКАТ"],frost:["ПЕРЕГРУЗКА","ФОРСАЖ"],
     viper:["ИЗВЕРЖЕНИЕ","МАГМА-БРОНЯ"],titan:["ЦИФРОВОЙ СБОЙ","ТРОЙНОЙ ДИСК"],
     shadow:["ЖИВАЯ ЛИАНА","ФОТОСИНТЕЗ"],spark:["ЖАТВА","РОЙ ТЕНЕЙ"],
-    nova:["ЗВЁЗДНЫЙ ЗАЛП","ОТХОД"],rex:["МАГНИТНЫЙ УДАР","РАЗГОН"],
-    pixel:["РАСЩЕПЛЕНИЕ","ЭВОЛЮЦИЯ"],boulder:["ЧУМНОЙ ДОЖДЬ","ТОКСИЧНЫЙ РЫВОК"],
   }
   return labels[name]?.[slot === "primary" ? 0 : 1] || (slot === "primary" ? "ЗАЛП" : "ЩИТ")
 }

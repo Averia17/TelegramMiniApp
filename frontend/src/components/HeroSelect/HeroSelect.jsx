@@ -2,36 +2,39 @@ import {useEffect, useMemo, useState} from "react"
 import axios from "axios"
 import {BATTLE_URL} from "../../utils/urls.js"
 import {HeroModelPreview} from "./HeroModelPreview.jsx"
+import {normalizeHeroConfig} from "../BattleGame/heroesConfig.js"
 import "./HeroSelect.css"
 
 const RARITIES = ["rare", "super-rare", "epic", "mythic", "legendary"]
-const HERO_DISPLAY_NAMES = {Blaze: "КИРА", Frost: "СТРАЙКЕР", Viper: "ВУЛКАН", Titan: "ПРИЗРАК", Shadow: "ИГЛА", Spark: "ЖНЕЦ", Nova: "СЕЛЕСТА", Rex: "ЗИРО", Pixel: "ВЕКТОР", Boulder: "ТОКСИН"}
+const HERO_DISPLAY_NAMES = {
+  Shelly: "SHELLY",
+  Colt: "COLT",
+  Barley: "BARLEY",
+  Viper: "VOLCANO",
+  Titan: "GHOST",
+  Shadow: "NEEDLE",
+  Spark: "REAPER",
+}
 const heroDisplay = hero => HERO_DISPLAY_NAMES[hero?.name] || hero?.name
 
 const HERO_DETAILS = {
-  Blaze:{title:"Штурмовик-охотница",attack:"5×520 урона; попадания оставляют Метки",super:"Q: залп-детонация · E: перекат и щит",passive:"Метки усиливают добивание цели"},
-  Frost:{title:"Энергетический стрелок",attack:"6×360 урона; узкая скоростная очередь",super:"Q: перегруженный луч · E: форсаж",passive:"Точный трекинг награждается пробиванием"},
+  Shelly:{title:"Боец с дробовиком",attack:"5 дробинок широким конусом",super:"Q: отбрасывающий залп, разрушающий стены",passive:"Особенно опасна на близкой дистанции"},
+  Colt:{title:"Мобильный стрелок",attack:"Очередь из 6 пуль продолжается в движении",super:"Q: 12 пробивных пуль, разрушающих стены",passive:"Удерживает длинные линии огнём"},
+  Barley:{title:"Метатель-контроллер",attack:"Бросок через стены оставляет зону урона",super:"Q: пять больших зон длительного урона",passive:"Вынуждает врагов покидать укрытия"},
   Viper:{title:"Тяжеловес-магматик",attack:"1850 урона сектором с притяжением",super:"Q: прыжок-извержение · E: 2600 щита",passive:"Самый высокий HP, но низкая скорость"},
   Titan:{title:"Цифровой киллер",attack:"Возвратный диск наносит 850 дважды",super:"Q: цифровой сбой · E: тройной диск",passive:"Самая высокая базовая скорость"},
   Shadow:{title:"Био-стрелок",attack:"1050 урона и 6 осколков при разрыве",super:"Q: замедляющая лиана · E: лечение 1450",passive:"Контролирует проходы и кусты"},
   Spark:{title:"Некро-убийца",attack:"Рывок косой на 1450 урона",super:"Q: Жатва 1750 · E: Рой теней",passive:"Жатва восстанавливает 650 HP"},
-  Nova:{title:"Элитный снайпер",attack:"1200–2100 урона в зависимости от дистанции",super:"Q: 3 пробивных выстрела · E: отход",passive:"Максимальный урон на дальней дистанции"},
-  Rex:{title:"Кинетический эмо",attack:"Два удара по 850 и конвертация в щит",super:"Q: магнитный удар · E: разгон",passive:"40% защиты во время активного щита"},
-  Pixel:{title:"Модульный мех",attack:"Квантовое ядро 1250 с расщеплением",super:"Q: 5 ядер · E: эволюция",passive:"Эволюция ускоряет и укрепляет меха"},
-  Boulder:{title:"Чумной вор",attack:"3×480 плюс 1200 яда за 4 секунды",super:"Q: 7 ядовитых дротиков · E: рывок",passive:"Яд продолжает наносить урон вне видимости"},
 }
 
 const FALLBACK_HEROES = [
-  {name:"Blaze",color:"#c64bff",maxLives:5600,speed:1.12,attackDamage:520,role:"Assault"},
-  {name:"Frost",color:"#35d9ff",maxLives:5000,speed:1.18,attackDamage:360,role:"Gunner"},
-  {name:"Viper",color:"#ff7138",maxLives:9800,speed:.82,attackDamage:1850,role:"Tank"},
-  {name:"Titan",color:"#42e3d2",maxLives:4700,speed:1.35,attackDamage:850,role:"Assassin"},
-  {name:"Shadow",color:"#75d947",maxLives:6200,speed:.98,attackDamage:1050,role:"Controller"},
-  {name:"Spark",color:"#6d52c7",maxLives:5400,speed:1.28,attackDamage:1450,role:"Assassin"},
-  {name:"Nova",color:"#fff4d0",maxLives:4300,speed:1.05,attackDamage:1200,role:"Marksman"},
-  {name:"Rex",color:"#4bc7ff",maxLives:7200,speed:1.2,attackDamage:850,role:"Bruiser"},
-  {name:"Pixel",color:"#ffd43b",maxLives:6600,speed:1,attackDamage:1250,role:"Fighter"},
-  {name:"Boulder",color:"#59d348",maxLives:5200,speed:1.18,attackDamage:480,role:"Debuffer"},
+  {name:"Shelly",color:"#8e55d9",maxLives:7400,speed:285,attackDamage:600,role:"Fighter"},
+  {name:"Colt",color:"#e94d56",maxLives:5600,speed:290,attackDamage:420,role:"Sharpshooter"},
+  {name:"Barley",color:"#47a7e8",maxLives:4800,speed:285,attackDamage:760,role:"Thrower"},
+  {name:"Viper",color:"#ff7138",maxLives:9800,speed:235,attackDamage:1250,role:"Tank"},
+  {name:"Titan",color:"#42e3d2",maxLives:4700,speed:325,attackDamage:650,role:"Assassin"},
+  {name:"Shadow",color:"#75d947",maxLives:6200,speed:258,attackDamage:750,role:"Controller"},
+  {name:"Spark",color:"#6d52c7",maxLives:5400,speed:320,attackDamage:1050,role:"Assassin"},
 ]
 
 export const HeroSelect = ({onSelect, selectedHero}) => {
@@ -41,8 +44,8 @@ export const HeroSelect = ({onSelect, selectedHero}) => {
 
   useEffect(() => {
     axios.get(`${BATTLE_URL}/heroes`)
-      .then(({data}) => setHeroes(data || []))
-      .catch(() => setHeroes(FALLBACK_HEROES))
+      .then(({data}) => setHeroes((data || []).map(normalizeHeroConfig)))
+      .catch(() => setHeroes(FALLBACK_HEROES.map(normalizeHeroConfig)))
       .finally(() => setLoading(false))
   }, [])
 

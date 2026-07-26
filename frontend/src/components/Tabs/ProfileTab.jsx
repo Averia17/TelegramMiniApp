@@ -11,7 +11,7 @@ export const ProfileTab = ({id}) => {
   useEffect(() => {
     let active = true
     Promise.allSettled([
-      axios.get(`${API_URL}/users/${id}/profile`, {timeout: 7000}),
+      axios.get(`${API_URL}/users/me/profile`, {timeout: 7000}),
       axios.get(`${LB_URL}/profile/${id}`, {timeout: 7000}),
     ]).then(([account, battle]) => {
       if (!active) return

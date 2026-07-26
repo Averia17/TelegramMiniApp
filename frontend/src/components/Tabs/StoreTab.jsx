@@ -37,7 +37,7 @@ export const StoreTab = ({userId, economy, onEconomyChange}) => {
     setOpening(product.product_id)
     setNotice("")
     try {
-      const {data} = await axios.post(`${API_URL}/economy/${userId}/chests/${product.product_id}/open`)
+      const {data} = await axios.post(`${API_URL}/economy/me/chests/${product.product_id}/open`)
       onEconomyChange?.({...economy, gold: data.gold, energy: data.energy, max_energy: data.max_energy})
       setReward({
         amount: data.energy_reward,

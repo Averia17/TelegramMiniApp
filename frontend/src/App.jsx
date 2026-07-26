@@ -2,8 +2,8 @@ import {lazy, Suspense, useEffect, useState} from "react"
 import {BrowserRouter, Route, Routes, useParams, useSearchParams} from "react-router-dom"
 import LandingPage from "./pages/landing-page.jsx"
 import axios from "axios"
-import {getCookie, setCookie} from "./utils/cookie.js"
 import {API_URL} from "./utils/urls.js"
+import {authenticate} from "./utils/auth.js"
 
 const BattleGame = lazy(() => import("./components/BattleGame/BattleGame.jsx").then(module => ({default: module.BattleGame})))
 
@@ -23,32 +23,23 @@ const BattlePage = ({id}) => {
 
 const App = () => {
   const [id, setId] = useState(undefined)
+  const [authError, setAuthError] = useState("")
 
   useEffect(() => {
-    const initData = window.Telegram?.WebApp.initDataUnsafe
-    let userId = getCookie("user_id")
-    if (!userId) userId = window.localStorage.getItem("battle_user_id")
-    if (initData?.start_param && initData.start_param.includes("inviterId") && initData?.user?.id) {
-      userId = initData.user.id
-      const inviterId = Number(initData.start_param.replace("inviterId", ""))
-      if (userId && inviterId) {
-        axios.post(`${API_URL}/users/${userId}/accept_invite`, {inviter_id: inviterId})
+    authenticate().then(async ({user_id: userId}) => {
+      setId(userId)
+      const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param || ""
+      if (startParam.startsWith("inviterId")) {
+        const inviterId = Number(startParam.slice("inviterId".length))
+        if (inviterId > 0) await axios.post(`${API_URL}/users/me/accept_invite`, {inviter_id: inviterId})
       }
-    }
-    if (initData?.user?.id) {
-      userId = initData.user.id
-    }
-    const parsedId = Number.parseInt(userId)
-    const stableId = Number.isFinite(parsedId) ? parsedId : Math.floor(Math.random() * 900000) + 100000
-    setId(stableId)
-    setCookie("user_id", stableId, 1)
-    window.localStorage.setItem("battle_user_id", String(stableId))
+    }).catch(error => setAuthError(error.response?.data?.detail || "Authentication failed"))
   }, [])
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={id ? <LandingPage id={id}/> : <></>}/>
+        <Route path="/" element={id ? <LandingPage id={id}/> : <div role="alert">{authError || "Авторизация…"}</div>}/>
         <Route path="/battle/:roomId?" element={id ? <BattlePage id={id}/> : <></>}/>
       </Routes>
     </BrowserRouter>

@@ -68,6 +68,7 @@ type Player struct {
 	RegenRate         float64
 	RegenCarry        float64
 	LastDamageAt      int64
+	RevealedUntil     int64
 	HitImpulseX       float64
 	HitImpulseY       float64
 }

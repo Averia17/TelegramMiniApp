@@ -1,11 +1,12 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
-from routes import users_router, payments_router, economy_router
+from routes import users_router, payments_router, economy_router, auth_router
 from consumers import consume_battle_results
 from routes.deps import session_pool
 
@@ -16,11 +17,14 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError: pass
 
 app = FastAPI(lifespan=lifespan)
+allowed_origins = ["*"]
+if os.getenv("APP_ENV", "development").lower() == "production":
+    allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=allowed_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -36,3 +40,4 @@ logging.basicConfig(
 app.include_router(users_router)
 app.include_router(payments_router)
 app.include_router(economy_router)
+app.include_router(auth_router)

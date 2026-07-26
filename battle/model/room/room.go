@@ -177,6 +177,9 @@ func (r *Room) sendStateUpdate() {
 			Color:            p.Color,
 			Kills:            p.Kills,
 			Rotation:         p.Rotation,
+			MoveX:            p.MoveX,
+			MoveY:            p.MoveY,
+			Speed:            p.Speed,
 			Ack:              p.Ack,
 			Hero:             p.HeroName,
 			AttackType:       p.AttackType,
@@ -320,25 +323,17 @@ func (r *Room) sendStateUpdate() {
 		}
 	}
 
-	compactState := game.NewStateUpdate(&gameState, &compactMapJSON, players, monsters, bullets, props, effects)
-	compactData, err := json.Marshal(compactState)
-	if err != nil {
-		return
-	}
-	var fullData []byte
-	if needsFullMap {
-		fullState := game.NewStateUpdate(&gameState, &fullMapJSON, players, monsters, bullets, props, effects)
-		fullData, err = json.Marshal(fullState)
-		if err != nil {
-			return
-		}
-	}
-
 	for _, client := range r.Clients {
-		data := compactData
 		sendingMap := client.MapRevision != r.State.MapRevision
+		mapJSON := compactMapJSON
 		if sendingMap {
-			data = fullData
+			mapJSON = fullMapJSON
+		}
+		visiblePlayers := visiblePlayersForClient(r.State, client.Id, players, now)
+		clientState := game.NewStateUpdate(&gameState, &mapJSON, visiblePlayers, monsters, bullets, props, effects)
+		data, err := json.Marshal(clientState)
+		if err != nil {
+			continue
 		}
 		select {
 		case client.State <- data:
@@ -356,6 +351,44 @@ func (r *Room) sendStateUpdate() {
 			client.MapRevision = r.State.MapRevision
 		}
 	}
+}
+
+func visiblePlayersForClient(state *game.GameState, viewerID string, all map[string]game.PlayerJSON, now int64) map[string]game.PlayerJSON {
+	viewer := state.Players[viewerID]
+	if viewer == nil {
+		return all
+	}
+	visible := make(map[string]game.PlayerJSON, len(all))
+	for id, snapshot := range all {
+		target := state.Players[id]
+		if target == nil {
+			continue
+		}
+		if id == viewerID || (viewer.Team != "" && viewer.Team == target.Team) || target.RevealedUntil > now || math.Hypot(target.X-viewer.X, target.Y-viewer.Y) <= 100 {
+			visible[id] = snapshot
+			continue
+		}
+		concealed := target.StealthUntil > now || playerInsideBush(state, target.X, target.Y)
+		if !concealed {
+			visible[id] = snapshot
+		}
+	}
+	return visible
+}
+
+func playerInsideBush(state *game.GameState, x, y float64) bool {
+	if state == nil || state.Map == nil {
+		return false
+	}
+	for _, wall := range state.Map.Collisions {
+		if wall == nil || (wall.Type != "bush" && wall.Type != "half") {
+			continue
+		}
+		if x >= wall.MinX && x <= wall.MaxX && y >= wall.MinY && y <= wall.MaxY {
+			return true
+		}
+	}
+	return false
 }
 
 func secondsRemaining(until, now int64) float64 {

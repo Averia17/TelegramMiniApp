@@ -74,6 +74,51 @@ func TestShellySuperKnocksBackAndDestroysDestructibleWalls(t *testing.T) {
 	}
 }
 
+func TestColtSuperSchedulesTwelvePiercingWallBreakingRounds(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("colt", "Colt", "Colt")
+	p := gs.Players["colt"]
+	p.X, p.Y, p.Rotation, p.SuperCharge = 500, 500, 0, 100
+	now := time.Now().UnixMilli()
+
+	gs.playerAbility("colt", now-700, "primary")
+	gs.updateScheduledShots()
+
+	if p.SuperCharge != 0 || len(gs.Bullets) != 12 {
+		t.Fatalf("Colt Super charge=%d bullets=%d, want 0 and 12", p.SuperCharge, len(gs.Bullets))
+	}
+	for _, shot := range gs.Bullets {
+		if shot.Kind != "colt_super_round" || shot.MaxRange != 850 || shot.Pierce < 1 || !shot.DestroyWalls {
+			t.Fatalf("invalid Colt Super round: %#v", shot)
+		}
+	}
+}
+
+func TestBarleySuperThrowsFiveGroupedFourTickPoolsAtAimDistance(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("barley", "Barley", "Barley")
+	p := gs.Players["barley"]
+	p.X, p.Y, p.Rotation, p.AimDistance, p.SuperCharge = 600, 600, 0, 240, 100
+	now := time.Now().UnixMilli()
+
+	gs.playerAbility("barley", now, "primary")
+
+	if p.SuperCharge != 0 || len(gs.Bullets) != 5 {
+		t.Fatalf("Barley Super charge=%d bottles=%d, want 0 and 5", p.SuperCharge, len(gs.Bullets))
+	}
+	group := gs.Bullets[0].ZoneGroup
+	for _, bottle := range gs.Bullets {
+		if bottle.Kind != "barley_super_bottle" || bottle.ZoneRadius != 70 || bottle.ZoneTicks != 4 || bottle.ZoneGroup == "" || bottle.ZoneGroup != group {
+			t.Fatalf("invalid Barley Super bottle: %#v", bottle)
+		}
+	}
+	if distance := math.Hypot(gs.Bullets[0].TargetX-p.X, gs.Bullets[0].TargetY-p.Y); math.Abs(distance-240) > .01 {
+		t.Fatalf("Barley Super target distance=%.2f, want 240", distance)
+	}
+}
+
 func TestColtBurstSpawnsSixDelayedRoundsFromCurrentPosition(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame

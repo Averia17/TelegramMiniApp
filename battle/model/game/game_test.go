@@ -28,7 +28,7 @@ func newTestGameState() *GameState {
 func TestUpdateRegenerationUsesHeroRate(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("regen", "Regen", "Blaze")
+	gs.PlayerAdd("regen", "Regen", "Shelly")
 	p := gs.Players["regen"]
 	p.Lives = p.MaxLives / 2
 	p.LastDamageAt = time.Now().Add(-4 * time.Second).UnixMilli()
@@ -47,7 +47,7 @@ func TestUpdateRegenerationUsesHeroRate(t *testing.T) {
 func TestConnectedBushGroupRevealsPlayersAcrossGrass(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("hidden", "Hidden", "Spark")
-	gs.PlayerAdd("enemy", "Enemy", "Nova")
+	gs.PlayerAdd("enemy", "Enemy", "Colt")
 	hidden, enemy := gs.Players["hidden"], gs.Players["enemy"]
 	hidden.X, hidden.Y, enemy.X, enemy.Y = 110, 110, 310, 110
 	gs.Map.Collisions = []*geometry.WallTile{
@@ -117,7 +117,7 @@ func TestInitGameState(t *testing.T) {
 func TestPlayerAdd(t *testing.T) {
 	gs := newTestGameState()
 
-	gs.PlayerAdd("p1", "Alice", "Nova")
+	gs.PlayerAdd("p1", "Alice", "Colt")
 	if len(gs.Players) != 1 {
 		t.Errorf("Players count = %v, want 1", len(gs.Players))
 	}
@@ -190,11 +190,13 @@ func TestAbilityAppliesCooldownAndShield(t *testing.T) {
 func TestAbilityActionIsProcessed(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Kira", "Blaze")
+	gs.PlayerAdd("p1", "Alice", "Shelly")
+	before := time.Now().UnixMilli()
 	gs.PlayerPushAction(Action{PlayerId: "p1", Type: "ability", Ts: 10_000, Value: &AbilityValue{Slot: "secondary"}})
 	gs.updatePlayers()
-	if gs.Players["p1"].LastSecondaryAt != 10_000 {
-		t.Fatal("ability action was not processed")
+	processedAt := gs.Players["p1"].LastSecondaryAt
+	if processedAt < before || processedAt > time.Now().UnixMilli() {
+		t.Fatalf("ability action did not use authoritative server time: %d", processedAt)
 	}
 }
 
@@ -261,7 +263,7 @@ func TestGameStatePlayerMove(t *testing.T) {
 func TestMovementMatchesLocalEnginePixelsPerSecond(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Blaze")
+	gs.PlayerAdd("p1", "Alice", "Shelly")
 	p := gs.Players["p1"]
 	p.X, p.Y = 256, 256
 
@@ -274,9 +276,23 @@ func TestMovementMatchesLocalEnginePixelsPerSecond(t *testing.T) {
 	}
 }
 
+func TestGameplayTempoAppliesSmallMovementAndProjectileSlowdown(t *testing.T) {
+	hero := GetHeroByName("Colt")
+	p := hero.CreatePlayer("p1", "Alice", 100, 100)
+	if p.Speed != hero.Speed*PlayerSpeedScale {
+		t.Fatalf("player speed = %.2f, want %.2f", p.Speed, hero.Speed*PlayerSpeedScale)
+	}
+
+	gs := newTestGameState()
+	shot := gs.spawnAttackBullet(p, 0, "test", 1, hero.BulletSpeed, 4, 500, 0, false, false)
+	if shot.Speed != hero.BulletSpeed*ProjectileSpeedScale {
+		t.Fatalf("projectile speed = %.2f, want %.2f", shot.Speed, hero.BulletSpeed*ProjectileSpeedScale)
+	}
+}
+
 func TestLobbyAllowsMovementAndStartKeepsHumanPosition(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("human", "Human", "Blaze")
+	gs.PlayerAdd("human", "Human", "Shelly")
 	gs.startLobby()
 	p := gs.Players["human"]
 	p.X, p.Y = 256, 256
@@ -331,7 +347,7 @@ func TestPlayerRotate(t *testing.T) {
 func TestPlayerShoot(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Nova")
+	gs.PlayerAdd("p1", "Alice", "Colt")
 
 	gs.playerShoot("p1", 1000, 0)
 	if len(gs.Bullets) != 1 {
@@ -350,7 +366,7 @@ func TestPlayerShoot(t *testing.T) {
 func TestShotgunSpawnsFivePellets(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Kira", "Blaze")
+	gs.PlayerAdd("p1", "Alice", "Shelly")
 	gs.playerShoot("p1", 1000, 0)
 	if len(gs.Bullets) != 5 {
 		t.Fatalf("shotgun bullets = %d, want 5", len(gs.Bullets))
@@ -368,10 +384,9 @@ func TestHeroCombatProfiles(t *testing.T) {
 		damage int
 		rate   int64
 	}{
-		"Blaze": {290, 260, 220}, "Frost": {290, 180, 180}, "Viper": {235, 1250, 520},
+		"Shelly": {285, 600, 250}, "Colt": {290, 420, 300}, "Barley": {285, 760, 350},
+		"Viper": {235, 1250, 520},
 		"Titan": {325, 650, 300}, "Shadow": {258, 750, 420}, "Spark": {320, 1050, 260},
-		"Nova": {275, 900, 600}, "Rex": {295, 1200, 260}, "Pixel": {263, 850, 360},
-		"Boulder": {285, 320, 280},
 	}
 	for name, expected := range want {
 		hero := GetHeroByName(name)
@@ -384,7 +399,7 @@ func TestHeroCombatProfiles(t *testing.T) {
 func TestAmmoIsServerAuthoritativeAndReloadsSequentially(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Nova")
+	gs.PlayerAdd("p1", "Alice", "Colt")
 	p := gs.Players["p1"]
 	p.X, p.Y = 1200, 1200
 
@@ -413,21 +428,6 @@ func TestAmmoIsServerAuthoritativeAndReloadsSequentially(t *testing.T) {
 	}
 }
 
-func TestRexPrimaryMatchesLocalEngineDamage(t *testing.T) {
-	gs := newTestGameState()
-	gs.PlayerAdd("rex", "Rex", "Rex")
-	gs.PlayerAdd("target", "Target", "Viper")
-	gs.State = GameStateGame
-	source, target := gs.Players["rex"], gs.Players["target"]
-	source.X, source.Y, source.Rotation = 1200, 1200, 0
-	target.X, target.Y = 1270, 1200
-	before := target.Lives
-	gs.playerShoot("rex", 1000, 0)
-	if got := before - target.Lives; got != 1200 {
-		t.Fatalf("Rex primary damage = %d, want 1200", got)
-	}
-}
-
 func TestShadowShortAimVaultsWithoutProjectile(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("shadow", "Shadow", "Shadow")
@@ -447,7 +447,7 @@ func TestSlamDealsDamageWithoutProjectile(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("p1", "Vulkan", "Viper")
-	gs.PlayerAdd("p2", "Target", "Nova")
+	gs.PlayerAdd("p2", "Target", "Colt")
 	source, target := gs.Players["p1"], gs.Players["p2"]
 	target.X, target.Y = source.X+60, source.Y
 	before := target.Lives
@@ -463,7 +463,7 @@ func TestSlamDealsDamageWithoutProjectile(t *testing.T) {
 func TestPlayerShootRateLimit(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Nova")
+	gs.PlayerAdd("p1", "Alice", "Colt")
 
 	gs.playerShoot("p1", 1000, 0)
 	gs.playerShoot("p1", 1050, 0) // too fast (50ms < 800ms)
@@ -476,7 +476,7 @@ func TestPlayerShootRateLimit(t *testing.T) {
 func TestPlayerShootRecycle(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Nova")
+	gs.PlayerAdd("p1", "Alice", "Colt")
 
 	gs.playerShoot("p1", 1000, 0)
 	gs.Bullets[0].Active = false
@@ -700,11 +700,17 @@ func TestGameStartGame(t *testing.T) {
 	if len(gs.Monsters) != MonstersCount {
 		t.Errorf("Monsters = %v, want %v", len(gs.Monsters), MonstersCount)
 	}
+	for _, p := range gs.Players {
+		remaining := time.Until(time.UnixMilli(p.InvulnerableUntil))
+		if remaining < SpawnProtectionDuration-250*time.Millisecond {
+			t.Errorf("spawn protection = %v, want about %v", remaining, SpawnProtectionDuration)
+		}
+	}
 }
 
 func TestBotsFillRoomToHalfCapacity(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice", "Blaze")
+	gs.PlayerAdd("p1", "Alice", "Shelly")
 
 	gs.startGame()
 
@@ -726,7 +732,7 @@ func TestBotsNotAddedAtHalfCapacity(t *testing.T) {
 	gs := newTestGameState()
 	for index := 1; index <= 4; index++ {
 		id := fmt.Sprintf("p%d", index)
-		gs.PlayerAdd(id, id, "Blaze")
+		gs.PlayerAdd(id, id, "Shelly")
 	}
 
 	gs.startGame()
@@ -743,10 +749,10 @@ func TestBotsNotAddedAtHalfCapacity(t *testing.T) {
 
 func TestBotsAdjustWhenHumansJoinAndLeaveDuringGame(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice", "Blaze")
+	gs.PlayerAdd("p1", "Alice", "Shelly")
 	gs.startGame()
 
-	gs.PlayerAdd("p2", "Bob", "Nova")
+	gs.PlayerAdd("p2", "Bob", "Colt")
 	gs.PlayerAdd("p3", "Eve", "Viper")
 	gs.PlayerAdd("p4", "Max", "Titan")
 	if bots := countBots(gs); bots != 0 {
@@ -874,7 +880,7 @@ func TestBulletVsPlayer(t *testing.T) {
 
 func TestPlayerHitBuildsServerAuthoritativeSuperCharge(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice", "Nova")
+	gs.PlayerAdd("p1", "Alice", "Colt")
 	gs.PlayerAdd("p2", "Bob", "Viper")
 	gs.State = GameStateGame
 
@@ -909,7 +915,7 @@ func TestViperSlamAddsSlowAndShieldStack(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("viper", "Viper", "Viper")
-	gs.PlayerAdd("target", "Target", "Blaze")
+	gs.PlayerAdd("target", "Target", "Shelly")
 	viper, target := gs.Players["viper"], gs.Players["target"]
 	viper.X, viper.Y = 100, 100
 	target.X, target.Y = 210, 100
@@ -943,9 +949,9 @@ func TestPoisonMatchesLocalEngineTotalDamage(t *testing.T) {
 func TestPoisonSpreadsToNearbyPlayer(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("source", "Source", "Boulder")
-	gs.PlayerAdd("near", "Near", "Blaze")
-	gs.PlayerAdd("far", "Far", "Blaze")
+	gs.PlayerAdd("source", "Source", "Shadow")
+	gs.PlayerAdd("near", "Near", "Shelly")
+	gs.PlayerAdd("far", "Far", "Shelly")
 	source, near, far := gs.Players["source"], gs.Players["near"], gs.Players["far"]
 	source.X, source.Y, near.X, near.Y, far.X, far.Y = 100, 100, 220, 100, 300, 100
 	source.PoisonUntil, source.PoisonTickAt, source.PoisonBy = time.Now().Add(4*time.Second).UnixMilli(), 0, "attacker"
@@ -957,32 +963,6 @@ func TestPoisonSpreadsToNearbyPlayer(t *testing.T) {
 	}
 	if far.PoisonUntil != 0 {
 		t.Fatalf("far player inherited poison: until=%d", far.PoisonUntil)
-	}
-}
-
-func TestRexPassivelyChargesSuper(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("rex", "Rex", "Rex")
-	for range 60 {
-		gs.updateStatuses()
-	}
-	if got := gs.Players["rex"].SuperCharge; got != 7 {
-		t.Fatalf("Rex passive charge=%d after one simulated second, want 7", got)
-	}
-}
-
-func TestFrostMaximumHeatBoostsMovement(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.Walls = geometry.NewSpatialHash(TileSize * 2)
-	gs.PlayerAdd("frost", "Frost", "Frost")
-	p := gs.Players["frost"]
-	p.X, p.Y, p.MoveX, p.MoveY, p.Heat = 500, 500, 1, 0, 5
-	start := p.X
-	gs.updatePlayerMovement()
-	if want := p.Speed / 60 * 1.12; math.Abs((p.X-start)-want) > .02 {
-		t.Fatalf("Frost moved %.3f at max heat, want %.3f", p.X-start, want)
 	}
 }
 
@@ -1001,17 +981,17 @@ func TestBulletVsMonster(t *testing.T) {
 	}
 }
 
-func TestPixelChainCanJumpFromPlayerToMonster(t *testing.T) {
+func TestChainDamageCanJumpFromPlayerToMonster(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("pixel", "Pixel", "Pixel")
-	gs.PlayerAdd("first", "First", "Blaze")
+	gs.PlayerAdd("source", "Source", "Shadow")
+	gs.PlayerAdd("first", "First", "Shelly")
 	gs.State = GameStateGame
 	first := gs.Players["first"]
 	first.X, first.Y = 100, 100
 	gs.Monsters["monster"] = monster.NewMonster(230, 100, 16, 512, 512, 1000)
 	before := gs.Monsters["monster"].Lives
 
-	gs.chainDamage("pixel", first, 190, 1, 200)
+	gs.chainDamage("source", first, 190, 1, 200)
 
 	if got := gs.Monsters["monster"].Lives; got != before-200 {
 		t.Fatalf("monster lives=%d after chain, want %d", got, before-200)

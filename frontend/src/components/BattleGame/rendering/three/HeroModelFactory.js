@@ -1,6 +1,51 @@
 import * as THREE from "three"
 
-const toon = (color, emissive = 0x000000) => new THREE.MeshToonMaterial({color, emissive, emissiveIntensity: emissive ? .5 : 0})
+let simplifyToon = false
+
+// A single-pass mobile toon material. Quantized diffuse light gives the hard
+// painted bands; view-space rim darkening keeps silhouettes readable without
+// rendering a second, inverted copy of every mesh.
+const toon = (color, emissive = 0x000000) => {
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      color: {value:new THREE.Color(color)},
+      emissive: {value:new THREE.Color(emissive)},
+      opacity: {value:1},
+      hit: {value:0},
+      rimStrength: {value:simplifyToon ? 0 : .62},
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vView;
+      void main() {
+        vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
+        vNormal = normalize(normalMatrix * normal);
+        vView = normalize(-viewPosition.xyz);
+        gl_Position = projectionMatrix * viewPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 color;
+      uniform vec3 emissive;
+      uniform float opacity;
+      uniform float hit;
+      uniform float rimStrength;
+      varying vec3 vNormal;
+      varying vec3 vView;
+      void main() {
+        vec3 lightDir = normalize(vec3(-0.45, 0.82, 0.55));
+        float diffuse = dot(normalize(vNormal), lightDir) * 0.5 + 0.5;
+        float band = diffuse > 0.72 ? 1.16 : (diffuse > 0.42 ? 0.94 : 0.72);
+        float rim = pow(1.0 - max(0.0, dot(normalize(vNormal), normalize(vView))), 2.2);
+        vec3 shaded = color * band * mix(1.0, 0.58, rim * rimStrength) + emissive * 0.42;
+        shaded = mix(shaded, vec3(1.0, 0.34, 0.34), clamp(hit, 0.0, 0.78));
+        gl_FragColor = vec4(shaded, opacity);
+      }
+    `,
+  })
+  Object.defineProperty(material, "opacity", {get:()=>material.uniforms.opacity.value,set:value=>{material.uniforms.opacity.value=value}})
+  return material
+}
 const mesh = (geometry, material, x = 0, y = 0, z = 0) => {
   const value = new THREE.Mesh(geometry, material)
   value.position.set(x, y, z)
@@ -19,11 +64,10 @@ const cone = (r, h, material, x = 0, y = 0, z = 0) => mesh(new THREE.ConeGeometr
 const glow = color => toon(color, color)
 
 const COLORS = {
-  blaze: [0x343849, 0xc64bff, 0x62f3ff], frost: [0xeaf5ff, 0x2392d1, 0x54f2ff],
+  shelly: [0x8e55d9, 0x38245f, 0xffd44f], colt: [0xe94d56, 0x26335d, 0x5db7ff],
+  barley: [0x47a7e8, 0x26364e, 0xffc93f],
   viper: [0x312c31, 0xff6b2d, 0xffdc55], titan: [0x236343, 0x55bd72, 0x58f6e9],
   shadow: [0x418c46, 0x7a3d98, 0xf4de62], spark: [0x181320, 0x4f326e, 0x7dff63],
-  nova: [0xf379c4, 0x325c9b, 0x70eaff], rex: [0x25283a, 0x9d2948, 0x4bc7ff],
-  pixel: [0xd83b3b, 0x3377c9, 0xffdf4b], boulder: [0x302a34, 0x544034, 0x65e357],
 }
 
 const limb = (material, length = .72, radius = .15) => {
@@ -54,8 +98,9 @@ const addGun = (parent, material, accent, side = 1, length = 1.12) => {
   parent.add(gun);return gun
 }
 
-export const createHeroModel = heroName => {
-  const hero=String(heroName||"blaze").toLowerCase();const [a,b,c]=COLORS[hero]||COLORS.blaze
+export const createHeroModel = (heroName, options = {}) => {
+  simplifyToon = Boolean(options.simple)
+  const hero=String(heroName||"shelly").toLowerCase();const [a,b,c]=COLORS[hero]||COLORS.shelly
   const A=toon(a),B=toon(b),C=glow(c),dark=toon(0x171b29),metal=toon(0x6c7484),skin=toon(0xd7906d)
   const root=new THREE.Group();root.rotation.y=.42
   const bones={tails:[],orbit:[],cape:[],arms:[],legs:[],weapons:[]}
@@ -72,22 +117,24 @@ export const createHeroModel = heroName => {
     for(const side of [-1,1]){const arm=limb(A,.7,.22);arm.position.set(side*.69,1.38,0);arm.rotation.z=side*.58;root.add(arm);bones.arms.push(arm);root.add(ball(.28,A,side*.36,.25,0,.65))}
     const flower=new THREE.Group();flower.position.set(0,2.02,0);flower.add(cyl(.07,.45,A,0,.2,0));for(let i=0;i<7;i+=1){const p=ball(.22,toon(0xef6fc0),Math.cos(i*Math.PI*2/7)*.25,.5,Math.sin(i*Math.PI*2/7)*.25,.62);flower.add(p)}flower.add(ball(.14,toon(0xffdc56),0,.52,0));root.add(flower);bones.flower=flower
   }else{
-    const rig=humanoid(root,A,B,hero==="pixel"?metal:skin);Object.assign(bones,rig)
-    if(!["pixel"].includes(hero)) addEyes(rig.head,hero==="spark"||hero==="boulder"?c:0xffffff,hero==="titan")
-    if(hero==="blaze"){
-      const hair=ball(.58,toon(0x61205e),-.12,.18,-.04,.72);rig.head.add(hair);for(let i=0;i<3;i+=1){const cape=box(.46,1.35,.12,toon([0x71258e,0x9f30bb,0xd33ce0][i]),-.45+i*.45,.26,-.37);cape.rotation.z=(i-1)*.12;rig.hips.add(cape);bones.cape.push(cape)}bones.weapons.push(addGun(rig.arms[1],dark,C,1,1.45))
-    }else if(hero==="frost"){
-      const hair=new THREE.Group();hair.position.set(0,.5,0);for(let i=0;i<6;i+=1){const p=cone(.18,.65,toon(0xf13b9b),(i-2.5)*.13,.22+Math.abs(i-2.5)*.05,0);p.rotation.z=(i-2.5)*-.16;hair.add(p)}rig.head.add(hair);bones.weapons.push(addGun(rig.arms[0],dark,C,-1),addGun(rig.arms[1],dark,C,1))
+    const rig=humanoid(root,A,B,skin);Object.assign(bones,rig)
+    addEyes(rig.head,hero==="spark"?c:0xffffff,hero==="titan")
+    if(hero==="shelly"){
+      const hair=ball(.61,toon(0x6f2c91),-.08,.23,-.04,.82);rig.head.add(hair)
+      const pony=new THREE.Group();pony.position.set(-.48,.35,-.15);for(let i=0;i<4;i+=1){const piece=ball(.25,toon(i%2?0x7e359f:0x63277f),-i*.18,-i*.18,0,.8);pony.add(piece)}rig.head.add(pony);bones.tails.push(pony)
+      const shotgun=addGun(rig.arms[1],dark,C,1,1.55);shotgun.scale.set(1.2,1.2,1.18);bones.weapons.push(shotgun)
+    }else if(hero==="colt"){
+      const hair=box(.9,.24,.84,toon(0x24355f),0,.44,-.04);rig.head.add(hair)
+      const tuft=cone(.24,.72,toon(0x24355f),-.25,.73,0);tuft.rotation.z=-.5;rig.head.add(tuft)
+      bones.weapons.push(addGun(rig.arms[0],dark,C,-1,.92),addGun(rig.arms[1],dark,C,1,.92))
+    }else if(hero==="barley"){
+      rig.head.material=metal;rig.torso.material=A;rig.legs.forEach(leg=>leg.children.forEach(child=>{if(child.material)child.material=dark}))
+      rig.head.add(cyl(.55,.2,dark,0,.48,0))
+      const bottle=new THREE.Group();bottle.position.set(0,-.62,.18);bottle.add(cyl(.2,.66,C,0,-.2,0),cyl(.1,.22,toon(0xd8efff),0,.23,0));rig.arms[1].add(bottle);bones.weapons.push(bottle)
     }else if(hero==="titan"){
       const hood=cone(.76,1.15,toon(0x3a9b70),0,.55,-.04);hood.material.transparent=true;hood.material.opacity=.78;rig.head.add(hood);rig.arms.forEach(x=>x.rotation.z=0);for(let i=0;i<5;i+=1){const seg=ball(.18,i%2?A:B,-.45-i*.23,-.1,-.15);root.add(seg);bones.tails.push(seg)}for(let i=0;i<3;i+=1){const disc=mesh(new THREE.TorusGeometry(.25,.07,8,18),C);root.add(disc);bones.orbit.push(disc)}
     }else if(hero==="spark"){
       const hood=cone(.68,.95,dark,0,.45,0);rig.head.add(hood);for(let i=0;i<3;i+=1){const cape=box(.52,1.25,.12,toon(0x241832),-.52+i*.52,.18,-.4);rig.hips.add(cape);bones.cape.push(cape)}const pole=cyl(.08,1.8,metal,0,-.6,0);rig.arms[1].add(pole);const blade=mesh(new THREE.TorusGeometry(.65,.1,8,24,Math.PI*.8),C,.42,-1.42,0);rig.arms[1].add(blade);bones.weapons.push(pole)
-    }else if(hero==="nova"){
-      rig.legs.forEach(x=>x.visible=false);for(let i=0;i<4;i+=1){const skirt=mesh(new THREE.CylinderGeometry(.5+i*.15,.8+i*.2,.32,24),toon([0xf6a1da,0xee79c6,0xd955ad,0xa83c91][i]),0,.55-i*.23,0);rig.hips.add(skirt)}const umbrella=new THREE.Group();umbrella.position.set(.65,1.15,.1);umbrella.add(cyl(.05,1.55,B,0,-.55,0),mesh(new THREE.SphereGeometry(.74,18,8,0,Math.PI*2,0,Math.PI/2),B,0,.25,0));rig.hips.add(umbrella);bones.umbrella=umbrella;addGun(rig.arms[1],B,C,1,1.35)
-    }else if(hero==="rex"){
-      const hair=ball(.57,dark,-.08,.18,0,.75);rig.head.add(hair);for(const side of [-1,1]){let parent=rig.hips;for(let i=0;i<7;i+=1){const segment=new THREE.Group();segment.position.set(i?0:side*.52,i?-.02:.86,i?0:-.2);const part=cyl(.13,.48,i%2?metal:dark,0,.24,0);part.rotation.z=side*.62;segment.add(part,ball(.18,C,side*.14,.42,0));parent.add(segment);parent=segment;bones.tails.push(segment)}}
-    }else if(hero==="pixel"){
-      rig.torso.material=B;rig.arms[0].children[0].material=toon(0xd83b3b);rig.arms[1].children[0].material=toon(0x3377c9);addEyes(rig.head,c);rig.head.add(box(.7,.16,.12,toon(0xffdf4b),0,.07,.48));const core=box(.36,.36,.36,C,0,.65,.42);rig.hips.add(core);bones.core=core
     }else{
       const mask=cone(.34,.92,toon(0xe0d5b6),0,-.05,.46);mask.rotation.x=Math.PI/2;rig.head.add(mask);rig.head.add(cyl(.56,.22,dark,0,.45,0));for(const side of [-1,1])for(let i=0;i<4;i+=1){const feather=box(.18,.72,.12,i%2?A:B,side*(.72+i*.18),.7-i*.07,-.25);feather.rotation.z=side*(.55+i*.12);rig.hips.add(feather);bones.cape.push(feather)}for(let i=-1;i<=1;i+=1)rig.torso.add(cyl(.07,.5,C,i*.2,-.05,.42));bones.weapons.push(addGun(rig.arms[1],dark,C,1,.9))
     }
@@ -104,5 +151,7 @@ export const createHeroModel = heroName => {
     if(bones.umbrella) bones.umbrella.rotation.z=Math.sin(time*1.8)*.05
     if(bones.core) bones.core.rotation.set(time,time*.7,0)
   }
+  root.userData.bones=bones
+  simplifyToon = false
   return root
 }

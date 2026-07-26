@@ -4,12 +4,17 @@ from infrastructure import Repo
 from infrastructure.database.models import TransactionType
 from schemas import PaymentRequest
 from .deps import get_repo
+from auth import require_shop_service
 
 router = APIRouter(prefix="/payment")
 
 
 @router.post("/")
-async def payment(data: PaymentRequest, repo: Repo = Depends(get_repo)):
+async def payment(
+    data: PaymentRequest,
+    repo: Repo = Depends(get_repo),
+    _: None = Depends(require_shop_service),
+):
     async with repo.session.begin():
         existing_transaction = await repo.transactions.get_by_payment_key(data.payment_key)
         if existing_transaction:
@@ -46,7 +51,11 @@ async def payment(data: PaymentRequest, repo: Repo = Depends(get_repo)):
 
 
 @router.post("/refund")
-async def refund(data: PaymentRequest, repo: Repo = Depends(get_repo)):
+async def refund(
+    data: PaymentRequest,
+    repo: Repo = Depends(get_repo),
+    _: None = Depends(require_shop_service),
+):
     async with repo.session.begin():
         original_transaction = await repo.transactions.get_by_payment_key(data.payment_key)
         if not original_transaction:
@@ -60,16 +69,21 @@ async def refund(data: PaymentRequest, repo: Repo = Depends(get_repo)):
                 "transaction_id": refund_transaction.id,
             }
 
-        user = await repo.users.get_by_id(data.user_id, for_update=True)
+        if original_transaction.user_id != data.user_id:
+            raise HTTPException(status_code=400, detail="Refund user does not match payment")
+        user = await repo.users.get_by_id(original_transaction.user_id, for_update=True)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        user.clicks += data.amount
+        refund_amount = -original_transaction.amount
+        if refund_amount <= 0:
+            raise HTTPException(status_code=409, detail="Original transaction cannot be refunded")
+        user.clicks += refund_amount
 
         transaction = await repo.transactions.create(
             user_id=user.user_id,
             payment_key=f"refund:{data.payment_key}",
-            amount=data.amount,
+            amount=refund_amount,
             transaction_type=TransactionType.REFUND,
             related_transaction=original_transaction.id,
         )

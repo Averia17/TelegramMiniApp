@@ -68,6 +68,9 @@ type PlayerJSON struct {
 	Color            string             `json:"color"`
 	Kills            int                `json:"kills"`
 	Rotation         float64            `json:"rotation"`
+	MoveX            float64            `json:"moveX"`
+	MoveY            float64            `json:"moveY"`
+	Speed            float64            `json:"speed"`
 	Ack              int64              `json:"ack"`
 	Hero             string             `json:"hero"`
 	AttackType       string             `json:"attackType,omitempty"`

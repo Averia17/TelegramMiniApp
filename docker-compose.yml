@@ -13,8 +13,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     working_dir: /home/node/app
-    ports:
-      - "5173:5173"
+    expose:
+      - "5173"
     environment:
       # Docker Desktop on Windows may not forward filesystem events reliably.
       CHOKIDAR_USEPOLLING: "true"

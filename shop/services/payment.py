@@ -6,6 +6,7 @@ from constants import USERS_SERVICE_URL
 from exeptions import InternalError, PaymentFailedError
 from infrastructure import RequestsRepo
 from infrastructure.database.models.products import Status
+from auth import service_token
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class PaymentClient:
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                resp = await client.post(url, json=payload)
+                resp = await client.post(url, json=payload, headers={"X-Service-Token": service_token()})
         except httpx.RequestError as e:
             log.error(f"Network error during payment request to {url}: {e}")
             raise PaymentFailedError(f"Network error: {e}") from e

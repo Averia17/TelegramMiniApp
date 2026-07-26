@@ -19,7 +19,7 @@ const LandingPage = ({id}) => {
   const [economy, setEconomy] = useState({energy:100,max_energy:100,gold:0,next_energy_in:0})
   const [playError, setPlayError] = useState("")
 
-  const refreshEconomy = useCallback(() => axios.get(`${API_URL}/economy/${id}`).then(({data}) => setEconomy(data)).catch(() => {}), [id])
+  const refreshEconomy = useCallback(() => axios.get(`${API_URL}/economy/me`).then(({data}) => setEconomy(data)).catch(() => {}), [])
   useEffect(() => { refreshEconomy(); const timer=setInterval(refreshEconomy,30000); return () => clearInterval(timer) }, [refreshEconomy])
 
   const selectHero = useCallback(hero => {
@@ -40,7 +40,7 @@ const LandingPage = ({id}) => {
     if (!selectedHero) return
     setPlayError("")
     try {
-      const {data}=await axios.post(`${API_URL}/economy/${id}/battle`)
+      const {data}=await axios.post(`${API_URL}/economy/me/battle`)
       setEconomy(data)
       navigate(`/battle?hero=${encodeURIComponent(selectedHero)}`)
     } catch (error) { setPlayError(error.response?.data?.detail || "Не удалось начать бой") }

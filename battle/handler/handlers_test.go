@@ -1,13 +1,39 @@
 package handler
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+func dialAuthenticated(t *testing.T, wsURL string, userID int64) *websocket.Conn {
+	t.Helper()
+	const secret = "test-auth-secret-with-at-least-32-characters"
+	t.Setenv("APP_AUTH_SECRET", secret)
+	payload, _ := json.Marshal(map[string]int64{"sub": userID, "exp": time.Now().Add(time.Minute).Unix()})
+	encoded := base64.RawURLEncoding.EncodeToString(payload)
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(encoded))
+	token := encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("WebSocket dial error: %v", err)
+	}
+	if err := conn.WriteJSON(map[string]string{"type": "auth", "token": token}); err != nil {
+		conn.Close()
+		t.Fatalf("WebSocket auth error: %v", err)
+	}
+	return conn
+}
 
 func TestHandleHealth(t *testing.T) {
 	h := NewHandler()
@@ -58,15 +84,11 @@ func TestWebSocketUpgrade(t *testing.T) {
 
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
 
-	dialer := websocket.Dialer{}
-	conn, _, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("WebSocket dial error: %v", err)
-	}
+	conn := dialAuthenticated(t, wsURL, 1001)
 	defer conn.Close()
 
 	joinMsg := `{"type":"join","playerName":"TestPlayer","roomName":"test1","roomMap":"small","maxPlayers":4,"mode":"deathmatch"}`
-	err = conn.WriteMessage(websocket.TextMessage, []byte(joinMsg))
+	err := conn.WriteMessage(websocket.TextMessage, []byte(joinMsg))
 	if err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
@@ -101,15 +123,11 @@ func TestWebSocketJoinDefaults(t *testing.T) {
 
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
 
-	dialer := websocket.Dialer{}
-	conn, _, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("WebSocket dial error: %v", err)
-	}
+	conn := dialAuthenticated(t, wsURL, 1002)
 	defer conn.Close()
 
 	joinMsg := `{"type":"join"}`
-	err = conn.WriteMessage(websocket.TextMessage, []byte(joinMsg))
+	err := conn.WriteMessage(websocket.TextMessage, []byte(joinMsg))
 	if err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
@@ -141,15 +159,11 @@ func TestWebSocketFindMatch(t *testing.T) {
 
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
 
-	dialer := websocket.Dialer{}
-	conn, _, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("WebSocket dial error: %v", err)
-	}
+	conn := dialAuthenticated(t, wsURL, 1003)
 	defer conn.Close()
 
 	findMsg := `{"type":"find_match","playerName":"Matcher"}`
-	err = conn.WriteMessage(websocket.TextMessage, []byte(findMsg))
+	err := conn.WriteMessage(websocket.TextMessage, []byte(findMsg))
 	if err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
@@ -164,14 +178,10 @@ func TestWebSocketInvalidJSON(t *testing.T) {
 
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
 
-	dialer := websocket.Dialer{}
-	conn, _, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("WebSocket dial error: %v", err)
-	}
+	conn := dialAuthenticated(t, wsURL, 1004)
 	defer conn.Close()
 
-	err = conn.WriteMessage(websocket.TextMessage, []byte(`not json`))
+	err := conn.WriteMessage(websocket.TextMessage, []byte(`not json`))
 	if err != nil {
 		t.Fatalf("Write error: %v", err)
 	}
@@ -191,15 +201,11 @@ func TestWebSocketMove(t *testing.T) {
 
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
 
-	dialer := websocket.Dialer{}
-	conn, _, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("WebSocket dial error: %v", err)
-	}
+	conn := dialAuthenticated(t, wsURL, 1005)
 	defer conn.Close()
 
 	joinMsg := `{"type":"join","playerName":"Mover","roomName":"movetest","roomMap":"small","mode":"deathmatch"}`
-	err = conn.WriteMessage(websocket.TextMessage, []byte(joinMsg))
+	err := conn.WriteMessage(websocket.TextMessage, []byte(joinMsg))
 	if err != nil {
 		t.Fatalf("Write join: %v", err)
 	}
@@ -229,12 +235,7 @@ func TestWebSocketMultipleClients(t *testing.T) {
 	defer ts.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
-	dialer := websocket.Dialer{}
-
-	conn1, _, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Client 1 dial: %v", err)
-	}
+	conn1 := dialAuthenticated(t, wsURL, 1006)
 	defer conn1.Close()
 
 	joinMsg1 := `{"type":"join","playerName":"P1","roomName":"multitest","roomMap":"small","mode":"deathmatch"}`
@@ -250,10 +251,7 @@ func TestWebSocketMultipleClients(t *testing.T) {
 		}
 	}
 
-	conn2, _, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Client 2 dial: %v", err)
-	}
+	conn2 := dialAuthenticated(t, wsURL, 1007)
 	defer conn2.Close()
 
 	joinMsg2 := `{"type":"join","playerName":"P2","roomName":"multitest","roomMap":"small","mode":"deathmatch"}`

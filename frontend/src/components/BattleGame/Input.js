@@ -1,5 +1,5 @@
 export class Input {
-  constructor(canvas, gameClient, onTouchControlsChange = null) {
+  constructor(canvas, gameClient, onTouchControlsChange = null, onMove = null) {
     this.canvas = canvas
     this.canvas.style.touchAction = "none"
     this.client = gameClient
@@ -30,16 +30,31 @@ export class Input {
     this.attackPointerStart = null
     this.attackPointerDownAt = 0
     this.onTouchControlsChange = onTouchControlsChange
+    this.onMove = onMove
 
     this.setupKeyboard()
     this.setupMouse()
     this.setupTouch()
   }
 
-  setLocalPlayer(id, stateGetter, screenPositionGetter = null) {
+  setLocalPlayer(id, stateGetter, screenPositionGetter = null, aimAngleGetter = null) {
     this.localPlayerId = id
     this.getState = typeof stateGetter === "function" ? stateGetter : () => stateGetter
     this.getPlayerScreenPosition = screenPositionGetter
+    this.getAimAngleFromScreen = aimAngleGetter
+  }
+
+  resolveAimAngle(screenX, screenY, player, origin) {
+    const projected = this.getAimAngleFromScreen?.(screenX, screenY, player)
+    return Number.isFinite(projected) ? projected : Math.atan2(screenY-origin.y, screenX-origin.x)
+  }
+
+  resolveAimDistance(screenX, screenY, origin) {
+    if (this.aimStart && this.aimCurrent) {
+      const displacement = Math.hypot(this.aimCurrent.x-this.aimStart.x, this.aimCurrent.y-this.aimStart.y)
+      return Math.min(1, displacement/70)*620
+    }
+    return Math.hypot(screenX-origin.x, screenY-origin.y)
   }
 
   getAimOrigin(rect, player) {
@@ -222,7 +237,8 @@ export class Input {
     this.lastMoveX = dx
     this.lastMoveY = dy
     this.lastMoveSentAt = now
-    this.client.move(dx, dy)
+    const ack = this.client.move(dx, dy)
+    this.onMove?.(dx, dy, ack)
   }
 
   sendRotation() {
@@ -237,10 +253,7 @@ export class Input {
     const screenY = this.mouseY
     const origin = this.getAimOrigin(rect, player)
 
-    const rotation = Math.atan2(
-      screenY - origin.y,
-      screenX - origin.x
-    )
+    const rotation = this.resolveAimAngle(screenX, screenY, player, origin)
     const now = performance.now()
     const delta = this.lastRotation === null
       ? Infinity
@@ -248,7 +261,7 @@ export class Input {
     if (delta < 0.01 || now - this.lastRotationSentAt < this.rotationSendInterval) return
     this.lastRotation = rotation
     this.lastRotationSentAt = now
-    this.client.rotate(rotation, Math.hypot(screenX - origin.x, screenY - origin.y))
+    this.client.rotate(rotation, this.resolveAimDistance(screenX, screenY, origin))
   }
 
   tryShoot(autoAim = false) {
@@ -263,11 +276,8 @@ export class Input {
     const screenY = this.mouseY
     const origin = this.getAimOrigin(rect, player)
 
-    const angle = Math.atan2(
-      screenY - origin.y,
-      screenX - origin.x
-    )
-    this.client.shoot(angle, Math.hypot(screenX - origin.x, screenY - origin.y), autoAim)
+    const angle = this.resolveAimAngle(screenX, screenY, player, origin)
+    this.client.shoot(angle, this.resolveAimDistance(screenX, screenY, origin), autoAim)
   }
 
   update() {

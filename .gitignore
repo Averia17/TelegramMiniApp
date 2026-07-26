@@ -90,3 +90,8 @@ venv.bak/
 .env
 cache/
 ngrok.yml
+
+# Local browser-test and tool artifacts
+.playwright-cli/
+.tmp/
+output/

@@ -12,6 +12,8 @@ services:
     environment:
       DB_HOST: db
       KAFKA_ADDR: kafka:9092
+      APP_ENV: "development"
+      APP_AUTH_SECRET: "${APP_AUTH_SECRET:-local-development-auth-secret-change-before-production}"
     restart: unless-stopped
     networks:
       - app-net

@@ -7,6 +7,7 @@ from exeptions import InternalError, PaymentFailedError
 from infrastructure import RequestsRepo
 from services import process_transaction
 from utils import get_repo
+from auth import AuthenticatedUser, current_user
 
 log = logging.getLogger(__name__)
 
@@ -19,8 +20,12 @@ async def get_products(repo: RequestsRepo = Depends(get_repo)):
 
 
 @router.post("/{product_id}/buy")
-async def buy_product(product_id: int, request: Request, repo: RequestsRepo = Depends(get_repo)):
-    user_id = (await request.json())["user_id"]
+async def buy_product(
+    product_id: int,
+    repo: RequestsRepo = Depends(get_repo),
+    user: AuthenticatedUser = Depends(current_user),
+):
+    user_id = user.user_id
 
     product = await repo.products.get_by_id(product_id)
     if not product:

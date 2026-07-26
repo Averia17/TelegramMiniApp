@@ -11,6 +11,7 @@ services:
     environment:
       DB_HOST: db
       KAFKA_ADDR: kafka:9092
+      APP_ENV: "production"
     restart: always
     networks:
       - app-net

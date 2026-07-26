@@ -9,6 +9,8 @@ services:
     environment:
       - REDIS_ADDR=battle-redis:6379
       - KAFKA_ADDR=kafka:9092
+      - APP_AUTH_SECRET=${APP_AUTH_SECRET:-local-development-auth-secret-change-before-production}
+      - APP_ENV=development
     restart: unless-stopped
     depends_on:
       - battle-redis

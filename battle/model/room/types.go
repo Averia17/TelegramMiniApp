@@ -4,17 +4,21 @@ import (
 	"battle/model/game"
 	"github.com/gorilla/websocket"
 	"sync"
+	"time"
 )
 
 type Client struct {
-	Id          string
-	Name        string
-	HeroName    string
-	Conn        *websocket.Conn
-	Room        *Room
-	Send        chan []byte
-	State       chan []byte
-	MapRevision int
+	Id            string
+	Name          string
+	HeroName      string
+	Conn          *websocket.Conn
+	Room          *Room
+	Send          chan []byte
+	State         chan []byte
+	MapRevision   int
+	Authenticated bool
+	MessageWindow time.Time
+	MessageCount  int
 }
 
 type Room struct {

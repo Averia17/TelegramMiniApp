@@ -3,6 +3,7 @@ package game
 import (
 	"battle/model/player"
 	"battle/service/geometry"
+	"fmt"
 	"math"
 	"time"
 )
@@ -21,15 +22,17 @@ type ColtKit struct{}
 type BarleyKit struct{}
 
 type ScheduledShot struct {
-	Owner     string
-	Angle     float64
-	SpawnAt   int64
-	Damage    int
-	Speed     float64
-	Size      float64
-	MaxRange  float64
-	Kind      string
-	Knockback float64
+	Owner        string
+	Angle        float64
+	SpawnAt      int64
+	Damage       int
+	Speed        float64
+	Size         float64
+	MaxRange     float64
+	Kind         string
+	Knockback    float64
+	Pierce       int
+	DestroyWalls bool
 }
 
 type DamageZone struct {
@@ -43,6 +46,7 @@ type DamageZone struct {
 	ExpiresAt  int64
 	Kind       string
 	Color      string
+	Group      string
 }
 
 func CombatKitFor(hero string) CombatKit {
@@ -128,7 +132,17 @@ func (ColtKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ fl
 	gs.addEffect("burst_line", source.X, source.Y, 0, 0, 0, angle, 650, .03, source.Color, 0, 350)
 }
 
-func (ColtKit) Super(_ *GameState, _ *player.Player, _ int64, _, _ float64) bool { return false }
+func (ColtKit) Super(gs *GameState, source *player.Player, ts int64, angle, _ float64) bool {
+	for index := 0; index < 12; index++ {
+		gs.ScheduledShots = append(gs.ScheduledShots, &ScheduledShot{
+			Owner: source.PlayerId, Angle: angle, SpawnAt: ts + int64(index)*50,
+			Damage: 420, Speed: 760, Size: 5, MaxRange: 850, Kind: "colt_super_round",
+			Pierce: 99, DestroyWalls: true,
+		})
+	}
+	gs.addEffect("colt_super_line", source.X, source.Y, 0, 0, 0, angle, 850, .035, "#8ee8ff", 0, 700)
+	return true
+}
 
 func (BarleyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, aimDistance float64) {
 	distance := math.Max(70, math.Min(BarleyKit{}.AttackRange(), aimDistance))
@@ -143,7 +157,24 @@ func (BarleyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, ai
 	gs.addEffect("lob_target", clamped.X, clamped.Y, 0, 0, 60, 0, 0, 0, source.Color, 0, 650)
 }
 
-func (BarleyKit) Super(_ *GameState, _ *player.Player, _ int64, _, _ float64) bool { return false }
+func (BarleyKit) Super(gs *GameState, source *player.Player, ts int64, angle, aimDistance float64) bool {
+	distance := math.Max(70, math.Min(BarleyKit{}.AttackRange(), aimDistance))
+	centerX, centerY := source.X+math.Cos(angle)*distance, source.Y+math.Sin(angle)*distance
+	group := fmt.Sprintf("barley-super:%s:%d", source.PlayerId, ts)
+	for _, offset := range []struct{ x, y float64 }{{0, 0}, {-72, 0}, {72, 0}, {0, -72}, {0, 72}} {
+		target := gs.Map.ClampCircle(&geometry.CircleBody{X: centerX + offset.x, Y: centerY + offset.y, Radius: 8})
+		shotAngle := math.Atan2(target.Y-source.Y, target.X-source.X)
+		shotDistance := math.Hypot(target.X-source.X, target.Y-source.Y)
+		shot := gs.spawnAttackBullet(source, shotAngle, "barley_super_bottle", 760, 0, 10, shotDistance, 0, false, false)
+		shot.Lobbed = true
+		shot.OriginX, shot.OriginY = source.X, source.Y
+		shot.TargetX, shot.TargetY = target.X, target.Y
+		shot.SpawnedAt, shot.LandsAt = ts, ts+700
+		shot.ZoneRadius, shot.ZoneTicks, shot.ZoneInterval, shot.ZoneGroup = 70, 4, 1000, group
+	}
+	gs.addEffect("barley_super_target", centerX, centerY, 0, 0, 145, 0, 0, 0, "#79caff", 0, 850)
+	return true
+}
 
 func (gs *GameState) updateScheduledShots() {
 	now := time.Now().UnixMilli()
@@ -162,6 +193,8 @@ func (gs *GameState) updateScheduledShots() {
 		}
 		shot := gs.spawnAttackBullet(source, scheduled.Angle, scheduled.Kind, scheduled.Damage, scheduled.Speed, scheduled.Size, scheduled.MaxRange, 0, false, false)
 		shot.Knockback = scheduled.Knockback
+		shot.Pierce = scheduled.Pierce
+		shot.DestroyWalls = scheduled.DestroyWalls
 	}
 	gs.ScheduledShots = kept
 }
@@ -169,12 +202,22 @@ func (gs *GameState) updateScheduledShots() {
 func (gs *GameState) updateDamageZones() {
 	now := time.Now().UnixMilli()
 	kept := gs.DamageZones[:0]
+	damagedByGroup := make(map[string]map[string]bool)
 	for _, zone := range gs.DamageZones {
 		if zone == nil || zone.TicksLeft <= 0 || now >= zone.ExpiresAt {
 			continue
 		}
 		for zone.TicksLeft > 0 && now >= zone.NextTickAt {
-			gs.radialDamage(zone.Owner, zone.X, zone.Y, zone.Radius, zone.Damage)
+			if zone.Group == "" {
+				gs.radialDamage(zone.Owner, zone.X, zone.Y, zone.Radius, zone.Damage)
+			} else {
+				hit := damagedByGroup[zone.Group]
+				if hit == nil {
+					hit = make(map[string]bool)
+					damagedByGroup[zone.Group] = hit
+				}
+				gs.radialDamageOnce(zone.Owner, zone.X, zone.Y, zone.Radius, zone.Damage, hit)
+			}
 			zone.TicksLeft--
 			zone.NextTickAt += zone.Interval
 		}

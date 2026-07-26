@@ -4,6 +4,7 @@ import (
 	"battle/model/gamemap"
 	"battle/model/player"
 	"battle/service/geometry"
+	"math"
 	"testing"
 )
 
@@ -16,6 +17,30 @@ func TestBotCannotSeeDistantPlayerInsideBush(t *testing.T) {
 	bot, hidden := perceptionPlayer("bot", 40, 40), perceptionPlayer("hidden", 230, 230)
 	if gs.botCanSee(bot, hidden, 10_000) {
 		t.Fatal("bot must not read the coordinates of a distant player hidden in grass")
+	}
+}
+
+func TestBotDoesNotAcquireDistantPlayerFromBattleState(t *testing.T) {
+	gs := &GameState{Map: &gamemap.GameMap{}}
+	bot := perceptionPlayer("bot", 40, 40)
+	target := perceptionPlayer("human", 40+BotVisionRange+1, 40)
+
+	if gs.botCanSee(bot, target, 10_000) {
+		t.Fatal("bot must not acquire a distant player merely because battle state contains coordinates")
+	}
+}
+
+func TestBotCannotSeePlayerThroughBlockingWall(t *testing.T) {
+	wall := &geometry.WallTile{MinX: 180, MinY: 0, MaxX: 220, MaxY: 240, Type: "wall"}
+	walls := geometry.NewSpatialHash(TileSize)
+	walls.Insert(wall)
+	gs := &GameState{
+		Map:   &gamemap.GameMap{Collisions: []*geometry.WallTile{wall}},
+		Walls: walls,
+	}
+
+	if gs.botCanSee(perceptionPlayer("bot", 100, 100), perceptionPlayer("human", 300, 100), 10_000) {
+		t.Fatal("bot must not see exact player coordinates through a blocking wall")
 	}
 }
 
@@ -49,5 +74,24 @@ func TestBotMemoryStoresOnlyLastVisiblePosition(t *testing.T) {
 	}
 	if memory.SearchUntil <= 5_000 {
 		t.Fatal("bot must search for a recently lost target")
+	}
+}
+
+func TestBotNavigationTurnsAlongBlockingWall(t *testing.T) {
+	walls := geometry.NewSpatialHash(TileSize)
+	walls.Insert(&geometry.WallTile{MinX: 100, MinY: 40, MaxX: 140, MaxY: 180, Type: "wall"})
+	gs := &GameState{Walls: walls}
+	bot := perceptionPlayer("bot-1", 75, 100)
+
+	dx, dy := gs.navigatedDirection(&bot.CircleBody, 1, 0, bot.PlayerId)
+
+	if math.Abs(dy) < .1 {
+		t.Fatalf("bot kept pushing straight into the wall: direction=(%.2f, %.2f)", dx, dy)
+	}
+	probe := bot.CircleBody
+	probe.X += dx * BotNavigationProbe
+	probe.Y += dy * BotNavigationProbe
+	if geometry.CollidesCircleWithBlockingWalls(&probe, walls) {
+		t.Fatalf("chosen avoidance direction is still blocked: direction=(%.2f, %.2f)", dx, dy)
 	}
 }

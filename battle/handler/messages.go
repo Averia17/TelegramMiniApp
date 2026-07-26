@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strconv"
+	"net/url"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -17,7 +20,22 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		if strings.ToLower(os.Getenv("APP_ENV")) != "production" {
+			return true
+		}
+		origin, err := url.Parse(r.Header.Get("Origin"))
+		if err != nil || origin.Host == "" {
+			return false
+		}
+		if strings.EqualFold(origin.Host, r.Host) {
+			return true
+		}
+		for _, allowed := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
+			if strings.EqualFold(strings.TrimSpace(allowed), origin.Scheme+"://"+origin.Host) {
+				return true
+			}
+		}
+		return false
 	},
 }
 
@@ -43,6 +61,8 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	client := &mroom.Client{
 		Id: uuid.New().String(), Conn: conn, Send: make(chan []byte, 256), State: make(chan []byte, 1), MapRevision: -1,
 	}
+	conn.SetReadLimit(16 * 1024)
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 
 	go clientWritePump(client)
 	go clientReadPump(client)
@@ -73,6 +93,19 @@ func clientReadPump(c *mroom.Client) {
 		if err != nil {
 			break
 		}
+		now := time.Now()
+		if c.MessageWindow.IsZero() || now.Sub(c.MessageWindow) >= time.Second {
+			c.MessageWindow, c.MessageCount = now, 0
+		}
+		c.MessageCount++
+		if c.MessageCount > 120 {
+			_ = c.Conn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "message rate exceeded"),
+				time.Now().Add(time.Second),
+			)
+			return
+		}
 
 		var msg struct {
 			Type string `json:"type"`
@@ -82,11 +115,39 @@ func clientReadPump(c *mroom.Client) {
 		}
 
 		switch msg.Type {
+		case "auth":
+			var request struct {
+				Token string `json:"token"`
+			}
+			if json.Unmarshal(message, &request) != nil {
+				sendError(c, "Invalid authentication request")
+				return
+			}
+			userID, err := verifyAccessToken(request.Token)
+			if err != nil {
+				sendError(c, "Authentication failed")
+				return
+			}
+			c.Id = userID
+			c.Authenticated = true
+			_ = c.Conn.SetReadDeadline(time.Time{})
 		case "join":
+			if !c.Authenticated {
+				sendError(c, "Authentication required")
+				continue
+			}
 			HandleJoin(c, message)
 		case "join_by_id":
+			if !c.Authenticated {
+				sendError(c, "Authentication required")
+				continue
+			}
 			HandleJoinById(c, message)
 		case "find_match":
+			if !c.Authenticated {
+				sendError(c, "Authentication required")
+				continue
+			}
 			HandleFindMatch(c, message)
 		case "cancel_match":
 			HandleCancelMatch(c)
@@ -120,6 +181,7 @@ func clientWritePump(c *mroom.Client) {
 			case message = <-c.State:
 			}
 		}
+		_ = c.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
 			return
 		}
@@ -135,21 +197,20 @@ func HandleJoin(c *mroom.Client, data []byte) {
 		RoomMap    string `json:"roomMap"`
 		MaxPlayers int    `json:"maxPlayers"`
 		Mode       string `json:"mode"`
-		UserId     string `json:"userId"`
 	}
 	if err := json.Unmarshal(data, &req); err != nil {
 		sendError(c, "Invalid join request")
 		return
 	}
-	applyUserId(c, req.UserId)
 
 	if req.RoomName == "" {
-		req.RoomName = "room_" + c.Id[:8]
+		req.RoomName = "room_" + shortID(c.Id)
 	}
-	if req.RoomMap == "" {
+	req.RoomName = boundedText(req.RoomName, 32)
+	if req.RoomMap != "small" && req.RoomMap != "battle-royale" {
 		req.RoomMap = "battle-royale"
 	}
-	if req.Mode == "" {
+	if req.Mode != string(game.ModeDeathmatch) && req.Mode != string(game.ModeTeamDeathmatch) {
 		req.Mode = "deathmatch"
 	}
 	if req.MaxPlayers <= 0 {
@@ -158,7 +219,11 @@ func HandleJoin(c *mroom.Client, data []byte) {
 		req.MaxPlayers = 8
 	}
 	if req.PlayerName == "" {
-		req.PlayerName = c.Id[:8]
+		req.PlayerName = shortID(c.Id)
+	}
+	req.PlayerName = boundedText(req.PlayerName, 32)
+	if game.GetHeroByName(req.HeroName) == nil {
+		req.HeroName = "Shelly"
 	}
 
 	r := mroom.GetOrCreateRoom(req.RoomName, req.RoomName, req.RoomMap, req.Mode, req.MaxPlayers)
@@ -177,20 +242,22 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 		RoomId     string `json:"roomId"`
 		PlayerName string `json:"playerName"`
 		HeroName   string `json:"heroName"`
-		UserId     string `json:"userId"`
 	}
 	if err := json.Unmarshal(data, &req); err != nil {
 		sendError(c, "Invalid join request")
 		return
 	}
-	applyUserId(c, req.UserId)
 
 	if req.RoomId == "" {
 		sendError(c, "Room ID required")
 		return
 	}
 	if req.PlayerName == "" {
-		req.PlayerName = c.Id[:8]
+		req.PlayerName = shortID(c.Id)
+	}
+	req.PlayerName = boundedText(req.PlayerName, 32)
+	if game.GetHeroByName(req.HeroName) == nil {
+		req.HeroName = "Shelly"
 	}
 
 	r := mroom.FindRoom(req.RoomId)
@@ -213,16 +280,18 @@ func HandleFindMatch(c *mroom.Client, data []byte) {
 		Type       string `json:"type"`
 		PlayerName string `json:"playerName"`
 		HeroName   string `json:"heroName"`
-		UserId     string `json:"userId"`
 	}
 	if err := json.Unmarshal(data, &req); err != nil {
 		sendError(c, "Invalid match request")
 		return
 	}
-	applyUserId(c, req.UserId)
 
 	if req.PlayerName == "" {
-		req.PlayerName = c.Id[:8]
+		req.PlayerName = shortID(c.Id)
+	}
+	req.PlayerName = boundedText(req.PlayerName, 32)
+	if game.GetHeroByName(req.HeroName) == nil {
+		req.HeroName = "Shelly"
 	}
 	c.Name = req.PlayerName
 	c.HeroName = req.HeroName
@@ -230,10 +299,20 @@ func HandleFindMatch(c *mroom.Client, data []byte) {
 	sroom.AddToMatchQueue(c)
 }
 
-func applyUserId(c *mroom.Client, userId string) {
-	if id, err := strconv.ParseInt(userId, 10, 64); err == nil && id > 0 {
-		c.Id = userId
+func shortID(id string) string {
+	if len(id) <= 8 {
+		return id
 	}
+	return id[:8]
+}
+
+func boundedText(value string, maxRunes int) string {
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	if len(runes) > maxRunes {
+		runes = runes[:maxRunes]
+	}
+	return string(runes)
 }
 
 func HandleCancelMatch(c *mroom.Client) {

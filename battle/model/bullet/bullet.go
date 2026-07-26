@@ -42,6 +42,7 @@ type Bullet struct {
 	ZoneRadius   float64
 	ZoneTicks    int
 	ZoneInterval int64
+	ZoneGroup    string
 }
 
 func NewBullet(playerId, team string, x, y, radius, rotation float64, color string) *Bullet {
@@ -103,4 +104,5 @@ func (b *Bullet) Reset(playerId, team string, x, y, radius, rotation float64, co
 	b.TargetX, b.TargetY = 0, 0
 	b.SpawnedAt, b.LandsAt = 0, 0
 	b.ZoneRadius, b.ZoneTicks, b.ZoneInterval = 0, 0, 0
+	b.ZoneGroup = ""
 }
