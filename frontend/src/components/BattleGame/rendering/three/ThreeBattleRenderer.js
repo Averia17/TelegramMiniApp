@@ -6,6 +6,7 @@ import {ProjectileRenderer} from "../combat/ProjectileRenderer"
 import {CameraRig} from "../CameraRig"
 import {SceneRoot} from "../SceneRoot"
 import {detectLowQualityDevice} from "../shared/quality"
+import {MonsterRenderer} from "../monsters/MonsterRenderer.js"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 
@@ -24,6 +25,7 @@ export class ThreeBattleRenderer {
     this.effectRoot = this.sceneRoot.roots.effects
     this.aimRoot = this.sceneRoot.roots.aim
     this.players = new Map()
+    this.monsters = new MonsterRenderer(this.actorRoot)
     this.projectiles = new ProjectileRenderer(this.projectileRoot)
     this.effects = new EffectRenderer(this.effectRoot)
     this.aim = new AimRenderer(this.aimRoot)
@@ -72,6 +74,7 @@ export class ThreeBattleRenderer {
       if (!active.has(id)) { this.actorRoot.remove(view.group); view.dispose(); this.players.delete(id) }
     })
     this.projectiles.sync(state.bullets || [])
+    this.monsters.sync(state.monsters || {})
     const totemEffects = (state.totems || []).map(totem => ({
       id:`totem:${totem.owner}`,kind:"damian_totem",x:totem.x,y:totem.y,radius:24,
       color:"#8D52D9",life:1,maxLife:1,hp:totem.hp,maxHp:totem.maxHp,
@@ -85,6 +88,7 @@ export class ThreeBattleRenderer {
     this.players.forEach((view,id)=>view.update(delta,this.time,(id===this.localPlayerId||Boolean(this.state?.players?.[id]?.team&&this.state.players[id].team===this.state?.players?.[this.localPlayerId]?.team))&&isInsideBush(view.state,walls)))
     this.mapRenderer.update(delta)
     this.projectiles.update(delta,this.time)
+    this.monsters.update(delta,this.time)
     this.aim.update(this.state?.players?.[this.localPlayerId])
     const local=this.players.get(this.localPlayerId)
     const map=this.state?.map||{width:1024,height:768}
@@ -119,6 +123,7 @@ export class ThreeBattleRenderer {
 
   destroy() {
     this.players.forEach(view=>view.dispose())
+    this.monsters.dispose()
     this.mapRenderer.dispose()
     this.sceneRoot.dispose()
   }

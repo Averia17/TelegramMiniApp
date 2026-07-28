@@ -1,8 +1,6 @@
 import * as THREE from "three"
-import {WORLD_SCALE, worldToScene} from "../shared/coordinates"
-import {flatMaterial} from "../shared/materials"
-
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+import {WORLD_SCALE, worldToScene} from "../shared/coordinates.js"
+import {flatMaterial} from "../shared/materials.js"
 
 export class AimRenderer {
   constructor(root) {
@@ -16,17 +14,19 @@ export class AimRenderer {
       flatMaterial(0xffffff, {transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false}),
     )
     this.target.rotation.x = -Math.PI / 2
-    this.mandyCone = new THREE.Mesh(
-      new THREE.CircleGeometry(1, 48, -42 * Math.PI / 180, 84 * Math.PI / 180),
-      flatMaterial(0xffd84d, {transparent: true, opacity: 0.23, side: THREE.DoubleSide, depthWrite: false}),
+    this.meleeArea = new THREE.Mesh(
+      new THREE.CircleGeometry(1, 48, -Math.PI / 4, Math.PI / 2),
+      flatMaterial(0xffd84d, {transparent: true, opacity: 0.23, side: THREE.DoubleSide, depthWrite: false, depthTest: false}),
     )
-    this.mandyCone.rotation.x = -Math.PI / 2
+    this.meleeArea.rotation.x = -Math.PI / 2
+    this.meleeArea.renderOrder = 2
+    this.meleeArea.userData.halfArcDegrees = 45
     this.superLane = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
       flatMaterial(0xffe24b, {transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false}),
     )
     this.superLane.rotation.x = -Math.PI / 2
-    this.root.add(this.line, this.target, this.mandyCone, this.superLane)
+    this.root.add(this.line, this.target, this.meleeArea, this.superLane)
     this.root.visible = false
   }
 
@@ -37,19 +37,19 @@ export class AimRenderer {
     }
     const mandy = player.hero === "Mandy"
     const superAiming = mandy && Number(player.channel) > 0
-    const ranges = {Shelly: 430, Colt: 650, Barley: 620, Mandy: player.focusCharge >= 100 ? 162 : 120}
-    const range = superAiming ? 1800 : player.attackType === "barley_lob"
-      ? clamp(player.aimDistance || 620, 70, 620)
-      : ranges[player.hero] || 430
+    const melee = player.attackArchetype === "melee_cone"
+    const configuredRange = Number(player.attackRange) || 430
+    const range = superAiming ? 1800
+      : mandy && player.focusCharge >= 100 ? configuredRange * 1.35
+      : configuredRange
     const angle = player.rotation || 0
-    const steps = player.attackType === "barley_lob" ? 20 : 2
+    const steps = 2
     const points = Array.from({length: steps}, (_, index) => {
       const progress = index / (steps - 1)
-      const height = player.attackType === "barley_lob" ? Math.sin(progress * Math.PI) * 90 : 1
       return worldToScene(
         player.x + Math.cos(angle) * range * progress,
         player.y + Math.sin(angle) * range * progress,
-        height + 2,
+        3,
       )
     })
     this.line.geometry.dispose()
@@ -59,19 +59,30 @@ export class AimRenderer {
       player.y + Math.sin(angle) * range,
       1,
     ))
-    const radius = player.attackType === "barley_lob"
-      ? 60
-      : player.attackType === "shelly_shotgun" ? Math.tan(Math.PI / 12) * range : 10
-    this.target.scale.setScalar(radius * WORLD_SCALE)
-    this.line.visible = !mandy
-    this.target.visible = !mandy
-    this.mandyCone.visible = mandy && !superAiming
+    this.target.scale.setScalar(10 * WORLD_SCALE)
+    this.line.material.color.set(player.color || 0xffffff)
+    this.target.material.color.set(player.color || 0xffffff)
+    this.line.visible = !melee && !superAiming
+    this.target.visible = !melee && !superAiming
+    this.meleeArea.visible = melee && !superAiming
     this.superLane.visible = superAiming
-    if (this.mandyCone.visible) {
-      this.mandyCone.position.copy(worldToScene(player.x, player.y, 1))
-      this.mandyCone.rotation.y = -angle
-      this.mandyCone.scale.setScalar(range * WORLD_SCALE)
-      this.mandyCone.material.opacity = player.focusCharge >= 100 ? 0.34 : 0.2
+    if (this.meleeArea.visible) {
+      const halfArcDegrees = Number(player.attackHalfArcDegrees) || 45
+      if (this.meleeArea.userData.halfArcDegrees !== halfArcDegrees) {
+        this.meleeArea.geometry.dispose()
+        this.meleeArea.geometry = new THREE.CircleGeometry(
+          1,
+          48,
+          -halfArcDegrees * Math.PI / 180,
+          halfArcDegrees * 2 * Math.PI / 180,
+        )
+        this.meleeArea.userData.halfArcDegrees = halfArcDegrees
+      }
+      this.meleeArea.position.copy(worldToScene(player.x, player.y, 3))
+      this.meleeArea.rotation.y = -angle
+      this.meleeArea.scale.setScalar(range * WORLD_SCALE)
+      this.meleeArea.material.color.set(player.color || 0xffd84d)
+      this.meleeArea.material.opacity = mandy && player.focusCharge >= 100 ? 0.34 : 0.23
     }
     if (this.superLane.visible) {
       this.superLane.position.copy(worldToScene(

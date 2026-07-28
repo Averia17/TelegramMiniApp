@@ -1,13 +1,13 @@
 import * as THREE from "three"
-import {createBushField} from "./BushRenderer"
-import {GroundRenderer, createWaterTexture} from "./GroundRenderer"
-import {createEnvironmentModel, createProp} from "./PropRenderer"
-import {disposeObjectTree} from "../shared/disposal"
-import {WORLD_SCALE} from "../shared/coordinates"
-import {assetRegistry} from "../assets/AssetRegistry"
-import {resolveEnvironmentVisual} from "../assets/assetManifest"
-import {replaceFallbackWithEnvironment} from "./environmentPlacement"
-import {createMapSignature} from "./mapSignature"
+import {createBushField} from "./BushRenderer.js"
+import {GroundRenderer, createWaterTexture} from "./GroundRenderer.js"
+import {createEnvironmentModel, createProp} from "./PropRenderer.js"
+import {disposeObjectTree} from "../shared/disposal.js"
+import {WORLD_SCALE} from "../shared/coordinates.js"
+import {assetRegistry} from "../assets/AssetRegistry.js"
+import {resolveEnvironmentVisual} from "../assets/assetManifest.js"
+import {replaceFallbackWithEnvironment} from "./environmentPlacement.js"
+import {createMapSignature} from "./mapSignature.js"
 
 const mergeWalls = walls => [...walls]
   .sort((a, b) => a.type.localeCompare(b.type) || a.minY - b.minY || a.maxY - b.maxY || a.minX - b.minX)
@@ -23,10 +23,10 @@ const mergeWalls = walls => [...walls]
   }, [])
 
 export class MapRenderer {
-  constructor(root) {
+  constructor(root, {waterTexture = null} = {}) {
     this.root = root
     this.ground = new GroundRenderer(root)
-    this.waterTexture = createWaterTexture()
+    this.waterTexture = waterTexture || createWaterTexture()
     this.objects = new Map()
     this.debris = []
     this.signature = ""

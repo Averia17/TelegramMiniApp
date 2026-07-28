@@ -47,8 +47,8 @@ func (BrockZeusKit) AimShape() string          { return "line" }
 func (BrockZeusKit) AttackRange() float64      { return 760 }
 func (KazeKit) AimShape() string               { return "cone" }
 func (KazeKit) AttackRange() float64           { return 105 }
-func (WukongMicoKit) AimShape() string         { return "lob" }
-func (WukongMicoKit) AttackRange() float64     { return 100 }
+func (WukongMicoKit) AimShape() string         { return "cone" }
+func (WukongMicoKit) AttackRange() float64     { return 120 }
 func (DamianKit) AimShape() string             { return "line" }
 func (DamianKit) AttackRange() float64         { return 640 }
 func (PersephoneLumiKit) AimShape() string     { return "line" }
@@ -103,24 +103,24 @@ func (KazeKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ float64
 }
 
 func (WukongMicoKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64) {
-	p.InvulnerableUntil = ts + 420
-	gs.vaultMove(p, angle, 100)
-	gs.radialDamage(p.PlayerId, p.X, p.Y, 82, p.AttackDmg)
+	const reach = 120.0
+	const halfArc = 50.0 * math.Pi / 180
+	gs.hitSector(p, angle, reach, halfArc, p.AttackDmg, false)
 	if p.GadgetArmed {
 		for _, target := range gs.Players {
-			if target.CanBulletHurt(p.PlayerId, p.Team) && math.Hypot(target.X-p.X, target.Y-p.Y) <= 82+target.Radius {
+			if target.CanBulletHurt(p.PlayerId, p.Team) &&
+				insideSector(p.X, p.Y, target.X, target.Y, target.Radius, angle, reach, halfArc) {
 				target.SlowUntil = ts + 2000
 			}
 		}
 		p.GadgetArmed = false
 	}
-	gs.addEffect("mico_jump_slam", p.X, p.Y, 0, 0, 82, angle, 100, 0, p.Color, p.AttackDmg, 500)
+	gs.addEffect("mico_staff_swing", p.X, p.Y, 0, 0, reach, angle, reach, halfArc, p.Color, p.AttackDmg, 360)
 }
-func (WukongMicoKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
-	distance = math.Max(50, math.Min(480, distance))
-	p.FlyingUntil, p.InvulnerableUntil, p.ChannelUntil = ts+3000, ts+3000, ts+3000
-	gs.Skyfalls = append(gs.Skyfalls, &Skyfall{Owner: p.PlayerId, X: p.X + math.Cos(angle)*distance, Y: p.Y + math.Sin(angle)*distance, LandsAt: ts + 3000})
-	gs.addEffect("mico_skyfall_target", p.X+math.Cos(angle)*distance, p.Y+math.Sin(angle)*distance, 0, 0, 125, 0, 0, 0, p.Color, 0, 3000)
+func (WukongMicoKit) Super(gs *GameState, p *player.Player, _ int64, angle, _ float64) bool {
+	const radius = 165.0
+	gs.radialDamage(p.PlayerId, p.X, p.Y, radius, 3000)
+	gs.addEffect("mico_staff_spin", p.X, p.Y, 0, 0, radius, angle, radius, math.Pi, p.Color, 3000, 650)
 	return true
 }
 

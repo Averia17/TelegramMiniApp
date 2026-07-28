@@ -19,9 +19,11 @@ const (
 	MonsterSpeedPatrol       = 0.75
 	MonsterSpeedChase        = 1.25
 	MonsterSight             = 192.0
-	MonsterLives             = 6200
-	EliteMonsterLives        = 8200
-	MonsterAttackDamage      = 650
+	MonsterChaseLeash        = 320.0
+	MonsterLostTargetDelay   = 2500
+	MonsterLives             = 2600
+	EliteMonsterLives        = 3800
+	MonsterAttackDamage      = 250
 	MonsterIdleDurationMin   = 1000
 	MonsterIdleDurationMax   = 3000
 	MonsterPatrolDurationMin = 1000
@@ -31,18 +33,21 @@ const (
 
 type Monster struct {
 	geometry.CircleBody
-	Rotation       float64
-	MapWidth       float64
-	MapHeight      float64
-	Lives          int
-	MaxLives       int
-	Tier           int
-	State          MonsterState
-	LastActionAt   int64
-	LastAttackAt   int64
-	IdleDuration   int
-	PatrolDuration int
-	TargetPlayerId string
+	Rotation           float64
+	MapWidth           float64
+	MapHeight          float64
+	Lives              int
+	MaxLives           int
+	Tier               int
+	State              MonsterState
+	LastActionAt       int64
+	LastAttackAt       int64
+	IdleDuration       int
+	PatrolDuration     int
+	TargetPlayerId     string
+	ChaseOriginX       float64
+	ChaseOriginY       float64
+	IgnorePlayersUntil int64
 }
 
 func NewMonster(x, y, radius, mapWidth, mapHeight float64, lives int) *Monster {
@@ -57,6 +62,8 @@ func NewMonster(x, y, radius, mapWidth, mapHeight float64, lives int) *Monster {
 		State:        MonsterIdle,
 		LastActionAt: now,
 		LastAttackAt: now,
+		ChaseOriginX: x,
+		ChaseOriginY: y,
 	}
 }
 
@@ -106,8 +113,9 @@ func (m *Monster) updateChase(players map[string]*player.Player) {
 		return
 	}
 	dist := geometry.GetDistance(m.X, m.Y, p.X, p.Y)
-	if dist > MonsterSight {
-		m.startIdle()
+	chaseDistance := geometry.GetDistance(m.X, m.Y, m.ChaseOriginX, m.ChaseOriginY)
+	if dist > MonsterSight || chaseDistance > MonsterChaseLeash {
+		m.loseTarget()
 		return
 	}
 	m.Rotation = geometry.CalculateAngle(p.X, p.Y, m.X, m.Y)
@@ -133,10 +141,14 @@ func (m *Monster) startPatrol() {
 func (m *Monster) startChase(playerId string) {
 	m.State = MonsterChase
 	m.TargetPlayerId = playerId
+	m.ChaseOriginX, m.ChaseOriginY = m.X, m.Y
 	m.LastActionAt = NowMillis()
 }
 
 func (m *Monster) lookForPlayer(players map[string]*player.Player) bool {
+	if NowMillis() < m.IgnorePlayersUntil {
+		return false
+	}
 	if m.TargetPlayerId == "" {
 		playerId := GetClosestPlayerId(m.X, m.Y, players)
 		if playerId != "" {
@@ -145,6 +157,11 @@ func (m *Monster) lookForPlayer(players map[string]*player.Player) bool {
 		}
 	}
 	return false
+}
+
+func (m *Monster) loseTarget() {
+	m.startIdle()
+	m.IgnorePlayersUntil = NowMillis() + MonsterLostTargetDelay
 }
 
 func (m *Monster) Hurt(amount ...int) {

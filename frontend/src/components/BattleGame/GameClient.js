@@ -12,6 +12,15 @@ const GAME_MESSAGES = new Set([
   "match_found",
 ])
 
+export const preserveAuthoritativeMapWalls = (map, previousMap) => {
+  const previousWalls = previousMap?.walls
+  const incomingWalls = map?.walls
+  if (!Array.isArray(previousWalls) || previousWalls.length === 0) return map
+  if (Array.isArray(incomingWalls) && incomingWalls.length > 0) return map
+  if (map?.width !== previousMap.width || map?.height !== previousMap.height) return map
+  return {...map, walls: previousWalls}
+}
+
 export class GameClient {
   constructor(url, accessToken, onStateUpdate, onMessage, onConnect, onDisconnect) {
     this.url = url
@@ -24,8 +33,8 @@ export class GameClient {
     this.playerId = null
     this.connected = false
     this.lastState = null
-	this.stateTimes = []
-	this.stateHz = 0
+    this.stateTimes = []
+    this.stateHz = 0
     this.lastStateBytes = 0
     this.lastClientTs = 0
   }
@@ -44,7 +53,7 @@ export class GameClient {
     this.ws.onerror = error => console.error("WebSocket error:", error)
     this.ws.onmessage = event => {
       try {
-		this.lastStateBytes = typeof event.data === "string" ? event.data.length : 0
+        this.lastStateBytes = typeof event.data === "string" ? event.data.length : 0
         this.handleMessage(JSON.parse(event.data))
       } catch (error) {
         console.error("Battle message parse error:", error)
@@ -54,15 +63,13 @@ export class GameClient {
 
   handleMessage(message) {
     if (message.type === "state") {
-	  const now = performance.now()
-	  this.stateTimes.push(now)
-	  while (this.stateTimes.length && this.stateTimes[0] < now - 1000) this.stateTimes.shift()
-	  this.stateHz = this.stateTimes.length
-	  // The server sends the expensive wall list only when its map revision changes.
-	  // Keep the last authoritative list for UI consumers such as the minimap.
-	  if (!Array.isArray(message.map?.walls) && Array.isArray(this.lastState?.map?.walls)) {
-		message.map = {...message.map, walls: this.lastState.map.walls}
-	  }
+      const now = performance.now()
+      this.stateTimes.push(now)
+      while (this.stateTimes.length && this.stateTimes[0] < now - 1000) this.stateTimes.shift()
+      this.stateHz = this.stateTimes.length
+      // The server sends the expensive wall list only when its map revision changes.
+      // Keep the last authoritative list for UI consumers such as the minimap.
+      message.map = preserveAuthoritativeMapWalls(message.map, this.lastState?.map)
       this.lastState = message
       this.onStateUpdate?.(message)
       return

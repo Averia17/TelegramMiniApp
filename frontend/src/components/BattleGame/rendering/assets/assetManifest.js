@@ -10,31 +10,65 @@ const clips = Object.freeze({
   defeat: "Defeat",
 })
 
-const hero = (id, scale = 0.92, rotationOffset = 0, available = false, assetId = id.toLowerCase()) => Object.freeze({
+const eventAnimations = assetId => Object.freeze({
+  idle: Object.freeze({
+    url: `/assets/heroes/${assetId}/animations/idle.glb`,
+    clip: "Idle",
+  }),
+  run: Object.freeze({
+    url: `/assets/heroes/${assetId}/animations/run.glb`,
+    clip: "Run",
+  }),
+  aim: Object.freeze({
+    url: `/assets/heroes/${assetId}/animations/aim.glb`,
+    clip: "Aim",
+  }),
+  aimSuper: Object.freeze({
+    url: `/assets/heroes/${assetId}/animations/aim-super.glb`,
+    clip: "AimSuper",
+  }),
+  attack: Object.freeze({
+    url: `/assets/heroes/${assetId}/animations/attack.glb`,
+    clip: "Attack",
+  }),
+  super: Object.freeze({
+    url: `/assets/heroes/${assetId}/animations/super.glb`,
+    clip: "Super",
+  }),
+  spawn: Object.freeze({
+    url: `/assets/heroes/${assetId}/animations/spawn.glb`,
+    clip: "Spawn",
+  }),
+  victory: Object.freeze({
+    url: `/assets/heroes/${assetId}/animations/victory.glb`,
+    clip: "Victory",
+  }),
+  defeat: Object.freeze({
+    url: `/assets/heroes/${assetId}/animations/defeat.glb`,
+    clip: "Defeat",
+  }),
+})
+
+const hero = (id, scale = 0.92, rotationOffset = 0, assetId = id.toLowerCase()) => Object.freeze({
   id,
   url: `/assets/heroes/${assetId}/${assetId}.glb`,
-  available,
+  available: true,
   scale,
   targetHeight: 2.45,
   rotationOffset,
   clips,
+  eventAnimations: eventAnimations(assetId),
 })
 
 export const HERO_ASSETS = Object.freeze({
-  Shelly: hero("Shelly"),
-  Colt: hero("Colt"),
-  Barley: hero("Barley"),
-  Viper: hero("Viper", 1),
-  Titan: hero("Titan", 0.9),
-  Shadow: hero("Shadow", 0.94, 0, true, "needle"),
-  Spark: hero("Spark", 0.94),
-  Mandy: hero("Mandy", 0.92, 0, true),
-  "Fairy Mina": hero("Fairy Mina", 0.92, 0, true, "fairy-mina"),
-  "Brock Zeus": hero("Brock Zeus", 0.92, 0, true, "brock-zeus"),
-  Kaze: hero("Kaze", 0.92, 0, true),
-  "Wukong Mico": hero("Wukong Mico", 0.92, 0, true, "wukong-mico"),
-  Damian: hero("Damian", 0.92, 0, true),
-  "Persephone Lumi": hero("Persephone Lumi", 0.92, 0, true, "persephone-lumi"),
+  Shadow: hero("Shadow", 0.94, 0, "needle"),
+  Mandy: hero("Mandy"),
+  "Fairy Mina": hero("Fairy Mina", 0.92, 0, "fairy-mina"),
+  "Brock Zeus": hero("Brock Zeus", 0.92, 0, "brock-zeus"),
+  Kaze: hero("Kaze"),
+  "Wukong Mico": hero("Wukong Mico", 0.92, 0, "wukong-mico"),
+  Damian: Object.freeze({...hero("Damian"), groundOffset: 0.25}),
+  "Persephone Lumi": hero("Persephone Lumi", 0.92, 0, "persephone-lumi"),
 })
 
 const environment = (id, placement, footprint = 40, scale = 1, rotationOffset = 0) => Object.freeze({
@@ -55,7 +89,7 @@ export const ENVIRONMENT_ASSETS = Object.freeze({
   bush_a: environment("bush_a", "repeat"),
 })
 
-export const getHeroAsset = name => HERO_ASSETS[name] || HERO_ASSETS.Shelly
+export const getHeroAsset = name => HERO_ASSETS[name] || null
 
 const visualsByType = Object.freeze({
   wall: "desert_wall_a",

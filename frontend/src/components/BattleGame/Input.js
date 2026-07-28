@@ -1,3 +1,8 @@
+const AUTO_AIM_GESTURE_DRAG_LIMIT = 10
+
+export const isAutoAimAttackGesture = (dragDistance) =>
+  Number(dragDistance) < AUTO_AIM_GESTURE_DRAG_LIMIT
+
 export class Input {
   constructor(canvas, gameClient, onTouchControlsChange = null, onMove = null) {
     this.canvas = canvas
@@ -28,7 +33,6 @@ export class Input {
     this.lastRotationSentAt = 0
     this.rotationSendInterval = 33
     this.attackPointerStart = null
-    this.attackPointerDownAt = 0
     this.onTouchControlsChange = onTouchControlsChange
     this.onMove = onMove
 
@@ -67,7 +71,7 @@ export class Input {
   setupKeyboard() {
     window.addEventListener("keydown", (e) => {
       this.keys[e.code] = true
-	  if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(e.code)) this.sendKeyboardMove()
+      if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(e.code)) this.sendKeyboardMove()
       if (e.code === "Space") {
         e.preventDefault()
         this.tryShoot(true)
@@ -77,12 +81,12 @@ export class Input {
     }, {signal: this.events.signal})
 
     window.addEventListener("keyup", (e) => {
-	  if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(e.code)) {
-		this.keys[e.code] = false
-		this.sendKeyboardMove()
-	  } else {
-		this.keys[e.code] = false
-	  }
+      if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(e.code)) {
+        this.keys[e.code] = false
+        this.sendKeyboardMove()
+      } else {
+        this.keys[e.code] = false
+      }
     }, {signal: this.events.signal})
   }
 
@@ -97,7 +101,6 @@ export class Input {
     this.canvas.addEventListener("mousedown", (e) => {
       const rect = this.canvas.getBoundingClientRect()
       this.attackPointerStart = {x: e.clientX - rect.left, y: e.clientY - rect.top}
-      this.attackPointerDownAt = performance.now()
       this.client.setAiming?.(true)
     }, {signal: this.events.signal})
 
@@ -106,10 +109,10 @@ export class Input {
       const rect = this.canvas.getBoundingClientRect()
       const end = {x: e.clientX - rect.left, y: e.clientY - rect.top}
       const drag = Math.hypot(end.x - this.attackPointerStart.x, end.y - this.attackPointerStart.y)
-      const quickTap = performance.now() - this.attackPointerDownAt < 180 && drag < 10
+      const autoAim = isAutoAimAttackGesture(drag)
       this.mouseX = end.x
       this.mouseY = end.y
-      this.tryShoot(quickTap)
+      this.tryShoot(autoAim)
       this.attackPointerStart = null
       this.client.setAiming?.(false)
     }, {signal: this.events.signal})
@@ -133,7 +136,6 @@ export class Input {
           this.aimCurrent = {...point}
           this.mouseX = point.x
           this.mouseY = point.y
-          this.attackPointerDownAt = performance.now()
           this.client.setAiming?.(true)
           this.sendRotation()
           this.emitTouchControls()
@@ -181,7 +183,7 @@ export class Input {
           const drag = this.aimStart && this.aimCurrent
             ? Math.hypot(this.aimCurrent.x - this.aimStart.x, this.aimCurrent.y - this.aimStart.y)
             : 0
-          this.tryShoot(performance.now() - this.attackPointerDownAt < 180 && drag < 10)
+          this.tryShoot(isAutoAimAttackGesture(drag))
           this.aimTouchId = null
           this.aimStart = null
           this.aimCurrent = null
@@ -282,11 +284,11 @@ export class Input {
   }
 
   update() {
-	this.sendKeyboardMove()
+    this.sendKeyboardMove()
 
-	}
+  }
 
-	sendKeyboardMove() {
+  sendKeyboardMove() {
     let dx = 0
     let dy = 0
 

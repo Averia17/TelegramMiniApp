@@ -6,6 +6,15 @@ import (
 	"testing"
 )
 
+func TestMonsterCombatBalanceKeepsFightsShortAndSurvivable(t *testing.T) {
+	if MonsterLives != 2600 || EliteMonsterLives != 3800 {
+		t.Fatalf("monster health: normal=%d elite=%d, want 2600/3800", MonsterLives, EliteMonsterLives)
+	}
+	if MonsterAttackDamage != 250 {
+		t.Fatalf("monster attack damage = %d, want 250", MonsterAttackDamage)
+	}
+}
+
 func TestNewMonster(t *testing.T) {
 	m := NewMonster(100, 200, 16, 512, 512, 3)
 
@@ -110,6 +119,30 @@ func TestMonsterChaseTooFar(t *testing.T) {
 	// Monster should stay idle since player is too far
 	if m.State == MonsterChase {
 		t.Error("monster should not chase player beyond sight range")
+	}
+}
+
+func TestMonsterStopsChasingBeyondItsLeashAndDoesNotImmediatelyReacquire(t *testing.T) {
+	m := NewMonster(100, 100, 16, 1024, 1024, 3)
+	p := &player.Player{
+		CircleBody: geometry.CircleBody{X: 150, Y: 100, Radius: 16},
+		PlayerId:   "p1",
+		MaxLives:   3,
+		Lives:      3,
+	}
+	players := map[string]*player.Player{"p1": p}
+
+	m.Update(players)
+	m.X = 100 + MonsterChaseLeash + 1
+	p.X = m.X + 50
+	m.Update(players)
+
+	if m.State != MonsterIdle || m.TargetPlayerId != "" {
+		t.Fatalf("monster beyond chase leash kept pursuing: state=%v target=%q", m.State, m.TargetPlayerId)
+	}
+	m.Update(players)
+	if m.State == MonsterChase {
+		t.Fatal("monster immediately reacquired the escaped player after losing the trail")
 	}
 }
 

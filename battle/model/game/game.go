@@ -21,7 +21,7 @@ const (
 	GameStateFinished = "finished"
 
 	LobbyDuration = 10 * time.Second
-	GameDuration  = 90 * time.Second
+	GameDuration  = 5 * time.Minute
 
 	FlasksCount   = 8
 	MonstersCount = 5
@@ -41,7 +41,7 @@ const (
 	BotNavigationProbe      = 28.0
 	BotVisionRange          = 620.0
 	BotRevealRange          = 900.0
-	PlayerSpeedScale        = 0.85
+	PlayerSpeedScale        = 0.70
 	ProjectileSpeedScale    = 0.88
 	AttackRateScale         = 1.55
 	ReloadTimeScale         = 1.22
@@ -231,14 +231,6 @@ func (gs *GameState) updateGame() {
 			gs.startWaiting()
 			return
 		}
-		if gs.GameEndsAt < time.Now().UnixMilli() {
-			gs.onGameEnd(&ServerEvent{
-				Type:   "timeout",
-				Params: map[string]interface{}{},
-			})
-			gs.startFinished()
-			return
-		}
 		if gs.Mode == ModeDeathmatch {
 			if len(gs.Players) > 1 && gs.countActivePlayers() == 1 {
 				p := gs.getWinningPlayer()
@@ -265,8 +257,17 @@ func (gs *GameState) updateGame() {
 						Params: map[string]interface{}{"name": name},
 					})
 					gs.startFinished()
+					return
 				}
 			}
+		}
+		if gs.GameEndsAt < time.Now().UnixMilli() {
+			gs.onGameEnd(&ServerEvent{
+				Type:   "timeout",
+				Params: map[string]interface{}{},
+			})
+			gs.startFinished()
+			return
 		}
 	}
 }
@@ -701,11 +702,7 @@ func (gs *GameState) updateBullets() {
 				continue
 			}
 			b.Active = false
-			m.Hurt(int(math.Max(1, float64(b.Damage))))
-			if !m.IsAlive() {
-				gs.Props = append(gs.Props, prop.NewProp("power", m.X, m.Y, FlaskSize/2))
-				delete(gs.Monsters, mid)
-			}
+			gs.damageMonster(mid, m, int(math.Max(1, float64(b.Damage))))
 		}
 
 		for owner, totem := range gs.Totems {
@@ -1683,15 +1680,24 @@ func (gs *GameState) chainDamage(owner string, first *player.Player, radius floa
 			continue
 		}
 		target := gs.Monsters[bestMonsterID]
-		target.Hurt(damage)
+		gs.damageMonster(bestMonsterID, target, damage)
 		gs.addEffect("lightning", fromX, fromY, target.X, target.Y, 0, 0, 0, 0, "#65efff", 0, 260)
 		hit[bestMonsterID] = true
 		fromX, fromY = target.X, target.Y
-		if !target.IsAlive() {
-			gs.Props = append(gs.Props, prop.NewProp("power", target.X, target.Y, FlaskSize/2))
-			delete(gs.Monsters, bestMonsterID)
-		}
 	}
+}
+
+func (gs *GameState) damageMonster(id string, target *monster.Monster, damage int) bool {
+	if target == nil || !target.IsAlive() || damage <= 0 {
+		return false
+	}
+	target.Hurt(damage)
+	if target.IsAlive() {
+		return false
+	}
+	gs.Props = append(gs.Props, prop.NewProp("potion-red", target.X, target.Y, FlaskSize/2))
+	delete(gs.Monsters, id)
+	return true
 }
 
 func (gs *GameState) hitSector(source *player.Player, angle, reach, halfArc float64, damage int, pull bool) int {
@@ -1722,14 +1728,10 @@ func (gs *GameState) hitSector(source *player.Player, angle, reach, halfArc floa
 		if math.Hypot(dx, dy) > reach+target.Radius || math.Abs(delta) > halfArc {
 			continue
 		}
-		target.Hurt(damage)
+		gs.damageMonster(id, target, damage)
 		hits++
 		source.SuperCharge = int(math.Min(100, float64(source.SuperCharge+20)))
 		gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ffe55c", damage, 520)
-		if !target.IsAlive() {
-			gs.Props = append(gs.Props, prop.NewProp("power", target.X, target.Y, FlaskSize/2))
-			delete(gs.Monsters, id)
-		}
 	}
 	return hits
 }
@@ -1752,11 +1754,8 @@ func (gs *GameState) radialDamage(owner string, x, y, radius float64, damage int
 		if target == nil || !target.IsAlive() || math.Hypot(target.X-x, target.Y-y) > radius+target.Radius {
 			continue
 		}
-		target.Hurt(damage)
+		gs.damageMonster(id, target, damage)
 		hits++
-		if !target.IsAlive() {
-			delete(gs.Monsters, id)
-		}
 	}
 	return hits
 }
@@ -1781,12 +1780,9 @@ func (gs *GameState) radialDamageOnce(owner string, x, y, radius float64, damage
 		if hit[key] || target == nil || !target.IsAlive() || math.Hypot(target.X-x, target.Y-y) > radius+target.Radius {
 			continue
 		}
-		target.Hurt(damage)
+		gs.damageMonster(id, target, damage)
 		hit[key] = true
 		hits++
-		if !target.IsAlive() {
-			delete(gs.Monsters, id)
-		}
 	}
 	return hits
 }

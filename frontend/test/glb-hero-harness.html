@@ -16,9 +16,17 @@
 <canvas id="scene"></canvas>
 <script type="module">
   import * as THREE from "three"
-  import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js"
   import {GLBHeroController} from "/src/components/BattleGame/rendering/heroes/GLBHeroController.js"
   import {ProjectileRenderer} from "/src/components/BattleGame/rendering/combat/ProjectileRenderer.js"
+  import {AimRenderer} from "/src/components/BattleGame/rendering/combat/AimRenderer.js"
+  import {assetRegistry} from "/src/components/BattleGame/rendering/assets/AssetRegistry.js"
+  import {
+    BUSH_HERO_OPACITY,
+    createBushOcclusion,
+    updateBushOcclusion,
+  } from "/src/components/BattleGame/rendering/heroes/BushConcealment.js"
+  import {createBushField} from "/src/components/BattleGame/rendering/map/BushRenderer.js"
+  import {MonsterRenderer} from "/src/components/BattleGame/rendering/monsters/MonsterRenderer.js"
 
   const canvas=document.querySelector("#scene")
   const label=document.querySelector("#state")
@@ -48,15 +56,43 @@
 
   const query=new URLSearchParams(location.search)
   const hero=query.get("hero")||"Mandy"
-  const assetId=hero==="Shadow"?"needle":hero.toLowerCase().replace(/\s+/g,"-")
-  const gltf=await new GLTFLoader().loadAsync(`/assets/heroes/${assetId}/${assetId}.glb`)
-  const model=gltf.scene
-  if(hero==="Brock Zeus")model.scale.setScalar(5.87)
-  model.traverse(node=>{if(node.isMesh){node.castShadow=true;node.receiveShadow=true}})
+  const instance=await assetRegistry.instantiateHero(hero)
+  const model=instance.root
   scene.add(model)
+  const bushPreview=query.has("bush")
+  const bushOcclusion=createBushOcclusion()
+  if(bushPreview){
+    const bushes=createBushField([
+      {minX:-20,minY:-13,maxX:20,maxY:13},
+      {minX:-48,minY:-8,maxX:-22,maxY:18},
+      {minX:22,minY:-8,maxX:48,maxY:18},
+    ])
+    scene.add(bushes,bushOcclusion)
+    model.traverse(node=>{
+      if(!node.material)return
+      const materials=Array.isArray(node.material)?node.material:[node.material]
+      materials.forEach(material=>{
+        material.transparent=true
+        material.opacity=BUSH_HERO_OPACITY
+        material.depthWrite=false
+      })
+    })
+  }
   const forcedState=query.get("state")
+  const attackAreas={
+    Mandy:{attackArchetype:"melee_cone",attackRange:120,attackHalfArcDegrees:42,color:"#F4C542"},
+    Kaze:{attackArchetype:"melee_cone",attackRange:105,attackHalfArcDegrees:55,color:"#B88CFF"},
+    "Wukong Mico":{attackArchetype:"melee_cone",attackRange:120,attackHalfArcDegrees:50,color:"#FFB33E"},
+    "Brock Zeus":{attackArchetype:"projectile",attackRange:760,color:"#62C8FF"},
+  }
+  const aimRoot=new THREE.Group()
+  const aimPreview=new AimRenderer(aimRoot)
+  scene.add(aimRoot)
+  if(query.has("aim")){
+    aimPreview.update({aiming:true,x:0,y:0,rotation:0,...(attackAreas[hero]||{attackArchetype:"projectile",attackRange:600,color:"#fff"})})
+  }
   const clips={idle:"Idle",run:"Run",aim:"Aim",aimSuper:"AimSuper",attack:"Attack",super:"Super",spawn:"Spawn",victory:"Victory",defeat:"Defeat"}
-  const controller=new GLBHeroController(model,gltf.animations,clips,{
+  const controller=new GLBHeroController(model,instance.animations,clips,{
     heroName:hero,
     attackPulse:0,
     superPulse:0,
@@ -67,6 +103,10 @@
   const projectiles=new ProjectileRenderer(projectileRoot)
   const attackPreview=query.has("attack")
   scene.add(projectileRoot)
+  const monsterPreview=new MonsterRenderer(scene)
+  if(query.has("bat"))monsterPreview.sync({
+    bat_qa:{x:24,y:12,radius:24,rotation:-.35,lives:2700,maxLives:3600,tier:2},
+  })
   let attackPulse=forcedState==="attack"?1:0
   let superPulse=forcedState==="super"?1:0
   let hit=0
@@ -93,16 +133,18 @@
     const projectileX=attackPreview?23:-18+(cycle-4.65)*38
     projectiles.sync(hero==="Shadow"&&attackFlight?[{id:"qa-spore",kind:"spore",color:"#75D947",radius:15,x:projectileX,y:0,z:attackPreview?12:Math.sin((cycle-4.65)/1.7*Math.PI)*22}]:[])
     projectiles.update(dt,performance.now()/1000)
+    monsterPreview.update(dt,performance.now()/1000)
     model.rotation.y=moving?-.45:0
     controller.update(dt,{alive:true,moving,aiming,superAiming:forcedState==="aimSuper",result:["victory","defeat"].includes(forcedState)?forcedState:null,speed:moving?300:0,referenceSpeed:285,aimYaw:aiming?.95:0,attackPulse,superPulse})
     controller.setHitFlash(hit)
+    if(bushPreview)updateBushOcclusion(bushOcclusion,1,performance.now()/1000)
     hit*=Math.exp(-10*dt)
     renderer.render(scene,camera)
   })
   window.qa={
     controller,
     model,
-    clips:gltf.animations.map(clip=>clip.name),
+    clips:instance.animations.map(clip=>clip.name),
     triggerAttack:()=>{attackPulse+=1},
     triggerSuper:()=>{superPulse+=1},
   }
@@ -111,7 +153,7 @@
     animation:controller.state,
     overlay:controller.overlay,
     aimWeight:Number(controller.aimWeight.toFixed(3)),
-    clips:gltf.animations.map(clip=>clip.name),
+    clips:instance.animations.map(clip=>clip.name),
     coordinateSystem:"Three.js: +Y up; ground plane XZ",
   })
 </script>

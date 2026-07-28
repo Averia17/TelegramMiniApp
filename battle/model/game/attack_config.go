@@ -38,18 +38,12 @@ type AttackConfig struct {
 }
 
 var heroAttackConfigs = map[string]AttackConfig{
-	"Shelly":          {Archetype: AttackShotgun, AimShape: "cone", Range: 430, ProjectileKind: "shell", ProjectileCount: 5, SpreadDegrees: 30},
-	"Colt":            {Archetype: AttackBurst, AimShape: "line", Range: 650, ProjectileKind: "colt_round", ProjectileCount: 6},
-	"Barley":          {Archetype: AttackThrower, AimShape: "lob", Range: 620, ProjectileKind: "barley_bottle", FlightTimeMs: 650, ImpactRadius: 60, ZoneTicks: 2, ZoneIntervalMs: 1000},
-	"Viper":           {Archetype: AttackPiercingArea, AimShape: "cone", Range: 145, HalfArcDegrees: 41.25, Modifier: "slam"},
-	"Titan":           {Archetype: AttackReturning, AimShape: "line", Range: 858, ProjectileKind: "boomerang", Pierce: 1, Modifier: "recall"},
 	"Shadow":          {Archetype: AttackProjectile, AimShape: "line", Range: 518, ProjectileKind: "spore", Modifier: "short_vault"},
-	"Spark":           {Archetype: AttackDash, AimShape: "cone", Range: 135, HalfArcDegrees: 54.4, DashDistance: 135, Modifier: "souls"},
 	"Mandy":           {Archetype: AttackMeleeCone, AimShape: "cone", Range: 120, HalfArcDegrees: 42, Modifier: "mandy_focus"},
 	"Fairy Mina":      {Archetype: AttackShotgun, AimShape: "cone", Range: 510, ProjectileKind: "mina_star", ProjectileCount: 3, SpreadDegrees: 24, SplashRadius: 38},
 	"Brock Zeus":      {Archetype: AttackProjectile, AimShape: "line", Range: 760, ProjectileKind: "zeus_lightning", SplashRadius: 72},
 	"Kaze":            {Archetype: AttackMeleeCone, AimShape: "cone", Range: 105, HalfArcDegrees: 55, Modifier: "kaze_double"},
-	"Wukong Mico":     {Archetype: AttackDash, AimShape: "lob", Range: 100, DashDistance: 100, ImpactRadius: 82, Modifier: "mico_jump"},
+	"Wukong Mico":     {Archetype: AttackMeleeCone, AimShape: "cone", Range: 120, HalfArcDegrees: 50, Modifier: "mico_staff"},
 	"Damian":          {Archetype: AttackProjectile, AimShape: "line", Range: 640, ProjectileKind: "damian_orb"},
 	"Persephone Lumi": {Archetype: AttackProjectile, AimShape: "line", Range: 600, ProjectileKind: "lumi_orb", Modifier: "slow_trail"},
 }
@@ -73,12 +67,6 @@ type ConfiguredBasicKit struct {
 
 func BasicCombatKitFor(hero string) BasicCombatKit {
 	switch hero {
-	case "Shelly":
-		return ShellyKit{}
-	case "Colt":
-		return ColtKit{}
-	case "Barley":
-		return BarleyKit{}
 	case "Mandy":
 		return MandyKit{}
 	case "Fairy Mina":
@@ -173,6 +161,16 @@ func executeConfiguredArea(gs *GameState, source *player.Player, ts int64, angle
 	}
 	gs.addEffect(effect, source.X, source.Y, 0, 0, config.Range, angle+swing, config.Range, halfArc, source.Color, 0, 420)
 	hits := gs.hitSector(source, angle+swing, config.Range, halfArc, source.AttackDmg, false)
+	if config.Modifier == "souls_melee" {
+		source.Souls = int(math.Min(3, float64(source.Souls+hits)))
+		if source.Souls >= 3 {
+			source.Souls = 0
+			source.Deflect = 1
+			gs.radialDamage(source.PlayerId, source.X, source.Y, 105, 600)
+			gs.addEffect("spin", source.X, source.Y, 0, 0, 105, 0, 0, 0, "#d9ff8b", 0, 400)
+		}
+		return
+	}
 	if config.Modifier != "slam" {
 		return
 	}

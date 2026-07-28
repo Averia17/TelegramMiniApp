@@ -4,6 +4,8 @@ import {GameClient} from "./GameClient"
 import {Renderer} from "./Renderer"
 import {Input} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
+import {getPlayerBattleStats, getStateBattleResult} from "./battleOutcome"
+import {releaseAllPreviewContexts} from "./rendering/shared/previewContextRegistry.js"
 import {WS_URL} from "../../utils/urls.js"
 import {getAccessToken} from "../../utils/auth.js"
 import "./BattleGame.css"
@@ -49,11 +51,18 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const finishBattle = useCallback(result => {
     if (savedResultRef.current) return
     savedResultRef.current = true
-    const normalized = {duration:0,kills:0,monsters:0,...result}
-    rendererRef.current?.setOutcome(normalized.won ? "victory" : "defeat")
+    const snapshotStats = getPlayerBattleStats(latestStateRef.current, clientRef.current?.playerId)
+    const normalized = {duration:0,kills:0,monsters:0,...snapshotStats,...result}
     saveBattleResult(normalized)
     setBattleResult(normalized)
     setView(normalized.won ? "result" : normalized.timedOut ? "timeout" : "dead")
+    try {
+      rendererRef.current?.setOutcome(normalized.won ? "victory" : "defeat")
+    } catch (error) {
+      // The result popup is authoritative. A cosmetic renderer failure must
+      // never strand the player on the arena with zero health.
+      console.warn("Could not play battle outcome animation", error)
+    }
   }, [setView])
 
   const debugPlayerId = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("debugPlayer") : null
@@ -86,6 +95,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
     window.addEventListener("resize", resize)
     window.visualViewport?.addEventListener("resize", resize)
 
+    releaseAllPreviewContexts()
     const renderer = new Renderer(canvas)
     const simulation = new NetworkSimulation()
     simulationRef.current = simulation
@@ -112,6 +122,8 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
         if (state?.game?.state === "lobby" && v !== "lobby" && v !== "connecting") {
           setView("lobby")
         }
+        const stateResult = getStateBattleResult(state, clientRef.current?.playerId, v)
+        if (stateResult) finishBattle(stateResult)
       },
       (msg) => {
         addMessage(msg)
@@ -141,6 +153,10 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
           finishBattle({won:msg.params?.name === playerName,winner:msg.params?.name,duration:Math.round((msg.params?.duration || 0) / 1000)})
         }
         if (msg.type === "you_died") {
+          setDeathInfo({killerName: msg.params?.killerName || "Unknown"})
+          finishBattle({won:false,killerName:msg.params?.killerName || "Unknown"})
+        }
+        if (msg.type === "killed" && msg.params?.killedName === playerName) {
           setDeathInfo({killerName: msg.params?.killerName || "Unknown"})
           finishBattle({won:false,killerName:msg.params?.killerName || "Unknown"})
         }
@@ -180,6 +196,8 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
           } : null,
           visiblePlayers: Object.keys(state?.players || {}).length,
           projectiles: (state?.bullets || []).length,
+          mapWalls: state?.map?.walls?.length || 0,
+          mapObjects: renderer.impl?.mapRenderer?.objects?.size || 0,
         })
       }
       window.advanceTime = milliseconds => {
@@ -195,10 +213,10 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
     let previousFrameAt = performance.now()
     const gameLoop = () => {
       const frameAt = performance.now()
-      const delta = Math.min(.05, Math.max(0, (frameAt - previousFrameAt) / 1000))
+      const delta = Math.max(0, (frameAt - previousFrameAt) / 1000)
       previousFrameAt = frameAt
       input.update()
-      simulation.update(delta)
+      simulation.advance(delta)
       const displayState = simulation.getDisplayState()
       if (displayState) renderer.setState(displayState)
       try {

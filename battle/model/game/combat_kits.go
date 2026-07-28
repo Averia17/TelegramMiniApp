@@ -145,11 +145,11 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 			}
 		}
 	}
-	for _, target := range gs.Monsters {
+	for id, target := range gs.Monsters {
 		if target == nil || !target.IsAlive() || !insideSector(source.X, source.Y, target.X, target.Y, target.Radius, angle, reach, halfArc) {
 			continue
 		}
-		target.Hurt(source.AttackDmg)
+		gs.damageMonster(id, target, source.AttackDmg)
 		hits++
 	}
 	if hits > 0 {
@@ -215,9 +215,9 @@ func (gs *GameState) updatePendingMandySupers() {
 			}
 			gs.dealPlayerDamage(source, target, 3200)
 		}
-		for _, target := range gs.Monsters {
+		for id, target := range gs.Monsters {
 			if target != nil && target.IsAlive() && insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {
-				target.Hurt(3200)
+				gs.damageMonster(id, target, 3200)
 			}
 		}
 		gs.destroyWallsInBeam(cast.X, cast.Y, cast.Angle, reach, 50)

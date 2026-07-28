@@ -1,14 +1,34 @@
 import * as THREE from "three"
-import {disposeObjectTree} from "./shared/disposal"
-import {pixelRatioFor} from "./shared/quality"
+import {disposeObjectTree} from "./shared/disposal.js"
+import {pixelRatioFor} from "./shared/quality.js"
+
+export const getBattleWebGLContext = (canvas, lowQuality) => {
+  const attributes = {
+    alpha: false,
+    antialias: !lowQuality,
+    depth: true,
+    stencil: false,
+    powerPreference: "high-performance",
+    preserveDrawingBuffer: false,
+  }
+  const context = canvas?.getContext?.("webgl2", attributes)
+    || canvas?.getContext?.("webgl", attributes)
+  if (!context || context.isContextLost?.()) {
+    throw new Error("Battle WebGL context is unavailable; preview contexts may still be allocated")
+  }
+  return context
+}
 
 export class SceneRoot {
   constructor(canvas, lowQuality) {
+    const context = getBattleWebGLContext(canvas, lowQuality)
     this.renderer = new THREE.WebGLRenderer({
       canvas,
+      context,
       antialias: !lowQuality,
       alpha: false,
       powerPreference: "high-performance",
+      precision: lowQuality ? "mediump" : "highp",
     })
     this.renderer.setPixelRatio(pixelRatioFor(lowQuality))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace

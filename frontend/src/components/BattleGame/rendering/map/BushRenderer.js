@@ -1,6 +1,6 @@
 import * as THREE from "three"
-import {WORLD_SCALE} from "../shared/coordinates"
-import {flatMaterial} from "../shared/materials"
+import {WORLD_SCALE} from "../shared/coordinates.js"
+import {flatMaterial} from "../shared/materials.js"
 
 export const createBushField = walls => {
   const geometry = new THREE.IcosahedronGeometry(0.62, 0)

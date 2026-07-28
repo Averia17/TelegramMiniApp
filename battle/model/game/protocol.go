@@ -83,6 +83,9 @@ type PlayerJSON struct {
 	Ack              int64              `json:"ack"`
 	Hero             string             `json:"hero"`
 	AttackType       string             `json:"attackType,omitempty"`
+	AttackArchetype  string             `json:"attackArchetype,omitempty"`
+	AttackRange      float64            `json:"attackRange,omitempty"`
+	AttackHalfArc    float64            `json:"attackHalfArcDegrees,omitempty"`
 	ShieldHP         int                `json:"shieldHp,omitempty"`
 	ShieldStacks     int                `json:"shieldStacks,omitempty"`
 	Marks            int                `json:"marks,omitempty"`

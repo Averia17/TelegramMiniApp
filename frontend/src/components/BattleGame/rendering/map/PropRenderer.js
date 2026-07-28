@@ -1,8 +1,8 @@
 import * as THREE from "three"
 import {clone} from "three/addons/utils/SkeletonUtils.js"
-import {WORLD_SCALE} from "../shared/coordinates"
-import {createColoredBox, createContactShadow, flatMaterial} from "../shared/materials"
-import {getEnvironmentPlacements} from "./environmentPlacement"
+import {WORLD_SCALE} from "../shared/coordinates.js"
+import {createColoredBox, createContactShadow, flatMaterial} from "../shared/materials.js"
+import {getEnvironmentPlacements} from "./environmentPlacement.js"
 
 const propColors = {
   fence: 0x8b5436,

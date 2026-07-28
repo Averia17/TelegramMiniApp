@@ -11,6 +11,21 @@ const trackNodeName = trackName => {
   return path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf(":")) + 1)
 }
 
+const findSideArm = (nodes, side) => {
+  const sideName = side === "left" ? "left" : "right"
+  const sideLetter = side === "left" ? "l" : "r"
+  const candidates = [...nodes.values()].filter(node => node.isBone)
+  return candidates.find(node =>
+    new RegExp(`${sideName}.*(upper.?arm|shoulder)`, "i").test(node.name))
+    || candidates.find(node =>
+      new RegExp(`(^|[_:])${sideLetter}(?:eft|ight)?[_:]?(upper.?arm|arm|shoulder)([_:]|$)`, "i").test(node.name)
+      && !/(forearm|lowerarm|hand|wrist)/i.test(node.name))
+    || candidates.find(node =>
+      new RegExp(`${sideName}.*arm`, "i").test(node.name)
+      && !/(forearm|lowerarm|hand|wrist)/i.test(node.name))
+    || null
+}
+
 const findRig = root => {
   const nodes = new Map()
   root.traverse(node => {
@@ -26,9 +41,12 @@ const findRig = root => {
   return {
     upperRoot,
     upperNames,
+    leftArm: findSideArm(nodes, "left"),
+    rightArm: findSideArm(nodes, "right"),
     head: [...nodes.values()].find(node => /(^|[_:])head(?:[_:]|$)/i.test(node.name) || /^head/i.test(node.name)) || null,
     rightHand: [...nodes.values()].find(node => node.isBone && /(^|[_:])right_?hand$/i.test(node.name))
       || [...nodes.values()].find(node => node.isBone && /right.*hand/i.test(node.name))
+      || [...nodes.values()].find(node => node.isBone && /(^|[_:])r(?:ight)?_?wrist(?:[_:]|$)/i.test(node.name))
       || null,
   }
 }
@@ -42,9 +60,60 @@ const upperBodyClip = (clip, upperNames) => {
   return tracks.length ? new THREE.AnimationClip(`${clip.name}:upper`, clip.duration, tracks) : clip
 }
 
-const configureOneShot = action => {
+const configureOneShot = (action, holdFinalPose = false) => {
   action.setLoop(THREE.LoopOnce, 1)
-  action.clampWhenFinished = true
+  action.clampWhenFinished = holdFinalPose
+}
+
+const createCloudLightning = () => {
+  const group = new THREE.Group()
+  group.name = "CloudLightningStrike"
+  group.visible = false
+  const coreMaterial = new THREE.MeshBasicMaterial({
+    color: 0xf5fdff,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  })
+  const glowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x119bdd,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  })
+  const points = [
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(.12, -.26, .02),
+    new THREE.Vector3(-.10, -.52, -.01),
+    new THREE.Vector3(.14, -.79, .03),
+    new THREE.Vector3(-.04, -1.08, 0),
+  ]
+  const addBoltSegment = (start, end, radius, material, layer) => {
+    const delta = end.clone().sub(start)
+    const segment = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius, radius * .72, delta.length(), 7),
+      material.clone(),
+    )
+    segment.position.copy(start).add(end).multiplyScalar(.5)
+    segment.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize())
+    segment.userData.lightningLayer = layer
+    group.add(segment)
+  }
+  for (let index = 0; index < points.length - 1; index += 1) {
+    addBoltSegment(points[index], points[index + 1], .075, glowMaterial, "glow")
+    addBoltSegment(points[index], points[index + 1], .026, coreMaterial, "core")
+  }
+  addBoltSegment(points[2], new THREE.Vector3(-.34, -.72, .02), .035, glowMaterial, "glow")
+  addBoltSegment(points[2], new THREE.Vector3(-.34, -.72, .02), .012, coreMaterial, "core")
+  const impact = new THREE.Mesh(new THREE.SphereGeometry(.16, 12, 8), glowMaterial.clone())
+  impact.position.copy(points.at(-1))
+  impact.userData.lightningLayer = "impact"
+  group.add(impact)
+  const light = new THREE.PointLight(0x8de7ff, 0, 3.2, 2)
+  light.position.y = -.72
+  group.add(light)
+  group.userData.light = light
+  return group
 }
 
 export class GLBHeroController {
@@ -74,18 +143,38 @@ export class GLBHeroController {
         ? createProjectileVisual({kind: "mina_star_fan", held: true})
         : createNeedleSporeVisual({color: 0x75d947}, {held: true})
       this.heldProjectile.name = carriesFairyOrb ? "HeldFairyOrb" : "HeldNeedleSpore"
-      // The hand bone's local -Z points toward the gameplay camera. Keep the
-      // spore in front of the wooden fingers so it visibly sits in the grip.
-      this.heldProjectile.position.set(0.07, 0.42, -0.70)
-      this.heldProjectile.scale.setScalar(1)
+      this.rig.rightHand.updateWorldMatrix(true, false)
+      const handWorldScale = this.rig.rightHand.getWorldScale(new THREE.Vector3())
+      const authoredScale = Math.max(.0001, handWorldScale.x, handWorldScale.y, handWorldScale.z)
+      const inverseAuthoredScale = 1 / authoredScale
+      // Imported rigs use very different authoring units. Define the orb and
+      // its hand offset in scene units so Fairy Mina cannot receive an
+      // invisible speck (or a giant sphere) after height normalization.
+      this.heldProjectileBaseScale = (carriesFairyOrb ? .78 : .82) * inverseAuthoredScale
+      this.heldProjectileWorldOffset = carriesFairyOrb ? new THREE.Vector3(0, .08, .32) : null
+      this.heldProjectileWorldPosition = carriesFairyOrb ? new THREE.Vector3() : null
+      this.heldProjectile.position.set(
+        .06 * inverseAuthoredScale,
+        .08 * inverseAuthoredScale,
+        (carriesFairyOrb ? .32 : -.09) * inverseAuthoredScale,
+      )
+      this.heldProjectile.scale.setScalar(this.heldProjectileBaseScale)
       this.heldProjectile.rotation.set(0.18, 0.35, -0.12)
       this.heldProjectile.visible = false
       this.rig.rightHand.add(this.heldProjectile)
     }
     this.detachedAmmo = []
     this.cloud = null
+    this.cloudCaster = null
+    this.throwableWeapon = null
+    this.meleeWeapon = null
     root.traverse(node => {
-      if (/waterball.*hide_ingame/i.test(node.name)) {
+      const attachmentRole = node.userData.attachment_role || node.userData.attachmentRole
+      if (attachmentRole === "melee-weapon" && !this.meleeWeapon) {
+        this.meleeWeapon = node
+        this.meleeWeapon.userData.attachmentRole = "melee-weapon"
+      }
+      if (attachmentRole === "detached-ammo" || /waterball.*hide_ingame/i.test(node.name)) {
         node.visible = false
         node.userData.attachmentRole = "detached-ammo"
         this.detachedAmmo.push(node)
@@ -94,12 +183,55 @@ export class GLBHeroController {
         node.visible = false
         node.userData.attachmentRole = "menu-only"
       }
-      if (/HeroAttachment_Cloud|cloud_Geo/i.test(node.name) && !this.cloud) {
+      const carriesCompanionCloud = this.heroName === "Brock Zeus"
+      if (carriesCompanionCloud
+        && ["attack-cloud", "companion-cloud"].includes(attachmentRole)
+        && !this.cloud) {
         this.cloud = node
-        this.cloud.userData.attachmentRole = "attack-cloud"
+        this.cloud.userData.attachmentRole = this.heroName === "Brock Zeus"
+          ? "attack-cloud"
+          : "companion-cloud"
+      }
+      if (this.heroName === "Brock Zeus" && node.isMesh && !/cloud/i.test(node.name) && !this.cloudCaster) {
+        this.cloudCaster = node
+      }
+      if ((attachmentRole === "throwable-weapon" || /HeroAttachment_Speaker$/i.test(node.name)) && !this.throwableWeapon) {
+        this.throwableWeapon = node
+        this.throwableWeapon.userData.attachmentRole = "throwable-weapon"
       }
     })
+    if (this.cloud) {
+      root.updateMatrixWorld(true)
+      const cloudBounds = new THREE.Box3().setFromObject(this.cloud)
+      const cloudSize = cloudBounds.getSize(new THREE.Vector3())
+      const cloudExtent = Math.max(cloudSize.x, cloudSize.y, cloudSize.z)
+      if (Number.isFinite(cloudExtent) && cloudExtent > .001) {
+        this.cloud.scale.multiplyScalar(.64 / cloudExtent)
+        this.root.updateMatrixWorld(true)
+        const centerWorld = new THREE.Box3().setFromObject(this.cloud).getCenter(new THREE.Vector3())
+        // Target is expressed in gameplay scene units. The imported root may
+        // carry a large authoring-unit scale, so do not transform this offset
+        // as if it were another source-space coordinate.
+        const targetWorld = root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(.58, 1.32, -.10))
+        const centerInParent = this.cloud.parent.worldToLocal(centerWorld.clone())
+        const targetInParent = this.cloud.parent.worldToLocal(targetWorld.clone())
+        this.cloud.position.add(targetInParent.sub(centerInParent))
+      }
+    }
     this.cloudBasePosition = this.cloud?.position.clone() || null
+    this.cloudBaseScale = this.cloud?.scale.clone() || null
+    this.cloudCasterBasePosition = this.cloudCaster?.position.clone() || null
+    this.cloudCasterBaseQuaternion = this.cloudCaster?.quaternion.clone() || null
+    this.cloudCasterMotionScale = 1
+    if (this.cloudCaster?.parent) {
+      const parentScale = this.cloudCaster.parent.getWorldScale(new THREE.Vector3())
+      this.cloudCasterMotionScale = 1 / Math.max(.001, parentScale.x, parentScale.y, parentScale.z)
+    }
+    this.cloudLightning = null
+    if (this.cloud && this.heroName === "Brock Zeus") {
+      this.cloudLightning = createCloudLightning()
+      root.add(this.cloudLightning)
+    }
     this.spawnScale = root.scale.clone()
     this.basePosition = root.position.clone()
     this.spawnCactus = root.getObjectByName("SpawnCactus")
@@ -119,15 +251,21 @@ export class GLBHeroController {
     this.aimPitch = 0
     this.appliedUpperAim = new THREE.Quaternion()
     this.appliedHeadAim = new THREE.Quaternion()
+    // Rich GLBs already contain authored attack motion. Applying another
+    // bind-pose-relative Euler rotation here twists shoulders and makes held
+    // weapons drift. Brock's non-skeletal cast remains handled by cloudCaster.
+    this.attackPoseNodes = []
 
     for (const [semanticName, clipName] of Object.entries(clipNames)) {
       const source = THREE.AnimationClip.findByName(clips, clipName)
       if (!source) continue
-      const clip = ["aim", "attack", "super"].includes(semanticName) && !(semanticName === "super" && options.fullBodySuper)
+      const clip = ["aim", "super"].includes(semanticName) && !(semanticName === "super" && options.fullBodySuper)
         ? upperBodyClip(source, this.rig.upperNames)
         : source
       const action = this.mixer.clipAction(clip)
-      if (["attack", "super", "spawn"].includes(semanticName)) configureOneShot(action)
+      if (["attack", "super", "spawn"].includes(semanticName)) {
+        configureOneShot(action, semanticName === "spawn")
+      }
       this.actions.set(semanticName, action)
     }
     for (const semanticName of ["aim", "aimSuper"]) {
@@ -176,14 +314,19 @@ export class GLBHeroController {
   playSpawn() {
     this.root.visible = true
     this.spawnElapsed = 0
-    if (this.spawnCactus) {
+    const action = this.actions.get("spawn")
+    if (this.spawnCactus && !action) {
       this.spawnCactus.visible = true
       this.spawnCactus.scale.copy(this.spawnCactusScale)
       this.spawnCactus.position.set(0, 0, 0)
       this.heroMeshes.forEach(mesh => { mesh.visible = false })
+    } else if (this.spawnCactus) {
+      this.spawnCactus.visible = false
+      this.heroMeshes.forEach(mesh => { mesh.visible = true })
     }
-    const action = this.actions.get("spawn")
     if (action) {
+      this.root.scale.copy(this.spawnScale)
+      this.root.position.copy(this.basePosition)
       action.reset()
         .setEffectiveWeight(1)
         .setEffectiveTimeScale(action.getClip().duration / this.spawnDuration)
@@ -196,6 +339,7 @@ export class GLBHeroController {
   }
 
   update(deltaSeconds, input = {}) {
+    if (this.meleeWeapon && input.alive !== false) this.meleeWeapon.visible = true
     this.elapsed += deltaSeconds
     if (input.alive === false) {
       this.root.visible = false
@@ -204,7 +348,6 @@ export class GLBHeroController {
       this.overlay = null
       return
     }
-
     if (this.lastSpawnPulse !== input.spawnPulse && input.spawnPulse !== undefined) {
       this.playSpawn()
     } else if (this.state === "dead" && input.alive !== false) {
@@ -228,11 +371,54 @@ export class GLBHeroController {
         ? clamp(attack.time / Math.max(.001, attack.getClip().duration), 0, 1)
         : 1 - this.attackVisualRemaining / .42
       const charge = attacking ? Math.sin(clamp(phase, .08, .92) * Math.PI) : 0
+      const strike = attacking ? clamp(1 - Math.abs(phase - .52) / .16, 0, 1) : 0
+      if (this.cloudCaster && this.cloudCasterBasePosition && this.cloudCasterBaseQuaternion) {
+        const windup = clamp(phase / .36, 0, 1)
+        const cast = clamp((phase - .36) / .18, 0, 1)
+        const recover = clamp((phase - .58) / .42, 0, 1)
+        const lean = attacking
+          ? THREE.MathUtils.lerp(
+            THREE.MathUtils.lerp(0, -.15, windup),
+            THREE.MathUtils.lerp(.22, 0, recover),
+            cast,
+          )
+          : 0
+        this.cloudCaster.position.copy(this.cloudCasterBasePosition)
+        this.cloudCaster.position.y += (-charge * .035 + strike * .09) * this.cloudCasterMotionScale
+        this.cloudCaster.quaternion.copy(this.cloudCasterBaseQuaternion)
+        this.cloudCaster.quaternion.multiply(
+          new THREE.Quaternion().setFromEuler(new THREE.Euler(0, lean * .28, lean, "XYZ")),
+        )
+      }
       this.cloud.position.copy(this.cloudBasePosition)
       this.cloud.position.y += Math.sin(this.elapsed * 2.4) * 0.08 + charge * 0.16
       this.cloud.position.x += Math.cos(this.elapsed * 1.7) * 0.045
-      this.cloud.scale.setScalar(1 + charge * 0.12)
+      this.cloud.scale.copy(this.cloudBaseScale).multiplyScalar(1 + charge * 0.12)
       this.cloud.userData.lightningCharge = charge
+      if (this.cloudLightning) {
+        this.root.updateMatrixWorld(true)
+        const bounds = new THREE.Box3().setFromObject(this.cloud)
+        const cloudWorld = bounds.isEmpty()
+          ? this.cloud.getWorldPosition(new THREE.Vector3())
+          : bounds.getCenter(new THREE.Vector3())
+        this.cloudLightning.position.copy(this.root.worldToLocal(cloudWorld))
+        const rootWorldScale = this.root.getWorldScale(new THREE.Vector3())
+        this.cloudLightning.scale.set(
+          1 / Math.max(.001, rootWorldScale.x),
+          1 / Math.max(.001, rootWorldScale.y),
+          1 / Math.max(.001, rootWorldScale.z),
+        )
+        this.cloudLightning.visible = strike > .02
+        this.cloudLightning.rotation.z = Math.sin(this.elapsed * 93) * .035
+        this.cloudLightning.children.forEach(child => {
+          if (!child.material) return
+          const layer = child.userData.lightningLayer
+          child.material.opacity = layer === "core"
+            ? strike
+            : strike * (layer === "impact" ? .52 : .82)
+        })
+        this.cloudLightning.userData.light.intensity = strike * 5.5
+      }
     }
 
     if (this.state === "spawn" && !this.actions.has("spawn") && !this.spawnCactus) {
@@ -240,7 +426,7 @@ export class GLBHeroController {
       this.root.scale.copy(this.spawnScale).multiplyScalar(progress)
       if (progress >= 1) this.state = null
     }
-    if (this.state === "spawn") {
+    if (this.state === "spawn" && !this.actions.has("spawn")) {
       this.spawnElapsed = Math.min(this.spawnDuration, this.spawnElapsed + deltaSeconds)
       const progress = this.spawnElapsed / this.spawnDuration
       const grow = 1 - Math.pow(1 - Math.min(1, progress / 0.62), 3)
@@ -268,7 +454,7 @@ export class GLBHeroController {
       this.root.position.copy(this.basePosition)
       if (!this.spawnCactus) this.root.position.y -= (1 - grow) * 0.42
       if (!this.actions.has("spawn") && this.spawnElapsed >= this.spawnDuration) this.state = null
-    } else {
+    } else if (this.state !== "spawn") {
       if (this.spawnCactus) {
         this.spawnCactus.visible = false
         this.heroMeshes.forEach(mesh => { mesh.visible = true })
@@ -320,7 +506,22 @@ export class GLBHeroController {
     if (this.rig.upperRoot) this.rig.upperRoot.quaternion.multiply(this.appliedUpperAim.clone().invert())
     if (this.rig.head) this.rig.head.quaternion.multiply(this.appliedHeadAim.clone().invert())
     this.mixer.update(deltaSeconds)
+    if (this.throwableWeapon) {
+      const attack = this.actions.get("attack")
+      const duration = attack?.getClip().duration || 1
+      const phase = attack ? clamp(attack.time / duration, 0, 1) : 1
+      const released = this.overlay === "attack" && attack?.isRunning() && phase >= .46 && phase < .9
+      this.throwableWeapon.visible = !released
+    }
     if (this.heldProjectile) {
+      if (this.heldProjectileWorldOffset) {
+        this.rig.rightHand.updateWorldMatrix(true, false)
+        this.rig.rightHand.getWorldPosition(this.heldProjectileWorldPosition)
+        this.heldProjectileWorldPosition.add(this.heldProjectileWorldOffset)
+        this.heldProjectile.position.copy(
+          this.rig.rightHand.worldToLocal(this.heldProjectileWorldPosition),
+        )
+      }
       const attack = this.actions.get("attack")
       const duration = attack?.getClip().duration || 1
       const phase = attack ? clamp(attack.time / duration, 0, 1) : 1
@@ -329,10 +530,11 @@ export class GLBHeroController {
       if (carrying) {
         const anticipation = Math.sin(Math.min(1, phase / 0.36) * Math.PI)
         const releaseStretch = clamp((phase - 0.38) / 0.14, 0, 1)
+        const baseScale = this.heldProjectileBaseScale || 1
         this.heldProjectile.scale.set(
-          1 * (1 - releaseStretch * 0.12),
-          1 * (1 + releaseStretch * 0.32),
-          1 * (1 - releaseStretch * 0.12),
+          baseScale * (1 - releaseStretch * 0.12),
+          baseScale * (1 + releaseStretch * 0.32),
+          baseScale * (1 - releaseStretch * 0.12),
         )
         this.heldProjectile.rotation.y = 0.35 + phase * 2.8
         this.heldProjectile.rotation.z = -0.12 - anticipation * 0.22

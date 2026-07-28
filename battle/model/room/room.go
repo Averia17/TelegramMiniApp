@@ -159,6 +159,10 @@ func (r *Room) sendStateUpdate() {
 	players := make(map[string]game.PlayerJSON, playerCount)
 	for id, p := range r.State.Players {
 		now := time.Now().UnixMilli()
+		attackConfig := game.AttackConfig{}
+		if hero := game.GetHeroByName(p.HeroName); hero != nil {
+			attackConfig = hero.Attack
+		}
 		primaryCooldown := math.Max(0, float64(p.LastPrimaryAt+game.AbilityCooldownMs(p.HeroName, "primary")-now)/1000)
 		secondaryCooldown := math.Max(0, float64(p.LastSecondaryAt+game.AbilityCooldownMs(p.HeroName, "secondary")-now)/1000)
 		reloadProgress := 0.0
@@ -183,6 +187,9 @@ func (r *Room) sendStateUpdate() {
 			Ack:              p.Ack,
 			Hero:             p.HeroName,
 			AttackType:       p.AttackType,
+			AttackArchetype:  attackConfig.Archetype,
+			AttackRange:      attackConfig.Range,
+			AttackHalfArc:    attackConfig.HalfArcDegrees,
 			ShieldHP:         p.ShieldHP,
 			ShieldStacks:     p.ShieldStacks,
 			Marks:            p.Marks,
@@ -306,7 +313,7 @@ func (r *Room) sendStateUpdate() {
 	var compactMapJSON game.MapJSON
 	needsFullMap := false
 	for _, client := range r.Clients {
-		if client.MapRevision != r.State.MapRevision {
+		if client.MapRevision != r.State.MapRevision || client.MapSyncFrames < 3 {
 			needsFullMap = true
 			break
 		}
@@ -328,7 +335,11 @@ func (r *Room) sendStateUpdate() {
 	}
 
 	for _, client := range r.Clients {
-		sendingMap := client.MapRevision != r.State.MapRevision
+		mapChanged := client.MapRevision != r.State.MapRevision
+		if mapChanged {
+			client.MapSyncFrames = 0
+		}
+		sendingMap := mapChanged || client.MapSyncFrames < 3
 		mapJSON := compactMapJSON
 		if sendingMap {
 			mapJSON = fullMapJSON
@@ -344,8 +355,10 @@ func (r *Room) sendStateUpdate() {
 		if err != nil {
 			continue
 		}
+		queued := false
 		select {
 		case client.State <- data:
+			queued = true
 		default:
 			select {
 			case <-client.State:
@@ -353,11 +366,13 @@ func (r *Room) sendStateUpdate() {
 			}
 			select {
 			case client.State <- data:
+				queued = true
 			default:
 			}
 		}
-		if sendingMap {
+		if sendingMap && queued {
 			client.MapRevision = r.State.MapRevision
+			client.MapSyncFrames++
 		}
 	}
 }

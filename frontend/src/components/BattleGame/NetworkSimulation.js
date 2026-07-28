@@ -1,5 +1,7 @@
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const lerp = (a, b, t) => a + (b - a) * t
+const MAX_SIMULATION_STEP = .05
+const MAX_CATCH_UP_TIME = .25
 
 const blockingWall = wall => wall.type !== "half" && wall.type !== "bush"
 
@@ -47,8 +49,33 @@ const interpolateEntity = (older, newer, t) => ({
   ...newer,
   x: lerp(older.x, newer.x, t),
   y: lerp(older.y, newer.y, t),
+  ...(Number.isFinite(older.z) && Number.isFinite(newer.z) ? {z: lerp(older.z, newer.z, t)} : {}),
   rotation: interpolateAngle(older.rotation, newer.rotation, t),
 })
+
+const interpolateMap = (older = {}, newer = {}, t) => {
+  const previousMap = older || {}
+  const nextMap = newer || {}
+  const result = {...nextMap}
+  const ids = new Set([...Object.keys(previousMap), ...Object.keys(nextMap)])
+  ids.forEach(id => {
+    const from = previousMap[id]
+    const to = nextMap[id]
+    if (from && to) result[id] = interpolateEntity(from, to, t)
+    else if (to) result[id] = to
+  })
+  return result
+}
+
+const interpolateList = (older = [], newer = [], keyOf, t) => {
+  const previousList = Array.isArray(older) ? older : []
+  const nextList = Array.isArray(newer) ? newer : []
+  const previous = new Map(previousList.map((entity, index) => [String(keyOf(entity, index)), entity]))
+  return nextList.map((entity, index) => {
+    const from = previous.get(String(keyOf(entity, index)))
+    return from ? interpolateEntity(from, entity, t) : entity
+  })
+}
 
 export class NetworkSimulation {
   constructor({interpolationDelay = 100} = {}) {
@@ -89,6 +116,14 @@ export class NetworkSimulation {
     if (player && !this.predicted) this.predicted = {x: player.x, y: player.y}
   }
 
+  serverTimeToLocal(serverTime) {
+    return Number(serverTime) + (this.clockOffset || 0)
+  }
+
+  localTimeToServer(localTime) {
+    return Number(localTime) - (this.clockOffset || 0)
+  }
+
   reconcile() {
     const authoritative = this.latestState?.players?.[this.playerId]
     if (!authoritative) return
@@ -100,7 +135,7 @@ export class NetworkSimulation {
     // Both protocol timestamps are Unix milliseconds. Network transit time is
     // not clock skew: adding it here compares an old authoritative position to
     // the current predicted frame and creates a visible backward correction.
-    const snapshotLocalTime = Number(this.latestState.ts)
+    const snapshotLocalTime = this.serverTimeToLocal(this.latestState.ts)
     const historical = this.positionHistory.reduce((nearest, sample) =>
       !nearest || Math.abs(sample.time - snapshotLocalTime) < Math.abs(nearest.time - snapshotLocalTime) ? sample : nearest, null)
     const comparison = historical || this.predicted
@@ -117,6 +152,15 @@ export class NetworkSimulation {
         sample.x += errorX
         sample.y += errorY
       })
+    }
+  }
+
+  advance(delta) {
+    let remaining = clamp(Number(delta) || 0, 0, MAX_CATCH_UP_TIME)
+    while (remaining > 0) {
+      const step = Math.min(remaining, MAX_SIMULATION_STEP)
+      this.update(step)
+      remaining -= step
     }
   }
 
@@ -151,7 +195,7 @@ export class NetworkSimulation {
 
   getDisplayState(now = Date.now()) {
     if (!this.latestState) return null
-    const targetTime = now - this.interpolationDelay
+    const targetTime = this.localTimeToServer(now - this.interpolationDelay)
     let older = this.snapshots[0] || this.latestState
     let newer = this.latestState
     for (let index = 1; index < this.snapshots.length; index += 1) {
@@ -165,18 +209,18 @@ export class NetworkSimulation {
     }
     const span = Math.max(1, Number(newer.ts) - Number(older.ts))
     const t = clamp((targetTime - Number(older.ts)) / span, 0, 1)
-    const players = {...this.latestState.players}
-    const ids = new Set([...Object.keys(older.players || {}), ...Object.keys(newer.players || {})])
-    ids.forEach(id => {
-      if (id === this.playerId) return
-      const from = older.players?.[id]
-      const to = newer.players?.[id]
-      if (from && to) players[id] = interpolateEntity(from, to, t)
-      else if (to) players[id] = to
-    })
+    const players = interpolateMap(older.players, newer.players, t)
     if (this.playerId && players[this.playerId] && this.predicted) {
       players[this.playerId] = {...players[this.playerId], x: this.predicted.x, y: this.predicted.y}
     }
-    return {...this.latestState, players, networkSmoothed: true}
+    const monsters = interpolateMap(older.monsters, newer.monsters, t)
+    const bullets = interpolateList(
+      older.bullets,
+      newer.bullets,
+      (bullet, index) => bullet.id ?? `${bullet.playerId || ""}:${bullet.kind || ""}:${index}`,
+      t,
+    )
+    const totems = interpolateList(older.totems, newer.totems, (totem, index) => totem.owner ?? index, t)
+    return {...this.latestState, players, monsters, bullets, totems, networkSmoothed: true}
   }
 }

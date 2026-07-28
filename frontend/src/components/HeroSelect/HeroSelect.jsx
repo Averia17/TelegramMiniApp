@@ -3,17 +3,12 @@ import axios from "axios"
 import {BATTLE_URL} from "../../utils/urls.js"
 import {HeroModelPreview} from "./HeroModelPreview.jsx"
 import {HEROES_CONFIG, normalizeHeroConfig} from "../BattleGame/heroesConfig.js"
+import {assetRegistry} from "../BattleGame/rendering/assets/AssetRegistry.js"
 import "./HeroSelect.css"
 
 const RARITIES = ["rare", "super-rare", "epic", "mythic", "legendary"]
 const HERO_DISPLAY_NAMES = {
-  Shelly: "SHELLY",
-  Colt: "COLT",
-  Barley: "BARLEY",
-  Viper: "VOLCANO",
-  Titan: "GHOST",
   Shadow: "NEEDLE",
-  Spark: "REAPER",
   Mandy: "MANDY",
   "Fairy Mina": "FAIRY MINA",
   "Brock Zeus": "BROCK ZEUS",
@@ -25,27 +20,11 @@ const HERO_DISPLAY_NAMES = {
 const heroDisplay = hero => HERO_DISPLAY_NAMES[hero?.name] || hero?.name
 
 const HERO_DETAILS = {
-  Shelly:{title:"Боец с дробовиком",attack:"5 дробинок широким конусом",super:"Q: отбрасывающий залп, разрушающий стены",passive:"Особенно опасна на близкой дистанции"},
-  Colt:{title:"Мобильный стрелок",attack:"Очередь из 6 пуль продолжается в движении",super:"Q: 12 пробивных пуль, разрушающих стены",passive:"Удерживает длинные линии огнём"},
-  Barley:{title:"Метатель-контроллер",attack:"Бросок через стены оставляет зону урона",super:"Q: пять больших зон длительного урона",passive:"Вынуждает врагов покидать укрытия"},
-  Viper:{title:"Тяжеловес-магматик",attack:"1850 урона сектором с притяжением",super:"Q: прыжок-извержение · E: 2600 щита",passive:"Самый высокий HP, но низкая скорость"},
-  Titan:{title:"Цифровой киллер",attack:"Возвратный диск наносит 850 дважды",super:"Q: цифровой сбой · E: тройной диск",passive:"Самая высокая базовая скорость"},
   Shadow:{title:"Био-стрелок",attack:"1050 урона и 6 осколков при разрыве",super:"Q: замедляющая лиана · E: лечение 1450",passive:"Контролирует проходы и кусты"},
-  Spark:{title:"Некро-убийца",attack:"Рывок косой на 1450 урона",super:"Q: Жатва 1750 · E: Рой теней",passive:"Жатва восстанавливает 650 HP"},
   Mandy:{title:"Сахарный боец ближнего боя",attack:"1700 урона конусным ударом посоха",super:"Q: волна через всю карту · E: Карамелизация",passive:"Стоя 1 секунду, получает +35% к дальности"},
 }
 
-const FALLBACK_HEROES = [
-  {name:"Shelly",color:"#8e55d9",maxLives:7400,speed:250,attackDamage:600,role:"Fighter"},
-  {name:"Colt",color:"#e94d56",maxLives:5600,speed:250,attackDamage:420,role:"Sharpshooter"},
-  {name:"Barley",color:"#47a7e8",maxLives:4800,speed:250,attackDamage:760,role:"Thrower"},
-  {name:"Viper",color:"#ff7138",maxLives:9800,speed:225,attackDamage:1250,role:"Tank"},
-  {name:"Titan",color:"#42e3d2",maxLives:4700,speed:285,attackDamage:650,role:"Assassin"},
-  {name:"Shadow",color:"#75d947",maxLives:6200,speed:240,attackDamage:750,role:"Controller"},
-  {name:"Spark",color:"#6d52c7",maxLives:5400,speed:285,attackDamage:1050,role:"Assassin"},
-  {name:"Mandy",color:"#f4c542",maxLives:7200,speed:250,attackDamage:1700,role:"Fighter"},
-  ...HEROES_CONFIG.filter(hero => hero.name !== "Mandy"),
-]
+const FALLBACK_HEROES = HEROES_CONFIG
 
 export const HeroSelect = ({onSelect, selectedHero}) => {
   const [heroes, setHeroes] = useState([])
@@ -54,7 +33,12 @@ export const HeroSelect = ({onSelect, selectedHero}) => {
 
   useEffect(() => {
     axios.get(`${BATTLE_URL}/heroes`)
-      .then(({data}) => setHeroes((data || []).map(normalizeHeroConfig)))
+      .then(({data}) => {
+        const supported = (data || [])
+          .filter(hero => assetRegistry.hasHero(hero.name))
+          .map(normalizeHeroConfig)
+        setHeroes(supported.length ? supported : FALLBACK_HEROES.map(normalizeHeroConfig))
+      })
       .catch(() => setHeroes(FALLBACK_HEROES.map(normalizeHeroConfig)))
       .finally(() => setLoading(false))
   }, [])
@@ -62,6 +46,21 @@ export const HeroSelect = ({onSelect, selectedHero}) => {
   useEffect(() => {
     if (!selectedHero && heroes[0]) onSelect(heroes[0].name)
   }, [heroes, onSelect, selectedHero])
+
+  useEffect(() => {
+    if (!heroes.length) return undefined
+    const names = [
+      selectedHero,
+      ...heroes.map(hero => hero.name),
+    ].filter(Boolean)
+    const warm = () => assetRegistry.preloadHeroes(names, 2)
+    if (typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(warm, {timeout: 1200})
+      return () => window.cancelIdleCallback?.(idleId)
+    }
+    const timer = window.setTimeout(warm, 150)
+    return () => window.clearTimeout(timer)
+  }, [heroes, selectedHero])
 
   const selected = useMemo(
     () => heroes.find(hero => hero.name === selectedHero) || heroes[0],

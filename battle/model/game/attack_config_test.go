@@ -3,10 +3,14 @@ package game
 import "testing"
 
 func TestEveryHeroHasServerAuthoritativeAttackConfig(t *testing.T) {
-	if len(Heroes) != 14 {
-		t.Fatalf("heroes = %d, want 14", len(Heroes))
+	expected := []string{"Shadow", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"}
+	if len(Heroes) != len(expected) {
+		t.Fatalf("heroes = %d, want %d", len(Heroes), len(expected))
 	}
-	for _, hero := range Heroes {
+	for index, hero := range Heroes {
+		if hero.Name != expected[index] {
+			t.Fatalf("hero %d = %q, want %q", index, hero.Name, expected[index])
+		}
 		config := hero.Attack
 		if config.Archetype == "" || config.AimShape == "" || config.Range <= 0 {
 			t.Fatalf("%s has incomplete attack config: %#v", hero.Name, config)
@@ -27,10 +31,7 @@ func TestConfiguredHeroesExecuteExpectedBasicAttackArchetype(t *testing.T) {
 		hero        string
 		wantBullets int
 	}{
-		{"Viper", 0},
-		{"Titan", 1},
 		{"Shadow", 1},
-		{"Spark", 0},
 		{"Mandy", 0},
 	}
 	for _, tc := range cases {
@@ -53,5 +54,41 @@ func TestConfiguredHeroesExecuteExpectedBasicAttackArchetype(t *testing.T) {
 				t.Fatalf("%s active bullets = %d, want %d", tc.hero, active, tc.wantBullets)
 			}
 		})
+	}
+}
+
+func TestBasicMeleeAttacksNeverMoveTheAttacker(t *testing.T) {
+	for _, hero := range []string{"Mandy", "Kaze", "Wukong Mico"} {
+		t.Run(hero, func(t *testing.T) {
+			gs := newTestGameState()
+			gs.State = GameStateGame
+			gs.PlayerAdd("source", hero, hero)
+			source := gs.Players["source"]
+			source.X, source.Y = 1200, 1200
+
+			gs.playerShoot("source", 10_000, 0, 120)
+
+			if source.X != 1200 || source.Y != 1200 {
+				t.Fatalf("%s basic melee moved attacker to (%.1f, %.1f)", hero, source.X, source.Y)
+			}
+		})
+	}
+}
+
+func TestEveryMeleeHeroHasItsOwnForwardAttackArea(t *testing.T) {
+	expected := map[string]AttackConfig{
+		"Mandy":        {Range: 120, HalfArcDegrees: 42},
+		"Kaze":         {Range: 105, HalfArcDegrees: 55},
+		"Wukong Mico":  {Range: 120, HalfArcDegrees: 50},
+	}
+	for heroName, want := range expected {
+		config := heroAttackConfigs[heroName]
+		if config.Archetype != AttackMeleeCone || config.AimShape != "cone" {
+			t.Fatalf("%s has no melee forward area: %#v", heroName, config)
+		}
+		if config.Range != want.Range || config.HalfArcDegrees != want.HalfArcDegrees {
+			t.Fatalf("%s area = %.0f/%.0f, want %.0f/%.0f",
+				heroName, config.Range, config.HalfArcDegrees, want.Range, want.HalfArcDegrees)
+		}
 	}
 }

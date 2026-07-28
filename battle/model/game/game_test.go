@@ -3,6 +3,7 @@ package game
 import (
 	"battle/model/bullet"
 	"battle/model/monster"
+	"battle/model/player"
 	"battle/service/geometry"
 	"fmt"
 	"math"
@@ -23,6 +24,12 @@ func newTestGameState() *GameState {
 	}
 	InitGameState(gs)
 	return gs
+}
+
+func TestBattleDurationIsFiveMinutes(t *testing.T) {
+	if GameDuration != 5*time.Minute {
+		t.Fatalf("game duration = %s, want 5m", GameDuration)
+	}
 }
 
 func TestUpdateRegenerationUsesHeroRate(t *testing.T) {
@@ -273,6 +280,12 @@ func TestMovementMatchesLocalEnginePixelsPerSecond(t *testing.T) {
 	want := 256.0 + p.Speed/60.0
 	if math.Abs(p.X-want) > .01 {
 		t.Fatalf("x = %.3f, want %.3f (%.0f px/s at 60 Hz)", p.X, want, p.Speed)
+	}
+}
+
+func TestPlayerMovementUsesSlowerGlobalPace(t *testing.T) {
+	if PlayerSpeedScale != 0.70 {
+		t.Fatalf("player speed scale = %.2f, want 0.70", PlayerSpeedScale)
 	}
 }
 
@@ -864,6 +877,27 @@ func TestUpdateGameTimeout(t *testing.T) {
 	}
 }
 
+func TestUpdateGameAwardsSoleSurvivorWhenTimerExpires(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("p1", "Alice", "")
+	gs.PlayerAdd("p2", "Bob", "")
+	gs.State = GameStateGame
+	gs.GameEndsAt = time.Now().Add(-1 * time.Second).UnixMilli()
+	gs.setPlayersActive(true)
+	gs.Players["p2"].Lives = 0
+
+	var winner string
+	gs.OnGameEnd = func(_ map[string]*player.Player, name string, _ int64) {
+		winner = name
+	}
+
+	gs.Update()
+
+	if winner != "Alice" {
+		t.Fatalf("winner = %q, want Alice", winner)
+	}
+}
+
 func TestBulletVsPlayer(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
@@ -984,6 +1018,53 @@ func TestBulletVsMonster(t *testing.T) {
 
 	if _, ok := gs.Monsters["m1"]; ok {
 		t.Error("monster should be removed after death")
+	}
+}
+
+func TestEveryMonsterDamagePathRemovesKilledMonsterAndDropsHealth(t *testing.T) {
+	tests := []struct {
+		name   string
+		attack func(*GameState, *player.Player)
+	}{
+		{
+			name: "melee sector",
+			attack: func(gs *GameState, source *player.Player) {
+				gs.hitSector(source, 0, 120, math.Pi/2, source.AttackDmg, false)
+			},
+		},
+		{
+			name: "radial",
+			attack: func(gs *GameState, source *player.Player) {
+				gs.radialDamage(source.PlayerId, source.X+60, source.Y, 80, source.AttackDmg)
+			},
+		},
+		{
+			name: "mandy staff",
+			attack: func(gs *GameState, source *player.Player) {
+				MandyKit{}.Basic(gs, source, time.Now().UnixMilli(), 0, 0)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gs := newTestGameState()
+			gs.PlayerAdd("source", "Source", "Mandy")
+			gs.State = GameStateGame
+			source := gs.Players["source"]
+			source.X, source.Y = 100, 100
+			source.AttackDmg = 2000
+			gs.Monsters["bat"] = monster.NewMonster(160, 100, 16, 512, 512, 1000)
+
+			tc.attack(gs, source)
+
+			if _, alive := gs.Monsters["bat"]; alive {
+				t.Fatal("killed monster remained in the authoritative state")
+			}
+			if len(gs.Props) != 1 || gs.Props[0].Type != "potion-red" {
+				t.Fatalf("health drop = %#v, want one red health potion", gs.Props)
+			}
+		})
 	}
 }
 

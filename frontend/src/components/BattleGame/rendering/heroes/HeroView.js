@@ -6,6 +6,12 @@ import {worldToScene} from "../shared/coordinates"
 import {disposeObjectTree} from "../shared/disposal"
 import {createContactShadow} from "../shared/materials"
 import {turnTowardsAngle} from "./turning"
+import {
+  BUSH_HERO_OPACITY,
+  createBushOcclusion,
+  getBushConcealmentMix,
+  updateBushOcclusion,
+} from "./BushConcealment"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const blend = (speed, delta) => 1 - Math.exp(-speed * delta)
@@ -45,6 +51,17 @@ const updateLabel = (sprite, state) => {
   context.fillRect(46, 37, 164, 16)
   context.fillStyle = health < 0.35 ? "#ff4b57" : health < 0.65 ? "#ffc934" : "#55df57"
   context.fillRect(51, 42, 154 * health, 6)
+  context.textAlign = "center"
+  context.textBaseline = "middle"
+  context.font = "900 12px Arial"
+  context.lineWidth = 3
+  context.strokeStyle = "#151d34"
+  const currentHealth = Math.max(0, Math.round(Number(state.lives) || 0))
+  const maximumHealth = Math.max(1, Math.round(Number(state.maxLives) || 1))
+  const healthText = `${currentHealth} / ${maximumHealth}`
+  context.strokeText(healthText, 128, 46)
+  context.fillStyle = "#fff"
+  context.fillText(healthText, 128, 46)
   texture.needsUpdate = true
 }
 
@@ -87,8 +104,10 @@ export class HeroView {
     this.model.scale.setScalar(0.92)
     this.label = createLabel(state)
     this.deathBurst = createDeathBurst(state.hero)
+    this.bushOcclusion = createBushOcclusion()
+    this.bushConcealmentMix = 0
     this.deathTime = 0
-    this.group.add(this.shadow, this.model, this.deathBurst, this.label)
+    this.group.add(this.shadow, this.model, this.deathBurst, this.bushOcclusion, this.label)
     this.x = this.targetX = state.x
     this.y = this.targetY = state.y
     this.aimAngle = Math.PI / 2 - (state.rotation || 0)
@@ -96,6 +115,7 @@ export class HeroView {
     this.lastPulse = state.attackPulse
     this.lastSuperPulse = state.superPulse
     this.lastLives = state.lives
+    this.spawnPulse = 0
     this.recoil = 0
     this.hit = 0
     this.animation = null
@@ -121,6 +141,7 @@ export class HeroView {
         heroName,
         attackPulse: this.state.attackPulse,
         superPulse: this.state.superPulse,
+        spawnPulse: this.spawnPulse,
         fullBodySuper: false,
       })
       this.group.remove(previous)
@@ -149,7 +170,10 @@ export class HeroView {
         particle.scale.setScalar(1)
       })
     }
-    if (this.lastLives <= 0 && state.lives > 0) this.model.visible = true
+    if (this.lastLives <= 0 && state.lives > 0) {
+      this.spawnPulse += 1
+      this.model.visible = true
+    }
     this.lastPulse = state.attackPulse
     this.lastLives = state.lives
     updateLabel(this.label, state)
@@ -197,6 +221,7 @@ export class HeroView {
         aimYaw: this.state.aiming || this.recoil > 0.05 ? aimDelta : 0,
         attackPulse: this.state.attackPulse,
         superPulse: this.state.superPulse,
+        spawnPulse: this.spawnPulse,
         result: this.result,
       })
       this.animation.setHitFlash(this.hit)
@@ -218,8 +243,11 @@ export class HeroView {
     }
     this.recoil *= Math.exp(-15 * delta)
     this.hit *= Math.exp(-12 * delta)
-    setOpacity(this.model, inBush ? 0.42 : 1)
-    this.label.material.opacity = inBush ? 0.42 : 1
+    this.bushConcealmentMix = getBushConcealmentMix(this.bushConcealmentMix, inBush, delta)
+    setOpacity(this.model, THREE.MathUtils.lerp(1, BUSH_HERO_OPACITY, this.bushConcealmentMix))
+    this.shadow.material.opacity = THREE.MathUtils.lerp(0.34, 0.18, this.bushConcealmentMix)
+    this.label.material.opacity = 1
+    updateBushOcclusion(this.bushOcclusion, this.bushConcealmentMix, time)
     if (!this.animation) this.model.traverse(child => {
       if (child.material?.uniforms?.hit) child.material.uniforms.hit.value = this.hit
     })

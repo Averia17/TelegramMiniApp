@@ -1,9 +1,16 @@
 import * as THREE from "three"
-import {WORLD_SCALE, worldToScene} from "./shared/coordinates"
+import {WORLD_SCALE, worldToScene} from "./shared/coordinates.js"
 
 const CAMERA_ANGLE = THREE.MathUtils.degToRad(55)
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const blend = (speed, delta) => 1 - Math.exp(-speed * delta)
+const MAP_FRAME_MARGIN = .96
+
+export const fitVerticalSpanToMap = (preferred, aspect, mapWidth, mapHeight) => Math.max(8, Math.min(
+  preferred,
+  Number(mapHeight) * WORLD_SCALE * Math.sin(CAMERA_ANGLE) * MAP_FRAME_MARGIN,
+  Number(mapWidth) * WORLD_SCALE / Math.max(.01, aspect) * MAP_FRAME_MARGIN,
+))
 
 export class CameraRig {
   constructor() {
@@ -12,13 +19,24 @@ export class CameraRig {
     this.target = new THREE.Vector3()
     this.width = 1
     this.height = 1
+    this.aspect = 1
+    this.preferredVertical = 27
+    this.vertical = 0
+    this.initialized = false
   }
 
   resize(width, height) {
     this.width = Math.max(1, Math.round(width))
     this.height = Math.max(1, Math.round(height))
-    const vertical = this.width < 700 ? 27 : 31
-    const horizontal = vertical * this.width / this.height
+    this.aspect = this.width / this.height
+    this.preferredVertical = this.width < 700 ? 27 : 31
+    this.setVerticalSpan(this.preferredVertical)
+  }
+
+  setVerticalSpan(vertical) {
+    if (Math.abs(vertical - this.vertical) < .001) return
+    this.vertical = vertical
+    const horizontal = vertical * this.aspect
     this.camera.left = -horizontal / 2
     this.camera.right = horizontal / 2
     this.camera.top = vertical / 2
@@ -27,14 +45,25 @@ export class CameraRig {
   }
 
   follow(player, map, delta) {
+    this.setVerticalSpan(fitVerticalSpanToMap(
+      this.preferredVertical,
+      this.aspect,
+      map.width,
+      map.height,
+    ))
     const desired = player
       ? worldToScene(player.x, player.y)
       : worldToScene(map.width / 2, map.height / 2)
-    const halfX = (this.camera.right - this.camera.left) / 2 / WORLD_SCALE * 0.72
-    const halfY = (this.camera.top - this.camera.bottom) / 2 / WORLD_SCALE * 0.72
+    const halfX = (this.camera.right - this.camera.left) / 2 / WORLD_SCALE
+    const halfY = (this.camera.top - this.camera.bottom) / 2 / Math.sin(CAMERA_ANGLE) / WORLD_SCALE
     desired.x = clamp(desired.x, Math.min(map.width / 2, halfX) * WORLD_SCALE, Math.max(map.width / 2, map.width - halfX) * WORLD_SCALE)
     desired.z = clamp(desired.z, Math.min(map.height / 2, halfY) * WORLD_SCALE, Math.max(map.height / 2, map.height - halfY) * WORLD_SCALE)
-    this.target.lerp(desired, blend(7, delta))
+    if (!this.initialized) {
+      this.target.copy(desired)
+      this.initialized = true
+    } else {
+      this.target.lerp(desired, blend(7, delta))
+    }
     const distance = 54
     this.camera.position.set(
       this.target.x,

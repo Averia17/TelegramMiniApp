@@ -1,7 +1,7 @@
 import * as THREE from "three"
-import {WORLD_SCALE} from "../shared/coordinates"
-import {disposeObjectTree} from "../shared/disposal"
-import {flatMaterial} from "../shared/materials"
+import {WORLD_SCALE} from "../shared/coordinates.js"
+import {disposeObjectTree} from "../shared/disposal.js"
+import {flatMaterial} from "../shared/materials.js"
 
 export const createWaterTexture = () => {
   const canvas = document.createElement("canvas")

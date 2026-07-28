@@ -16,6 +16,7 @@ type Client struct {
 	Send          chan []byte
 	State         chan []byte
 	MapRevision   int
+	MapSyncFrames int
 	Authenticated bool
 	MessageWindow time.Time
 	MessageCount  int

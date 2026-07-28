@@ -9,7 +9,7 @@ import (
 func TestNewHeroCombatKitsAreRegistered(t *testing.T) {
 	want := map[string]string{
 		"Fairy Mina": "cone", "Brock Zeus": "line", "Kaze": "cone",
-		"Wukong Mico": "lob", "Damian": "line", "Persephone Lumi": "line",
+		"Wukong Mico": "cone", "Damian": "line", "Persephone Lumi": "line",
 	}
 	for name, shape := range want {
 		kit := CombatKitFor(name)
@@ -64,17 +64,18 @@ func TestKazeSuperCrossesAndStunsEnemy(t *testing.T) {
 	}
 }
 
-func TestMicoJumpIsInvulnerableAndDamagesLandingArea(t *testing.T) {
+func TestMicoStaffAttackDamagesInFrontWithoutMovingOrGrantingInvulnerability(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("mico", "Mico", "Wukong Mico")
 	gs.PlayerAdd("enemy", "Enemy", "Shelly")
 	p, enemy := gs.Players["mico"], gs.Players["enemy"]
 	p.X, p.Y, enemy.X, enemy.Y = 500, 500, 600, 500
+	startX, startY := p.X, p.Y
 	now := time.Now().UnixMilli()
 	WukongMicoKit{}.Basic(gs, p, now, 0, 0)
-	if p.InvulnerableUntil != now+420 || enemy.Lives >= enemy.MaxLives {
-		t.Fatalf("invulnerable=%d damage=%d", p.InvulnerableUntil, enemy.MaxLives-enemy.Lives)
+	if p.X != startX || p.Y != startY || p.InvulnerableUntil != 0 || enemy.Lives >= enemy.MaxLives {
+		t.Fatalf("position=(%.1f,%.1f) invulnerable=%d damage=%d", p.X, p.Y, p.InvulnerableUntil, enemy.MaxLives-enemy.Lives)
 	}
 }
 
