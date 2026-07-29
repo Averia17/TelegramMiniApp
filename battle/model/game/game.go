@@ -41,7 +41,7 @@ const (
 	BotNavigationProbe      = 28.0
 	BotVisionRange          = 620.0
 	BotRevealRange          = 900.0
-	PlayerSpeedScale        = 0.70
+	PlayerSpeedScale        = 0.60
 	ProjectileSpeedScale    = 0.88
 	AttackRateScale         = 1.55
 	ReloadTimeScale         = 1.22
@@ -90,6 +90,9 @@ type BotPerception struct {
 	TargetID                string
 	LastSeenX, LastSeenY    float64
 	LastSeenAt, SearchUntil int64
+	Path                    []geometry.Vector2
+	PathGoalX, PathGoalY    int
+	PathMapRevision         int
 }
 
 type DelayedBattleEffect struct {
@@ -231,40 +234,14 @@ func (gs *GameState) updateGame() {
 			gs.startWaiting()
 			return
 		}
-		if gs.Mode == ModeDeathmatch {
-			if len(gs.Players) > 1 && gs.countActivePlayers() == 1 {
-				p := gs.getWinningPlayer()
-				if p != nil {
-					gs.onGameEnd(&ServerEvent{
-						Type:   "won",
-						Params: map[string]interface{}{"name": p.Name},
-					})
-					gs.startFinished()
-					return
-				}
-			}
-		}
-		if gs.Mode == ModeTeamDeathmatch {
-			if len(gs.Players) > 1 {
-				team := gs.getWinningTeam()
-				if team != "" {
-					name := "Red team"
-					if team == "Blue" {
-						name = "Blue team"
-					}
-					gs.onGameEnd(&ServerEvent{
-						Type:   "won",
-						Params: map[string]interface{}{"name": name},
-					})
-					gs.startFinished()
-					return
-				}
-			}
+		if gs.finishBattleIfDecided() {
+			return
 		}
 		if gs.GameEndsAt < time.Now().UnixMilli() {
+			winner := gs.getTimeoutWinner()
 			gs.onGameEnd(&ServerEvent{
 				Type:   "timeout",
-				Params: map[string]interface{}{},
+				Params: map[string]interface{}{"name": winner},
 			})
 			gs.startFinished()
 			return
@@ -351,6 +328,7 @@ func (gs *GameState) updateMonsters() {
 				if gs.OnPlayerKilled != nil {
 					gs.OnPlayerKilled(target.PlayerId, "A bat")
 				}
+				gs.finishBattleIfDecided()
 			}
 		}
 		index++
@@ -393,6 +371,7 @@ func (gs *GameState) updateStatuses() {
 			if gs.OnPlayerKilled != nil {
 				gs.OnPlayerKilled(p.PlayerId, killerName)
 			}
+			gs.finishBattleIfDecided()
 		}
 	}
 }
@@ -424,7 +403,7 @@ func (gs *GameState) applyDamage(target *player.Player, amount int) bool {
 }
 
 func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
-	if target == nil || !target.IsAlive() || target.InvulnerableUntil > time.Now().UnixMilli() {
+	if gs.State != GameStateGame || target == nil || !target.IsAlive() || target.InvulnerableUntil > time.Now().UnixMilli() {
 		return 0
 	}
 	if target.StealthUntil > time.Now().UnixMilli() && target.Dodges > 0 {
@@ -448,6 +427,7 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 }
 
 func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int) int {
+	wasAlive := target != nil && target.IsAlive()
 	dealt := gs.applyDamageAmount(target, amount)
 	if dealt > 0 {
 		if source != nil && source.HeroName == "Mandy" {
@@ -457,6 +437,21 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		} else {
 			gs.awardSuperFromDamage(source, dealt)
 		}
+	}
+	if wasAlive && !target.IsAlive() {
+		killerName := "Unknown"
+		if source != nil {
+			killerName = source.Name
+			source.Kills++
+		}
+		gs.Broadcast("killed", map[string]interface{}{
+			"killerName": killerName,
+			"killedName": target.Name,
+		})
+		if gs.OnPlayerKilled != nil {
+			gs.OnPlayerKilled(target.PlayerId, killerName)
+		}
+		gs.finishBattleIfDecided()
 	}
 	return dealt
 }
@@ -652,11 +647,14 @@ func (gs *GameState) updateBullets() {
 				continue
 			}
 			if b.Knockback > 0 {
-				p.X += math.Cos(b.Rotation) * b.Knockback
-				p.Y += math.Sin(b.Rotation) * b.Knockback
+				geometry.MoveCircleWithBlockingWalls(
+					&p.CircleBody,
+					gs.Walls,
+					math.Cos(b.Rotation)*b.Knockback,
+					math.Sin(b.Rotation)*b.Knockback,
+				)
 				clamped := gs.Map.ClampCircle(&p.CircleBody)
 				p.X, p.Y = clamped.X, clamped.Y
-				geometry.CorrectCircleWithBlockingWalls(&p.CircleBody, gs.Walls)
 			}
 			if b.Poison {
 				p.PoisonUntil = time.Now().Add(4 * time.Second).UnixMilli()
@@ -667,10 +665,10 @@ func (gs *GameState) updateBullets() {
 				p.Marks++
 			}
 			if b.Kind == "spore" || b.Kind == "quantum" {
-				gs.radialDamage(b.PlayerId, b.X, b.Y, map[string]float64{"spore": 115, "quantum": 75}[b.Kind], b.Damage)
+				gs.radialDamageExcept(b.PlayerId, b.X, b.Y, map[string]float64{"spore": 115, "quantum": 75}[b.Kind], b.Damage, p.PlayerId)
 			}
 			if b.Splash > 0 && b.Kind != "spore" && b.Kind != "quantum" {
-				gs.radialDamage(b.PlayerId, b.X, b.Y, b.Splash, b.Damage)
+				gs.radialDamageExcept(b.PlayerId, b.X, b.Y, b.Splash, b.Damage, p.PlayerId)
 			}
 			if b.Chain > 0 {
 				gs.chainDamage(b.PlayerId, p, 190, b.Chain, 650)
@@ -679,21 +677,6 @@ func (gs *GameState) updateBullets() {
 				b.Pierce--
 			} else {
 				b.Active = false
-			}
-			if !p.IsAlive() {
-				killer := gs.Players[b.PlayerId]
-				killerName := "Unknown"
-				if killer != nil {
-					killerName = killer.Name
-					killer.Kills++
-				}
-				gs.Broadcast("killed", map[string]interface{}{
-					"killerName": killerName,
-					"killedName": p.Name,
-				})
-				if gs.OnPlayerKilled != nil {
-					gs.OnPlayerKilled(p.PlayerId, killerName)
-				}
 			}
 		}
 
@@ -1079,6 +1062,37 @@ func (gs *GameState) updateBots() {
 		if !bot.IsBot || !bot.IsAlive() {
 			continue
 		}
+		if threat, flee := gs.botMonsterThreat(bot); threat != nil {
+			angle := math.Atan2(threat.Y-bot.Y, threat.X-bot.X)
+			bot.Rotation = angle
+			distance := math.Hypot(threat.X-bot.X, threat.Y-bot.Y)
+			if flee {
+				retreatDistance := 300.0
+				targetX := bot.X - math.Cos(angle)*retreatDistance
+				targetY := bot.Y - math.Sin(angle)*retreatDistance
+				if gs.Map != nil {
+					target := gs.Map.ClampCircle(&geometry.CircleBody{X: targetX, Y: targetY, Radius: bot.Radius})
+					targetX, targetY = target.X, target.Y
+				}
+				dx, dy := gs.botTravelDirection(id, &bot.CircleBody, targetX, targetY)
+				gs.playerMove(id, now, dx, dy)
+			} else {
+				approach := 1.0
+				if distance < 135 {
+					approach = -.35
+				}
+				strafe := math.Sin(float64(now)/560+float64(botIndex)*1.9) * .45
+				intentX := bot.X + (math.Cos(angle)*approach+math.Cos(angle+math.Pi/2)*strafe)*180
+				intentY := bot.Y + (math.Sin(angle)*approach+math.Sin(angle+math.Pi/2)*strafe)*180
+				dx, dy := gs.botTravelDirection(id, &bot.CircleBody, intentX, intentY)
+				gs.playerMove(id, now, dx, dy)
+			}
+			if bot.Ammo > 0 && distance < 520 {
+				gs.playerShoot(id, now, screenAngleFromWorld(angle))
+			}
+			botIndex++
+			continue
+		}
 		if opening {
 			if crate := gs.closestWallOfType(bot.X, bot.Y, "crates"); crate != nil {
 				targetX, targetY := (crate.MinX+crate.MaxX)/2, (crate.MinY+crate.MaxY)/2
@@ -1086,7 +1100,8 @@ func (gs *GameState) updateBots() {
 				bot.Rotation = angle
 				distance := math.Hypot(targetX-bot.X, targetY-bot.Y)
 				if distance > 105 {
-					gs.moveBot(id, now, math.Cos(angle), math.Sin(angle))
+					dx, dy := gs.botTravelDirection(id, &bot.CircleBody, targetX, targetY)
+					gs.playerMove(id, now, dx, dy)
 				} else {
 					gs.playerMove(id, now, 0, 0)
 				}
@@ -1145,7 +1160,10 @@ func (gs *GameState) updateBots() {
 					bot.Rotation = angle
 					// A small weave resembles searching instead of perfect tracking.
 					searchPhase := math.Sin(float64(now-memory.LastSeenAt)/240+float64(botIndex)) * .28
-					gs.moveBot(id, now, math.Cos(angle)+math.Cos(angle+math.Pi/2)*searchPhase, math.Sin(angle)+math.Sin(angle+math.Pi/2)*searchPhase)
+					intentX := memory.LastSeenX + math.Cos(angle+math.Pi/2)*searchPhase*TileSize
+					intentY := memory.LastSeenY + math.Sin(angle+math.Pi/2)*searchPhase*TileSize
+					dx, dy := gs.botTravelDirection(id, &bot.CircleBody, intentX, intentY)
+					gs.playerMove(id, now, dx, dy)
 				} else {
 					gs.playerMove(id, now, 0, 0)
 					memory.SearchUntil = int64(math.Min(float64(memory.SearchUntil), float64(now+650)))
@@ -1155,8 +1173,8 @@ func (gs *GameState) updateBots() {
 			}
 			if bush := gs.closestWallOfType(bot.X, bot.Y, "bush"); bush != nil {
 				x, y := (bush.MinX+bush.MaxX)/2, (bush.MinY+bush.MaxY)/2
-				angle := math.Atan2(y-bot.Y, x-bot.X)
-				gs.moveBot(id, now, math.Cos(angle), math.Sin(angle))
+				dx, dy := gs.botTravelDirection(id, &bot.CircleBody, x, y)
+				gs.playerMove(id, now, dx, dy)
 			}
 			continue
 		}
@@ -1171,7 +1189,9 @@ func (gs *GameState) updateBots() {
 		strafe := math.Sin(float64(now)/620+float64(botIndex)*1.7) * 0.62
 		dx := math.Cos(angle)*approach + math.Cos(angle+math.Pi/2)*strafe
 		dy := math.Sin(angle)*approach + math.Sin(angle+math.Pi/2)*strafe
-		gs.moveBot(id, now, dx, dy)
+		intentX, intentY := bot.X+dx*220, bot.Y+dy*220
+		moveX, moveY := gs.botTravelDirection(id, &bot.CircleBody, intentX, intentY)
+		gs.playerMove(id, now, moveX, moveY)
 		if !opening && targetVisible && closest < 520 {
 			if bot.SuperCharge >= 100 {
 				gs.playerAbility(id, now, "primary")
@@ -1190,6 +1210,130 @@ func (gs *GameState) moveBot(id string, now int64, dx, dy float64) {
 	}
 	dx, dy = gs.navigatedDirection(&bot.CircleBody, dx, dy, id)
 	gs.playerMove(id, now, dx, dy)
+}
+
+func (gs *GameState) botMonsterThreat(bot *player.Player) (*monster.Monster, bool) {
+	if bot == nil || !bot.IsAlive() {
+		return nil, false
+	}
+	var threat *monster.Monster
+	closest := math.MaxFloat64
+	for _, candidate := range gs.Monsters {
+		if candidate == nil || !candidate.IsAlive() {
+			continue
+		}
+		distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
+		isAttackingBot := candidate.State == monster.MonsterChase && candidate.TargetPlayerId == bot.PlayerId
+		if !isAttackingBot && distance > monster.MonsterSight {
+			continue
+		}
+		if distance < closest {
+			closest, threat = distance, candidate
+		}
+	}
+	if threat == nil {
+		return nil, false
+	}
+	healthRatio := float64(bot.Lives) / math.Max(1, float64(bot.MaxLives))
+	return threat, healthRatio < .35 || (bot.Ammo == 0 && closest < 170)
+}
+
+// botTravelDirection follows a short cached grid route. Unlike local wall
+// probing, the route has a destination, so an agent chooses the correct end of
+// a long obstacle instead of repeatedly pressing into it.
+func (gs *GameState) botTravelDirection(agentID string, body *geometry.CircleBody, targetX, targetY float64) (float64, float64) {
+	if body == nil || gs.Map == nil {
+		return 0, 0
+	}
+	if gs.BotMemory == nil {
+		gs.BotMemory = make(map[string]*BotPerception)
+	}
+	memory := gs.BotMemory[agentID]
+	if memory == nil {
+		memory = &BotPerception{}
+		gs.BotMemory[agentID] = memory
+	}
+	goalX, goalY := int(targetX/TileSize), int(targetY/TileSize)
+	if len(memory.Path) == 0 || memory.PathGoalX != goalX || memory.PathGoalY != goalY || memory.PathMapRevision != gs.MapRevision {
+		memory.Path = gs.findBotPath(body, targetX, targetY)
+		memory.PathGoalX, memory.PathGoalY = goalX, goalY
+		memory.PathMapRevision = gs.MapRevision
+	}
+	for len(memory.Path) > 0 && math.Hypot(memory.Path[0].X-body.X, memory.Path[0].Y-body.Y) < TileSize*.35 {
+		memory.Path = memory.Path[1:]
+	}
+	waypointX, waypointY := targetX, targetY
+	if len(memory.Path) > 0 {
+		waypointX, waypointY = memory.Path[0].X, memory.Path[0].Y
+	}
+	dx, dy := waypointX-body.X, waypointY-body.Y
+	length := math.Hypot(dx, dy)
+	if length < 1 {
+		return 0, 0
+	}
+	return gs.navigatedDirection(body, dx/length, dy/length, agentID)
+}
+
+func (gs *GameState) findBotPath(body *geometry.CircleBody, targetX, targetY float64) []geometry.Vector2 {
+	columns := int(math.Ceil(gs.Map.WidthInPixels / TileSize))
+	rows := int(math.Ceil(gs.Map.HeightInPixels / TileSize))
+	if columns <= 0 || rows <= 0 {
+		return nil
+	}
+	type cell struct{ x, y int }
+	clampCell := func(value, limit int) int {
+		if value < 0 {
+			return 0
+		}
+		if value >= limit {
+			return limit - 1
+		}
+		return value
+	}
+	start := cell{clampCell(int(body.X/TileSize), columns), clampCell(int(body.Y/TileSize), rows)}
+	goal := cell{clampCell(int(targetX/TileSize), columns), clampCell(int(targetY/TileSize), rows)}
+	index := func(c cell) int { return c.y*columns + c.x }
+	passable := func(c cell) bool {
+		probe := geometry.CircleBody{
+			X:      (float64(c.x) + .5) * TileSize,
+			Y:      (float64(c.y) + .5) * TileSize,
+			Radius: body.Radius + 2,
+		}
+		return !gs.Map.IsCircleOutside(&probe) && (gs.Walls == nil || !geometry.CollidesCircleWithBlockingWalls(&probe, gs.Walls))
+	}
+	queue := []cell{start}
+	visited := make([]bool, columns*rows)
+	parents := make([]cell, columns*rows)
+	visited[index(start)] = true
+	found := start == goal
+	for head := 0; head < len(queue) && !found; head++ {
+		current := queue[head]
+		for _, delta := range [...]cell{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+			next := cell{current.x + delta.x, current.y + delta.y}
+			if next.x < 0 || next.y < 0 || next.x >= columns || next.y >= rows || visited[index(next)] || !passable(next) {
+				continue
+			}
+			visited[index(next)] = true
+			parents[index(next)] = current
+			queue = append(queue, next)
+			if next == goal {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		return nil
+	}
+	reversed := make([]geometry.Vector2, 0)
+	for current := goal; current != start; current = parents[index(current)] {
+		reversed = append(reversed, geometry.Vector2{X: (float64(current.x) + .5) * TileSize, Y: (float64(current.y) + .5) * TileSize})
+	}
+	path := make([]geometry.Vector2, len(reversed))
+	for i := range reversed {
+		path[len(reversed)-1-i] = reversed[i]
+	}
+	return path
 }
 
 // navigatedDirection keeps lightweight steering local: bots still pursue their
@@ -1290,7 +1434,12 @@ func (gs *GameState) playerMove(id string, ts int64, dirX, dirY float64) {
 		p.MoveX, p.MoveY, p.Ack = 0, 0, ts
 		return
 	}
-	p.MoveX, p.MoveY, p.Ack = dirX, dirY, ts
+	p.Ack = ts
+	if math.Hypot(dirX, dirY) <= .01 {
+		p.MoveX, p.MoveY = 0, 0
+		return
+	}
+	p.MoveX, p.MoveY = dirX, dirY
 	if p.HeroName == "Mandy" && math.Hypot(dirX, dirY) > .01 {
 		p.FocusStartedAt, p.FocusCharge = 0, 0
 	}
@@ -1309,11 +1458,16 @@ func (gs *GameState) updatePlayerMovement() {
 		if p.SlowUntil > now {
 			speed *= .45
 		}
-		p.Move(p.MoveX, p.MoveY, speed)
+		magnitude := math.Hypot(p.MoveX, p.MoveY)
+		geometry.MoveCircleWithBlockingWalls(
+			&p.CircleBody,
+			gs.Walls,
+			p.MoveX/magnitude*speed,
+			p.MoveY/magnitude*speed,
+		)
 
 		clamped := gs.Map.ClampCircle(&p.CircleBody)
 		p.X, p.Y = clamped.X, clamped.Y
-		geometry.CorrectCircleWithBlockingWalls(&p.CircleBody, gs.Walls)
 		gs.collectPickups(p)
 	}
 }
@@ -1362,6 +1516,14 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 		return
 	}
 	primary := slot == "primary"
+	last := p.LastSecondaryAt
+	cooldown := AbilityCooldownMs(p.HeroName, "secondary")
+	if primary {
+		last, cooldown = p.LastPrimaryAt, AbilityCooldownMs(p.HeroName, "primary")
+	}
+	if last != 0 && ts-last < cooldown {
+		return
+	}
 	if !primary {
 		switch p.HeroName {
 		case "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi":
@@ -1379,14 +1541,6 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 		return
 	}
 	if primary && p.SuperCharge < 100 {
-		return
-	}
-	last := p.LastSecondaryAt
-	cooldown := AbilityCooldownMs(p.HeroName, "secondary")
-	if primary {
-		last, cooldown = p.LastPrimaryAt, AbilityCooldownMs(p.HeroName, "primary")
-	}
-	if last != 0 && ts-last < cooldown {
 		return
 	}
 	if primary {
@@ -1737,10 +1891,14 @@ func (gs *GameState) hitSector(source *player.Player, angle, reach, halfArc floa
 }
 
 func (gs *GameState) radialDamage(owner string, x, y, radius float64, damage int) int {
+	return gs.radialDamageExcept(owner, x, y, radius, damage, "")
+}
+
+func (gs *GameState) radialDamageExcept(owner string, x, y, radius float64, damage int, excludedPlayerID string) int {
 	hits := 0
 	source := gs.Players[owner]
 	for id, target := range gs.Players {
-		if id == owner || !target.IsAlive() || (source != nil && source.Team != "" && source.Team == target.Team) {
+		if id == owner || id == excludedPlayerID || !target.IsAlive() || (source != nil && source.Team != "" && source.Team == target.Team) {
 			continue
 		}
 		if math.Hypot(target.X-x, target.Y-y) <= radius+target.Radius {
@@ -1868,16 +2026,23 @@ func (gs *GameState) updateTemporaryWalls() {
 func (gs *GameState) dashAttack(p *player.Player, angle, distance, radius float64, damage int) {
 	steps := 5
 	for step := 0; step < steps; step++ {
-		p.X += math.Cos(angle) * distance / float64(steps)
-		p.Y += math.Sin(angle) * distance / float64(steps)
-		geometry.CorrectCircleWithWalls(&p.CircleBody, gs.Walls, "")
+		geometry.MoveCircleWithBlockingWalls(
+			&p.CircleBody,
+			gs.Walls,
+			math.Cos(angle)*distance/float64(steps),
+			math.Sin(angle)*distance/float64(steps),
+		)
 		gs.hitSector(p, angle, radius, math.Pi, damage, false)
 	}
 }
 
 func (gs *GameState) vaultMove(p *player.Player, angle, distance float64) {
-	p.X += math.Cos(angle) * distance
-	p.Y += math.Sin(angle) * distance
+	geometry.MoveCircleWithBlockingWalls(
+		&p.CircleBody,
+		gs.Walls,
+		math.Cos(angle)*distance,
+		math.Sin(angle)*distance,
+	)
 	clamped := gs.Map.ClampCircle(&p.CircleBody)
 	p.X, p.Y = clamped.X, clamped.Y
 }
@@ -1978,6 +2143,41 @@ func (gs *GameState) countActivePlayers() int {
 	return count
 }
 
+func (gs *GameState) finishBattleIfDecided() bool {
+	if gs.State != GameStateGame || len(gs.Players) <= 1 {
+		return false
+	}
+
+	winner := ""
+	switch gs.Mode {
+	case ModeDeathmatch:
+		if gs.countActivePlayers() != 1 {
+			return false
+		}
+		if player := gs.getWinningPlayer(); player != nil {
+			winner = player.Name
+		}
+	case ModeTeamDeathmatch:
+		team := gs.getWinningTeam()
+		if team == "" {
+			return false
+		}
+		winner = team + " team"
+	default:
+		return false
+	}
+	if winner == "" {
+		return false
+	}
+
+	gs.onGameEnd(&ServerEvent{
+		Type:   "won",
+		Params: map[string]interface{}{"name": winner},
+	})
+	gs.startFinished()
+	return true
+}
+
 func (gs *GameState) getWinningPlayer() *player.Player {
 	for _, p := range gs.Players {
 		if p.IsAlive() {
@@ -1985,6 +2185,37 @@ func (gs *GameState) getWinningPlayer() *player.Player {
 		}
 	}
 	return nil
+}
+
+func (gs *GameState) getTimeoutWinner() string {
+	if gs.Mode == ModeTeamDeathmatch {
+		teamLives := map[string]int{"Red": 0, "Blue": 0}
+		for _, p := range gs.Players {
+			teamLives[p.Team] += p.Lives
+		}
+		if teamLives["Red"] == teamLives["Blue"] {
+			return ""
+		}
+		if teamLives["Red"] > teamLives["Blue"] {
+			return "Red team"
+		}
+		return "Blue team"
+	}
+
+	var winner *player.Player
+	tied := false
+	for _, candidate := range gs.Players {
+		if winner == nil || candidate.Lives > winner.Lives {
+			winner = candidate
+			tied = false
+		} else if candidate.Lives == winner.Lives {
+			tied = true
+		}
+	}
+	if winner == nil || tied {
+		return ""
+	}
+	return winner.Name
 }
 
 func (gs *GameState) getWinningTeam() string {
@@ -2005,7 +2236,10 @@ func (gs *GameState) getWinningTeam() string {
 	if redAlive {
 		return "Red"
 	}
-	return "Blue"
+	if blueAlive {
+		return "Blue"
+	}
+	return ""
 }
 
 func (gs *GameState) monstersAdd(count int) {

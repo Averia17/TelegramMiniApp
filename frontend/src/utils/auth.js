@@ -6,13 +6,17 @@ let accessToken = ""
 const getDevelopmentUserId = () => {
   const queryId = new URLSearchParams(window.location.search).get("devUser")
   if (queryId && /^\d{1,18}$/.test(queryId) && Number(queryId) > 0) {
-    window.sessionStorage.setItem("dev_user_id", queryId)
+    window.localStorage.setItem("dev_user_id", queryId)
     return queryId
   }
-  const storedId = window.sessionStorage.getItem("dev_user_id")
-  if (storedId) return storedId
+  const storedId = window.localStorage.getItem("dev_user_id")
+    || window.sessionStorage.getItem("dev_user_id")
+  if (storedId) {
+    window.localStorage.setItem("dev_user_id", storedId)
+    return storedId
+  }
   const generatedId = String(900_000_000 + crypto.getRandomValues(new Uint32Array(1))[0] % 99_999_999)
-  window.sessionStorage.setItem("dev_user_id", generatedId)
+  window.localStorage.setItem("dev_user_id", generatedId)
   return generatedId
 }
 

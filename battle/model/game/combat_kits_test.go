@@ -217,7 +217,7 @@ func TestMandyFocusExtendsMeleeConeAfterOneSecondStill(t *testing.T) {
 	gs.PlayerAdd("target", "Target", "Shelly")
 	source, target := gs.Players["mandy"], gs.Players["target"]
 	source.X, source.Y = 500, 500
-	target.X, target.Y = 650, 500 // Outside 120 base reach, inside 162 focused reach.
+	target.X, target.Y = 585, 500 // Outside 70 base reach, inside 94.5 focused reach.
 	source.FocusStartedAt = time.Now().Add(-1100 * time.Millisecond).UnixMilli()
 
 	gs.updateMandyFocus()

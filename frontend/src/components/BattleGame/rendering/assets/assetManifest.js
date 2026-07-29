@@ -10,61 +10,49 @@ const clips = Object.freeze({
   defeat: "Defeat",
 })
 
-const eventAnimations = assetId => Object.freeze({
-  idle: Object.freeze({
-    url: `/assets/heroes/${assetId}/animations/idle.glb`,
-    clip: "Idle",
-  }),
-  run: Object.freeze({
-    url: `/assets/heroes/${assetId}/animations/run.glb`,
-    clip: "Run",
-  }),
-  aim: Object.freeze({
-    url: `/assets/heroes/${assetId}/animations/aim.glb`,
-    clip: "Aim",
-  }),
-  aimSuper: Object.freeze({
-    url: `/assets/heroes/${assetId}/animations/aim-super.glb`,
-    clip: "AimSuper",
-  }),
-  attack: Object.freeze({
-    url: `/assets/heroes/${assetId}/animations/attack.glb`,
-    clip: "Attack",
-  }),
-  super: Object.freeze({
-    url: `/assets/heroes/${assetId}/animations/super.glb`,
-    clip: "Super",
-  }),
-  spawn: Object.freeze({
-    url: `/assets/heroes/${assetId}/animations/spawn.glb`,
-    clip: "Spawn",
-  }),
-  victory: Object.freeze({
-    url: `/assets/heroes/${assetId}/animations/victory.glb`,
-    clip: "Victory",
-  }),
-  defeat: Object.freeze({
-    url: `/assets/heroes/${assetId}/animations/defeat.glb`,
-    clip: "Defeat",
-  }),
+const detachedWeapons = new Set(["damian", "kaze", "mandy", "persephone-lumi", "wukong-mico"])
+const weaponAttachments = Object.freeze({
+  damian: Object.freeze([
+    Object.freeze({name: "HeroAttachment_Microphone", target: "GripPrimaryHeroAttachment_Microphone", role: "held-weapon"}),
+    Object.freeze({name: "HeroAttachment_Speaker", target: "GripPrimaryHeroAttachment_Speaker", role: "throwable-weapon"}),
+  ]),
+  kaze: Object.freeze([
+    Object.freeze({name: "HeroAttachment_FanLeft", target: "GripPrimaryHeroAttachment_FanLeft", role: "held-weapon"}),
+    Object.freeze({name: "HeroAttachment_FanRight", target: "GripPrimaryHeroAttachment_FanRight", role: "held-weapon"}),
+  ]),
+  mandy: Object.freeze([
+    Object.freeze({name: "MandyStaff_Attachment", target: "GripPrimaryMandyStaff_Attachment", role: "held-weapon"}),
+  ]),
+  "persephone-lumi": Object.freeze([
+    Object.freeze({name: "HeroAttachment_WeaponHeld", target: "GripPrimaryHeroAttachment_WeaponHeld", role: "held-weapon"}),
+  ]),
+  "wukong-mico": Object.freeze([
+    Object.freeze({name: "HeroAttachment_Staff", target: "GripPrimaryHeroAttachment_Staff", role: "held-weapon"}),
+  ]),
 })
 
 const hero = (id, scale = 0.92, rotationOffset = 0, assetId = id.toLowerCase()) => Object.freeze({
   id,
-  url: `/assets/heroes/${assetId}/${assetId}.glb`,
+  url: `/assets/heroes/output_heroes/${assetId}_base.glb`,
+  weaponUrl: detachedWeapons.has(assetId)
+    ? `/assets/heroes/output_weapons/${assetId}_weapon.glb`
+    : null,
+  weaponAttachments: weaponAttachments[assetId] || Object.freeze([]),
   available: true,
   scale,
   targetHeight: 2.45,
   rotationOffset,
   clips,
-  eventAnimations: eventAnimations(assetId),
 })
 
 export const HERO_ASSETS = Object.freeze({
   Shadow: hero("Shadow", 0.94, 0, "needle"),
   Mandy: hero("Mandy"),
   "Fairy Mina": hero("Fairy Mina", 0.92, 0, "fairy-mina"),
-  "Brock Zeus": hero("Brock Zeus", 0.92, 0, "brock-zeus"),
+  "Brock Zeus": Object.freeze({
+    ...hero("Brock Zeus", 0.92, 0, "brock-zeus"),
+    previewOffsetX: .68,
+  }),
   Kaze: hero("Kaze"),
   "Wukong Mico": hero("Wukong Mico", 0.92, 0, "wukong-mico"),
   Damian: Object.freeze({...hero("Damian"), groundOffset: 0.25}),

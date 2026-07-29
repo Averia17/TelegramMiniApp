@@ -1,4 +1,5 @@
 import {HeroView, isInsideBush} from "../heroes/HeroView"
+import {isAlivePlayerState} from "../heroes/playerVisibility.js"
 import {MapRenderer} from "../map/MapRenderer"
 import {AimRenderer} from "../combat/AimRenderer"
 import {EffectRenderer} from "../combat/EffectRenderer"
@@ -7,6 +8,7 @@ import {CameraRig} from "../CameraRig"
 import {SceneRoot} from "../SceneRoot"
 import {detectLowQualityDevice} from "../shared/quality"
 import {MonsterRenderer} from "../monsters/MonsterRenderer.js"
+import {PickupRenderer} from "../map/PickupRenderer.js"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 
@@ -21,11 +23,13 @@ export class ThreeBattleRenderer {
     this.camera = this.cameraRig.camera
     this.mapRoot = this.sceneRoot.roots.map
     this.actorRoot = this.sceneRoot.roots.actors
+    this.pickupRoot = this.sceneRoot.roots.pickups
     this.projectileRoot = this.sceneRoot.roots.projectiles
     this.effectRoot = this.sceneRoot.roots.effects
     this.aimRoot = this.sceneRoot.roots.aim
     this.players = new Map()
     this.monsters = new MonsterRenderer(this.actorRoot)
+    this.pickups = new PickupRenderer(this.pickupRoot)
     this.projectiles = new ProjectileRenderer(this.projectileRoot)
     this.effects = new EffectRenderer(this.effectRoot)
     this.aim = new AimRenderer(this.aimRoot)
@@ -60,6 +64,7 @@ export class ThreeBattleRenderer {
     this.mapRenderer.sync(state.map)
     const active = new Set()
     Object.entries(state.players || {}).forEach(([id, player]) => {
+      if (!isAlivePlayerState(player)) return
       active.add(String(id))
       let view = this.players.get(String(id))
       if (!view || String(view.state.hero) !== String(player.hero)) {
@@ -75,6 +80,7 @@ export class ThreeBattleRenderer {
     })
     this.projectiles.sync(state.bullets || [])
     this.monsters.sync(state.monsters || {})
+    this.pickups.sync(state.props || [])
     const totemEffects = (state.totems || []).map(totem => ({
       id:`totem:${totem.owner}`,kind:"damian_totem",x:totem.x,y:totem.y,radius:24,
       color:"#8D52D9",life:1,maxLife:1,hp:totem.hp,maxHp:totem.maxHp,
@@ -89,6 +95,7 @@ export class ThreeBattleRenderer {
     this.mapRenderer.update(delta)
     this.projectiles.update(delta,this.time)
     this.monsters.update(delta,this.time)
+    this.pickups.update(delta)
     this.aim.update(this.state?.players?.[this.localPlayerId])
     const local=this.players.get(this.localPlayerId)
     const map=this.state?.map||{width:1024,height:768}
@@ -123,6 +130,7 @@ export class ThreeBattleRenderer {
 
   destroy() {
     this.players.forEach(view=>view.dispose())
+    this.pickups.dispose()
     this.monsters.dispose()
     this.mapRenderer.dispose()
     this.sceneRoot.dispose()

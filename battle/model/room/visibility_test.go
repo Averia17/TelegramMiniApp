@@ -36,3 +36,17 @@ func TestVisiblePlayersForClientOmitsConcealedEnemyCoordinates(t *testing.T) {
 		t.Fatal("recently revealed enemy must be visible")
 	}
 }
+
+func TestActivePlayerCountIncludesConcealedPlayers(t *testing.T) {
+	state := &game.GameState{
+		Players: map[string]*player.Player{
+			"viewer": {Lives: 100},
+			"hidden": {Lives: 100},
+			"dead":   {Lives: 0},
+		},
+	}
+
+	if got := activePlayerCount(state); got != 2 {
+		t.Fatalf("active player count = %d, want 2", got)
+	}
+}

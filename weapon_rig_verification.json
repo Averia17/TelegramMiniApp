@@ -1,0 +1,38 @@
+{
+  "file": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\hero_weapon_rework.blend",
+  "bones": [
+    "root",
+    "spine",
+    "chest",
+    "upper_arm.R",
+    "forearm.R",
+    "hand_socket.R",
+    "upper_arm.L",
+    "forearm.L",
+    "hand_socket.L"
+  ],
+  "weapons": [
+    {
+      "name": "Weapon_R",
+      "parent": "Hero_Rig",
+      "parent_type": "BONE",
+      "parent_bone": "hand_socket.R",
+      "detachable": true,
+      "grip_bone": "hand_socket.R",
+      "collection": [
+        "EQUIPMENT"
+      ]
+    },
+    {
+      "name": "Weapon_L",
+      "parent": "Hero_Rig",
+      "parent_type": "BONE",
+      "parent_bone": "hand_socket.L",
+      "detachable": true,
+      "grip_bone": "hand_socket.L",
+      "collection": [
+        "EQUIPMENT"
+      ]
+    }
+  ]
+}

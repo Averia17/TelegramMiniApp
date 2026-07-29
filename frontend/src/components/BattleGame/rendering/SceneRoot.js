@@ -56,11 +56,15 @@ export class SceneRoot {
     this.roots = {
       map: new THREE.Group(),
       actors: new THREE.Group(),
+      pickups: new THREE.Group(),
       projectiles: new THREE.Group(),
       effects: new THREE.Group(),
       aim: new THREE.Group(),
     }
     this.scene.add(...Object.values(this.roots))
+    this.lightDirection = new THREE.Vector3()
+    this.lightFocus = new THREE.Vector3()
+    this.lightOffset = new THREE.Vector3(-8, 16, 10)
   }
 
   resize(width, height) {
@@ -80,11 +84,10 @@ export class SceneRoot {
   }
 
   render(camera) {
-    const direction = new THREE.Vector3()
-    camera.getWorldDirection(direction)
-    const focus = camera.position.clone().addScaledVector(direction, 54)
-    this.keyLight.position.copy(focus).add(new THREE.Vector3(-8, 16, 10))
-    this.keyLight.target.position.copy(focus)
+    camera.getWorldDirection(this.lightDirection)
+    this.lightFocus.copy(camera.position).addScaledVector(this.lightDirection, 54)
+    this.keyLight.position.copy(this.lightFocus).add(this.lightOffset)
+    this.keyLight.target.position.copy(this.lightFocus)
     this.keyLight.target.updateMatrixWorld()
     this.renderer.render(this.scene, camera)
   }

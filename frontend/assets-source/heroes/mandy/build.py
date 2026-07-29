@@ -6,6 +6,7 @@ from mathutils import Euler, Matrix, Vector
 
 BLEND_PATH = r"C:\Users\User\PycharmProjects\TelegramMiniApp\frontend\assets-source\heroes\mandy\mandy.blend"
 GLB_PATH = r"C:\Users\User\PycharmProjects\TelegramMiniApp\frontend\public\assets\heroes\mandy\mandy.glb"
+SOURCE_FBX_PATH = r"C:\Users\User\PycharmProjects\TelegramMiniApp\frontend\assets-source\heroes\mandy\original\source\Hanbok Mandy.fbx"
 FPS = 30
 
 
@@ -26,7 +27,11 @@ def key_bone(armature, bone_name, frame, rotation=None, location=None, scale=Non
     if not bone:
         return
     if rotation is not None:
-        bone.rotation_euler = Euler(rotation, "XYZ")
+        # Keep Euler values on the nearest equivalent branch. Large multi-axis
+        # swings otherwise jump through ±180° between adjacent contact keys.
+        compatible_rotation = Euler(rotation, "XYZ")
+        compatible_rotation.make_compatible(bone.rotation_euler)
+        bone.rotation_euler = compatible_rotation
         bone.keyframe_insert("rotation_euler", frame=frame, group=bone_name)
     if location is not None:
         bone.location = location
@@ -44,8 +49,59 @@ def create_action(armature, name, end_frame, keys, cyclic=False):
         armature.animation_data_create()
     armature.animation_data.action = action
     for frame, poses in keys:
-        for bone_name, channels in poses.items():
-            key_bone(armature, bone_name, frame, **channels)
+        # The source mesh has fully rigged fingers, but its menu pose leaves
+        # them spread open.  Keep the weapon hand wrapped around the staff in
+        # every action instead of merely parenting the staff beside an open
+        # palm.
+        grip_pose = {
+            "L_middle_01_s_048": rot(x=111.173, y=-16.369, z=50.0),
+            "L_middle_02_s_049": rot(x=34.875, y=-1.004, z=100.0),
+            "L_index_01_s_050": rot(x=75.016, y=-44.852, z=47.484),
+            "L_index_02_s_051": rot(x=90.844, y=-50.0, z=42.458),
+            "L_thumb_01_s_052": rot(x=-50.0, y=-53.948, z=-50.23),
+            "L_thumb_02_s_053": rot(x=23.44, y=47.845, z=0.23),
+            "L_ring_01_s_054": rot(x=82.842, y=29.955, z=-50.419),
+            "L_ring_02_s_055": rot(x=78.261, y=47.902, z=-48.525),
+            "L_pinky_01_s_056": rot(x=103.121, y=22.73, z=-54.575),
+            "L_pinky_02_s_057": rot(x=47.522, y=67.414, z=-58.319),
+            "R_middle_01_s_065": rot(x=-58),
+            "R_middle_02_s_066": rot(x=-72),
+            "R_index_01_s_067": rot(x=-54),
+            "R_index_02_s_068": rot(x=-68),
+            "R_thumb_01_s_069": rot(x=-32, z=24),
+            "R_thumb_02_s_070": rot(x=-42),
+            "R_ring_01_s_071": rot(x=-62),
+            "R_ring_02_s_072": rot(x=-74),
+            "R_pinky_01_s_073": rot(x=-66),
+            "R_pinky_02_s_074": rot(x=-76),
+        }
+        keyed_pose = {**grip_pose, **poses}
+        for bone_name, channels in keyed_pose.items():
+            keyed_channels = channels
+            if (
+                name == "Attack"
+                and frame not in {1, end_frame}
+                and any(
+                    token in bone_name.casefold()
+                    for token in (
+                        "hips",
+                        "spine",
+                        "chest",
+                        "shoulder",
+                        "elbow",
+                        "wrist",
+                    )
+                )
+                and channels.get("rotation") is not None
+            ):
+                keyed_channels = {
+                    **channels,
+                    "rotation": tuple(
+                        max(math.radians(-165), min(math.radians(165), value * 1.12))
+                        for value in channels["rotation"]
+                    ),
+                }
+            key_bone(armature, bone_name, frame, **keyed_channels)
     action.frame_start = 1
     action.frame_end = end_frame
     # Clamped Bezier handles keep held poses stable without the wild Euler
@@ -93,9 +149,8 @@ def prepare_scene():
             if obj.type == "MESH"
             else set()
         )
-        if obj.type == "MESH" and (
-            "weapon_GEO" in obj.name
-            or any(name.startswith("MandyStaff") for name in material_names)
+        if obj.type == "MESH" and any(
+            name.startswith("MandyStaff") for name in material_names
         ):
             bpy.data.objects.remove(obj, do_unlink=True)
 
@@ -124,6 +179,7 @@ def prepare_scene():
             material.surface_render_method = "DITHERED"
 
     create_staff(armature)
+    ensure_weapon_socket(armature)
 
     bpy.context.view_layer.update()
     corners = [
@@ -161,79 +217,108 @@ def prepare_scene():
     return root, armature
 
 
-def staff_material(name, color, metallic=0.1, roughness=0.42):
-    material = bpy.data.materials.get(name) or bpy.data.materials.new(name)
-    material.diffuse_color = (*color, 1)
-    material.metallic = metallic
-    material.roughness = roughness
-    material.use_nodes = True
-    principled = material.node_tree.nodes.get("Principled BSDF")
-    if principled:
-        principled.inputs["Base Color"].default_value = (*color, 1)
-        principled.inputs["Metallic"].default_value = metallic
-        principled.inputs["Roughness"].default_value = roughness
-    return material
+def ensure_weapon_socket(armature):
+    wrist_name = "L_wrist_s_047"
+    wrist = armature.data.bones.get(wrist_name)
+    if not wrist:
+        return
+    bpy.context.view_layer.objects.active = armature
+    armature.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    edit_wrist = armature.data.edit_bones[wrist_name]
+    socket = armature.data.edit_bones.get("weapon_socket_r")
+    if socket is None:
+        socket = armature.data.edit_bones.new("weapon_socket_r")
+    socket.parent = edit_wrist
+    socket.use_connect = False
+    socket.use_deform = False
+    socket.head = edit_wrist.tail
+    direction = (edit_wrist.tail - edit_wrist.head).normalized()
+    socket.tail = socket.head + direction * max(edit_wrist.length * 0.18, 0.02)
+    bpy.ops.object.mode_set(mode="OBJECT")
 
 
 def create_staff(armature):
+    # The saved .blend opens on Idle. Return the target rig to its bind pose
+    # before calculating the downloaded weapon's rigid bone-parent transform.
+    reset_pose(armature)
+    bpy.context.view_layer.update()
     for obj in list(bpy.context.scene.objects):
-        if obj.name.startswith("MandyStaff"):
+        if (
+            obj.name.startswith("MandyStaff")
+            or obj.name.startswith("MandyStaff_SourcePivot")
+            or obj.name.startswith("Socket.Weapon.R")
+            or obj.name.startswith("Grip.Primary.MandyStaff")
+            or obj.get("attachment_role") == "held-weapon"
+        ):
             bpy.data.objects.remove(obj, do_unlink=True)
 
-    pink = staff_material(
-        "MandyStaffPink", (0.82, 0.075, 0.32), metallic=0.15, roughness=0.32
+    # Import the authored weapon straight from the downloaded Hanbok Mandy FBX.
+    # It already has the correct shape, proportions, materials, vertex weights,
+    # and bind transform; rebuilding it from primitives loses all of that.
+    existing_objects = set(bpy.context.scene.objects)
+    bpy.ops.wm.fbx_import(filepath=SOURCE_FBX_PATH, use_anim=False)
+    imported_objects = [
+        obj for obj in bpy.context.scene.objects if obj not in existing_objects
+    ]
+    weapon = next(
+        obj
+        for obj in imported_objects
+        if obj.type == "MESH" and obj.name.casefold().startswith("weapon_geo")
     )
-    gold = staff_material(
-        "MandyStaffGold", (1.0, 0.55, 0.06), metallic=0.62, roughness=0.24
-    )
-    grip = staff_material(
-        "MandyStaffGrip", (0.16, 0.055, 0.22), metallic=0.05, roughness=0.7
-    )
-
-    wrist = armature.pose.bones["R_wrist_s_064"]
-    wrist_world = armature.matrix_world @ wrist.matrix.translation
-    pivot = bpy.data.objects.new("MandyStaff_Attachment", None)
+    source_armature = next(obj for obj in imported_objects if obj.type == "ARMATURE")
+    source_bone = source_armature.pose.bones["R_gunbone_01_s"]
+    source_bone_world = source_armature.matrix_world @ source_bone.matrix
+    weapon.data.transform(weapon.matrix_world)
+    weapon.data.transform(Matrix.Translation(-source_bone_world.translation))
+    weapon.matrix_world = Matrix.Identity(4)
+    for modifier in list(weapon.modifiers):
+        if modifier.type == "ARMATURE":
+            weapon.modifiers.remove(modifier)
+    weapon.vertex_groups.clear()
+    target_parent_bone = armature.pose.bones["L_wrist_s_047"]
+    target_grip_world = armature.matrix_world @ target_parent_bone.matrix
+    target_grip_world.translation = armature.matrix_world @ target_parent_bone.tail
+    pivot = bpy.data.objects.new("MandyStaff_SourcePivot", None)
     bpy.context.scene.collection.objects.link(pivot)
-    pivot["attachment_role"] = "melee-weapon"
     pivot.parent = armature
     pivot.parent_type = "BONE"
-    pivot.parent_bone = wrist.name
-    # Preserve a clean world-space upright grip at rest. Bone parenting then
-    # carries this offset through every wrist pose without animating a second,
-    # competing weapon bone.
-    pivot.matrix_world = Matrix.Translation(wrist_world)
+    pivot.parent_bone = target_parent_bone.name
+    index_root = armature.pose.bones["L_index_01_s_050"]
+    pinky_root = armature.pose.bones["L_pinky_01_s_056"]
+    desired_axis = (
+        armature.matrix_world @ pinky_root.head
+        - armature.matrix_world @ index_root.head
+    ).normalized()
+    grip_matrix = desired_axis.to_track_quat("Z", "Y").to_matrix().to_4x4()
+    grip_matrix.translation = target_grip_world.translation
+    pivot.matrix_world = grip_matrix
+    pivot.scale = (1, 1, 1)
+    weapon.parent = pivot
+    weapon.parent_type = "OBJECT"
+    weapon.matrix_local = Matrix.Identity(4)
+    # The source weapon bone origin sits in the decorative sphere. Move the
+    # nearby narrow neck to the palm after orienting the shaft across it.
+    weapon.location = (0, 0, 1.86)
+    weapon["grip_axis_offset_local"] = 1.86
+    weapon.name = "MandyStaff_Attachment"
+    weapon["attachment_role"] = "held-weapon"
+    weapon["grip_bone"] = target_parent_bone.name
 
-    # The imported rig is authored in centimetres and MandyRoot is normalized
-    # by roughly 0.01 during export, so weapon primitives use authoring units.
-    unit = 1.2
-    bpy.ops.mesh.primitive_cylinder_add(
-        vertices=14, radius=0.055 * unit, depth=1.35 * unit
-    )
-    shaft = bpy.context.object
-    shaft.name = "MandyStaff_Shaft"
-    shaft.data.materials.append(pink)
-    shaft.parent = pivot
-    shaft.location = (0, 0, 0.45 * unit)
+    for imported in imported_objects:
+        if imported != weapon:
+            bpy.data.objects.remove(imported, do_unlink=True)
 
-    bpy.ops.mesh.primitive_cylinder_add(
-        vertices=14, radius=0.075 * unit, depth=0.30 * unit
-    )
-    handle = bpy.context.object
-    handle.name = "MandyStaff_Grip"
-    handle.data.materials.append(grip)
-    handle.parent = pivot
-    handle.location = (0, 0, -0.18 * unit)
-
-    for suffix, offset in (("Top", 1.18 * unit), ("Bottom", -0.38 * unit)):
-        bpy.ops.mesh.primitive_uv_sphere_add(
-            segments=14, ring_count=8, radius=0.095 * unit
-        )
-        cap = bpy.context.object
-        cap.name = f"MandyStaff_{suffix}Cap"
-        cap.scale.z = 0.55
-        cap.data.materials.append(gold)
-        cap.parent = pivot
-        cap.location = (0, 0, offset)
+    # The original mesh is skinned to the source weapon bone. Export a marker
+    # under that same bone so runtime grip audits retain an explicit anchor.
+    grip_marker = bpy.data.objects.new("Grip.Primary.MandyStaff_Attachment", None)
+    bpy.context.scene.collection.objects.link(grip_marker)
+    grip_marker["grip_role"] = "primary"
+    grip_marker.parent = armature
+    grip_marker.parent_type = "BONE"
+    grip_marker.parent_bone = target_parent_bone.name
+    grip_marker.matrix_parent_inverse = Matrix.Identity(4)
+    grip_marker.location = (0, 0, 0)
 
 
 def build_animations(armature):
@@ -275,7 +360,9 @@ def build_animations(armature):
                         chest: rot(x=2),
                         head: rot(x=-1),
                         left_arm: rot(y=-5, z=-8),
-                        right_arm: rot(y=6, z=10),
+                        right_arm: rot(x=-34, y=8, z=34),
+                        right_elbow: rot(x=-48, y=6),
+                        right_wrist: rot(x=12, y=-6, z=-8),
                         weapon: rot(x=5),
                     }
                 ),
@@ -289,7 +376,9 @@ def build_animations(armature):
                         chest: rot(x=-1),
                         head: rot(x=1),
                         left_arm: rot(y=-4, z=-7),
-                        right_arm: rot(y=5, z=9),
+                        right_arm: rot(x=-32, y=7, z=32),
+                        right_elbow: rot(x=-46, y=5),
+                        right_wrist: rot(x=11, y=-5, z=-8),
                         weapon: rot(x=-3),
                     }
                 ),
@@ -303,7 +392,9 @@ def build_animations(armature):
                         chest: rot(x=2),
                         head: rot(x=-1),
                         left_arm: rot(y=-5, z=-8),
-                        right_arm: rot(y=6, z=10),
+                        right_arm: rot(x=-34, y=8, z=34),
+                        right_elbow: rot(x=-48, y=6),
+                        right_wrist: rot(x=12, y=-6, z=-8),
                         weapon: rot(x=5),
                     }
                 ),
@@ -328,7 +419,9 @@ def build_animations(armature):
                         left_knee: rot(x=8),
                         right_knee: rot(x=35),
                         left_arm: rot(x=-20, z=-10),
-                        right_arm: rot(x=-12, z=16),
+                        right_arm: rot(x=-38, y=8, z=32),
+                        right_elbow: rot(x=-46, y=6),
+                        right_wrist: rot(x=12, y=-6, z=-8),
                         weapon: rot(x=8, z=4),
                     }
                 ),
@@ -357,7 +450,9 @@ def build_animations(armature):
                         left_knee: rot(x=35),
                         right_knee: rot(x=8),
                         left_arm: rot(x=-10, z=-10),
-                        right_arm: rot(x=-20, z=16),
+                        right_arm: rot(x=-42, y=7, z=34),
+                        right_elbow: rot(x=-50, y=5),
+                        right_wrist: rot(x=11, y=-5, z=-8),
                         weapon: rot(x=8, z=4),
                     }
                 ),
@@ -386,7 +481,9 @@ def build_animations(armature):
                         left_knee: rot(x=8),
                         right_knee: rot(x=35),
                         left_arm: rot(x=-20, z=-10),
-                        right_arm: rot(x=-12, z=16),
+                        right_arm: rot(x=-38, y=8, z=32),
+                        right_elbow: rot(x=-46, y=6),
+                        right_wrist: rot(x=12, y=-6, z=-8),
                         weapon: rot(x=8, z=4),
                     }
                 ),
@@ -416,7 +513,7 @@ def build_animations(armature):
     create_action(
         armature,
         "Attack",
-        26,
+        30,
         [
             (1, aim_pose),
             (
@@ -458,7 +555,7 @@ def build_animations(armature):
                 ),
             ),
             (
-                10,
+                12,
                 pose(
                     **{
                         hips: rot(x=5, y=14, z=7),
@@ -477,7 +574,7 @@ def build_animations(armature):
                 ),
             ),
             (
-                13,
+                16,
                 pose(
                     **{
                         hips: rot(x=7, y=19, z=10),
@@ -496,7 +593,7 @@ def build_animations(armature):
                 ),
             ),
             (
-                19,
+                23,
                 pose(
                     **{
                         hips: rot(x=3, y=10, z=4),
@@ -512,7 +609,7 @@ def build_animations(armature):
                     }
                 ),
             ),
-            (26, aim_pose),
+            (30, aim_pose),
         ],
     )
 
@@ -802,6 +899,7 @@ def export(root):
         export_morph=True,
         export_yup=True,
         export_apply=False,
+        export_extras=True,
     )
 
 

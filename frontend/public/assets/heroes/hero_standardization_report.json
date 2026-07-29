@@ -1,0 +1,309 @@
+{
+  "blender_version": "5.2.0 LTS",
+  "mode": "apply",
+  "input": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes",
+  "output_heroes": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_heroes",
+  "output_weapons": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_weapons",
+  "heroes": [
+    {
+      "hero": "brock-zeus",
+      "source": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\brock-zeus\\brock-zeus.glb",
+      "mode": "apply",
+      "status": "УСПЕШНО ИСПРАВЛЕН",
+      "armature": "brock-zeus_Armature",
+      "hand_bone": "R_Wrist",
+      "socket_state": "created",
+      "weapon_state": "not_found",
+      "weapon_objects": [],
+      "merged_candidates": [],
+      "actions": [
+        "Aim",
+        "AimSuper",
+        "Attack",
+        "Defeat",
+        "Idle",
+        "Run",
+        "Spawn",
+        "Super",
+        "Victory"
+      ],
+      "diagnostic_bones": [],
+      "scene_objects": [],
+      "changes": [
+        "синтезирован Armature из legacy Empty-скелета",
+        "создан weapon_socket_r"
+      ],
+      "warnings": [
+        "Legacy Empty-скелет brock-zeus-rig преобразован во временный Armature; исходная иерархия сохранена",
+        "[WARNING] Оружие не найдено для brock-zeus"
+      ],
+      "errors": [],
+      "outputs": [
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_heroes\\brock-zeus_base.glb"
+      ]
+    },
+    {
+      "hero": "damian",
+      "source": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\damian\\damian.glb",
+      "mode": "apply",
+      "status": "УСПЕШНО ИСПРАВЛЕН",
+      "armature": "damian-rig",
+      "hand_bone": "R_wrist_s",
+      "socket_state": "created",
+      "weapon_state": "separate",
+      "weapon_objects": [
+        "HeroAttachment_Microphone",
+        "HeroAttachment_Speaker"
+      ],
+      "merged_candidates": [],
+      "actions": [
+        "Aim",
+        "AimSuper",
+        "Attack",
+        "Defeat",
+        "Idle",
+        "Run",
+        "Spawn",
+        "Super",
+        "Victory"
+      ],
+      "diagnostic_bones": [],
+      "scene_objects": [],
+      "changes": [
+        "создан weapon_socket_r",
+        "HeroAttachment_Microphone: очищен parent",
+        "HeroAttachment_Microphone: origin перенесён в авторский Grip.Primary",
+        "HeroAttachment_Speaker: очищен parent",
+        "HeroAttachment_Speaker: origin перенесён в авторский Grip.Primary"
+      ],
+      "warnings": [],
+      "errors": [],
+      "outputs": [
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_heroes\\damian_base.glb",
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_weapons\\damian_weapon.glb"
+      ]
+    },
+    {
+      "hero": "fairy-mina",
+      "source": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\fairy-mina\\fairy-mina.glb",
+      "mode": "apply",
+      "status": "УСПЕШНО ИСПРАВЛЕН",
+      "armature": "fairy-mina-rig",
+      "hand_bone": "R_wrist_s",
+      "socket_state": "created",
+      "weapon_state": "not_found",
+      "weapon_objects": [],
+      "merged_candidates": [],
+      "actions": [
+        "Aim",
+        "AimSuper",
+        "Attack",
+        "Defeat",
+        "Idle",
+        "Run",
+        "Spawn",
+        "Super",
+        "Victory"
+      ],
+      "diagnostic_bones": [],
+      "scene_objects": [],
+      "changes": [
+        "создан weapon_socket_r"
+      ],
+      "warnings": [
+        "[WARNING] Оружие не найдено для fairy-mina"
+      ],
+      "errors": [],
+      "outputs": [
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_heroes\\fairy-mina_base.glb"
+      ]
+    },
+    {
+      "hero": "kaze",
+      "source": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\kaze\\kaze.glb",
+      "mode": "apply",
+      "status": "УСПЕШНО ИСПРАВЛЕН",
+      "armature": "kaze-rig",
+      "hand_bone": "R_wrist_s",
+      "socket_state": "created",
+      "weapon_state": "separate",
+      "weapon_objects": [
+        "HeroAttachment_FansHeld"
+      ],
+      "merged_candidates": [],
+      "actions": [
+        "Aim",
+        "AimSuper",
+        "Attack",
+        "Defeat",
+        "Idle",
+        "Run",
+        "Spawn",
+        "Super",
+        "Victory"
+      ],
+      "diagnostic_bones": [],
+      "scene_objects": [],
+      "changes": [
+        "создан weapon_socket_r",
+        "HeroAttachment_FansHeld: очищен parent",
+        "HeroAttachment_FansHeld: origin перенесён в авторский Grip.Primary"
+      ],
+      "warnings": [],
+      "errors": [],
+      "outputs": [
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_heroes\\kaze_base.glb",
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_weapons\\kaze_weapon.glb"
+      ]
+    },
+    {
+      "hero": "mandy",
+      "source": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\mandy\\mandy.glb",
+      "mode": "apply",
+      "status": "УСПЕШНО ИСПРАВЛЕН",
+      "armature": "MandyRig",
+      "hand_bone": "R_wrist_s_064",
+      "socket_state": "created",
+      "weapon_state": "separate",
+      "weapon_objects": [
+        "MandyStaff_Attachment"
+      ],
+      "merged_candidates": [],
+      "actions": [
+        "Aim",
+        "AimSuper",
+        "Attack",
+        "Defeat",
+        "Idle",
+        "Run",
+        "Spawn",
+        "Super",
+        "Victory"
+      ],
+      "diagnostic_bones": [],
+      "scene_objects": [],
+      "changes": [
+        "создан weapon_socket_r",
+        "MandyStaff_Attachment: очищен parent",
+        "MandyStaff_Attachment: origin перенесён в авторский Grip.Primary"
+      ],
+      "warnings": [],
+      "errors": [],
+      "outputs": [
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_heroes\\mandy_base.glb",
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_weapons\\mandy_weapon.glb"
+      ]
+    },
+    {
+      "hero": "needle",
+      "source": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\needle\\needle.glb",
+      "mode": "apply",
+      "status": "УСПЕШНО ИСПРАВЛЕН",
+      "armature": "NeedleRig",
+      "hand_bone": "RightHand",
+      "socket_state": "created",
+      "weapon_state": "not_found",
+      "weapon_objects": [],
+      "merged_candidates": [],
+      "actions": [
+        "Aim",
+        "AimSuper",
+        "Attack",
+        "Defeat",
+        "Idle",
+        "Run",
+        "Spawn",
+        "Super",
+        "Victory"
+      ],
+      "diagnostic_bones": [],
+      "scene_objects": [],
+      "changes": [
+        "создан weapon_socket_r"
+      ],
+      "warnings": [
+        "[WARNING] Оружие не найдено для needle"
+      ],
+      "errors": [],
+      "outputs": [
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_heroes\\needle_base.glb"
+      ]
+    },
+    {
+      "hero": "persephone-lumi",
+      "source": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\persephone-lumi\\persephone-lumi.glb",
+      "mode": "apply",
+      "status": "УСПЕШНО ИСПРАВЛЕН",
+      "armature": "persephone-lumi-rig",
+      "hand_bone": "R_wrist_s",
+      "socket_state": "created",
+      "weapon_state": "separate",
+      "weapon_objects": [
+        "HeroAttachment_WeaponHeld"
+      ],
+      "merged_candidates": [],
+      "actions": [
+        "Aim",
+        "AimSuper",
+        "Attack",
+        "Defeat",
+        "Idle",
+        "Run",
+        "Spawn",
+        "Super",
+        "Victory"
+      ],
+      "diagnostic_bones": [],
+      "scene_objects": [],
+      "changes": [
+        "создан weapon_socket_r",
+        "HeroAttachment_WeaponHeld: очищен parent",
+        "HeroAttachment_WeaponHeld: origin перенесён в авторский Grip.Primary"
+      ],
+      "warnings": [],
+      "errors": [],
+      "outputs": [
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_heroes\\persephone-lumi_base.glb",
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_weapons\\persephone-lumi_weapon.glb"
+      ]
+    },
+    {
+      "hero": "wukong-mico",
+      "source": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\wukong-mico\\wukong-mico.glb",
+      "mode": "apply",
+      "status": "УСПЕШНО ИСПРАВЛЕН",
+      "armature": "wukong-mico-rig",
+      "hand_bone": "R_wrist_s",
+      "socket_state": "created",
+      "weapon_state": "separate",
+      "weapon_objects": [
+        "HeroAttachment_Staff"
+      ],
+      "merged_candidates": [],
+      "actions": [
+        "Aim",
+        "AimSuper",
+        "Attack",
+        "Defeat",
+        "Idle",
+        "Run",
+        "Spawn",
+        "Super",
+        "Victory"
+      ],
+      "diagnostic_bones": [],
+      "scene_objects": [],
+      "changes": [
+        "создан weapon_socket_r",
+        "HeroAttachment_Staff: очищен parent",
+        "HeroAttachment_Staff: origin перенесён в авторский Grip.Primary"
+      ],
+      "warnings": [],
+      "errors": [],
+      "outputs": [
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_heroes\\wukong-mico_base.glb",
+        "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_weapons\\wukong-mico_weapon.glb"
+      ]
+    }
+  ]
+}

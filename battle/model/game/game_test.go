@@ -284,8 +284,26 @@ func TestMovementMatchesLocalEnginePixelsPerSecond(t *testing.T) {
 }
 
 func TestPlayerMovementUsesSlowerGlobalPace(t *testing.T) {
-	if PlayerSpeedScale != 0.70 {
-		t.Fatalf("player speed scale = %.2f, want 0.70", PlayerSpeedScale)
+	if PlayerSpeedScale != 0.60 {
+		t.Fatalf("player speed scale = %.2f, want 0.60", PlayerSpeedScale)
+	}
+}
+
+func TestDirectionChangeKeepsMovementContinuous(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("p1", "Alice", "")
+	p := gs.Players["p1"]
+	p.X, p.Y = 256, 256
+
+	gs.playerMove("p1", 100, 1, 0)
+	gs.updatePlayerMovement()
+	afterMovingRight := p.X
+
+	gs.playerMove("p1", 101, -1, 0)
+	gs.updatePlayerMovement()
+
+	if p.X >= afterMovingRight {
+		t.Fatalf("player did not immediately move left during a 180-degree turn: x = %.2f, previous %.2f", p.X, afterMovingRight)
 	}
 }
 
@@ -864,6 +882,41 @@ func TestUpdateGameWin(t *testing.T) {
 	}
 }
 
+func TestLethalPlayerDamageImmediatelyFinishesBattleAndReportsWinner(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("winner", "Alice", "Colt")
+	gs.PlayerAdd("loser", "Bob", "Shelly")
+	gs.State = GameStateGame
+	gs.GameEndsAt = time.Now().Add(GameDuration).UnixMilli()
+	gs.setPlayersActive(true)
+
+	var winner string
+	var killedPlayer string
+	gs.OnGameEnd = func(_ map[string]*player.Player, name string, _ int64) {
+		winner = name
+	}
+	gs.OnPlayerKilled = func(playerID, _ string) {
+		killedPlayer = playerID
+	}
+
+	attacker := gs.Players["winner"]
+	target := gs.Players["loser"]
+	gs.dealPlayerDamage(attacker, target, target.Lives)
+
+	if gs.State != GameStateFinished {
+		t.Fatalf("state = %q, want %q immediately after lethal damage", gs.State, GameStateFinished)
+	}
+	if winner != "Alice" {
+		t.Fatalf("reported winner = %q, want Alice", winner)
+	}
+	if killedPlayer != "loser" {
+		t.Fatalf("reported killed player = %q, want loser", killedPlayer)
+	}
+	if attacker.Kills != 1 {
+		t.Fatalf("winner kills = %d, want 1", attacker.Kills)
+	}
+}
+
 func TestUpdateGameTimeout(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
@@ -874,6 +927,28 @@ func TestUpdateGameTimeout(t *testing.T) {
 	gs.Update()
 	if gs.State != GameStateFinished {
 		t.Errorf("State = %v, want finished (timeout)", gs.State)
+	}
+}
+
+func TestUpdateGameTimeoutAwardsPlayerWithMostRemainingHealth(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("p1", "Alice", "Colt")
+	gs.PlayerAdd("p2", "Bob", "Shelly")
+	gs.State = GameStateGame
+	gs.GameEndsAt = time.Now().Add(-1 * time.Second).UnixMilli()
+	gs.setPlayersActive(true)
+	gs.Players["p1"].Lives = 3000
+	gs.Players["p2"].Lives = 1000
+
+	var winner string
+	gs.OnGameEnd = func(_ map[string]*player.Player, name string, _ int64) {
+		winner = name
+	}
+
+	gs.Update()
+
+	if winner != "Alice" {
+		t.Fatalf("timeout winner = %q, want Alice (most remaining health)", winner)
 	}
 }
 

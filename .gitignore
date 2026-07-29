@@ -95,3 +95,11 @@ ngrok.yml
 .playwright-cli/
 .tmp/
 output/
+
+# Local compiled service binaries
+/battle/battle
+/battle/tmp/
+/leaderboard/leaderboard-server
+
+# Blender automatic backup files
+*.blend1

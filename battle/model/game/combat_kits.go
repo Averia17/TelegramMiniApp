@@ -120,10 +120,10 @@ func (ColtKit) AttackRange() float64   { return 650 }
 func (BarleyKit) AimShape() string     { return "lob" }
 func (BarleyKit) AttackRange() float64 { return 620 }
 func (MandyKit) AimShape() string      { return "cone" }
-func (MandyKit) AttackRange() float64  { return 120 }
+func (MandyKit) AttackRange() float64  { return 70 }
 
 func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ float64) {
-	reach := 120.0
+	reach := MandyKit{}.AttackRange()
 	if source.FocusCharge >= 100 {
 		reach *= 1.35
 	}

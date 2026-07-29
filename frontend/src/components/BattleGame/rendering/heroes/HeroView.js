@@ -5,12 +5,10 @@ import {GLBHeroController} from "./GLBHeroController"
 import {worldToScene} from "../shared/coordinates"
 import {disposeObjectTree} from "../shared/disposal"
 import {createContactShadow} from "../shared/materials"
-import {turnTowardsAngle} from "./turning"
+import {advanceSmoothTurn} from "./turning"
 import {
   BUSH_HERO_OPACITY,
-  createBushOcclusion,
   getBushConcealmentMix,
-  updateBushOcclusion,
 } from "./BushConcealment"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
@@ -65,8 +63,16 @@ const updateLabel = (sprite, state) => {
   texture.needsUpdate = true
 }
 
-const setOpacity = (model, opacity) => model.traverse(child => {
-  const materials = Array.isArray(child.material) ? child.material : [child.material]
+const collectMaterials = model => {
+  const materials = new Set()
+  model.traverse(child => {
+    const childMaterials = Array.isArray(child.material) ? child.material : [child.material]
+    childMaterials.filter(Boolean).forEach(material => materials.add(material))
+  })
+  return [...materials]
+}
+
+const setOpacity = (materials, opacity) => {
   for (const material of materials) {
     if (!material) continue
     if (material.uniforms?.opacity) material.uniforms.opacity.value = opacity
@@ -74,7 +80,7 @@ const setOpacity = (model, opacity) => model.traverse(child => {
     material.transparent = opacity < 0.999
     material.depthWrite = opacity >= 0.999
   }
-})
+}
 
 const createDeathBurst = heroName => {
   const group = new THREE.Group()
@@ -102,16 +108,19 @@ export class HeroView {
     this.shadow = createContactShadow(1.05)
     this.model = createHeroModel(state.hero, {simple: simpleMaterials})
     this.model.scale.setScalar(0.92)
+    this.modelMaterials = collectMaterials(this.model)
+    this.modelOpacity = 1
     this.label = createLabel(state)
     this.deathBurst = createDeathBurst(state.hero)
-    this.bushOcclusion = createBushOcclusion()
     this.bushConcealmentMix = 0
     this.deathTime = 0
-    this.group.add(this.shadow, this.model, this.deathBurst, this.bushOcclusion, this.label)
+    this.group.add(this.shadow, this.model, this.deathBurst, this.label)
     this.x = this.targetX = state.x
     this.y = this.targetY = state.y
     this.aimAngle = Math.PI / 2 - (state.rotation || 0)
     this.bodyAngle = this.aimAngle
+    this.bodyTurnVelocity = 0
+    this.aimTurnVelocity = 0
     this.lastPulse = state.attackPulse
     this.lastSuperPulse = state.superPulse
     this.lastLives = state.lives
@@ -137,6 +146,8 @@ export class HeroView {
       }
       const previous = this.model
       this.model = instance.root
+      this.modelMaterials = collectMaterials(this.model)
+      this.modelOpacity = 1
       this.animation = new GLBHeroController(instance.root, instance.animations, instance.asset.clips, {
         heroName,
         attackPulse: this.state.attackPulse,
@@ -194,12 +205,31 @@ export class HeroView {
     const moving = Math.hypot(moveX, moveY) > 0.01
     if (moving) {
       const desiredBodyAngle = Math.atan2(moveX, moveY)
-      this.bodyAngle = turnTowardsAngle(this.bodyAngle, desiredBodyAngle, delta)
+      const bodyTurn = advanceSmoothTurn(
+        this.bodyAngle,
+        desiredBodyAngle,
+        this.bodyTurnVelocity,
+        delta,
+      )
+      this.bodyAngle = bodyTurn.angle
+      this.bodyTurnVelocity = bodyTurn.velocity
+    } else {
+      this.bodyTurnVelocity *= Math.exp(-18 * delta)
     }
     const desiredAim = this.state.aiming || this.recoil > 0.05
       ? Math.PI / 2 - (this.state.rotation || 0)
       : moving ? this.bodyAngle : this.aimAngle
-    this.aimAngle = turnTowardsAngle(this.aimAngle, desiredAim, delta, this.state.aiming ? 12 : 9)
+    const aimTurn = advanceSmoothTurn(
+      this.aimAngle,
+      desiredAim,
+      this.aimTurnVelocity,
+      delta,
+      this.state.aiming ? 12 : 9,
+      this.state.aiming ? 7.5 : 6.5,
+      this.state.aiming ? 38 : 28,
+    )
+    this.aimAngle = aimTurn.angle
+    this.aimTurnVelocity = aimTurn.velocity
     this.group.position.copy(worldToScene(this.x, this.y))
     this.model.rotation.y = this.aimAngle
     this.model.userData.animate?.(time, moving ? 1 : 0.08, this.recoil)
@@ -219,11 +249,13 @@ export class HeroView {
         aiming: Boolean(this.state.aiming),
         superAiming: Number(this.state.channel) > 0,
         aimYaw: this.state.aiming || this.recoil > 0.05 ? aimDelta : 0,
+        attackHalfArcDegrees: this.state.attackHalfArcDegrees,
         attackPulse: this.state.attackPulse,
         superPulse: this.state.superPulse,
         spawnPulse: this.spawnPulse,
         result: this.result,
       })
+      this.model.rotation.y += this.animation.attackSwingYaw
       this.animation.setHitFlash(this.hit)
     } else {
       this.model.visible = this.state.lives > 0
@@ -244,10 +276,13 @@ export class HeroView {
     this.recoil *= Math.exp(-15 * delta)
     this.hit *= Math.exp(-12 * delta)
     this.bushConcealmentMix = getBushConcealmentMix(this.bushConcealmentMix, inBush, delta)
-    setOpacity(this.model, THREE.MathUtils.lerp(1, BUSH_HERO_OPACITY, this.bushConcealmentMix))
+    const opacity = THREE.MathUtils.lerp(1, BUSH_HERO_OPACITY, this.bushConcealmentMix)
+    if (Math.abs(opacity - this.modelOpacity) > .002) {
+      setOpacity(this.modelMaterials, opacity)
+      this.modelOpacity = opacity
+    }
     this.shadow.material.opacity = THREE.MathUtils.lerp(0.34, 0.18, this.bushConcealmentMix)
     this.label.material.opacity = 1
-    updateBushOcclusion(this.bushOcclusion, this.bushConcealmentMix, time)
     if (!this.animation) this.model.traverse(child => {
       if (child.material?.uniforms?.hit) child.material.uniforms.hit.value = this.hit
     })

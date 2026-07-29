@@ -1,0 +1,33 @@
+{
+  "file": "",
+  "objects": [
+    {
+      "name": "Root",
+      "type": "ARMATURE",
+      "parent": null,
+      "parent_type": "OBJECT",
+      "parent_bone": "",
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0945,
+        -0.0446,
+        0.05
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "dimensions": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "bones": []
+    }
+  ]
+}

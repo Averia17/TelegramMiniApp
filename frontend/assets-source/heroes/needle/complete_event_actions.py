@@ -40,6 +40,8 @@ def rig_parts(armature):
         "ra": find_bone(armature, ["rightarm", "r_shoulder", "upperarm_r", "arm_r"]),
         "lf": find_bone(armature, ["leftforearm", "l_elbow", "lowerarm_l"]),
         "rf": find_bone(armature, ["rightforearm", "r_elbow", "lowerarm_r"]),
+        "lw": find_bone(armature, ["leftwrist", "l_wrist", "lefthand", "hand_l"]),
+        "rw": find_bone(armature, ["rightwrist", "r_wrist", "righthand", "hand_r"]),
         "ll": find_bone(armature, ["leftupleg", "l_upperleg", "thigh_l"]),
         "rl": find_bone(armature, ["rightupleg", "r_upperleg", "thigh_r"]),
     }
@@ -88,6 +90,139 @@ def create_action(armature, parts, name, end_frame, poses):
 
 armature = next(obj for obj in bpy.context.scene.objects if obj.type == "ARMATURE")
 parts = rig_parts(armature)
+
+create_action(
+    armature,
+    parts,
+    "Attack",
+    24,
+    [
+        (
+            1,
+            {
+                "hips": ((-4, 8, 0),),
+                "spine": ((-6, 14, 0),),
+                "ra": ((-64, 12, 30),),
+                "rf": ((-58, 0, 0),),
+                "rw": ((12, 8, 10),),
+            },
+        ),
+        (
+            6,
+            {
+                "hips": ((-16, -30, -10),),
+                "spine": ((-24, -48, -16),),
+                "head": ((0, 20, 0),),
+                "la": ((-42, -22, -48),),
+                "lf": ((-72, 0, 0),),
+                "ra": ((-28, 48, 82),),
+                "rf": ((-126, 16, 0),),
+                "rw": ((14, 8, 12),),
+            },
+        ),
+        (
+            9,
+            {
+                "hips": ((-20, -38, -14),),
+                "spine": ((-30, -58, -20),),
+                "head": ((0, 26, 0),),
+                "la": ((-36, -28, -58),),
+                "lf": ((-80, 0, 0),),
+                "ra": ((-20, 56, 94),),
+                "rf": ((-138, 20, 0),),
+                "rw": ((18, 10, 14),),
+            },
+        ),
+        (
+            12,
+            {
+                "hips": ((14, 42, 14),),
+                "spine": ((22, 68, 22),),
+                "head": ((0, -18, 0),),
+                "la": ((-92, 28, 38),),
+                "lf": ((-24, 0, 0),),
+                "ra": ((-138, -42, -76),),
+                "rf": ((-10, -16, 0),),
+                "rw": ((-14, -8, -12),),
+            },
+        ),
+        (
+            14,
+            {
+                "hips": ((18, 48, 16),),
+                "spine": ((28, 78, 26),),
+                "head": ((0, -24, 0),),
+                "la": ((-102, 34, 46),),
+                "ra": ((-150, -50, -88),),
+                "rw": ((-18, -10, -14),),
+            },
+        ),
+        (
+            19,
+            {
+                "spine": ((8, 30, 8),),
+                "ra": ((-106, -16, -34),),
+                "rf": ((-38, 0, 0),),
+                "rw": ((-8, -5, -7),),
+            },
+        ),
+        (
+            24,
+            {
+                "hips": ((-4, 8, 0),),
+                "spine": ((-6, 14, 0),),
+                "ra": ((-64, 12, 30),),
+                "rf": ((-58, 0, 0),),
+                "rw": ((12, 8, 10),),
+            },
+        ),
+    ],
+)
+
+create_action(
+    armature,
+    parts,
+    "Super",
+    42,
+    [
+        (1, {"spine": ((-8, 0, 0),), "la": ((-72, -16, -38),), "ra": ((-72, 16, 38),)}),
+        (
+            10,
+            {
+                "hips": ((-22, 0, 0),),
+                "spine": ((30, -30, 0),),
+                "la": ((-142, -38, -76),),
+                "lf": ((-110, 0, 0),),
+                "ra": ((-142, 38, 76),),
+                "rf": ((-110, 0, 0),),
+                "rw": ((16, 10, 14),),
+            },
+        ),
+        (
+            18,
+            {
+                "hips": ((18, 0, 0),),
+                "spine": ((-34, 54, 0),),
+                "la": ((-154, 30, 64),),
+                "ra": ((-154, -30, -64),),
+                "lw": ((-52, 28, 44),),
+                "rw": ((-14, -8, -12),),
+            },
+        ),
+        (
+            28,
+            {
+                "spine": ((18, -22, 0),),
+                "la": ((-118, -18, -42),),
+                "ra": ((-118, 18, 42),),
+            },
+        ),
+        (
+            42,
+            {"spine": ((-8, 0, 0),), "la": ((-72, -16, -38),), "ra": ((-72, 16, 38),)},
+        ),
+    ],
+)
 
 create_action(
     armature,

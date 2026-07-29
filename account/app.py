@@ -9,16 +9,19 @@ from routes import auth_router, economy_router, payments_router, users_router
 from routes.deps import session_pool
 from starlette.middleware.cors import CORSMiddleware
 
+from tasks import refill_energy_periodically
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(consume_battle_results(session_pool))
+    tasks = [
+        asyncio.create_task(consume_battle_results(session_pool)),
+        asyncio.create_task(refill_energy_periodically(session_pool)),
+    ]
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 app = FastAPI(lifespan=lifespan)

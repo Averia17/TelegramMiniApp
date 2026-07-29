@@ -36,3 +36,49 @@ test("a long suspended frame is capped to avoid a huge prediction jump", () => {
 
   assert.equal(simulation.predicted.x, 130)
 })
+
+test("local prediction keeps moving through a 180-degree direction change", () => {
+  const simulation = movingSimulation()
+  simulation.advance(0.1)
+  const beforeTurn = simulation.predicted.x
+
+  simulation.setInput(-1, 0)
+  simulation.advance(0.1)
+
+  assert.ok(simulation.predicted.x < beforeTurn)
+})
+
+test("diagonal direction changes never insert a stop frame", () => {
+  const simulation = movingSimulation()
+  simulation.advance(0.05)
+  const beforeTurn = {...simulation.predicted}
+
+  simulation.setInput(-1, -1)
+  simulation.advance(1 / 60)
+
+  assert.ok(simulation.predicted.x < beforeTurn.x)
+  assert.ok(simulation.predicted.y < beforeTurn.y)
+})
+
+test("network correction cannot push the predicted player through a blocking wall", () => {
+  const simulation = new NetworkSimulation()
+  simulation.ingest({
+    type: "state",
+    ts: Date.now(),
+    map: {
+      width: 500,
+      height: 500,
+      walls: [{minX: 100, minY: 0, maxX: 140, maxY: 200, type: "wall"}],
+    },
+    players: {
+      local: {x: 70, y: 80, radius: 10, speed: 120, lives: 100, ack: 0},
+    },
+  })
+  simulation.setLocalPlayerId("local")
+  simulation.correction = {x: 100, y: 0}
+
+  simulation.advance(0.05)
+
+  assert.equal(simulation.predicted.x, 90)
+  assert.equal(simulation.predicted.y, 80)
+})

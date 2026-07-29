@@ -7,6 +7,6 @@ Character source: **Hanbok Mandy** by **Nomnivore**.
 - Imported source: `original/source/Hanbok Mandy.fbx`
 - Original texture: `original/textures/Hanbok Mandy.png`
 
-`build.py` removes the original decorated weapon, creates the melee staff, builds
-the game animation clips, normalizes the character, and exports
+`build.py` imports the original decorated weapon from the source FBX at its
+authored dimensions, builds the game animation clips, normalizes the character, and exports
 `public/assets/heroes/mandy/mandy.glb`.

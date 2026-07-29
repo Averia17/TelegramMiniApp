@@ -1,0 +1,12 @@
+﻿[
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "F07E8203378D01DA7652C1A4A44CFB2C2B0FB3167053BDECBC1CBD172E9B047F",
+        "Path":  "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\assets-source\\heroes\\wukong-mico\\wukong-mico.blend"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "B4AC5061CC50B167CC7DCAA2465D2BE92701F7BD64A7E7CED603B60244A4D672",
+        "Path":  "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\wukong-mico\\wukong-mico.glb"
+    }
+]

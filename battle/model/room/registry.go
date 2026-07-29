@@ -58,7 +58,9 @@ func GetOrCreateRoom(roomId, roomName, mapName, mode string, maxPlayers int) *Ro
 					Hero:     p.HeroName,
 					Kills:    p.Kills,
 					Lives:    p.Lives,
-					Won:      p.Name == winner,
+					Won: p.Name == winner ||
+						(winner == "Red team" && p.Team == "Red") ||
+						(winner == "Blue team" && p.Team == "Blue"),
 				})
 			}
 			_ = Kafka.PublishBattleResult(result)

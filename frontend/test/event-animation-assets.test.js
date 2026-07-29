@@ -17,20 +17,19 @@ const readGlbJson = async url => {
   return JSON.parse(buffer.toString("utf8", 20, 20 + jsonLength))
 }
 
-for (const [heroName, asset] of Object.entries(HERO_ASSETS)) {
-  test(`${heroName} event GLBs contain one compatible authored clip each`, async () => {
-    const base = await readGlbJson(asset.url)
-    const baseNodeNames = new Set((base.nodes || []).map(node => node.name).filter(Boolean))
+const expectedClips = ["Idle", "Run", "Aim", "AimSuper", "Attack", "Super", "Spawn", "Victory", "Defeat"]
 
-    for (const [eventName, eventAsset] of Object.entries(asset.eventAnimations)) {
-      const event = await readGlbJson(eventAsset.url)
-      assert.equal(event.animations?.length, 1, `${eventName} must export exactly one clip`)
-      assert.equal(event.animations[0].name, eventAsset.clip)
-      assert.ok(event.animations[0].channels.length > 0, `${eventName} must animate at least one node`)
-      for (const channel of event.animations[0].channels) {
-        const targetName = event.nodes[channel.target.node]?.name
-        assert.ok(targetName, `${eventName} has an unnamed animation target`)
-        assert.ok(baseNodeNames.has(targetName), `${eventName} targets missing base node ${targetName}`)
+for (const [heroName, asset] of Object.entries(HERO_ASSETS)) {
+  test(`${heroName} canonical GLB contains the complete authored animation set`, async () => {
+    const hero = await readGlbJson(asset.url)
+    assert.deepEqual(
+      (hero.animations || []).map(animation => animation.name).sort(),
+      [...expectedClips].sort(),
+    )
+    for (const animation of hero.animations) {
+      assert.ok(animation.channels.length > 0, `${animation.name} must animate at least one node`)
+      for (const channel of animation.channels) {
+        assert.ok(hero.nodes[channel.target.node]?.name, `${animation.name} has an unnamed animation target`)
       }
     }
   })

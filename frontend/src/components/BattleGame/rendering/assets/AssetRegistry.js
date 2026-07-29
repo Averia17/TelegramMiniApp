@@ -6,8 +6,22 @@ import {ENVIRONMENT_ASSETS, HERO_ASSETS, getHeroAsset} from "./assetManifest.js"
 const loadWith = loader => url => loader.loadAsync(url)
 
 export const normalizeHeroHeight = (root, targetHeight = 2.45) => {
-  const excludedRoles = new Set(["attack-cloud", "companion-cloud", "detached-ammo", "menu-only"])
+  const excludedRoles = new Set([
+    "attack-cloud",
+    "companion-cloud",
+    "detached-ammo",
+    "held-weapon",
+    "throwable-weapon",
+    "menu-only",
+  ])
   const isExcludedRole = role => excludedRoles.has(role)
+  root.traverse(node => {
+    if (/^HeroAttachment_Cloud$/i.test(node.name)
+      && !node.userData.attachment_role
+      && !node.userData.attachmentRole) {
+      node.userData.attachmentRole = "attack-cloud"
+    }
+  })
   const getBodyBounds = () => {
     const excluded = []
     root.traverse(node => {
@@ -39,9 +53,64 @@ export const normalizeHeroHeight = (root, targetHeight = 2.45) => {
   root.scale.multiplyScalar(targetHeight / height)
   root.updateMatrixWorld(true)
   const normalized = getBodyBounds()
+  const bodyCenter = normalized.getCenter(new THREE.Vector3())
+  root.position.x -= bodyCenter.x
   root.position.y -= normalized.min.y
+  root.position.z -= bodyCenter.z
   root.updateMatrixWorld(true)
   return root
+}
+
+const attachWeaponObject = (heroRoot, target, weaponObject, role, name) => {
+  heroRoot.updateMatrixWorld(true)
+  target.updateWorldMatrix(true, false)
+  const rootWorldRotation = heroRoot.getWorldQuaternion(new THREE.Quaternion())
+  const socketWorldRotation = target.getWorldQuaternion(new THREE.Quaternion())
+  const socketRotationInRoot = rootWorldRotation.invert().multiply(socketWorldRotation)
+  const rootWorldScale = heroRoot.getWorldScale(new THREE.Vector3())
+  const socketWorldScale = target.getWorldScale(new THREE.Vector3())
+  const socketScaleInRoot = socketWorldScale.divide(rootWorldScale)
+
+  const attachment = new THREE.Group()
+  attachment.name = `DetachedHeroWeapon.${name}`
+  attachment.userData.attachmentRole = role
+  attachment.position.set(0, 0, 0)
+  attachment.quaternion.copy(socketRotationInRoot).invert()
+  attachment.scale.set(
+    1 / Math.max(Math.abs(socketScaleInRoot.x), 1e-8),
+    1 / Math.max(Math.abs(socketScaleInRoot.y), 1e-8),
+    1 / Math.max(Math.abs(socketScaleInRoot.z), 1e-8),
+  )
+  weaponObject.position.set(0, 0, 0)
+  weaponObject.userData.attachmentRole = role
+  attachment.add(weaponObject)
+  target.add(attachment)
+  heroRoot.updateMatrixWorld(true)
+  const gripWorld = target.getWorldPosition(new THREE.Vector3())
+  const weaponBounds = new THREE.Box3().setFromObject(weaponObject, true)
+  if (!weaponBounds.isEmpty() && weaponBounds.distanceToPoint(gripWorld) > .05) {
+    const nearestWorld = weaponBounds.clampPoint(gripWorld, new THREE.Vector3())
+    const gripLocal = attachment.worldToLocal(gripWorld.clone())
+    const nearestLocal = attachment.worldToLocal(nearestWorld)
+    weaponObject.position.add(gripLocal.sub(nearestLocal))
+    heroRoot.updateMatrixWorld(true)
+  }
+  return attachment
+}
+
+export const attachDetachedWeapon = (heroRoot, weaponScene, attachments = []) => {
+  if (!weaponScene) return []
+  if (attachments.length) {
+    return attachments.flatMap(config => {
+      const target = heroRoot.getObjectByName(config.target || config.bone)
+      const weaponObject = weaponScene.getObjectByName(config.name)
+      if (!target || !weaponObject) return []
+      return [attachWeaponObject(heroRoot, target, weaponObject, config.role, config.name)]
+    })
+  }
+  const socket = heroRoot.getObjectByName("weapon_socket_r")
+  if (!socket) return []
+  return [attachWeaponObject(heroRoot, socket, weaponScene, "held-weapon", "Primary")]
 }
 
 export class AssetRegistry {
@@ -50,7 +119,7 @@ export class AssetRegistry {
     this.environmentManifest = environmentManifest
     this.load = load || loadWith(new GLTFLoader())
     this.heroLoads = new Map()
-    this.eventAnimationLoads = new Map()
+    this.weaponLoads = new Map()
     this.readyHeroes = new Set()
     this.environmentLoads = new Map()
   }
@@ -82,25 +151,17 @@ export class AssetRegistry {
     return this.heroLoads.get(asset.id)
   }
 
-  loadEventAnimation(eventAsset) {
-    if (!eventAsset?.url) return Promise.resolve([])
-    if (!this.eventAnimationLoads.has(eventAsset.url)) {
-      const pending = this.load(eventAsset.url)
-        .then(gltf => gltf.animations || [])
-        .catch(error => {
-          this.eventAnimationLoads.delete(eventAsset.url)
-          throw error
-        })
-      this.eventAnimationLoads.set(eventAsset.url, pending)
+  loadHeroWeapon(name) {
+    const asset = this.manifest[name] || getHeroAsset(name)
+    if (!asset?.weaponUrl) return Promise.resolve(null)
+    if (!this.weaponLoads.has(asset.id)) {
+      const pending = this.load(asset.weaponUrl).catch(error => {
+        this.weaponLoads.delete(asset.id)
+        throw error
+      })
+      this.weaponLoads.set(asset.id, pending)
     }
-    return this.eventAnimationLoads.get(eventAsset.url)
-  }
-
-  async loadHeroEventAnimations(asset) {
-    const entries = Object.values(asset.eventAnimations || {})
-    if (!entries.length) return []
-    const clipGroups = await Promise.all(entries.map(eventAsset => this.loadEventAnimation(eventAsset)))
-    return clipGroups.flat()
+    return this.weaponLoads.get(asset.id)
   }
 
   isHeroReady(name) {
@@ -111,14 +172,7 @@ export class AssetRegistry {
   async preloadHeroes(names, concurrency = 2) {
     const queue = []
     for (const name of [...new Set(names)].filter(heroName => this.hasHero(heroName))) {
-      const asset = this.manifest[name] || getHeroAsset(name)
       queue.push({label: `${name} model`, load: () => this.loadHero(name)})
-      for (const eventAsset of Object.values(asset.eventAnimations || {})) {
-        queue.push({
-          label: `${name} ${eventAsset.clip || "event"}`,
-          load: () => this.loadEventAnimation(eventAsset),
-        })
-      }
     }
     const worker = async () => {
       while (queue.length) {
@@ -140,10 +194,12 @@ export class AssetRegistry {
 
   async instantiateHero(name) {
     const asset = this.manifest[name] || getHeroAsset(name)
-    const gltf = await this.loadHero(name)
+    const [gltf, weaponGltf] = await Promise.all([
+      this.loadHero(name),
+      this.loadHeroWeapon(name),
+    ])
     if (!gltf) return null
-    const baseAnimations = gltf.animations || []
-    const eventAnimations = await this.loadHeroEventAnimations(asset)
+    const animations = gltf.animations || []
     const root = clone(gltf.scene)
     root.traverse(child => {
       if (Array.isArray(child.material)) child.material = child.material.map(material => material.clone())
@@ -153,13 +209,23 @@ export class AssetRegistry {
         child.receiveShadow = true
       }
     })
+    if (weaponGltf?.scene) {
+      const weaponRoot = clone(weaponGltf.scene)
+      weaponRoot.traverse(child => {
+        if (Array.isArray(child.material)) child.material = child.material.map(material => material.clone())
+        else if (child.material) child.material = child.material.clone()
+        if (child.isMesh) {
+          child.castShadow = true
+          child.receiveShadow = true
+        }
+      })
+      attachDetachedWeapon(root, weaponRoot, asset.weaponAttachments)
+    }
     normalizeHeroHeight(root, asset.targetHeight || 2.45)
     root.scale.multiplyScalar(asset.scale)
     root.position.y += asset.groundOffset || 0
     root.rotation.y = asset.rotationOffset
-    const eventNames = new Set(Object.values(asset.eventAnimations || {}).map(event => event.clip))
-    const locomotionAnimations = baseAnimations.filter(clip => !eventNames.has(clip.name))
-    return {root, animations: [...locomotionAnimations, ...eventAnimations], asset}
+    return {root, animations, asset}
   }
 
   async instantiateEnvironment(visual) {
@@ -181,7 +247,7 @@ export class AssetRegistry {
 
   clear() {
     this.heroLoads.clear()
-    this.eventAnimationLoads.clear()
+    this.weaponLoads.clear()
     this.readyHeroes.clear()
     this.environmentLoads.clear()
   }

@@ -1,4 +1,28 @@
 const previewRenderers = new Set()
+let activePreviewSlots = 0
+const previewSlotQueue = []
+
+const createSlotRelease = () => {
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    activePreviewSlots--
+    const next = previewSlotQueue.shift()
+    if (next) {
+      activePreviewSlots++
+      next(createSlotRelease())
+    }
+  }
+}
+
+export const acquirePreviewSlot = (limit = 1) => {
+  if (activePreviewSlots < limit) {
+    activePreviewSlots++
+    return Promise.resolve(createSlotRelease())
+  }
+  return new Promise(resolve => previewSlotQueue.push(resolve))
+}
 
 export const registerPreviewRenderer = renderer => previewRenderers.add(renderer)
 

@@ -2,7 +2,7 @@ import math
 import os
 
 import bpy
-from mathutils import Euler, Vector
+from mathutils import Euler, Matrix, Vector
 
 PROJECT = r"C:\Users\User\PycharmProjects\TelegramMiniApp"
 FPS = 30
@@ -97,12 +97,59 @@ def action(armature, parts, name, end, poses):
     armature.animation_data.action = result
     for frame, values in poses:
         for part_name, transform in values.items():
+            rotation = transform[0]
+            if (
+                name == "Attack"
+                and frame not in {1, end}
+                and part_name
+                in {"hips", "spine", "chest", "la", "lf", "lw", "ra", "rf", "rw"}
+            ):
+                # Push anticipation/contact/follow-through while preserving the
+                # entry and recovery poses used by runtime cross-fades.
+                rotation = tuple(
+                    max(-165, min(165, value * 1.12)) for value in rotation
+                )
             key(
                 parts.get(part_name),
                 frame,
-                transform[0],
+                rotation,
                 transform[1] if len(transform) > 1 else None,
             )
+    if armature.get("hero_slug") == "wukong-mico":
+        # A persistent cylindrical power-grip: proximal phalanges close around
+        # the shaft and distal phalanges continue the curve. Key both ends so
+        # every exported Action owns the grip instead of relying on bind pose.
+        grip_rotations = {
+            "L_thumb_01_s": (52.935, 58.865, -50.0),
+            "L_thumb_02_s": (-2.935, -28.522, 0.0),
+            "L_index_01_s": (-58.737, -50.0, 0.0),
+            "L_index_02_s": (-66.869, -30.02, -43.955),
+            "L_middle_01_s": (-36.934, 15.408, 44.041),
+            "L_middle_02_s": (57.853, -51.384, 48.616),
+            "L_ring_01_s": (89.176, -26.798, 12.375),
+            "L_ring_02_s": (41.681, -115.905, 47.484),
+            "L_pinky_01_s": (33.54, -78.163, 58.319),
+            "L_pinky_02_s": (48.729, 97.742, 50.0),
+        }
+        for frame in (1, end):
+            for bone_name, rotation in grip_rotations.items():
+                key(armature.pose.bones.get(bone_name), frame, rotation)
+    elif armature.get("hero_slug") == "persephone-lumi":
+        grip_rotations = {
+            "R_thumb_01_s": (98.438, 64.511, 4.575),
+            "R_thumb_02_s": (-41.574, 12.375, 0.0),
+            "R_index_01_s": (62.253, 73.702, -46.319),
+            "R_index_02_s": (116.327, -92.209, 61.844),
+            "R_middle_01_s": (111.608, 52.106, 50.419),
+            "R_middle_02_s": (-101.722, 8.706, 83.984),
+            "R_ring_01_s": (69.467, 19.75, 85.902),
+            "R_ring_02_s": (4.575, 2.998, -90.8),
+            "R_pinky_01_s": (5.28, 49.295, 92.009),
+            "R_pinky_02_s": (-14.509, -37.199, -106.404),
+        }
+        for frame in (1, end):
+            for bone_name, rotation in grip_rotations.items():
+                key(armature.pose.bones.get(bone_name), frame, rotation)
     result.frame_start, result.frame_end = 1, end
 
 
@@ -137,14 +184,165 @@ def attach_equipment_bones(armature, slug):
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
+def ensure_weapon_socket_bone(armature, slug):
+    if slug == "kaze":
+        bpy.context.view_layer.objects.active = armature
+        armature.select_set(True)
+        bpy.ops.object.mode_set(mode="EDIT")
+        for side in ("L", "R"):
+            wrist = armature.data.edit_bones.get(f"{side}_wrist_s")
+            if not wrist:
+                continue
+            socket = armature.data.edit_bones.get(f"weapon_socket_{side.casefold()}")
+            if socket is None:
+                socket = armature.data.edit_bones.new(
+                    f"weapon_socket_{side.casefold()}"
+                )
+            socket.parent = wrist
+            socket.use_connect = False
+            socket.use_deform = False
+            socket.head = wrist.head
+            direction = (wrist.head - wrist.tail).normalized()
+            socket.tail = wrist.head + direction * max(wrist.length * 0.18, 0.03)
+        bpy.ops.object.mode_set(mode="OBJECT")
+        return
+    configurations = {
+        "wukong-mico": (
+            "L_wrist_s",
+            (
+                "L_thumb_01_s",
+                "L_index_01_s",
+                "L_middle_01_s",
+                "L_ring_01_s",
+                "L_pinky_01_s",
+            ),
+        ),
+        "persephone-lumi": (
+            "R_wrist_s",
+            (
+                "R_thumb_01_s",
+                "R_index_01_s",
+                "R_middle_01_s",
+                "R_ring_01_s",
+                "R_pinky_01_s",
+            ),
+        ),
+    }
+    configuration = configurations.get(slug)
+    if not configuration:
+        return
+    wrist_name, grip_bones = configuration
+    wrist = armature.data.bones.get(wrist_name)
+    if not wrist:
+        return
+    grip_points = [
+        armature.data.bones[name].tail_local
+        for name in grip_bones
+        if armature.data.bones.get(name)
+    ]
+    # The handle centre belongs inside the arc of the proximal phalanges, not
+    # inside the palm volume. Their tails describe that arc in the bind pose.
+    palm = sum(grip_points, Vector()) / len(grip_points)
+    bpy.context.view_layer.objects.active = armature
+    armature.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    edit_wrist = armature.data.edit_bones.get(wrist.name)
+    socket = armature.data.edit_bones.get("weapon_socket_r")
+    if socket is None:
+        socket = armature.data.edit_bones.new("weapon_socket_r")
+    socket.parent = edit_wrist
+    socket.use_connect = False
+    socket.use_deform = False
+    socket.head = palm
+    direction = (edit_wrist.tail - edit_wrist.head).normalized()
+    socket.tail = palm + direction * max(edit_wrist.length * 0.18, 0.03)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def create_weapon_sockets(armature, slug=None):
+    sockets = {}
+    for side, wrist in (
+        ("L", rig_parts(armature)["lw"]),
+        ("R", rig_parts(armature)["rw"]),
+    ):
+        if not wrist:
+            continue
+        socket = bpy.data.objects.new(f"Socket.Weapon.{side}", None)
+        bpy.context.scene.collection.objects.link(socket)
+        socket["socket_role"] = f"weapon-{side.casefold()}"
+        socket.parent = armature
+        socket.parent_type = "BONE"
+        socket.parent_bone = wrist.name
+        socket_matrix = armature.matrix_world @ wrist.matrix
+        use_finger_arc = (slug == "wukong-mico" and side == "L") or (
+            slug == "persephone-lumi" and side == "R"
+        )
+        if use_finger_arc:
+            # Wukong has a complete finger rig. Its wrist tail is below the
+            # rendered palm, so derive the socket from the finger roots and
+            # wrist head instead of guessing from a mesh bounding box.
+            prefix = "L" if side == "L" else "R"
+            grip_bones = [
+                armature.pose.bones.get(name)
+                for name in (
+                    f"{prefix}_thumb_01_s",
+                    f"{prefix}_index_01_s",
+                    f"{prefix}_middle_01_s",
+                    f"{prefix}_ring_01_s",
+                    f"{prefix}_pinky_01_s",
+                )
+            ]
+            grip_points = [
+                armature.matrix_world @ bone.tail for bone in grip_bones if bone
+            ]
+            socket_matrix.translation = sum(grip_points, Vector()) / len(grip_points)
+            socket["grip_anchor"] = "proximal-phalange-arc"
+        elif slug == "kaze":
+            # Kaze's exported wrist bones are reversed: head is the concealed
+            # hand at the sleeve opening and tail points back toward the elbow.
+            socket_matrix.translation = armature.matrix_world @ wrist.head
+            socket["grip_anchor"] = "reversed-wrist-head"
+        else:
+            # The rendered palm normally sits at the end of the wrist bone.
+            socket_matrix.translation = armature.matrix_world @ wrist.tail
+            socket["grip_anchor"] = "bone-tail"
+        socket.matrix_world = socket_matrix
+        sockets[side] = socket
+    return sockets
+
+
 def rigid_attach_equipment(armature, slug):
     attachments = {
+        "kaze": (
+            ("HeroAttachment_FanLeft", "L"),
+            ("HeroAttachment_FanRight", "R"),
+        ),
         "wukong-mico": (("HeroAttachment_Staff", "L_wrist_s"),),
         "damian": (
             ("HeroAttachment_Microphone", "L_wrist_s"),
             ("HeroAttachment_Speaker", "R_wrist_s"),
         ),
         "persephone-lumi": (("HeroAttachment_WeaponHeld", "R_wrist_s"),),
+    }
+    ensure_weapon_socket_bone(armature, slug)
+    sockets = create_weapon_sockets(armature, slug)
+    grip_height = {
+        ("kaze", "HeroAttachment_FanLeft"): 0.32,
+        ("kaze", "HeroAttachment_FanRight"): 0.32,
+        # The authored grip is the recessed lower handle between the end cap
+        # and guard ring. Holding the central shaft ignores the prop design;
+        # 10% of its longitudinal bounds lands in that narrow hand recess.
+        ("wukong-mico", "HeroAttachment_Staff"): 0.10,
+        ("damian", "HeroAttachment_Microphone"): 0.24,
+        ("damian", "HeroAttachment_Speaker"): 0.50,
+        # Persephone's mesh includes the large flower head and ribbon pieces.
+        # The actual handle occupies only the bottom ~8% of the combined bounds.
+        ("persephone-lumi", "HeroAttachment_WeaponHeld"): 0.08,
+    }
+    grip_x = {
+        ("kaze", "HeroAttachment_FanLeft"): 0.35,
+        ("kaze", "HeroAttachment_FanRight"): 0.35,
+        ("persephone-lumi", "HeroAttachment_WeaponHeld"): 0.5,
     }
     for object_name, wrist_name in attachments.get(slug, ()):
         obj = next(
@@ -155,35 +353,150 @@ def rigid_attach_equipment(armature, slug):
             ),
             None,
         )
-        wrist = armature.pose.bones.get(wrist_name)
+        side = wrist_name if wrist_name in {"L", "R"} else wrist_name[:1]
+        wrist = (
+            armature.pose.bones.get(wrist_name)
+            if wrist_name not in {"L", "R"}
+            else rig_parts(armature)[f"{side.casefold()}w"]
+        )
+        socket = sockets.get(side)
         if not obj or not wrist:
             continue
         corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
-        center = sum(corners, Vector()) / len(corners)
-        wrist_world = armature.matrix_world @ wrist.matrix.translation
+        lo = Vector(tuple(min(point[axis] for point in corners) for axis in range(3)))
+        hi = Vector(tuple(max(point[axis] for point in corners) for axis in range(3)))
+        fraction = grip_height.get((slug, object_name), 0.5)
+        x_fraction = grip_x.get((slug, object_name), 0.5)
+        grip = Vector(
+            (
+                lo.x + (hi.x - lo.x) * x_fraction,
+                (lo.y + hi.y) * 0.5,
+                lo.z + (hi.z - lo.z) * fraction,
+            )
+        )
+        if slug == "persephone-lumi" and object_name == "HeroAttachment_WeaponHeld":
+            local_lo = Vector(
+                tuple(
+                    min(corner[axis] for corner in obj.bound_box) for axis in range(3)
+                )
+            )
+            local_hi = Vector(
+                tuple(
+                    max(corner[axis] for corner in obj.bound_box) for axis in range(3)
+                )
+            )
+            local_size = local_hi - local_lo
+            long_axis = max(range(3), key=lambda axis: local_size[axis])
+            grip_local = (local_lo + local_hi) * 0.5
+            grip_local[long_axis] = local_lo[long_axis] + local_size[long_axis] * 0.18
+            grip = obj.matrix_world @ grip_local
+        wrist_world = (
+            socket.matrix_world.translation.copy()
+            if socket
+            else armature.matrix_world @ wrist.tail
+        )
         world = obj.matrix_world.copy()
-        world.translation += wrist_world - center
+        if slug == "kaze":
+            local_lo = Vector(
+                tuple(
+                    min(corner[axis] for corner in obj.bound_box) for axis in range(3)
+                )
+            )
+            local_hi = Vector(
+                tuple(
+                    max(corner[axis] for corner in obj.bound_box) for axis in range(3)
+                )
+            )
+            grip_local = (local_lo + local_hi) * 0.5
+            grip_local.x = local_lo.x + (local_hi.x - local_lo.x) * x_fraction
+            grip_local.z = local_lo.z + (local_hi.z - local_lo.z) * 0.57
+            current_direction = (world.to_3x3() @ Vector((1, 0, 0))).normalized()
+            target_direction = (
+                armature.matrix_world.to_3x3() @ (wrist.head - wrist.tail)
+            ).normalized()
+            rotation_delta = current_direction.rotation_difference(target_direction)
+            world = Matrix.LocRotScale(
+                world.translation,
+                rotation_delta @ world.to_quaternion(),
+                world.to_scale(),
+            )
+            grip = world @ grip_local
+        world.translation += wrist_world - grip
         for modifier in list(obj.modifiers):
             if modifier.type == "ARMATURE":
                 obj.modifiers.remove(modifier)
         obj.vertex_groups.clear()
-        obj.parent = armature
-        obj.parent_type = "BONE"
-        obj.parent_bone = wrist_name
+        obj["attachment_role"] = (
+            "throwable-weapon"
+            if slug == "damian" and "Speaker" in object_name
+            else "held-weapon"
+        )
+        parent_target = socket or armature
+        if socket:
+            socket["held_visible_in_idle"] = True
+        combat_pivot = None
+        if slug == "wukong-mico" and object_name == "HeroAttachment_Staff" and socket:
+            # A grip-centred pivot keeps the hand locked while placing the long
+            # axis in the horizontal attack plane. Without it the authored wrist
+            # basis sends most of the swing upward and into camera depth.
+            combat_pivot = bpy.data.objects.new("WukongStaff_CombatPivot", None)
+            parent_target = combat_pivot
+            bpy.context.scene.collection.objects.link(parent_target)
+            parent_target["attachment_pivot_role"] = "melee-swing"
+            parent_target.parent = socket
+            parent_target.location = (0, 0, 0)
+            # Establish the pivot basis before preserving the staff's world
+            # matrix. Rotating it afterwards swings the whole staff away from
+            # the hand by roughly one metre.
+            parent_target.rotation_euler = (math.radians(-22), 0, 0)
+            bpy.context.view_layer.update()
+        obj.parent = parent_target
+        obj.parent_type = "OBJECT" if socket else "BONE"
+        obj.parent_bone = "" if socket else wrist.name
         obj.matrix_world = world
+        obj["grip_height"] = fraction
+        obj["grip_x"] = x_fraction
+        bpy.context.view_layer.update()
+        marker = bpy.data.objects.new(f"Grip.Primary.{object_name}", None)
+        bpy.context.scene.collection.objects.link(marker)
+        socket_marker = slug in {"kaze", "persephone-lumi"} and socket
+        marker.parent = socket if socket_marker else (combat_pivot or obj)
+        marker["grip_role"] = "primary"
+        if combat_pivot or socket_marker:
+            marker.location = (0, 0, 0)
+        else:
+            marker.matrix_world = Matrix.Translation(wrist_world)
 
 
 def animations(armature, archetype):
     armature.animation_data_create()
     p = rig_parts(armature)
     hover = 0.10 if archetype in {"fairy", "mage"} else 0.035
+    idle_grip = {}
+    if archetype == "assassin":
+        # Kaze's source bind pose leaves the fan wrist behind her shoulder.
+        # Pose the whole arm chain in a relaxed guard so the fan reads as held.
+        idle_grip = {
+            "la": ((-42, 34, -74),),
+            "lf": ((-104, 0, 0),),
+            "lw": ((48, -26, -42),),
+            "ra": ((-42, -34, 74),),
+            "rf": ((-104, 0, 0),),
+            "rw": ((48, 26, 42),),
+        }
+    elif archetype == "controller":
+        idle_grip = {
+            "ra": ((-124, 38, 68),),
+            "rf": ((-24, 0, 0),),
+            "rw": ((58, 34, 52),),
+        }
     action(
         armature,
         p,
         "Idle",
         60,
         [
-            (1, {"root": ((0, 0, -2), (0, 0, 0)), "spine": ((2, 0, -2),)}),
+            (1, {"root": ((0, 0, -2), (0, 0, 0)), "spine": ((2, 0, -2),), **idle_grip}),
             (
                 30,
                 {
@@ -191,9 +504,13 @@ def animations(armature, archetype):
                     "spine": ((-2, 0, 2),),
                     "wing_l": ((0, 12, 0),),
                     "wing_r": ((0, -12, 0),),
+                    **idle_grip,
                 },
             ),
-            (60, {"root": ((0, 0, -2), (0, 0, 0)), "spine": ((2, 0, -2),)}),
+            (
+                60,
+                {"root": ((0, 0, -2), (0, 0, 0)), "spine": ((2, 0, -2),), **idle_grip},
+            ),
         ],
     )
     action(
@@ -579,7 +896,9 @@ def animations(armature, archetype):
                         "spine": ((28, 52, 14),),
                         "la": ((-134, -28, 48),),
                         "lf": ((-18, 0, 0),),
-                        "lw": ((-38, 20, 32),),
+                        # Roll the palm through the horizontal contact plane so
+                        # the long end sweeps toward the aim cone, not skyward.
+                        "lw": ((25, 20, 32),),
                     },
                 ),
                 (
@@ -589,7 +908,7 @@ def animations(armature, archetype):
                         "spine": ((36, -34, -16),),
                         "la": ((-122, 36, -58),),
                         "lf": ((-24, 0, 0),),
-                        "lw": ((52, -30, -48),),
+                        "lw": ((35, -30, -48),),
                     },
                 ),
                 (
@@ -833,22 +1152,20 @@ def build(slug, model_rel, texture_rel, archetype):
             bpy.data.objects.remove(obj, do_unlink=True)
     attachment_names = {
         "brock-zeus": (("cloud", "HeroAttachment_Cloud", "attack-cloud"),),
-        "wukong-mico": (("mic_geo", "HeroAttachment_Staff", "melee-weapon-left"),),
-        "kaze": (("menu_geo", "HeroAttachment_FansHeld", "held-weapons"),),
+        "wukong-mico": (("mic_geo", "HeroAttachment_Staff", "held-weapon"),),
+        "kaze": (("menu_geo", "HeroAttachment_FanLeft", "held-weapon"),),
         "damian": (
             ("speaker_geo", "HeroAttachment_Speaker", "throwable-weapon"),
             ("mic_geo", "HeroAttachment_Microphone", "held-weapon"),
         ),
-        "persephone-lumi": (
-            ("weapon2", "HeroAttachment_WeaponHeld", "melee-weapon-right"),
-        ),
+        "persephone-lumi": (("weapon2", "HeroAttachment_WeaponHeld", "held-weapon"),),
     }
     redundant_weapon_patterns = {
         "fairy-mina": ("waterball",),
         "kaze": ("blades01", "blades02"),
         "wukong-mico": ("cloud_geo",),
         "damian": ("lobby_speaker",),
-        "persephone-lumi": ("weapon1",),
+        "persephone-lumi": ("weapon1", "hide_ingame"),
     }
     for obj in list(bpy.context.scene.objects):
         lowered = obj.name.lower()
@@ -868,6 +1185,14 @@ def build(slug, model_rel, texture_rel, archetype):
                 obj.name = exported_name
                 obj["attachment_role"] = role
                 break
+    if slug == "kaze":
+        left_fan = bpy.data.objects.get("HeroAttachment_FanLeft")
+        if left_fan:
+            right_fan = left_fan.copy()
+            right_fan.data = left_fan.data.copy()
+            right_fan.name = "HeroAttachment_FanRight"
+            right_fan["attachment_role"] = "held-weapon"
+            bpy.context.scene.collection.objects.link(right_fan)
     for obj in bpy.context.scene.objects:
         role = obj.get("attachment_role")
         if role not in {"attack-cloud", "companion-cloud"}:
@@ -916,14 +1241,16 @@ def build(slug, model_rel, texture_rel, archetype):
             (-height * 0.24, 0, height * 0.66),
             chest,
         )
-        add("L_Elbow", la.tail, (-height * 0.43, 0, height * 0.53), la)
+        left_elbow = add("L_Elbow", la.tail, (-height * 0.38, 0, height * 0.57), la)
+        add("L_Wrist", left_elbow.tail, (-height * 0.48, 0, height * 0.50), left_elbow)
         ra = add(
             "R_Shoulder",
             (0, 0, height * 0.67),
             (height * 0.24, 0, height * 0.66),
             chest,
         )
-        add("R_Elbow", ra.tail, (height * 0.43, 0, height * 0.53), ra)
+        right_elbow = add("R_Elbow", ra.tail, (height * 0.38, 0, height * 0.57), ra)
+        add("R_Wrist", right_elbow.tail, (height * 0.48, 0, height * 0.50), right_elbow)
         ll = add(
             "L_UpperLeg",
             (-height * 0.09, 0, height * 0.18),
@@ -950,6 +1277,7 @@ def build(slug, model_rel, texture_rel, archetype):
         bpy.context.view_layer.objects.active = armature
         bpy.ops.object.parent_set(type="ARMATURE_AUTO")
     armature.name = slug + "-rig"
+    armature["hero_slug"] = slug
     attach_equipment_bones(armature, slug)
     rigid_attach_equipment(armature, slug)
     root = bpy.data.objects.new(slug + "-root", None)
@@ -969,11 +1297,23 @@ def build(slug, model_rel, texture_rel, archetype):
             if node:
                 node.image = image
     bpy.context.view_layer.update()
-    corners = [
-        obj.matrix_world @ Vector(c)
+    # Normalize the character silhouette, never the equipment reach. Including a
+    # long staff here would shrink the entire hero until the weapon became short
+    # again, undoing the gameplay-range authoring above.
+    body_meshes = [
+        obj
         for obj in root.children_recursive
         if obj.type == "MESH"
-        for c in obj.bound_box
+        and obj.get("attachment_role")
+        not in {
+            "held-weapon",
+            "throwable-weapon",
+            "detached-ammo",
+            "companion-cloud",
+        }
+    ]
+    corners = [
+        obj.matrix_world @ Vector(c) for obj in body_meshes for c in obj.bound_box
     ]
     lo = Vector(tuple(min(v[i] for v in corners) for i in range(3)))
     hi = Vector(tuple(max(v[i] for v in corners) for i in range(3)))
@@ -981,10 +1321,7 @@ def build(slug, model_rel, texture_rel, archetype):
     root.scale = (scale,) * 3
     bpy.context.view_layer.update()
     corners = [
-        obj.matrix_world @ Vector(c)
-        for obj in root.children_recursive
-        if obj.type == "MESH"
-        for c in obj.bound_box
+        obj.matrix_world @ Vector(c) for obj in body_meshes for c in obj.bound_box
     ]
     lo = Vector(tuple(min(v[i] for v in corners) for i in range(3)))
     hi = Vector(tuple(max(v[i] for v in corners) for i in range(3)))

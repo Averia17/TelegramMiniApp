@@ -113,3 +113,37 @@ func TestLumiRootTriggersOnceForTwoSeconds(t *testing.T) {
 		t.Fatalf("root until=%d want about %d", enemy.StunUntil, now+2000)
 	}
 }
+
+func TestNewHeroGadgetsRespectSharedCooldownAndEmitCastFeedback(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("kaze", "Kaze", "Kaze")
+	p := gs.Players["kaze"]
+	now := time.Now().UnixMilli()
+
+	gs.playerAbility("kaze", now, "secondary")
+	if p.GadgetCharges != 2 || len(gs.Effects) == 0 || gs.Effects[len(gs.Effects)-1].Kind != "kaze_veil_step" {
+		t.Fatalf("first gadget charges=%d effects=%#v", p.GadgetCharges, gs.Effects)
+	}
+	gs.playerAbility("kaze", now+100, "secondary")
+	if p.GadgetCharges != 2 {
+		t.Fatalf("gadget ignored cooldown, charges=%d want 2", p.GadgetCharges)
+	}
+}
+
+func TestArmedNewHeroGadgetsHaveDistinctVisibleEffects(t *testing.T) {
+	for _, tc := range []struct {
+		hero, effect string
+	}{
+		{"Brock Zeus", "zeus_thunderbrand"},
+		{"Wukong Mico", "mico_ruyi_bind"},
+	} {
+		gs := newTestGameState()
+		gs.State = GameStateGame
+		gs.PlayerAdd("hero", tc.hero, tc.hero)
+		gs.playerAbility("hero", time.Now().UnixMilli(), "secondary")
+		if len(gs.Effects) == 0 || gs.Effects[len(gs.Effects)-1].Kind != tc.effect {
+			t.Fatalf("%s effect=%#v, want %s", tc.hero, gs.Effects, tc.effect)
+		}
+	}
+}

@@ -160,13 +160,18 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 			}
 			dx, dy := target.X-p.X, target.Y-p.Y
 			if d := math.Hypot(dx, dy); d > 0 && d <= 135 {
-				target.X += dx / d * 105
-				target.Y += dy / d * 105
+				geometry.MoveCircleWithBlockingWalls(
+					&target.CircleBody,
+					gs.Walls,
+					dx/d*105,
+					dy/d*105,
+				)
 			}
 		}
 		gs.addEffect("mina_air_wave", p.X, p.Y, 0, 0, 135, 0, 0, 0, p.Color, 0, 450)
 	case "Kaze":
 		p.StealthUntil = ts + 3000
+		gs.addEffect("kaze_veil_step", p.X, p.Y, 0, 0, 74, p.Rotation, 0, 0, "#d7b8ff", 0, 700)
 	case "Damian":
 		totem := gs.Totems[p.PlayerId]
 		if totem == nil {
@@ -176,18 +181,30 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 		p.Y, totem.Y = totem.Y, p.Y
 		gs.addEffect("damian_swap", p.X, p.Y, totem.X, totem.Y, 45, 0, 0, 0, p.Color, 0, 500)
 	case "Persephone Lumi":
+		detonated := false
 		for _, zone := range gs.HeroZones {
 			if zone.Owner != p.PlayerId {
 				continue
 			}
+			detonated = true
 			for _, target := range gs.Players {
 				if target.CanBulletHurt(p.PlayerId, p.Team) && math.Hypot(target.X-zone.X, target.Y-zone.Y) <= zone.Radius+target.Radius {
 					gs.dealPlayerDamage(p, target, 500)
 				}
 			}
 		}
+		if !detonated {
+			return false
+		}
+		gs.addEffect("lumi_seedburst", p.X, p.Y, 0, 0, 105, 0, 0, 0, "#f07bd0", 500, 600)
 	default:
 		p.GadgetArmed = true
+		switch p.HeroName {
+		case "Brock Zeus":
+			gs.addEffect("zeus_thunderbrand", p.X, p.Y, 0, 0, 68, p.Rotation, 0, 0, "#9eeaff", 0, 650)
+		case "Wukong Mico":
+			gs.addEffect("mico_ruyi_bind", p.X, p.Y, 0, 0, 72, p.Rotation, 0, 0, "#ffd35a", 0, 650)
+		}
 	}
 	p.GadgetCharges--
 	p.LastSecondaryAt = ts
@@ -306,8 +323,12 @@ func (gs *GameState) knockbackEnemies(p *player.Player, radius, force float64) {
 		}
 		dx, dy := target.X-p.X, target.Y-p.Y
 		if d := math.Hypot(dx, dy); d > 0 && d <= radius+target.Radius {
-			target.X += dx / d * force
-			target.Y += dy / d * force
+			geometry.MoveCircleWithBlockingWalls(
+				&target.CircleBody,
+				gs.Walls,
+				dx/d*force,
+				dy/d*force,
+			)
 		}
 	}
 }

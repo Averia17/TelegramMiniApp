@@ -86,6 +86,7 @@ export class NetworkSimulation {
     this.predicted = null
     this.correction = {x: 0, y: 0}
     this.input = {x: 0, y: 0}
+    this.movementInput = {x: 0, y: 0}
     this.pendingInputs = []
     this.positionHistory = []
     this.clockOffset = null
@@ -97,7 +98,9 @@ export class NetworkSimulation {
   }
 
   setInput(x, y, ack) {
-    this.input = {x: Number(x) || 0, y: Number(y) || 0}
+    const nextInput = {x: Number(x) || 0, y: Number(y) || 0}
+    this.input = nextInput
+    this.movementInput = nextInput
     if (Number.isFinite(ack)) this.pendingInputs.push({ack, ...this.input})
   }
 
@@ -170,24 +173,24 @@ export class NetworkSimulation {
     this.seedLocalPlayer()
     if (!this.predicted) return
 
-    const magnitude = Math.hypot(this.input.x, this.input.y)
+    const magnitude = Math.hypot(this.movementInput.x, this.movementInput.y)
     if (magnitude > .001) {
       const distance = movementSpeed(player) * delta
-      this.predicted.x += this.input.x / magnitude * distance
-      this.predicted.y += this.input.y / magnitude * distance
+      this.predicted.x += this.movementInput.x / magnitude * distance
+      this.predicted.y += this.movementInput.y / magnitude * distance
     }
-
-    const map = this.latestState.map || {}
-    const radius = Number(player.radius) || 14
-    this.predicted.x = clamp(this.predicted.x, radius, Math.max(radius, (map.width || radius) - radius))
-    this.predicted.y = clamp(this.predicted.y, radius, Math.max(radius, (map.height || radius) - radius))
-    this.predicted = resolveWalls(this.predicted, radius, map.walls)
 
     const correctionBlend = 1 - Math.exp(-12 * delta)
     this.predicted.x += this.correction.x * correctionBlend
     this.predicted.y += this.correction.y * correctionBlend
     this.correction.x *= 1 - correctionBlend
     this.correction.y *= 1 - correctionBlend
+
+    const map = this.latestState.map || {}
+    const radius = Number(player.radius) || 14
+    this.predicted.x = clamp(this.predicted.x, radius, Math.max(radius, (map.width || radius) - radius))
+    this.predicted.y = clamp(this.predicted.y, radius, Math.max(radius, (map.height || radius) - radius))
+    this.predicted = resolveWalls(this.predicted, radius, map.walls)
     const now = Date.now()
     this.positionHistory.push({time: now, x: this.predicted.x, y: this.predicted.y})
     while (this.positionHistory.length && this.positionHistory[0].time < now - 2000) this.positionHistory.shift()

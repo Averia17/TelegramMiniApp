@@ -75,3 +75,27 @@ func TestCollidesCircleWithWallsNoCollision(t *testing.T) {
 		t.Error("circle far from walls should not collide")
 	}
 }
+
+func TestMoveCircleWithBlockingWallsCannotTunnelThroughWall(t *testing.T) {
+	sh := NewSpatialHash(40)
+	sh.Insert(&WallTile{MinX: 100, MinY: 0, MaxX: 140, MaxY: 200, Type: "wall"})
+	body := &CircleBody{X: 50, Y: 80, Radius: 10}
+
+	MoveCircleWithBlockingWalls(body, sh, 320, 0)
+
+	if body.X != 90 || body.Y != 80 {
+		t.Fatalf("swept move ended at %.2f,%.2f, want 90,80 before the wall", body.X, body.Y)
+	}
+}
+
+func TestMoveCircleWithBlockingWallsAllowsBushes(t *testing.T) {
+	sh := NewSpatialHash(40)
+	sh.Insert(&WallTile{MinX: 100, MinY: 0, MaxX: 140, MaxY: 200, Type: "bush"})
+	body := &CircleBody{X: 50, Y: 80, Radius: 10}
+
+	MoveCircleWithBlockingWalls(body, sh, 120, 0)
+
+	if body.X != 170 || body.Y != 80 {
+		t.Fatalf("move through bush ended at %.2f,%.2f, want 170,80", body.X, body.Y)
+	}
+}

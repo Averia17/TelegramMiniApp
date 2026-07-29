@@ -305,6 +305,7 @@ func (r *Room) sendStateUpdate() {
 		MapName:     r.State.MapName,
 		MaxPlayers:  r.State.MaxPlayers,
 		Mode:        string(r.State.Mode),
+		AlivePlayers: activePlayerCount(r.State),
 		LobbyEndsAt: r.State.LobbyEndsAt,
 		GameEndsAt:  r.State.GameEndsAt,
 	}
@@ -375,6 +376,19 @@ func (r *Room) sendStateUpdate() {
 			client.MapSyncFrames++
 		}
 	}
+}
+
+func activePlayerCount(state *game.GameState) int {
+	if state == nil {
+		return 0
+	}
+	count := 0
+	for _, candidate := range state.Players {
+		if candidate != nil && candidate.IsAlive() {
+			count++
+		}
+	}
+	return count
 }
 
 func visiblePlayersForClient(state *game.GameState, viewerID string, all map[string]game.PlayerJSON, now int64) map[string]game.PlayerJSON {

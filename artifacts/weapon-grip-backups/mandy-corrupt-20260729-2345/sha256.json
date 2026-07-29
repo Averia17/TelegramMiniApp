@@ -1,0 +1,12 @@
+﻿[
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "CB204545611A9A2908446484F6FD35133A6A75684D69F2805A4150AFE27BFDE9",
+        "Path":  "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\assets-source\\heroes\\mandy\\mandy.blend"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "7D7B81A18BDF9331D683E748946D010C4D5D9BE98D05D3109A54FB31082A36B3",
+        "Path":  "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\assets-source\\heroes\\mandy\\mandy.blend1"
+    }
+]

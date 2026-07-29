@@ -25,7 +25,7 @@ const createWingGeometry = side => {
 
 const createHealthBar = () => {
   const group = new THREE.Group()
-  group.scale.set(1.35, 1.35, 1)
+  group.scale.set(2.2, 2.2, 1)
   const background = new THREE.Sprite(new THREE.SpriteMaterial({
     color: 0x28172f,
     depthTest: false,
@@ -43,7 +43,7 @@ const createHealthBar = () => {
   fill.userData.fullWidth = .8
   if (typeof document === "undefined") {
     group.add(background, fill)
-    group.position.set(0, 1.02, 0)
+    group.position.set(0, 1.16, 0)
     group.renderOrder = 18
     return {group, fill, label: null}
   }
@@ -62,7 +62,7 @@ const createHealthBar = () => {
   label.position.set(0, .14, .02)
   label.userData = {canvas, texture, signature: ""}
   group.add(background, fill, label)
-  group.position.set(0, 1.02, 0)
+  group.position.set(0, 1.16, 0)
   group.renderOrder = 18
   return {group, fill, label}
 }
@@ -167,6 +167,7 @@ export class MonsterRenderer {
   sync(monsters = {}) {
     const active = new Set()
     Object.entries(monsters || {}).forEach(([id, state]) => {
+      if (Number(state?.lives) <= 0) return
       active.add(String(id))
       let view = this.views.get(String(id))
       if (!view) {

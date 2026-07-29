@@ -23,6 +23,7 @@ type GameStateJSON struct {
 	MapName     string `json:"mapName"`
 	MaxPlayers  int    `json:"maxPlayers"`
 	Mode        string `json:"mode"`
+	AlivePlayers int   `json:"alivePlayers"`
 	LobbyEndsAt int64  `json:"lobbyEndsAt,omitempty"`
 	GameEndsAt  int64  `json:"gameEndsAt,omitempty"`
 }

@@ -4,7 +4,8 @@ import {GameClient} from "./GameClient"
 import {Renderer} from "./Renderer"
 import {Input} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
-import {getPlayerBattleStats, getStateBattleResult} from "./battleOutcome"
+import {getHeroSkill} from "./heroSkills.js"
+import {getBattlePlayerCount, getBattleRewardMessage, getPlayerBattleStats, getStateBattleResult} from "./battleOutcome"
 import {releaseAllPreviewContexts} from "./rendering/shared/previewContextRegistry.js"
 import {WS_URL} from "../../utils/urls.js"
 import {getAccessToken} from "../../utils/auth.js"
@@ -147,7 +148,13 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
           finishBattle({won:false,reason:"Бой завершён сервером"})
         }
         if (msg.type === "timeout") {
-          finishBattle({won:false,timedOut:true,reason:"Время вышло",duration:Math.round((msg.params?.duration || 0) / 1000)})
+          finishBattle({
+            won: msg.params?.name === playerName,
+            timedOut: true,
+            winner: msg.params?.name,
+            reason: "Время вышло",
+            duration: Math.round((msg.params?.duration || 0) / 1000),
+          })
         }
         if (msg.type === "won") {
           finishBattle({won:msg.params?.name === playerName,winner:msg.params?.name,duration:Math.round((msg.params?.duration || 0) / 1000)})
@@ -298,6 +305,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
     ? gameState?.players?.[clientRef.current.playerId]
     : null
   const playerCount = Object.keys(gameState?.players || {}).length
+  const alivePlayerCount = getBattlePlayerCount(gameState)
   const health = localPlayer?.lives ?? 0
   const maxHealth = localPlayer?.maxLives ?? 1
   const healthPercent = Math.max(0, Math.min(100, (health / maxHealth) * 100))
@@ -368,7 +376,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
           <header className="battle-topbar">
             <button className="battle-exit-btn" onClick={handleBackToMenu} aria-label="Выйти">✕</button>
             <div className="battle-mode-pill"><span>⚡</span> BATTLE ROYALE</div>
-            <div className="battle-alive"><i/> {playerCount} В БОЮ</div>
+            <div className="battle-alive"><i/> {alivePlayerCount} В БОЮ</div>
           </header>
           {localPlayer && (
             <div className="battle-player-card">
@@ -395,8 +403,8 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
           {gameState?.map && <BattleMiniMap state={gameState} localId={clientRef.current?.playerId} renderer={rendererRef.current}/>}
           {localPlayer && (
             <div className="battle-abilities">
-              <AbilityButton slot="primary" keyName="Q" label={abilityLabel(localPlayer.hero, "primary")} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper onUse={() => clientRef.current?.ability?.("primary")}/>
-              <AbilityButton slot="secondary" keyName="E" label={`${abilityLabel(localPlayer.hero, "secondary")}${localPlayer.hero === "Mandy" ? ` · ${localPlayer.gadgetCharges || 0}` : ""}`} cooldown={localPlayer.cooldowns?.secondary} disabled={localPlayer.hero === "Mandy" && (!localPlayer.gadgetCharges || localPlayer.gadgetArmed)} onUse={() => clientRef.current?.ability?.("secondary")}/>
+              <AbilityButton slot="primary" keyName="Q" label={getHeroSkill(localPlayer.hero, "primary").name} description={getHeroSkill(localPlayer.hero, "primary").description} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper onUse={() => clientRef.current?.ability?.("primary")}/>
+              <AbilityButton slot="secondary" keyName="E" label={`${getHeroSkill(localPlayer.hero, "secondary").name} · ${localPlayer.gadgetCharges || 0}`} description={getHeroSkill(localPlayer.hero, "secondary").description} cooldown={localPlayer.cooldowns?.secondary} disabled={!localPlayer.gadgetCharges || localPlayer.gadgetArmed} onUse={() => clientRef.current?.ability?.("secondary")}/>
             </div>
           )}
         </>
@@ -427,6 +435,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
             <div className="battle-result-crown">♛</div>
             <h2>ПОБЕДА!</h2>
             <p>Арена зачищена — результат сохранён.</p>
+            <BattleRewardNotice result={battleResult}/>
             <BattleResultStats result={battleResult}/>
             <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
           </div>
@@ -439,6 +448,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
 			<div className="battle-result-crown">⌛</div>
 			<h2>ВРЕМЯ ВЫШЛО</h2>
 			<p>Матч завершён по таймеру.</p>
+			<BattleRewardNotice result={battleResult}/>
 			<BattleResultStats result={battleResult}/>
 			<button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
 		  </div>
@@ -493,18 +503,13 @@ const BattleResultStats = ({result}) => result && (
   </div>
 )
 
-const abilityLabel = (hero, slot) => {
-  const name = String(hero || "").toLowerCase()
-  const labels = {
-    viper:["ИЗВЕРЖЕНИЕ","МАГМА-БРОНЯ"],titan:["ЦИФРОВОЙ СБОЙ","ТРОЙНОЙ ДИСК"],
-    shadow:["ЖИВАЯ ЛИАНА","ФОТОСИНТЕЗ"],spark:["ЖАТВА","РОЙ ТЕНЕЙ"],
-    mandy:["САХАРНАЯ ВОЛНА","КАРАМЕЛИЗАЦИЯ"],
-  }
-  return labels[name]?.[slot === "primary" ? 0 : 1] || (slot === "primary" ? "ЗАЛП" : "ЩИТ")
+const BattleRewardNotice = ({result}) => {
+  const message = getBattleRewardMessage(result)
+  return message ? <p className="battle-reward-notice">{message}</p> : null
 }
 
-const AbilityButton = ({keyName, label, cooldown = 0, charge = 100, isSuper = false, disabled = false, onUse}) => (
-  <button className={`battle-ability${isSuper && charge >= 100 ? " battle-ability--ready" : ""}`} disabled={disabled || cooldown > 0 || (isSuper && charge < 100)} onClick={onUse} style={isSuper ? {"--charge": `${charge}%`} : undefined}>
+const AbilityButton = ({keyName, label, description, cooldown = 0, charge = 100, isSuper = false, disabled = false, onUse}) => (
+  <button className={`battle-ability${isSuper && charge >= 100 ? " battle-ability--ready" : ""}`} title={`${label}: ${description}`} aria-label={`${label}: ${description}`} disabled={disabled || cooldown > 0 || (isSuper && charge < 100)} onClick={onUse} style={isSuper ? {"--charge": `${charge}%`} : undefined}>
     {isSuper && <i className="battle-ability__charge"/>}
     <b>{cooldown > 0 ? cooldown.toFixed(1) : isSuper && charge < 100 ? `${Math.round(charge)}%` : keyName}</b>
     <span>{label}</span>

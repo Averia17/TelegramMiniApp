@@ -48,12 +48,8 @@ export const HeroSelect = ({onSelect, selectedHero}) => {
   }, [heroes, onSelect, selectedHero])
 
   useEffect(() => {
-    if (!heroes.length) return undefined
-    const names = [
-      selectedHero,
-      ...heroes.map(hero => hero.name),
-    ].filter(Boolean)
-    const warm = () => assetRegistry.preloadHeroes(names, 2)
+    if (!selectedHero || !heroes.length) return undefined
+    const warm = () => assetRegistry.preloadHeroes([selectedHero], 1)
     if (typeof window.requestIdleCallback === "function") {
       const idleId = window.requestIdleCallback(warm, {timeout: 1200})
       return () => window.cancelIdleCallback?.(idleId)

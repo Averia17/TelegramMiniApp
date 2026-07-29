@@ -2,6 +2,7 @@ package game
 
 import (
 	"battle/model/gamemap"
+	"battle/model/monster"
 	"battle/model/player"
 	"battle/service/geometry"
 	"math"
@@ -93,5 +94,48 @@ func TestBotNavigationTurnsAlongBlockingWall(t *testing.T) {
 	probe.Y += dy * BotNavigationProbe
 	if geometry.CollidesCircleWithBlockingWalls(&probe, walls) {
 		t.Fatalf("chosen avoidance direction is still blocked: direction=(%.2f, %.2f)", dx, dy)
+	}
+}
+
+func TestBotNavigationPlansAroundLongWallTowardGoal(t *testing.T) {
+	wall := &geometry.WallTile{MinX: 160, MinY: 0, MaxX: 200, MaxY: 280, Type: "wall"}
+	walls := geometry.NewSpatialHash(TileSize)
+	walls.Insert(wall)
+	gs := &GameState{
+		Map:   &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480, Collisions: []*geometry.WallTile{wall}},
+		Walls: walls,
+	}
+	bot := perceptionPlayer("bot-1", 100, 120)
+
+	dx, dy := gs.botTravelDirection(bot.PlayerId, &bot.CircleBody, 360, 120)
+
+	if math.Abs(dy) < .2 {
+		t.Fatalf("bot did not commit to a route around the long wall: direction=(%.2f, %.2f)", dx, dy)
+	}
+	probe := bot.CircleBody
+	probe.X += dx * BotNavigationProbe
+	probe.Y += dy * BotNavigationProbe
+	if geometry.CollidesCircleWithBlockingWalls(&probe, walls) {
+		t.Fatalf("first path waypoint intersects the wall: direction=(%.2f, %.2f)", dx, dy)
+	}
+}
+
+func TestBotFightsAttackingMonsterWhenHealthyAndFleesWhenWounded(t *testing.T) {
+	bot := perceptionPlayer("bot-1", 100, 100)
+	bot.MaxLives, bot.Lives, bot.Ammo = 6000, 6000, 2
+	attacker := monster.NewMonster(180, 100, 16, 500, 500, monster.MonsterLives)
+	attacker.State = monster.MonsterChase
+	attacker.TargetPlayerId = bot.PlayerId
+	gs := &GameState{Monsters: map[string]*monster.Monster{"bat": attacker}}
+
+	target, flee := gs.botMonsterThreat(bot)
+	if target != attacker || flee {
+		t.Fatal("healthy armed bot should turn and fight a monster chasing it")
+	}
+
+	bot.Lives = 1200
+	target, flee = gs.botMonsterThreat(bot)
+	if target != attacker || !flee {
+		t.Fatal("badly wounded bot should retreat from a monster chasing it")
 	}
 }

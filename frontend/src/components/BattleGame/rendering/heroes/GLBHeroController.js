@@ -1,5 +1,6 @@
 import * as THREE from "three"
 import {createNeedleSporeVisual, createProjectileVisual} from "../combat/ProjectileRenderer.js"
+import {getAttackSwingYaw} from "./attackSwing.js"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const UPPER_BONE = /(spine|chest|neck|head|shoulder|clavicle|arm|hand|finger|weapon)/i
@@ -26,6 +27,34 @@ const findSideArm = (nodes, side) => {
     || null
 }
 
+const matchesSide = (name, side) => {
+  const word = side === "left" ? "left" : "right"
+  const letter = side === "left" ? "l" : "r"
+  return new RegExp(`(^|[_:.])${letter}(?:eft|ight)?(?=[_:.A-Z]|$)|${word}`, "i").test(name)
+}
+
+const findLegChain = (nodes, side) => {
+  const bones = [...nodes.values()].filter(node => node.isBone && matchesSide(node.name, side))
+  const upper = bones.find(node => /(upper.?leg|thigh)/i.test(node.name) && !/(bend|twist)/i.test(node.name))
+    || bones.find(node => /leg/i.test(node.name) && !/(lower|calf|foot|toe|cloth|bend|twist)/i.test(node.name))
+    || null
+  const descendants = []
+  upper?.traverse(node => {
+    if (node !== upper && node.isBone) descendants.push(node)
+  })
+  const lower = descendants.find(node => /(lower.?leg|calf|shin)/i.test(node.name) && !/(bend|twist)/i.test(node.name))
+    || bones.find(node => /(lower.?leg|calf|shin)/i.test(node.name) && !/(bend|twist)/i.test(node.name))
+    || null
+  const footNodes = []
+  ;(lower || upper)?.traverse(node => {
+    if (node !== lower && node !== upper && node.isBone) footNodes.push(node)
+  })
+  const foot = footNodes.find(node => /(foot|toe)/i.test(node.name) && !/(end|roll)/i.test(node.name))
+    || bones.find(node => /(foot|toe)/i.test(node.name) && !/(end|roll)/i.test(node.name))
+    || null
+  return {upper, lower, foot}
+}
+
 const findRig = root => {
   const nodes = new Map()
   root.traverse(node => {
@@ -43,8 +72,13 @@ const findRig = root => {
     upperNames,
     leftArm: findSideArm(nodes, "left"),
     rightArm: findSideArm(nodes, "right"),
+    legs: {
+      left: findLegChain(nodes, "left"),
+      right: findLegChain(nodes, "right"),
+    },
     head: [...nodes.values()].find(node => /(^|[_:])head(?:[_:]|$)/i.test(node.name) || /^head/i.test(node.name)) || null,
-    rightHand: [...nodes.values()].find(node => node.isBone && /(^|[_:])right_?hand$/i.test(node.name))
+    rightHand: nodes.get("Socket.Weapon.R")
+      || [...nodes.values()].find(node => node.isBone && /(^|[_:])right_?hand$/i.test(node.name))
       || [...nodes.values()].find(node => node.isBone && /right.*hand/i.test(node.name))
       || [...nodes.values()].find(node => node.isBone && /(^|[_:])r(?:ight)?_?wrist(?:[_:]|$)/i.test(node.name))
       || null,
@@ -109,10 +143,6 @@ const createCloudLightning = () => {
   impact.position.copy(points.at(-1))
   impact.userData.lightningLayer = "impact"
   group.add(impact)
-  const light = new THREE.PointLight(0x8de7ff, 0, 3.2, 2)
-  light.position.y = -.72
-  group.add(light)
-  group.userData.light = light
   return group
 }
 
@@ -127,8 +157,10 @@ export class GLBHeroController {
     this.lastSuperPulse = options.superPulse
     this.lastSpawnPulse = options.spawnPulse
     this.heroName = options.heroName || ""
+    this.previewLayout = Boolean(options.previewLayout)
     this.elapsed = 0
     this.attackVisualRemaining = 0
+    this.attackSwingYaw = 0
     this.rig = findRig(root)
     if (!this.rig.rightHand) {
       this.rig.rightHand = root.getObjectByName("R_wrist_s")
@@ -160,7 +192,7 @@ export class GLBHeroController {
       )
       this.heldProjectile.scale.setScalar(this.heldProjectileBaseScale)
       this.heldProjectile.rotation.set(0.18, 0.35, -0.12)
-      this.heldProjectile.visible = false
+      this.heldProjectile.visible = true
       this.rig.rightHand.add(this.heldProjectile)
     }
     this.detachedAmmo = []
@@ -170,9 +202,10 @@ export class GLBHeroController {
     this.meleeWeapon = null
     root.traverse(node => {
       const attachmentRole = node.userData.attachment_role || node.userData.attachmentRole
-      if (attachmentRole === "melee-weapon" && !this.meleeWeapon) {
+      if (["held-weapon", "melee-weapon", "melee-weapon-left", "melee-weapon-right", "held-weapons"].includes(attachmentRole)
+        && !this.meleeWeapon) {
         this.meleeWeapon = node
-        this.meleeWeapon.userData.attachmentRole = "melee-weapon"
+        this.meleeWeapon.userData.attachmentRole = "held-weapon"
       }
       if (attachmentRole === "detached-ammo" || /waterball.*hide_ingame/i.test(node.name)) {
         node.visible = false
@@ -185,7 +218,8 @@ export class GLBHeroController {
       }
       const carriesCompanionCloud = this.heroName === "Brock Zeus"
       if (carriesCompanionCloud
-        && ["attack-cloud", "companion-cloud"].includes(attachmentRole)
+        && (["attack-cloud", "companion-cloud"].includes(attachmentRole)
+          || /^HeroAttachment_Cloud$/i.test(node.name))
         && !this.cloud) {
         this.cloud = node
         this.cloud.userData.attachmentRole = this.heroName === "Brock Zeus"
@@ -201,6 +235,17 @@ export class GLBHeroController {
       }
     })
     if (this.cloud) {
+      if (this.previewLayout) {
+        this.cloud.traverse(node => {
+          if (!node.isMesh) return
+          node.renderOrder = -1
+          const materials = Array.isArray(node.material) ? node.material : [node.material]
+          materials.filter(Boolean).forEach(material => {
+            material.depthTest = false
+            material.depthWrite = false
+          })
+        })
+      }
       root.updateMatrixWorld(true)
       const cloudBounds = new THREE.Box3().setFromObject(this.cloud)
       const cloudSize = cloudBounds.getSize(new THREE.Vector3())
@@ -212,7 +257,13 @@ export class GLBHeroController {
         // Target is expressed in gameplay scene units. The imported root may
         // carry a large authoring-unit scale, so do not transform this offset
         // as if it were another source-space coordinate.
-        const targetWorld = root.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(.58, 1.32, -.10))
+        // The diagonal lobby camera projects Brock's normal gameplay cloud far
+        // to the right. In previews, compensate for that view and tuck it behind
+        // his silhouette so the fighter remains the visual center.
+        const cloudTarget = this.previewLayout
+          ? new THREE.Vector3(-2.1, 1.34, -.28)
+          : new THREE.Vector3(.58, 1.32, -.10)
+        const targetWorld = root.getWorldPosition(new THREE.Vector3()).add(cloudTarget)
         const centerInParent = this.cloud.parent.worldToLocal(centerWorld.clone())
         const targetInParent = this.cloud.parent.worldToLocal(targetWorld.clone())
         this.cloud.position.add(targetInParent.sub(centerInParent))
@@ -242,6 +293,17 @@ export class GLBHeroController {
       let parent = node.parent
       while (parent && parent !== root && parent !== this.spawnCactus) parent = parent.parent
       if (parent !== this.spawnCactus) this.heroMeshes.push(node)
+    })
+    this.heroMaterials = [...new Set(this.heroMeshes.flatMap(mesh =>
+      (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).filter(Boolean),
+    ))]
+    this.hitColor = new THREE.Color(0xff2020)
+    this.heroMaterials.forEach(material => {
+      if (!material.emissive) return
+      material.userData.glbHeroBaseEmissive ||= material.emissive.clone()
+      if (material.userData.glbHeroBaseEmissiveIntensity === undefined) {
+        material.userData.glbHeroBaseEmissiveIntensity = material.emissiveIntensity
+      }
     })
     if (this.spawnCactus) this.spawnCactus.visible = false
     this.spawnElapsed = 0
@@ -417,7 +479,6 @@ export class GLBHeroController {
             ? strike
             : strike * (layer === "impact" ? .52 : .82)
         })
-        this.cloudLightning.userData.light.intensity = strike * 5.5
       }
     }
 
@@ -506,6 +567,28 @@ export class GLBHeroController {
     if (this.rig.upperRoot) this.rig.upperRoot.quaternion.multiply(this.appliedUpperAim.clone().invert())
     if (this.rig.head) this.rig.head.quaternion.multiply(this.appliedHeadAim.clone().invert())
     this.mixer.update(deltaSeconds)
+    const attackAction = this.actions.get("attack")
+    const attackPhase = attackAction
+      ? clamp(attackAction.time / Math.max(.001, attackAction.getClip().duration), 0, 1)
+      : 0
+    this.attackSwingYaw = this.overlay === "attack"
+      ? getAttackSwingYaw(attackPhase, input.attackHalfArcDegrees)
+      : 0
+    if (input.moving) {
+      const speedRatio = clamp(
+        (Number(input.speed) || 0) / Math.max(1, Number(input.referenceSpeed) || 1),
+        .65,
+        1.65,
+      )
+      const gait = this.elapsed * 9 * speedRatio
+      for (const [side, leg] of Object.entries(this.rig.legs)) {
+        const direction = side === "left" ? 1 : -1
+        const swing = Math.sin(gait) * direction
+        if (leg.upper) leg.upper.rotateX(swing * .34)
+        if (leg.lower) leg.lower.rotateX(Math.max(0, -swing) * .28 + Math.abs(Math.sin(gait)) * .08)
+        if (leg.foot) leg.foot.rotateX(-swing * .16 - Math.max(0, swing) * .08)
+      }
+    }
     if (this.throwableWeapon) {
       const attack = this.actions.get("attack")
       const duration = attack?.getClip().duration || 1
@@ -525,9 +608,10 @@ export class GLBHeroController {
       const attack = this.actions.get("attack")
       const duration = attack?.getClip().duration || 1
       const phase = attack ? clamp(attack.time / duration, 0, 1) : 1
-      const carrying = this.overlay === "attack" && attack?.isRunning() && phase < 0.52
-      this.heldProjectile.visible = Boolean(carrying && this.root.visible)
-      if (carrying) {
+      const attacking = this.overlay === "attack" && attack?.isRunning()
+      const released = attacking && phase >= 0.52 && phase < 0.92
+      this.heldProjectile.visible = Boolean(!released && this.root.visible)
+      if (attacking && !released) {
         const anticipation = Math.sin(Math.min(1, phase / 0.36) * Math.PI)
         const releaseStretch = clamp((phase - 0.38) / 0.14, 0, 1)
         const baseScale = this.heldProjectileBaseScale || 1
@@ -538,6 +622,10 @@ export class GLBHeroController {
         )
         this.heldProjectile.rotation.y = 0.35 + phase * 2.8
         this.heldProjectile.rotation.z = -0.12 - anticipation * 0.22
+      } else if (!attacking) {
+        const baseScale = this.heldProjectileBaseScale || 1
+        this.heldProjectile.scale.setScalar(baseScale)
+        this.heldProjectile.rotation.set(0.18, 0.35, -0.12)
       }
     }
     if (this.rig.upperRoot) {
@@ -564,20 +652,13 @@ export class GLBHeroController {
 
   setHitFlash(amount) {
     const hit = clamp(amount, 0, 1)
-    this.root.traverse(child => {
-      const materials = Array.isArray(child.material) ? child.material : [child.material]
-      for (const material of materials) {
-        if (material?.uniforms?.hit) material.uniforms.hit.value = hit
-        if (material?.emissive) {
-          if (!material.userData.glbHeroBaseEmissive) material.userData.glbHeroBaseEmissive = material.emissive.clone()
-          if (material.userData.glbHeroBaseEmissiveIntensity === undefined) {
-            material.userData.glbHeroBaseEmissiveIntensity = material.emissiveIntensity
-          }
-          material.emissive.copy(material.userData.glbHeroBaseEmissive).lerp(new THREE.Color(0xff2020), hit)
-          material.emissiveIntensity = material.userData.glbHeroBaseEmissiveIntensity + hit * 1.8
-        }
+    for (const material of this.heroMaterials) {
+      if (material.uniforms?.hit) material.uniforms.hit.value = hit
+      if (material.emissive) {
+        material.emissive.copy(material.userData.glbHeroBaseEmissive).lerp(this.hitColor, hit)
+        material.emissiveIntensity = material.userData.glbHeroBaseEmissiveIntensity + hit * 1.8
       }
-    })
+    }
   }
 
   dispose() {

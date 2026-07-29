@@ -14,7 +14,6 @@ import {GLBHeroController} from "../src/components/BattleGame/rendering/heroes/G
 import {turnTowardsAngle} from "../src/components/BattleGame/rendering/heroes/turning.js"
 import {
   BUSH_HERO_OPACITY,
-  createBushOcclusion,
   getBushConcealmentMix,
 } from "../src/components/BattleGame/rendering/heroes/BushConcealment.js"
 import {createProjectileVisual} from "../src/components/BattleGame/rendering/combat/ProjectileRenderer.js"
@@ -24,6 +23,7 @@ import {
 } from "../src/components/BattleGame/rendering/monsters/MonsterRenderer.js"
 import {getBattleWebGLContext} from "../src/components/BattleGame/rendering/SceneRoot.js"
 import {
+  acquirePreviewSlot,
   previewRendererCount,
   registerPreviewRenderer,
   releaseAllPreviewContexts,
@@ -34,7 +34,15 @@ import {CameraRig, fitVerticalSpanToMap} from "../src/components/BattleGame/rend
 import {AimRenderer} from "../src/components/BattleGame/rendering/combat/AimRenderer.js"
 import {createMapSignature} from "../src/components/BattleGame/rendering/map/mapSignature.js"
 import {MapRenderer} from "../src/components/BattleGame/rendering/map/MapRenderer.js"
-import {getPlayerBattleStats, getStateBattleResult} from "../src/components/BattleGame/battleOutcome.js"
+import {PickupRenderer} from "../src/components/BattleGame/rendering/map/PickupRenderer.js"
+import {EffectRenderer} from "../src/components/BattleGame/rendering/combat/EffectRenderer.js"
+import {
+  getBattlePlayerCount,
+  getBattleRewardMessage,
+  getPlayerBattleStats,
+  getStateBattleResult,
+} from "../src/components/BattleGame/battleOutcome.js"
+import {isAlivePlayerState} from "../src/components/BattleGame/rendering/heroes/playerVisibility.js"
 import {HEROES_CONFIG} from "../src/components/BattleGame/heroesConfig.js"
 import {
   getEnvironmentPlacements,
@@ -79,16 +87,10 @@ test("hero turning follows the shortest arc through intermediate directions", ()
   assert.equal(wrappedTurn < Math.PI + .1, true)
 })
 
-test("bush concealment keeps the brawler readable and covers only the lower silhouette", () => {
-  assert.equal(BUSH_HERO_OPACITY >= .74, true)
+test("bush concealment softly fades the brawler without adding hero-bound foliage", () => {
+  assert.equal(BUSH_HERO_OPACITY >= .7, true)
   assert.equal(getBushConcealmentMix(0, true, .1) > 0, true)
   assert.equal(getBushConcealmentMix(1, false, .1) < 1, true)
-
-  const occlusion = createBushOcclusion()
-  assert.equal(occlusion.userData.role, "bush-foreground-occlusion")
-  assert.equal(occlusion.children.length >= 7, true)
-  assert.equal(occlusion.children.every(child => child.position.y < 1.35), true)
-  assert.equal(occlusion.children.every(child => child.material.depthTest === false), true)
 })
 
 test("aim rendering uses a configured forward area for melee and a direction for ranged heroes", () => {
@@ -134,8 +136,8 @@ test("server bats are rendered, animated, and removed with the monster snapshot"
   assert.equal(root.children.includes(monsters.root), true)
   assert.equal(bat.group.userData.kind, "bat")
   assert.equal(bat.group.userData.tier, 2)
-  assert.equal(bat.healthBar.scale.x >= 1.2, true)
-  assert.equal(bat.healthBar.scale.y >= 1.2, true)
+  assert.equal(bat.healthBar.scale.x >= 2, true)
+  assert.equal(bat.healthBar.scale.y >= 2, true)
   assert.deepEqual(bat.group.position.toArray(), worldToScene(120, 220, 22).toArray())
   monsters.update(.1, 1)
   assert.equal(Math.abs(bat.leftWing.rotation.z) > 0, true)
@@ -145,9 +147,84 @@ test("server bats are rendered, animated, and removed with the monster snapshot"
   monsters.dispose()
 })
 
+test("a monster with zero HP is removed even before the server drops its id", () => {
+  const root = new THREE.Group()
+  const monsters = new MonsterRenderer(root)
+  monsters.sync({
+    bat_1: {x: 120, y: 220, radius: 24, lives: 100, maxLives: 100},
+  })
+
+  monsters.sync({
+    bat_1: {x: 120, y: 220, radius: 24, lives: 0, maxLives: 100},
+  })
+
+  assert.equal(monsters.views.size, 0)
+  assert.equal(monsters.root.children.length, 0)
+  monsters.dispose()
+})
+
 test("health labels show exact remaining and maximum HP", () => {
   assert.equal(formatHealthLabel(1840, 3600), "1840 / 3600")
   assert.equal(formatHealthLabel(-20, 3600), "0 / 3600")
+})
+
+test("monster health drops are visible until the player collects them", () => {
+  const root = new THREE.Group()
+  const renderer = new PickupRenderer(root)
+
+  renderer.sync([{x: 120, y: 220, radius: 9, type: "potion-red", active: true}])
+  assert.equal(root.children.length, 1)
+  assert.equal(root.children[0].userData.type, "potion-red")
+  assert.deepEqual(root.children[0].position.toArray(), worldToScene(120, 220, 0).toArray())
+
+  renderer.sync([])
+  assert.equal(root.children.length, 0)
+  renderer.dispose()
+})
+
+test("collecting a health drop shows an explicit healing marker", () => {
+  const root = new THREE.Group()
+  const renderer = new EffectRenderer(root)
+  renderer.sync([{
+    id: "heal-1",
+    kind: "heal",
+    x: 120,
+    y: 220,
+    color: "#65ff9c",
+    damage: 800,
+    life: .5,
+    maxLife: .52,
+  }])
+
+  assert.equal(root.children.length, 1)
+  assert.equal(root.children[0].userData.kind, "heal")
+  assert.equal(root.children[0].children.some(child => child.userData.role === "healing-cross"), true)
+})
+
+test("melee attack trails expose the full configured gameplay reach", () => {
+  for (const [kind, range, arc] of [
+    ["mandy_staff_swing", 70, Math.PI * .35],
+    ["mico_staff_swing", 120, Math.PI * .45],
+    ["kaze_cross_slash", 105, .9],
+  ]) {
+    const root = new THREE.Group()
+    const renderer = new EffectRenderer(root)
+    renderer.sync([{id: kind, kind, x: 0, y: 0, range, radius: range, arc, angle: .4, life: .3, maxLife: .4}])
+
+    const reachMeshes = []
+    root.traverse(child => {
+      if (child.userData.role === "melee-reach") reachMeshes.push(child)
+    })
+    assert.equal(reachMeshes.length, kind === "kaze_cross_slash" ? 2 : 1)
+    for (const mesh of reachMeshes) {
+      const positions = mesh.geometry.attributes.position
+      let outerRadius = 0
+      for (let index = 0; index < positions.count; index++) {
+        outerRadius = Math.max(outerRadius, Math.hypot(positions.getX(index), positions.getY(index)))
+      }
+      assert.ok(Math.abs(outerRadius - range * WORLD_SCALE) < .01)
+    }
+  }
 })
 
 test("battle WebGL setup rejects an exhausted canvas before Three.js reads null precision", () => {
@@ -177,6 +254,23 @@ test("entering battle immediately releases every hero-preview WebGL context", ()
   assert.equal(previewRendererCount(), 0)
   assert.equal(disposed, 2)
   assert.equal(lost, 2)
+})
+
+test("queued hero-card previews receive a slot after an earlier snapshot releases it", async () => {
+  const releaseFirst = await acquirePreviewSlot(1)
+  let secondStarted = false
+  const secondSlot = acquirePreviewSlot(1).then(release => {
+    secondStarted = true
+    return release
+  })
+
+  await Promise.resolve()
+  assert.equal(secondStarted, false)
+
+  releaseFirst()
+  const releaseSecond = await secondSlot
+  assert.equal(secondStarted, true)
+  releaseSecond()
 })
 
 test("network interpolation uses the server clock domain and smooths every moving entity", () => {
@@ -308,38 +402,22 @@ test("mobile camera starts on the player and fits the map after rotation", () =>
   assert.equal(camera.target.z, 384 * WORLD_SCALE)
 })
 
-test("the hero manifest defines every imported hero with the complete animation state machine", () => {
+test("the hero manifest uses standardized base GLBs and optional detached weapons", () => {
   assert.deepEqual(Object.keys(HERO_ASSETS), ["Shadow", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"])
   for (const name of Object.keys(HERO_ASSETS)) {
     const asset = getHeroAsset(name)
     assert.equal(asset.id, name)
     assert.equal(asset.scale > 0, true)
     assert.deepEqual(Object.keys(asset.clips), ["idle", "run", "aim", "aimSuper", "attack", "super", "spawn", "victory", "defeat"])
-    assert.deepEqual(Object.keys(asset.eventAnimations), [
-      "idle", "run", "aim", "aimSuper", "attack", "super", "spawn", "victory", "defeat",
-    ])
-    assert.match(asset.eventAnimations.idle.url, /\/animations\/idle\.glb$/)
-    assert.equal(asset.eventAnimations.idle.clip, "Idle")
-    assert.match(asset.eventAnimations.run.url, /\/animations\/run\.glb$/)
-    assert.equal(asset.eventAnimations.run.clip, "Run")
-    assert.match(asset.eventAnimations.aim.url, /\/animations\/aim\.glb$/)
-    assert.equal(asset.eventAnimations.aim.clip, "Aim")
-    assert.match(asset.eventAnimations.aimSuper.url, /\/animations\/aim-super\.glb$/)
-    assert.equal(asset.eventAnimations.aimSuper.clip, "AimSuper")
-    assert.match(asset.eventAnimations.attack.url, /\/animations\/attack\.glb$/)
-    assert.equal(asset.eventAnimations.attack.clip, "Attack")
-    assert.match(asset.eventAnimations.spawn.url, /\/animations\/spawn\.glb$/)
-    assert.equal(asset.eventAnimations.spawn.clip, "Spawn")
-    assert.match(asset.eventAnimations.super.url, /\/animations\/super\.glb$/)
-    assert.equal(asset.eventAnimations.super.clip, "Super")
-    assert.match(asset.eventAnimations.victory.url, /\/animations\/victory\.glb$/)
-    assert.equal(asset.eventAnimations.victory.clip, "Victory")
-    assert.match(asset.eventAnimations.defeat.url, /\/animations\/defeat\.glb$/)
-    assert.equal(asset.eventAnimations.defeat.clip, "Defeat")
+    assert.equal("eventAnimations" in asset, false)
+    assert.match(asset.url, /\/assets\/heroes\/output_heroes\/[^/]+_base\.glb$/)
+    if (asset.weaponUrl) {
+      assert.match(asset.weaponUrl, /\/assets\/heroes\/output_weapons\/[^/]+_weapon\.glb$/)
+    }
   }
   for (const name of Object.keys(HERO_ASSETS)) assert.equal(HERO_ASSETS[name].available, true)
-  assert.equal(HERO_ASSETS.Shadow.url, "/assets/heroes/needle/needle.glb")
-  assert.equal(HERO_ASSETS.Mandy.url, "/assets/heroes/mandy/mandy.glb")
+  assert.equal(HERO_ASSETS.Shadow.url, "/assets/heroes/output_heroes/needle_base.glb")
+  assert.equal(HERO_ASSETS.Mandy.weaponUrl, "/assets/heroes/output_weapons/mandy_weapon.glb")
   assert.equal(HERO_ASSETS.Damian.groundOffset, 0.25)
   assert.deepEqual(HEROES_CONFIG.map(hero => hero.name), Object.keys(HERO_ASSETS))
 })
@@ -379,6 +457,49 @@ test("zero health authoritatively opens a defeat result even if you_died is miss
   })
   assert.equal(getStateBattleResult(state, "local", "result"), null)
   assert.equal(getStateBattleResult(state, "missing", "game"), null)
+})
+
+test("a lethal battle snapshot opens results before the UI view catches up", () => {
+  const state = {
+    game: {state: "game"},
+    players: {
+      local: {lives: 0},
+      alive: {lives: 1200},
+    },
+  }
+
+  assert.deepEqual(getStateBattleResult(state, "local", "lobby"), {
+    won: false,
+    place: 2,
+    kills: 0,
+    monsters: 0,
+    duration: 0,
+  })
+})
+
+test("dead heroes are excluded from the rendered player scene", () => {
+  assert.equal(isAlivePlayerState({lives: 1200}), true)
+  assert.equal(isAlivePlayerState({lives: 0}), false)
+  assert.equal(isAlivePlayerState({lives: -1}), false)
+})
+
+test("the in-battle counter uses the authoritative total when hidden heroes are absent", () => {
+  const state = {
+    game: {alivePlayers: 4},
+    players: {
+      local: {lives: 1200},
+    },
+  }
+
+  assert.equal(getBattlePlayerCount(state), 4)
+})
+
+test("battle reward message names the rewarded placement", () => {
+  assert.equal(
+    getBattleRewardMessage({won: true, place: 1}),
+    "Вы получили награду за №1 место в бою",
+  )
+  assert.equal(getBattleRewardMessage({won: false, place: 2}), "")
 })
 
 test("the result popup is committed before an optional renderer outcome animation", async () => {
@@ -427,51 +548,74 @@ test("AssetRegistry loads each GLB once and returns independent clones", async (
   assert.equal(second.animations[0].name, "Idle")
 })
 
-test("AssetRegistry loads event clips once and merges them into every hero instance", async () => {
+test("AssetRegistry attaches detached weapon geometry to its authored grip marker", async () => {
+  const heroScene = new THREE.Group()
+  const hand = new THREE.Bone()
+  hand.name = "L_wrist_s"
+  hand.position.set(.4, 1.2, -.2)
+  hand.rotation.set(.2, -.35, .1)
+  hand.scale.setScalar(1.8)
+  const socket = new THREE.Bone()
+  socket.name = "weapon_socket_l"
+  hand.add(socket)
+  const grip = new THREE.Group()
+  grip.name = "GripPrimaryHeroAttachment_TestWeapon"
+  grip.position.set(0, .4, .1)
+  socket.add(grip)
+  heroScene.add(hand)
+
+  const weaponScene = new THREE.Group()
+  const weaponObject = new THREE.Group()
+  weaponObject.name = "HeroAttachment_TestWeapon"
+  const weaponMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(.1, 1, .1),
+    new THREE.MeshBasicMaterial(),
+  )
+  weaponMesh.position.set(1, 0, 0)
+  weaponObject.add(weaponMesh)
+  weaponScene.add(weaponObject)
+
   const loads = []
-  const template = new THREE.Group()
   const registry = new AssetRegistry({
     manifest: {
       TestHero: {
         id: "TestHero",
-        url: "/test.glb",
+        url: "/test_base.glb",
+        weaponUrl: "/test_weapon.glb",
+        weaponAttachments: [{
+          name: "HeroAttachment_TestWeapon",
+          target: "GripPrimaryHeroAttachment_TestWeapon",
+          role: "held-weapon",
+        }],
         available: true,
         scale: 1,
         rotationOffset: 0,
-        clips: {idle: "Idle", attack: "Attack", spawn: "Spawn"},
-        eventAnimations: {
-          attack: {url: "/test/animations/attack.glb", clip: "Attack"},
-          spawn: {url: "/test/animations/spawn.glb", clip: "Spawn"},
-        },
+        clips: {},
       },
     },
     load: async url => {
       loads.push(url)
-      if (url.endsWith("attack.glb")) {
-        return {scene: new THREE.Group(), animations: [new THREE.AnimationClip("Attack", .6, [])]}
-      }
-      if (url.endsWith("spawn.glb")) {
-        return {scene: new THREE.Group(), animations: [new THREE.AnimationClip("Spawn", 1.2, [])]}
-      }
-      return {scene: template, animations: [new THREE.AnimationClip("Idle", 1, [])]}
+      return url.includes("weapon")
+        ? {scene: weaponScene, animations: []}
+        : {scene: heroScene, animations: []}
     },
   })
 
-  const [first, second] = await Promise.all([
-    registry.instantiateHero("TestHero"),
-    registry.instantiateHero("TestHero"),
-  ])
-
-  assert.deepEqual(loads.sort(), [
-    "/test.glb",
-    "/test/animations/attack.glb",
-    "/test/animations/spawn.glb",
-  ])
-  assert.deepEqual(first.animations.map(clip => clip.name), ["Idle", "Attack", "Spawn"])
-  assert.deepEqual(second.animations.map(clip => clip.name), ["Idle", "Attack", "Spawn"])
+  const instance = await registry.instantiateHero("TestHero")
+  const attachedSocket = instance.root.getObjectByName("GripPrimaryHeroAttachment_TestWeapon")
+  const attachedWeapon = instance.root.getObjectByName("DetachedHeroWeapon.HeroAttachment_TestWeapon")
+  assert.deepEqual(loads, ["/test_base.glb", "/test_weapon.glb"])
+  assert.equal(attachedWeapon.parent, attachedSocket)
+  assert.equal(attachedWeapon.position.length() < 1e-8, true)
+  attachedSocket.updateWorldMatrix(true, true)
+  const socketPosition = attachedSocket.getWorldPosition(new THREE.Vector3())
+  const weaponPosition = attachedWeapon.getWorldPosition(new THREE.Vector3())
+  assert.equal(socketPosition.distanceTo(weaponPosition) < 1e-8, true)
+  const weaponBounds = new THREE.Box3().setFromObject(attachedWeapon, true)
+  assert.equal(weaponBounds.distanceToPoint(socketPosition) < 1e-8, true)
 })
 
-test("AssetRegistry replaces embedded event clips with the separately authored files", async () => {
+test("AssetRegistry uses every embedded clip from the canonical hero GLB", async () => {
   const loads = []
   const template = new THREE.Group()
   const registry = new AssetRegistry({
@@ -483,20 +627,10 @@ test("AssetRegistry replaces embedded event clips with the separately authored f
         scale: 1,
         rotationOffset: 0,
         clips: {idle: "Idle", attack: "Attack", spawn: "Spawn"},
-        eventAnimations: {
-          attack: {url: "/test/animations/attack.glb", clip: "Attack"},
-          spawn: {url: "/test/animations/spawn.glb", clip: "Spawn"},
-        },
       },
     },
     load: async url => {
       loads.push(url)
-      if (url.endsWith("attack.glb")) {
-        return {scene: new THREE.Group(), animations: [new THREE.AnimationClip("Attack", .8, [])]}
-      }
-      if (url.endsWith("spawn.glb")) {
-        return {scene: new THREE.Group(), animations: [new THREE.AnimationClip("Spawn", 1.4, [])]}
-      }
       return {
         scene: template,
         animations: [
@@ -508,16 +642,14 @@ test("AssetRegistry replaces embedded event clips with the separately authored f
     },
   })
 
-  const instance = await registry.instantiateHero("TestHero")
-
-  assert.deepEqual(loads, [
-    "/test.glb",
-    "/test/animations/attack.glb",
-    "/test/animations/spawn.glb",
+  const [first, second] = await Promise.all([
+    registry.instantiateHero("TestHero"),
+    registry.instantiateHero("TestHero"),
   ])
-  assert.deepEqual(instance.animations.map(clip => clip.name), ["Idle", "Attack", "Spawn"])
-  assert.equal(instance.animations.find(clip => clip.name === "Attack").duration, .8)
-  assert.equal(instance.animations.find(clip => clip.name === "Spawn").duration, 1.4)
+
+  assert.deepEqual(loads, ["/test.glb"])
+  assert.deepEqual(first.animations.map(clip => clip.name), ["Idle", "Attack", "Spawn"])
+  assert.deepEqual(second.animations.map(clip => clip.name), ["Idle", "Attack", "Spawn"])
 })
 
 test("AssetRegistry warms hero GLBs once and reports which previews are ready", async () => {
@@ -543,7 +675,7 @@ test("AssetRegistry warms hero GLBs once and reports which previews are ready", 
   assert.equal(loads, 2)
 })
 
-test("AssetRegistry preloads every hero model and event animation through the shared cache", async () => {
+test("AssetRegistry preloads only the canonical hero GLB through the shared cache", async () => {
   const loads = []
   const template = new THREE.Group()
   const registry = new AssetRegistry({
@@ -555,17 +687,13 @@ test("AssetRegistry preloads every hero model and event animation through the sh
         scale: 1,
         rotationOffset: 0,
         clips: {},
-        eventAnimations: {
-          idle: {url: "/alpha/idle.glb", clip: "Idle"},
-          attack: {url: "/alpha/attack.glb", clip: "Attack"},
-        },
       },
     },
     load: async url => {
       loads.push(url)
       return {
         scene: template,
-        animations: url === "/alpha.glb" ? [] : [new THREE.AnimationClip("Event", 1, [])],
+        animations: [new THREE.AnimationClip("Idle", 1, [])],
       }
     },
   })
@@ -573,13 +701,12 @@ test("AssetRegistry preloads every hero model and event animation through the sh
   await registry.preloadAll(2)
   await registry.instantiateHero("Alpha")
 
-  assert.deepEqual(loads.sort(), ["/alpha.glb", "/alpha/attack.glb", "/alpha/idle.glb"])
+  assert.deepEqual(loads, ["/alpha.glb"])
 })
 
-test("the app starts the shared GLB preload immediately on page load", async () => {
+test("the app does not preload every hero GLB before the first render", async () => {
   const source = await readFile(projectFile("src/main.jsx"), "utf8")
-  assert.match(source, /assetRegistry\.preloadAll\(/)
-  assert.equal(source.indexOf("assetRegistry.preloadAll(") < source.indexOf("createRoot("), true)
+  assert.doesNotMatch(source, /assetRegistry\.preloadAll\(/)
 })
 
 test("AssetRegistry applies a hero ground offset after height normalization", async () => {
@@ -610,17 +737,23 @@ test("AssetRegistry applies a hero ground offset after height normalization", as
 test("hero GLBs are normalized to one visual height instead of relying on authoring units", () => {
   const root = new THREE.Group()
   const body = new THREE.Mesh(new THREE.BoxGeometry(1, 5, 1), new THREE.MeshBasicMaterial())
-  body.position.y = 2.5
+  body.position.set(1.75, 2.5, -.8)
   const cloud = new THREE.Mesh(new THREE.BoxGeometry(100, 100, 100), new THREE.MeshBasicMaterial())
   cloud.position.set(60, 60, 0)
   cloud.userData.attachment_role = "attack-cloud"
-  root.add(body, cloud)
+  const reachWeapon = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 12), new THREE.MeshBasicMaterial())
+  reachWeapon.position.z = 6
+  reachWeapon.userData.attachment_role = "held-weapon"
+  root.add(body, cloud, reachWeapon)
 
   normalizeHeroHeight(root, 2.45)
 
   const bounds = new THREE.Box3().setFromObject(body)
+  const center = bounds.getCenter(new THREE.Vector3())
   assert.equal(Math.abs((bounds.max.y - bounds.min.y) - 2.45) < 0.001, true)
   assert.equal(Math.abs(bounds.min.y) < 0.001, true)
+  assert.equal(Math.abs(center.x) < 0.001, true)
+  assert.equal(Math.abs(center.z) < 0.001, true)
 })
 
 test("GLBHeroController drives locomotion speed and one-shot upper-body overlays", () => {
@@ -673,6 +806,8 @@ test("GLBHeroController drives locomotion speed and one-shot upper-body overlays
   assert.equal(controller.aimWeight > 0, true)
   controller.update(.25, {moving: true, aiming: true, speed: 300, referenceSpeed: 240, attackPulse: 1})
   assert.equal(controller.heldProjectile.visible, false)
+  controller.update(.3, {moving: false, aiming: false, speed: 0, referenceSpeed: 240, attackPulse: 1})
+  assert.equal(controller.heldProjectile.visible, true)
   controller.dispose()
 
   const weightedController = new GLBHeroController(root, clips, {attack: "Attack"}, {
@@ -684,6 +819,44 @@ test("GLBHeroController drives locomotion speed and one-shot upper-body overlays
   assert.equal(weightedTracks.includes("RightArm.quaternion"), true)
   assert.equal(weightedTracks.includes("RightFoot.quaternion"), true)
   weightedController.dispose()
+})
+
+test("hit flash updates cached hero materials without traversing the GLB every frame", () => {
+  const root = new THREE.Group()
+  const material = new THREE.MeshStandardMaterial({color: 0xffffff, emissive: 0x101010})
+  root.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material))
+  const controller = new GLBHeroController(root, [], {}, {spawnOnLoad: false})
+  root.traverse = () => {
+    throw new Error("per-frame GLB traversal")
+  }
+
+  controller.setHitFlash(.5)
+
+  assert.ok(material.emissive.r > new THREE.Color(0x101010).r)
+  controller.dispose()
+})
+
+test("ranged heroes visibly carry their held projectile before attacking", () => {
+  const root = new THREE.Group()
+  const hand = new THREE.Bone()
+  hand.name = "RightHand"
+  root.add(hand)
+  const idle = new THREE.AnimationClip("Idle", 1, [])
+  const attack = new THREE.AnimationClip("Attack", .5, [])
+  const controller = new GLBHeroController(root, [idle, attack], {
+    idle: "Idle",
+    attack: "Attack",
+  }, {
+    heroName: "Shadow",
+    attackPulse: 0,
+    spawnOnLoad: false,
+  })
+
+  controller.update(.016, {alive: true, moving: false, attackPulse: 0})
+
+  assert.equal(controller.heldProjectile.parent, hand)
+  assert.equal(controller.heldProjectile.visible, true)
+  controller.dispose()
 })
 
 test("GLBHeroController hides a dead model immediately and restores it for spawn", () => {
@@ -724,12 +897,14 @@ test("hero selection replaces the WebGL canvas when the selected GLB changes", a
   const source = await readFile(projectFile("src/components/HeroSelect/HeroModelPreview.jsx"), "utf8")
   assert.match(source, /key=\{hero\?\.name\}/)
   assert.match(source, /MAX_CARD_PREVIEW_RENDERERS/)
-  assert.match(source, /try \{\s*renderer=new THREE\.WebGLRenderer/)
+  assert.match(source, /try \{\s*renderer\s*=\s*new THREE\.WebGLRenderer/)
   assert.match(source, /unregisterPreviewRenderer\(renderer\)/)
-  assert.match(source, /if\s*\(disposed\|\|renderer\.getContext\(\)\?\.isContextLost\(\)\)return/)
+  assert.match(source, /if\s*\(disposed\s*\|\|[^)]*renderer\.getContext\(\)\?\.isContextLost\(\)\)\s*return/)
   assert.match(source, /renderer\.forceContextLoss\(\)/)
   assert.match(source, /previewSnapshots/)
   assert.match(source, /canvas\.toDataURL/)
+  assert.match(source, /acquirePreviewSlot/)
+  assert.match(source, /hero-model-snapshot/)
   assert.doesNotMatch(source, /createHeroModel/)
   assert.match(source, /hero-model-preview--loading/)
 })
@@ -738,6 +913,16 @@ test("mobile roster cards anchor scaled hero previews above their footer", async
   const css = await readFile(new URL("../src/components/HeroSelect/HeroSelect.css", import.meta.url), "utf8")
   assert.match(css, /\.hero-card \.hero-portrait:has\(\.hero-model-canvas\)[^{]*\{[^}]*transform-origin:50% 0/)
   assert.match(css, /@media \(max-width:430px\)[^{]*\{[^{}]*\.hero-card \.hero-portrait:has\(\.hero-model-canvas\)[^{]*\{[^}]*scale\(\.58\)/)
+})
+
+test("a transparent hero snapshot hides the released WebGL canvas underneath it", async () => {
+  const css = await readFile(new URL("../src/components/HeroSelect/HeroSelect.css", import.meta.url), "utf8")
+  assert.match(css, /\.hero-model-preview:has\(\.hero-model-snapshot\) \.hero-model-canvas\s*\{[^}]*visibility:\s*hidden/)
+})
+
+test("hero-card snapshots wait for the GLB skeleton to settle before capture", async () => {
+  const source = await readFile(projectFile("src/components/HeroSelect/HeroModelPreview.jsx"), "utf8")
+  assert.match(source, /renderedModelFrames\s*>=\s*8/)
 })
 
 test("authored skeletal attacks are not distorted by a second procedural bone pose", () => {
@@ -790,10 +975,11 @@ test("a completed attack releases its final pose back to locomotion", () => {
   controller.dispose()
 })
 
-test("the fighter roster warms decoded GLBs before it opens", async () => {
+test("the fighter selection warms only the selected GLB while idle", async () => {
   const source = await readFile(projectFile("src/components/HeroSelect/HeroSelect.jsx"), "utf8")
   assert.match(source, /assetRegistry\.preloadHeroes/)
   assert.match(source, /requestIdleCallback/)
+  assert.doesNotMatch(source, /\.\.\.heroes\.map\(hero => hero\.name\)/)
 })
 
 test("hero equipment profiles hide detached ammo and animate Brock's nearby cloud", () => {
@@ -802,7 +988,7 @@ test("hero equipment profiles hide detached ammo and animate Brock's nearby clou
   mandyWrist.name = "R_wrist_s_064"
   const mandyStaff = new THREE.Group()
   mandyStaff.name = "MandyStaff_Attachment"
-  mandyStaff.userData.attachment_role = "melee-weapon"
+  mandyStaff.userData.attachment_role = "held-weapon"
   mandyWrist.add(mandyStaff)
   mandyRoot.add(mandyWrist)
   const mandy = new GLBHeroController(mandyRoot, [], {}, {heroName: "Mandy", spawnOnLoad: false})
@@ -826,7 +1012,6 @@ test("hero equipment profiles hide detached ammo and animate Brock's nearby clou
   const brockRoot = new THREE.Group()
   const cloud = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial())
   cloud.name = "HeroAttachment_Cloud"
-  cloud.userData.attachment_role = "attack-cloud"
   cloud.position.set(.8, 1.4, -.15)
   const brockArmor = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshBasicMaterial())
   brockArmor.name = "armor_GEO"
@@ -850,6 +1035,45 @@ test("hero equipment profiles hide detached ammo and animate Brock's nearby clou
   assert.equal(brock.cloudLightning.visible, true)
   assert.equal(brockArmor.quaternion.angleTo(armorRestRotation) > 0, true)
   brock.dispose()
+})
+
+test("Brock's legacy named cloud is excluded from hero height normalization", () => {
+  const root = new THREE.Group()
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshBasicMaterial())
+  body.position.y = 1
+  const cloud = new THREE.Mesh(new THREE.BoxGeometry(8, 20, 8), new THREE.MeshBasicMaterial())
+  cloud.name = "HeroAttachment_Cloud"
+  cloud.position.set(8, 10, 0)
+  root.add(body, cloud)
+
+  normalizeHeroHeight(root, 2.45)
+
+  const bodyHeight = new THREE.Box3().setFromObject(body).getSize(new THREE.Vector3()).y
+  assert.ok(Math.abs(bodyHeight - 2.45) < .001)
+  assert.equal(cloud.userData.attachmentRole, "attack-cloud")
+})
+
+test("canonical weapon sockets and held-weapon roles replace hero-specific attachment guesses", () => {
+  const root = new THREE.Group()
+  const wrist = new THREE.Bone()
+  wrist.name = "R_wrist_s"
+  const socket = new THREE.Group()
+  socket.name = "Socket.Weapon.R"
+  wrist.add(socket)
+  root.add(wrist)
+  const weapon = new THREE.Group()
+  weapon.name = "HeroWeapon"
+  weapon.userData.attachment_role = "held-weapon"
+  socket.add(weapon)
+
+  const controller = new GLBHeroController(root, [], {}, {
+    heroName: "Persephone Lumi",
+    spawnOnLoad: false,
+  })
+
+  assert.equal(controller.rig.rightHand, socket)
+  assert.equal(controller.meleeWeapon, weapon)
+  controller.dispose()
 })
 
 test("Wukong ignores cloud-like meshes because the companion was removed", () => {
@@ -896,6 +1120,13 @@ test("new hero projectiles match the detached object used by the attack", () => 
   assert.equal(mina.userData.vfxType, "fairy-orb")
   const damian = createProjectileVisual({kind: "damian_dark_orb"})
   assert.equal(damian.userData.vfxType, "thrown-speaker")
+})
+
+test("short-lived projectiles use emissive visuals without dynamic scene lights", () => {
+  for (const kind of ["spore", "zeus_lightning", "mina_star_fan", "damian_dark_orb"]) {
+    const visual = createProjectileVisual({kind, radius: 15})
+    assert.equal(visual.getObjectByProperty("isLight", true), undefined, `${kind} adds a dynamic light`)
+  }
 })
 
 test("Shadow spore attacks use a layered 3D projectile instead of a primitive ball", () => {

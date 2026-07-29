@@ -75,9 +75,6 @@ export const createNeedleSporeVisual = (projectile = {}, {held = false} = {}) =>
     aura.userData.role = "aura"
     group.add(aura)
 
-    const light = new THREE.PointLight(0xa7ff70, 1.4, 3.2, 2)
-    light.userData.role = "light"
-    group.add(light)
   }
   return group
 }
@@ -109,7 +106,6 @@ export const createProjectileVisual = projectile => {
       segment.rotation.z=(i%2?-.28:.28)
       bolt.add(segment)
     }
-    bolt.add(new THREE.PointLight(0x7de3ff,2.2,4))
     return bolt
   }
   if (kind.includes("damian")) {

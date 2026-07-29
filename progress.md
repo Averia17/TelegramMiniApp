@@ -213,3 +213,10 @@ Battle WebGL precision crash pass:
 - Frontend: all 55 tests pass and the production build succeeds.
 - Focused Go balance/drop tests pass in Go 1.24; the broader dirty-worktree suite still has pre-existing failures in hero-kit tests unrelated to this change.
 - Browser QA verified the monster HP number is readable in the deterministic bat harness with no console errors or warnings.
+
+## 2026-07-29 — Separate hero leg locomotion
+
+- `GLBHeroController` now discovers left/right leg chains independently (upper leg, lower leg, and foot) across the naming conventions used by the canonical hero rigs.
+- Added a locomotion layer over the authored Run clip: thighs swing in opposition while knees and feet receive their own phase-dependent motion.
+- Added regression coverage proving that moving heroes expose and animate both legs as separate rig parts.
+- All 100 frontend tests pass, targeted ESLint is clean, and the production build succeeds.

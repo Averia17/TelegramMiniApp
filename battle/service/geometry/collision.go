@@ -201,3 +201,21 @@ func CollidesCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) bool 
 	}
 	return false
 }
+
+// MoveCircleWithBlockingWalls sweeps long moves in small increments so a body
+// cannot finish on the far side of a wall without ever overlapping it.
+func MoveCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash, deltaX, deltaY float64) {
+	distance := math.Hypot(deltaX, deltaY)
+	if distance == 0 {
+		return
+	}
+	maxStep := math.Max(1, body.Radius*.5)
+	steps := int(math.Ceil(distance / maxStep))
+	stepX := deltaX / float64(steps)
+	stepY := deltaY / float64(steps)
+	for step := 0; step < steps; step++ {
+		body.X += stepX
+		body.Y += stepY
+		CorrectCircleWithBlockingWalls(body, walls)
+	}
+}
