@@ -32,21 +32,7 @@ blender --background --python tools/blender/author_attack_super_animation_scenes
 blender --background --python tools/blender/author_gadget_animation_scenes.py
 ```
 
-Отдельные skill GLB экспортируются из focused-сцен:
-
-```powershell
-blender --background --python tools/blender/export_hero_ability_glbs.py
-```
-
-Результат:
-
-```text
-frontend/public/assets/heroes/<hero>/abilities/attack.glb
-frontend/public/assets/heroes/<hero>/abilities/super.glb
-frontend/public/assets/heroes/<hero>/abilities/gadget.glb
-```
-
-Gameplay загружает canonical GLB с полным набором runtime-анимаций:
+Gameplay загружает единственный canonical GLB с полным набором runtime-анимаций:
 
 ```powershell
 blender --background --python tools/blender/export_runtime_heroes_from_scenes.py
@@ -57,6 +43,4 @@ blender --background --python tools/blender/export_runtime_heroes_from_scenes.py
 сервер увеличивает `gadgetPulse`, snapshot передаёт его в `HeroView`, а
 `GLBHeroController` запускает Action `Gadget`.
 
-Отдельные ability GLB нужны для skill-preview, QA и изолированных потребителей;
-игровой бой использует canonical base GLB, чтобы модель, оружие и все клипы
-оставались в одном runtime-ассете.
+Отдельные ability GLB не публикуются: Attack, super и Gadget живут внутри canonical base GLB.

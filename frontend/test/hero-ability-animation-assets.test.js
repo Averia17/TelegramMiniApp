@@ -20,27 +20,16 @@ const readGlbJson = async file => {
 }
 
 for (const hero of manifest.heroes) {
-  test(`${hero} has standalone GLB assets for every skill`, async () => {
-    for (const clip of manifest.ability_clips) {
-      const file = path.join(assetRoot, hero, "abilities", `${clip}.glb`)
-      await assert.doesNotReject(
-        access(file),
-        `${hero}/${clip}.glb is missing`,
-      )
-      const document = await readGlbJson(file)
-      const actionName = {attack: "Attack", super: "super", gadget: "Gadget"}[clip]
-      assert.ok(
-        (document.animations || []).some(animation => animation.name === actionName),
-        `${hero}/${clip}.glb is missing ${actionName} animation`,
-      )
-    }
-  })
-
-  test(`${hero} canonical GLB exposes the authored Gadget clip`, async () => {
+  test(`${hero} has one canonical runtime GLB with all skill clips`, async () => {
     const document = await readGlbJson(path.join(assetRoot, "output_heroes", `${hero}_base.glb`))
     const names = new Set((document.animations || []).map(animation => animation.name))
     assert.ok(names.has("Attack"), `${hero} is missing Attack`)
     assert.ok(names.has("super"), `${hero} is missing super`)
     assert.ok(names.has("Gadget"), `${hero} is missing Gadget`)
+    await assert.rejects(
+      access(path.join(assetRoot, hero, "abilities")),
+      error => error?.code === "ENOENT",
+      `${hero}/abilities must not duplicate the canonical runtime GLB`,
+    )
   })
 }

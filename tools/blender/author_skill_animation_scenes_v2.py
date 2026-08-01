@@ -164,17 +164,56 @@ def _arms(pose, groups, frame, arms):
         shoulder = skill_spec.sample(frame, controls.get("shoulder", []))
         elbow = skill_spec.sample(frame, controls.get("elbow", []))
         wrist = skill_spec.sample(frame, controls.get("wrist", []))
-        _add(pose, groups.get(f"{side}_shoulder"), x=math.radians(shoulder), z=math.radians(sign * controls.get("shoulder_z", 0.0)))
-        _add(pose, groups.get(f"{side}_elbow"), x=math.radians(elbow), z=math.radians(sign * controls.get("elbow_z", 0.0)))
-        _add(pose, groups.get(f"{side}_wrist"), x=math.radians(wrist), z=math.radians(sign * controls.get("wrist_z", 0.0)))
+        _add(
+            pose,
+            groups.get(f"{side}_shoulder"),
+            x=math.radians(shoulder),
+            z=math.radians(sign * controls.get("shoulder_z", 0.0)),
+        )
+        _add(
+            pose,
+            groups.get(f"{side}_elbow"),
+            x=math.radians(elbow),
+            z=math.radians(sign * controls.get("elbow_z", 0.0)),
+        )
+        _add(
+            pose,
+            groups.get(f"{side}_wrist"),
+            x=math.radians(wrist),
+            z=math.radians(sign * controls.get("wrist_z", 0.0)),
+        )
 
 
 def _legs(pose, groups, frame, legs):
     for side, controls in legs.items():
         sign = -1.0 if side == "L" else 1.0
-        _add(pose, groups.get(f"{side}_upper_leg"), x=math.radians(skill_spec.sample(frame, controls.get("thigh", []))), z=math.radians(sign * controls.get("thigh_z", 0.0)))
-        _add(pose, groups.get(f"{side}_knee"), x=math.radians(skill_spec.sample(frame, controls.get("knee", []))))
-        _add(pose, groups.get(f"{side}_ankle"), x=math.radians(skill_spec.sample(frame, controls.get("ankle", []))))
+        _add(
+            pose,
+            groups.get(f"{side}_upper_leg"),
+            x=math.radians(skill_spec.sample(frame, controls.get("thigh", []))),
+            z=math.radians(sign * controls.get("thigh_z", 0.0)),
+        )
+        _add(
+            pose,
+            groups.get(f"{side}_knee"),
+            x=math.radians(skill_spec.sample(frame, controls.get("knee", []))),
+        )
+        _add(
+            pose,
+            groups.get(f"{side}_ankle"),
+            x=math.radians(skill_spec.sample(frame, controls.get("ankle", []))),
+        )
+
+
+def _wings(pose, groups, frame: int, wings, amount: float):
+    for index, name in enumerate(wings or []):
+        wave = math.sin(frame * 0.42 + index * 0.8)
+        _add(
+            pose,
+            name,
+            x=math.radians(amount * wave),
+            z=math.radians((amount * 0.35) * wave),
+        )
 
 
 def idle_pose(hero: str, frame: int, end: int, groups: dict) -> dict:
@@ -233,10 +272,578 @@ def idle_pose(hero: str, frame: int, end: int, groups: dict) -> dict:
     return pose
 
 
+def brief_clip_pose(hero: str, clip: str, frame: int, end: int, groups: dict) -> dict:
+    """Deterministic choreography for the non-skill clips in the motion brief."""
+    t = (frame - 1) / max(1.0, float(end - 1))
+    phase = math.sin(t * math.tau)
+    pose: dict[str, tuple[float, float, float]] = {}
+    hips = groups.get("hips")
+    spine = groups.get("spine_lower")
+    chest = groups.get("spine_upper")
+    head = groups.get("head")
+
+    if clip == "run":
+        stride = phase
+        # All run cycles keep the root grounded.  Differences are expressed as
+        # character-specific weight, arm language, and secondary motion.
+        run_body = {
+            "needle": (-6.0, 2.5, 2.5),
+            "mandy": (-2.5, 1.0, 1.5),
+            "fairy-mina": (-3.0, 1.5, 1.0),
+            "brock-zeus": (-8.0, 2.0, 3.0),
+            "kaze": (-12.0, 3.5, 3.5),
+            "wukong-mico": (-14.0, 4.0, 4.0),
+            "damian": (-5.0, 2.0, 2.0),
+            "persephone-lumi": (-4.0, 1.5, 1.5),
+        }[hero]
+        add_pose(pose, spine, deg(run_body[0]), deg(run_body[1] * stride), 0)
+        add_pose(pose, chest, deg(run_body[2] * stride), deg(-1.5 * stride), 0)
+        add_pose(pose, hips, deg(2.0 * stride), deg(2.5 * stride), 0)
+        _legs(
+            pose,
+            groups,
+            frame,
+            {
+                "L": {
+                    "thigh": [(1, -18), (end, 18)],
+                    "knee": [(1, 12), (end, 24)],
+                    "ankle": [(1, -5), (end, 5)],
+                },
+                "R": {
+                    "thigh": [(1, 18), (end, -18)],
+                    "knee": [(1, 24), (end, 12)],
+                    "ankle": [(1, 5), (end, -5)],
+                },
+            },
+        )
+        if hero == "mandy":
+            # Both hands stabilize the staff across the torso.
+            _arms(
+                pose,
+                groups,
+                frame,
+                {
+                    "L": {
+                        "shoulder": [(1, -10), (end, 10)],
+                        "elbow": [(1, 8), (end, -8)],
+                        "wrist": [(1, 0), (end, 0)],
+                        "shoulder_z": -4,
+                    },
+                    "R": {
+                        "shoulder": [(1, 10), (end, -10)],
+                        "elbow": [(1, -8), (end, 8)],
+                        "wrist": [(1, 0), (end, 0)],
+                        "shoulder_z": 4,
+                    },
+                },
+            )
+        elif hero == "fairy-mina":
+            _arms(
+                pose,
+                groups,
+                frame,
+                {
+                    "R": {
+                        "shoulder": [(1, -8), (end, 8)],
+                        "elbow": [(1, 10), (end, -4)],
+                        "wrist": [(1, 4), (end, -4)],
+                    },
+                    "L": {
+                        "shoulder": [(1, 8), (end, -8)],
+                        "elbow": [(1, -4), (end, 10)],
+                        "wrist": [(1, -3), (end, 3)],
+                    },
+                },
+            )
+            _wings(pose, groups, frame, groups.get("wings", []), 10.0)
+        elif hero == "brock-zeus":
+            _arms(
+                pose,
+                groups,
+                frame,
+                {
+                    "R": {
+                        "shoulder": [(1, 12), (end, -12)],
+                        "elbow": [(1, -8), (end, 8)],
+                        "wrist": [(1, 0), (end, 0)],
+                        "shoulder_z": 3,
+                    },
+                    "L": {
+                        "shoulder": [(1, -8), (end, 8)],
+                        "elbow": [(1, 8), (end, -8)],
+                        "wrist": [(1, 0), (end, 0)],
+                    },
+                },
+            )
+        elif hero == "kaze":
+            _arms(
+                pose,
+                groups,
+                frame,
+                {
+                    "L": {
+                        "shoulder": [(1, -16), (end, 16)],
+                        "elbow": [(1, 12), (end, -8)],
+                        "wrist": [(1, -4), (end, 4)],
+                        "shoulder_z": -8,
+                    },
+                    "R": {
+                        "shoulder": [(1, -16), (end, 16)],
+                        "elbow": [(1, 12), (end, -8)],
+                        "wrist": [(1, -4), (end, 4)],
+                        "shoulder_z": 8,
+                    },
+                },
+            )
+        elif hero == "wukong-mico":
+            _arms(
+                pose,
+                groups,
+                frame,
+                {
+                    "L": {
+                        "shoulder": [(1, -18), (end, 12)],
+                        "elbow": [(1, 16), (end, -8)],
+                        "wrist": [(1, 3), (end, -3)],
+                    },
+                    "R": {
+                        "shoulder": [(1, 12), (end, -18)],
+                        "elbow": [(1, -8), (end, 16)],
+                        "wrist": [(1, -3), (end, 3)],
+                    },
+                },
+            )
+        elif hero == "damian":
+            _arms(
+                pose,
+                groups,
+                frame,
+                {
+                    "L": {
+                        "shoulder": [(1, -12), (end, 12)],
+                        "elbow": [(1, 8), (end, -8)],
+                        "wrist": [(1, 0), (end, 0)],
+                    },
+                    "R": {
+                        "shoulder": [(1, 8), (end, -8)],
+                        "elbow": [(1, -6), (end, 6)],
+                        "wrist": [(1, 0), (end, 0)],
+                    },
+                },
+            )
+        else:
+            _arms(
+                pose,
+                groups,
+                frame,
+                {
+                    "L": {
+                        "shoulder": [(1, -12), (end, 12)],
+                        "elbow": [(1, 6), (end, -6)],
+                        "wrist": [(1, 0), (end, 0)],
+                    },
+                    "R": {
+                        "shoulder": [(1, 12), (end, -12)],
+                        "elbow": [(1, -6), (end, 6)],
+                        "wrist": [(1, 0), (end, 0)],
+                    },
+                },
+            )
+        return pose
+
+    if clip in {"aim", "aim-super"}:
+        super_aim = clip == "aim-super"
+        add_pose(pose, spine, deg(-4.0 if not super_aim else -7.0), 0, 0)
+        add_pose(pose, head, 0, deg(3.0 if not super_aim else 5.0), 0)
+        if hero == "needle":
+            arms = {
+                "R": {
+                    "shoulder": [(1, -14), (end, -14)],
+                    "elbow": [(1, 18), (end, 18)],
+                    "wrist": [(1, 4), (end, 4)],
+                },
+                "L": {
+                    "shoulder": [(1, 8), (end, 8)],
+                    "elbow": [(1, 8), (end, 8)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+            }
+        elif hero == "mandy":
+            arms = {
+                "L": {
+                    "shoulder": [
+                        (1, -16 if not super_aim else -28),
+                        (end, -16 if not super_aim else -28),
+                    ],
+                    "elbow": [(1, 12), (end, 12)],
+                    "wrist": [(1, -4), (end, -4)],
+                },
+                "R": {
+                    "shoulder": [
+                        (1, 10 if not super_aim else -18),
+                        (end, 10 if not super_aim else -18),
+                    ],
+                    "elbow": [(1, 8), (end, 8)],
+                    "wrist": [(1, 2), (end, 2)],
+                },
+            }
+        elif hero == "fairy-mina":
+            arms = {
+                "R": {
+                    "shoulder": [
+                        (1, -20 if not super_aim else -34),
+                        (end, -20 if not super_aim else -34),
+                    ],
+                    "elbow": [(1, 18), (end, 18)],
+                    "wrist": [(1, -4), (end, -4)],
+                },
+                "L": {
+                    "shoulder": [(1, 10), (end, 10)],
+                    "elbow": [(1, -8), (end, -8)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+            }
+            _wings(pose, groups, frame, groups.get("wings", []), 8.0)
+        elif hero == "brock-zeus":
+            arms = {
+                "R": {
+                    "shoulder": [
+                        (1, -24 if not super_aim else -38),
+                        (end, -24 if not super_aim else -38),
+                    ],
+                    "elbow": [(1, 12), (end, 12)],
+                    "wrist": [(1, -3), (end, -3)],
+                    "shoulder_z": 5,
+                },
+                "L": {
+                    "shoulder": [(1, -10), (end, -10)],
+                    "elbow": [(1, 14), (end, 14)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+            }
+        elif hero == "kaze":
+            arms = {
+                "L": {
+                    "shoulder": [
+                        (1, -22 if not super_aim else -34),
+                        (end, -22 if not super_aim else -34),
+                    ],
+                    "elbow": [(1, 22), (end, 22)],
+                    "wrist": [(1, 0), (end, 0)],
+                    "shoulder_z": -10,
+                },
+                "R": {
+                    "shoulder": [
+                        (1, -22 if not super_aim else -8),
+                        (end, -22 if not super_aim else -8),
+                    ],
+                    "elbow": [(1, 22), (end, 22)],
+                    "wrist": [(1, 0), (end, 0)],
+                    "shoulder_z": 10,
+                },
+            }
+        elif hero == "wukong-mico":
+            arms = {
+                "L": {
+                    "shoulder": [
+                        (1, -18 if not super_aim else -30),
+                        (end, -18 if not super_aim else -30),
+                    ],
+                    "elbow": [(1, 10), (end, 10)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+                "R": {
+                    "shoulder": [
+                        (1, -12 if not super_aim else -26),
+                        (end, -12 if not super_aim else -26),
+                    ],
+                    "elbow": [(1, 10), (end, 10)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+            }
+        elif hero == "damian":
+            arms = {
+                "L": {
+                    "shoulder": [
+                        (1, -18 if not super_aim else -22),
+                        (end, -18 if not super_aim else -22),
+                    ],
+                    "elbow": [(1, 14), (end, 14)],
+                    "wrist": [(1, -4), (end, -4)],
+                },
+                "R": {
+                    "shoulder": [
+                        (1, -14 if not super_aim else -22),
+                        (end, -14 if not super_aim else -22),
+                    ],
+                    "elbow": [(1, 12), (end, 12)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+            }
+        else:
+            arms = {
+                "R": {
+                    "shoulder": [
+                        (1, -22 if not super_aim else -30),
+                        (end, -22 if not super_aim else -30),
+                    ],
+                    "elbow": [(1, 16), (end, 16)],
+                    "wrist": [(1, -3), (end, -3)],
+                },
+                "L": {
+                    "shoulder": [(1, -10), (end, -10)],
+                    "elbow": [(1, 12), (end, 12)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+            }
+        _arms(pose, groups, frame, arms)
+        return pose
+
+    if clip == "hit":
+        recoil = 1.0 - skill_spec.sample(
+            frame, [(1, 0), (max(2, int(end * 0.35)), 1), (end, 0)]
+        )
+        add_pose(pose, hips, deg(-7.0 * recoil), 0, 0)
+        add_pose(pose, spine, deg(9.0 * recoil), 0, 0)
+        add_pose(pose, chest, deg(6.0 * recoil), 0, 0)
+        add_pose(pose, head, deg(4.0 * recoil), 0, 0)
+        _arms(
+            pose,
+            groups,
+            frame,
+            {
+                "L": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.35)), -18), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.35)), 8), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                    "shoulder_z": -5,
+                },
+                "R": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.35)), -18), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.35)), 8), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                    "shoulder_z": 5,
+                },
+            },
+        )
+        return pose
+
+    if clip == "death":
+        fall = skill_spec.sample(
+            frame,
+            [
+                (1, 0),
+                (max(2, int(end * 0.3)), 0.25),
+                (max(3, int(end * 0.72)), 1),
+                (end, 1),
+            ],
+        )
+        fall_body = {
+            "needle": (24, -10, 18, 26),
+            "mandy": (22, 5, 24, 28),
+            "fairy-mina": (20, -8, 22, 26),
+            "brock-zeus": (-24, 8, -18, -24),
+            "kaze": (26, -12, 20, 24),
+            "wukong-mico": (28, -8, 22, 24),
+            "damian": (26, -6, 22, 26),
+            "persephone-lumi": (22, -8, 24, 28),
+        }[hero]
+        add_pose(pose, hips, deg(fall_body[0] * fall), deg(fall_body[1] * fall), 0)
+        add_pose(pose, spine, deg(fall_body[2] * fall), 0, 0)
+        add_pose(pose, chest, deg(fall_body[3] * fall), 0, 0)
+        add_pose(pose, head, deg(10.0 * fall), 0, 0)
+        _legs(
+            pose,
+            groups,
+            frame,
+            {
+                "L": {
+                    "thigh": [(1, 0), (end, -18)],
+                    "knee": [(1, 0), (end, 18)],
+                    "ankle": [(1, 0), (end, -6)],
+                },
+                "R": {
+                    "thigh": [(1, 0), (end, 14)],
+                    "knee": [(1, 0), (end, 24)],
+                    "ankle": [(1, 0), (end, 6)],
+                },
+            },
+        )
+        if hero == "wukong-mico":
+            _arms(
+                pose,
+                groups,
+                frame,
+                {
+                    "L": {
+                        "shoulder": [(1, 0), (end, 26)],
+                        "elbow": [(1, 0), (end, 24)],
+                        "wrist": [(1, 0), (end, 4)],
+                    },
+                    "R": {
+                        "shoulder": [(1, 0), (end, 22)],
+                        "elbow": [(1, 0), (end, 20)],
+                        "wrist": [(1, 0), (end, -4)],
+                    },
+                },
+            )
+        return pose
+
+    if clip == "spawn":
+        entry = 1.0 - skill_spec.sample(
+            frame, [(1, 0), (max(2, int(end * 0.55)), 1), (end, 1)]
+        )
+        add_pose(pose, hips, deg(8.0 * entry), 0, 0)
+        add_pose(pose, spine, deg(14.0 * entry), 0, 0)
+        add_pose(pose, chest, deg(-8.0 * entry), 0, 0)
+        add_pose(pose, head, deg(-10.0 * entry), 0, 0)
+        _legs(
+            pose,
+            groups,
+            frame,
+            {
+                "L": {
+                    "thigh": [(1, -10 * entry), (end, 0)],
+                    "knee": [(1, 16 * entry), (end, 0)],
+                    "ankle": [(1, -5 * entry), (end, 0)],
+                },
+                "R": {
+                    "thigh": [(1, 8 * entry), (end, 0)],
+                    "knee": [(1, 20 * entry), (end, 0)],
+                    "ankle": [(1, 5 * entry), (end, 0)],
+                },
+            },
+        )
+        return pose
+
+    if clip == "victory":
+        celebrate = skill_spec.sample(
+            frame,
+            [
+                (1, 0),
+                (max(2, int(end * 0.22)), 1),
+                (max(3, int(end * 0.72)), 1),
+                (end, 0),
+            ],
+        )
+        add_pose(pose, chest, deg(-6.0 * celebrate), 0, 0)
+        add_pose(pose, head, deg(-5.0 * celebrate), 0, 0)
+        if hero == "needle":
+            arms = {
+                "L": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.22)), -18), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.22)), -8), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+                "R": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.22)), -32), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.22)), -14), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+            }
+        elif hero == "mandy":
+            arms = {
+                "L": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.22)), -28), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.22)), -14), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+                "R": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.22)), -24), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.22)), -12), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+            }
+        elif hero == "brock-zeus":
+            arms = {
+                "R": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.22)), -30), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.22)), -12), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+                "L": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.22)), 8), (end, 0)],
+                    "elbow": [(1, 0), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+            }
+        elif hero == "kaze":
+            flash = 0.65 + 0.35 * math.sin(t * math.tau * 3.0)
+            arms = {
+                "L": {
+                    "shoulder": [
+                        (1, 0),
+                        (max(2, int(end * 0.22)), -28 * flash),
+                        (end, 0),
+                    ],
+                    "elbow": [(1, 0), (max(2, int(end * 0.22)), -12), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                    "shoulder_z": -8,
+                },
+                "R": {
+                    "shoulder": [
+                        (1, 0),
+                        (max(2, int(end * 0.22)), -28 * flash),
+                        (end, 0),
+                    ],
+                    "elbow": [(1, 0), (max(2, int(end * 0.22)), -12), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                    "shoulder_z": 8,
+                },
+            }
+        elif hero == "wukong-mico":
+            arms = {
+                "L": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.22)), -24), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.22)), 18), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+                "R": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.38)), -24), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.38)), 18), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+            }
+        elif hero == "persephone-lumi":
+            arms = {
+                "L": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.22)), -22), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.22)), -8), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+                "R": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.22)), -26), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.22)), -12), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+            }
+        else:
+            arms = {
+                "L": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.22)), -16), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.22)), -8), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+                "R": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.22)), -16), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.22)), -8), (end, 0)],
+                    "wrist": [(1, 0), (end, 0)],
+                },
+            }
+        _arms(pose, groups, frame, arms)
+        if hero == "fairy-mina":
+            _wings(pose, groups, frame, groups.get("wings", []), 12.0)
+        return pose
+
+    return pose
+
+
 def skill_pose(hero: str, clip: str, frame: int, end: int, groups: dict) -> dict:
     """Return small, semantic local rotations for one explicit frame."""
     if clip == "idle":
         return idle_pose(hero, frame, end, groups)
+    if clip in {"run", "aim", "aim-super", "hit", "death", "spawn", "victory"}:
+        return brief_clip_pose(hero, clip, frame, end, groups)
     if hero in skill_spec.FRAME_ENDS and clip in skill_spec.FRAME_ENDS[hero]:
         return skill_spec.profile_pose(hero, clip, frame, groups)
     t = (frame - 1) / max(1.0, float(end - 1))
@@ -252,17 +859,49 @@ def skill_pose(hero: str, clip: str, frame: int, end: int, groups: dict) -> dict
         # focused scene. Build a restrained loop from the known idle pose so
         # the feet, hands, and held props remain attached to the same rig.
         stride = math.sin(t * math.tau)
-        _add(pose, groups.get("hips"), x=math.radians(2.0 * stride), y=math.radians(2.5 * stride))
-        _add(pose, groups.get("spine_lower"), x=math.radians(-7.0), y=math.radians(2.0 * stride))
-        _add(pose, groups.get("spine_upper"), x=math.radians(-3.0 * stride), y=math.radians(-2.0 * stride))
-        _add(pose, groups.get("head"), x=math.radians(1.5 * stride), y=math.radians(-2.0 * stride))
+        _add(
+            pose,
+            groups.get("hips"),
+            x=math.radians(2.0 * stride),
+            y=math.radians(2.5 * stride),
+        )
+        _add(
+            pose,
+            groups.get("spine_lower"),
+            x=math.radians(-7.0),
+            y=math.radians(2.0 * stride),
+        )
+        _add(
+            pose,
+            groups.get("spine_upper"),
+            x=math.radians(-3.0 * stride),
+            y=math.radians(-2.0 * stride),
+        )
+        _add(
+            pose,
+            groups.get("head"),
+            x=math.radians(1.5 * stride),
+            y=math.radians(-2.0 * stride),
+        )
         _arms(
             pose,
             groups,
             frame,
             {
-                "L": {"shoulder": [(1, -22), (end, 22)], "elbow": [(1, 12), (end, -12)], "wrist": [(1, 5), (end, -5)], "shoulder_z": 3, "elbow_z": 2},
-                "R": {"shoulder": [(1, 22), (end, -22)], "elbow": [(1, -12), (end, 12)], "wrist": [(1, -5), (end, 5)], "shoulder_z": 3, "elbow_z": 2},
+                "L": {
+                    "shoulder": [(1, -22), (end, 22)],
+                    "elbow": [(1, 12), (end, -12)],
+                    "wrist": [(1, 5), (end, -5)],
+                    "shoulder_z": 3,
+                    "elbow_z": 2,
+                },
+                "R": {
+                    "shoulder": [(1, 22), (end, -22)],
+                    "elbow": [(1, -12), (end, 12)],
+                    "wrist": [(1, -5), (end, 5)],
+                    "shoulder_z": 3,
+                    "elbow_z": 2,
+                },
             },
         )
         _legs(
@@ -270,8 +909,16 @@ def skill_pose(hero: str, clip: str, frame: int, end: int, groups: dict) -> dict
             groups,
             frame,
             {
-                "L": {"thigh": [(1, -20), (end, 20)], "knee": [(1, 12), (end, 24)], "ankle": [(1, -6), (end, 6)]},
-                "R": {"thigh": [(1, 20), (end, -20)], "knee": [(1, 24), (end, 12)], "ankle": [(1, 6), (end, -6)]},
+                "L": {
+                    "thigh": [(1, -20), (end, 20)],
+                    "knee": [(1, 12), (end, 24)],
+                    "ankle": [(1, -6), (end, 6)],
+                },
+                "R": {
+                    "thigh": [(1, 20), (end, -20)],
+                    "knee": [(1, 24), (end, 12)],
+                    "ankle": [(1, 6), (end, -6)],
+                },
             },
         )
 
@@ -423,20 +1070,38 @@ def skill_pose(hero: str, clip: str, frame: int, end: int, groups: dict) -> dict
             groups,
             frame,
             {
-                "L": {"shoulder": [(1, -8), (end, -8)], "elbow": [(1, 10), (end, 10)], "wrist": [(1, -4), (end, -4)]},
-                "R": {"shoulder": [(1, 6), (end, 6)], "elbow": [(1, 8), (end, 8)], "wrist": [(1, 2), (end, 2)]},
+                "L": {
+                    "shoulder": [(1, -8), (end, -8)],
+                    "elbow": [(1, 10), (end, 10)],
+                    "wrist": [(1, -4), (end, -4)],
+                },
+                "R": {
+                    "shoulder": [(1, 6), (end, 6)],
+                    "elbow": [(1, 8), (end, 8)],
+                    "wrist": [(1, 2), (end, 2)],
+                },
             },
         )
 
     elif clip == "hit":
-        recoil = 1.0 - skill_spec.sample(frame, [(1, 0), (max(2, int(end * 0.35)), 1), (end, 0)])
+        recoil = 1.0 - skill_spec.sample(
+            frame, [(1, 0), (max(2, int(end * 0.35)), 1), (end, 0)]
+        )
         add_pose(pose, groups.get("hips"), deg(-8.0 * recoil), 0, 0)
         add_pose(pose, groups.get("spine_lower"), deg(10.0 * recoil), 0, 0)
         add_pose(pose, groups.get("spine_upper"), deg(6.0 * recoil), 0, 0)
         add_pose(pose, groups.get("head"), deg(4.0 * recoil), 0, 0)
 
     elif clip == "victory":
-        celebrate = skill_spec.sample(frame, [(1, 0), (max(2, int(end * 0.25)), 1), (max(3, int(end * 0.7)), 1), (end, 0)])
+        celebrate = skill_spec.sample(
+            frame,
+            [
+                (1, 0),
+                (max(2, int(end * 0.25)), 1),
+                (max(3, int(end * 0.7)), 1),
+                (end, 0),
+            ],
+        )
         add_pose(pose, groups.get("spine_upper"), deg(-8.0 * celebrate), 0, 0)
         add_pose(pose, groups.get("head"), deg(-6.0 * celebrate), 0, 0)
         _arms(
@@ -444,13 +1109,21 @@ def skill_pose(hero: str, clip: str, frame: int, end: int, groups: dict) -> dict
             groups,
             frame,
             {
-                "L": {"shoulder": [(1, 0), (max(2, int(end * 0.25)), -22), (end, 0)], "elbow": [(1, 0), (max(2, int(end * 0.25)), -8), (end, 0)]},
-                "R": {"shoulder": [(1, 0), (max(2, int(end * 0.25)), -18), (end, 0)], "elbow": [(1, 0), (max(2, int(end * 0.25)), -6), (end, 0)]},
+                "L": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.25)), -22), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.25)), -8), (end, 0)],
+                },
+                "R": {
+                    "shoulder": [(1, 0), (max(2, int(end * 0.25)), -18), (end, 0)],
+                    "elbow": [(1, 0), (max(2, int(end * 0.25)), -6), (end, 0)],
+                },
             },
         )
 
     elif clip == "death":
-        fall = skill_spec.sample(frame, [(1, 0), (max(2, int(end * 0.65)), 1), (end, 1)])
+        fall = skill_spec.sample(
+            frame, [(1, 0), (max(2, int(end * 0.65)), 1), (end, 1)]
+        )
         add_pose(pose, groups.get("hips"), deg(35.0 * fall), deg(-12.0 * fall), 0)
         add_pose(pose, groups.get("spine_lower"), deg(28.0 * fall), 0, 0)
         add_pose(pose, groups.get("spine_upper"), deg(38.0 * fall), 0, 0)
@@ -553,16 +1226,36 @@ def author_scene(hero: str, clip: str, target: Path):
     armature = next(obj for obj in scene.objects if obj.type == "ARMATURE")
     armature.animation_data_create()
     idle_path = SOURCE / hero / "animations" / "idle.blend"
-    idle_action = None if hero == "damian" else authoring.import_source_action(idle_path, "Idle")
+    idle_action = (
+        None if hero == "damian" else authoring.import_source_action(idle_path, "Idle")
+    )
     armature.animation_data.action = idle_action
-    idle_start, _idle_end = authoring.action_frame_range(idle_action) if idle_action else (1, 1)
+    idle_start, _idle_end = (
+        authoring.action_frame_range(idle_action) if idle_action else (1, 1)
+    )
     scene.frame_set(int(idle_start))
     baseline = capture_rotations(armature)
-    action_name = {"idle": "idle", "run": "run", "attack": "Attack", "super": "super", "aim": "Aim", "aim-super": "AimSuper", "hit": "hit", "death": "death", "spawn": "Spawn", "victory": "Victory", "gadget": "Gadget"}[clip]
+    action_name = {
+        "idle": "idle",
+        "run": "run",
+        "attack": "Attack",
+        "super": "super",
+        "aim": "Aim",
+        "aim-super": "AimSuper",
+        "hit": "hit",
+        "death": "death",
+        "spawn": "Spawn",
+        "victory": "Victory",
+        "gadget": "Gadget",
+    }[clip]
     remove_existing_action(action_name)
     action = bpy.data.actions.new(f"__AUTHORED__{hero}_{clip}")
     armature.animation_data.action = action
-    end = authoring.HERO_FRAMES[hero][clip] if clip in authoring.HERO_FRAMES[hero] else skill_spec.FRAME_ENDS[hero][clip]
+    end = (
+        authoring.HERO_FRAMES[hero][clip]
+        if clip in authoring.HERO_FRAMES[hero]
+        else skill_spec.FRAME_ENDS[hero][clip]
+    )
     groups = rig_groups(armature)
     for frame in range(1, end + 1):
         scene.frame_set(frame)
@@ -593,7 +1286,9 @@ def author_scene(hero: str, clip: str, target: Path):
         .get(clip, 0.0)
     )
     skill_event_frames = json.dumps(
-        skill_spec.EVENT_FRAMES.get(hero, {}).get(clip, {}), ensure_ascii=False, sort_keys=True
+        skill_spec.EVENT_FRAMES.get(hero, {}).get(clip, {}),
+        ensure_ascii=False,
+        sort_keys=True,
     )
     scene["root_motion_contract"] = (
         "gameplay_root_stays_grounded; root_motion_meters_in_event_metadata"
@@ -620,7 +1315,22 @@ def author_scene(hero: str, clip: str, target: Path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--hero", default="*")
-    parser.add_argument("--clips", nargs="+", default=["idle", "attack", "super", "gadget"])
+    parser.add_argument(
+        "--clips",
+        nargs="+",
+        default=[
+            "idle",
+            "run",
+            "attack",
+            "super",
+            "aim",
+            "aim-super",
+            "hit",
+            "death",
+            "spawn",
+            "victory",
+        ],
+    )
     forwarded = (
         sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:]
     )

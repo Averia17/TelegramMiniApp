@@ -23,8 +23,17 @@ HEROES = (
     "wukong-mico",
 )
 CLIPS = (
-    "idle", "run", "attack", "super", "aim", "aim-super", "hit",
-    "death", "spawn", "victory", "gadget",
+    "idle",
+    "run",
+    "attack",
+    "super",
+    "aim",
+    "aim-super",
+    "hit",
+    "death",
+    "spawn",
+    "victory",
+    "gadget",
 )
 
 
@@ -37,8 +46,7 @@ def mesh_points(scene):
             continue
         evaluated = obj.evaluated_get(depsgraph)
         points.extend(
-            evaluated.matrix_world @ Vector(corner)
-            for corner in evaluated.bound_box
+            evaluated.matrix_world @ Vector(corner) for corner in evaluated.bound_box
         )
     return points
 
@@ -70,10 +78,18 @@ def render_scene(hero: str, clip: str):
     camera.data.type = "ORTHO"
     camera.data.ortho_scale = max(hi.x - lo.x, hi.z - lo.z) * 1.18
     camera.location = center + Vector((0, -6, 0))
-    camera.rotation_euler = (center - camera.location).to_track_quat("-Z", "Y").to_euler()
+    camera.rotation_euler = (
+        (center - camera.location).to_track_quat("-Z", "Y").to_euler()
+    )
     out_dir = OUTPUT / hero
     out_dir.mkdir(parents=True, exist_ok=True)
-    frames = sorted({int(scene.frame_start), int((scene.frame_start + scene.frame_end) / 2), int(scene.frame_end)})
+    frames = sorted(
+        {
+            int(scene.frame_start),
+            int((scene.frame_start + scene.frame_end) / 2),
+            int(scene.frame_end),
+        }
+    )
     for frame in frames:
         scene.frame_set(frame)
         destination = out_dir / f"{clip}-frame-{frame:03d}.png"
@@ -82,7 +98,22 @@ def render_scene(hero: str, clip: str):
     return {"hero": hero, "clip": clip, "frames": frames}
 
 
-report = [render_scene(hero, clip) for hero in HEROES for clip in CLIPS]
+requested_hero = os.environ.get("HERO_FILTER")
+requested_clip = os.environ.get("CLIP_FILTER")
+render_heroes = [
+    hero for hero in HEROES if not requested_hero or hero == requested_hero
+]
+render_clips = [clip for clip in CLIPS if not requested_clip or clip == requested_clip]
+report = [render_scene(hero, clip) for hero in render_heroes for clip in render_clips]
 output = ROOT / "artifacts" / "hero-browser-qa" / "deformation-render.json"
 output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-print(json.dumps({"scenes": len(report), "frames": sum(len(item["frames"]) for item in report), "output": str(output)}, ensure_ascii=False))
+print(
+    json.dumps(
+        {
+            "scenes": len(report),
+            "frames": sum(len(item["frames"]) for item in report),
+            "output": str(output),
+        },
+        ensure_ascii=False,
+    )
+)
