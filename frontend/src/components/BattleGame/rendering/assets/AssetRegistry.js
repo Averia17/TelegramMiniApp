@@ -75,25 +75,38 @@ const attachWeaponObject = (heroRoot, target, weaponObject, role, name) => {
   attachment.name = `DetachedHeroWeapon.${name}`
   attachment.userData.attachmentRole = role
   attachment.position.set(0, 0, 0)
-  attachment.quaternion.copy(socketRotationInRoot).invert()
-  attachment.scale.set(
-    1 / Math.max(Math.abs(socketScaleInRoot.x), 1e-8),
-    1 / Math.max(Math.abs(socketScaleInRoot.y), 1e-8),
-    1 / Math.max(Math.abs(socketScaleInRoot.z), 1e-8),
-  )
+  const authoredRoot = Boolean(weaponObject.userData.grip_authored_root)
+  if (authoredRoot) {
+    // The exporter baked the weapon into target-local coordinates. Let the
+    // socket carry its normal rotation and scale exactly once.
+    attachment.quaternion.identity()
+    attachment.scale.setScalar(1)
+  } else {
+    attachment.quaternion.copy(socketRotationInRoot).invert()
+    attachment.scale.set(
+      1 / Math.max(Math.abs(socketScaleInRoot.x), 1e-8),
+      1 / Math.max(Math.abs(socketScaleInRoot.y), 1e-8),
+      1 / Math.max(Math.abs(socketScaleInRoot.z), 1e-8),
+    )
+  }
   weaponObject.position.set(0, 0, 0)
   weaponObject.userData.attachmentRole = role
   attachment.add(weaponObject)
   target.add(attachment)
   heroRoot.updateMatrixWorld(true)
-  const gripWorld = target.getWorldPosition(new THREE.Vector3())
-  const weaponBounds = new THREE.Box3().setFromObject(weaponObject, true)
-  if (!weaponBounds.isEmpty() && weaponBounds.distanceToPoint(gripWorld) > .05) {
-    const nearestWorld = weaponBounds.clampPoint(gripWorld, new THREE.Vector3())
-    const gripLocal = attachment.worldToLocal(gripWorld.clone())
-    const nearestLocal = attachment.worldToLocal(nearestWorld)
-    weaponObject.position.add(gripLocal.sub(nearestLocal))
-    heroRoot.updateMatrixWorld(true)
+  // Authored detached weapon GLBs have their mesh pivot baked at the hand
+  // grip. Do not move them toward the nearest bounding-box point: for a fan,
+  // staff, or speaker that point is often a blade/edge rather than the handle.
+  if (!weaponObject.userData.grip_authored_root) {
+    const gripWorld = target.getWorldPosition(new THREE.Vector3())
+    const weaponBounds = new THREE.Box3().setFromObject(weaponObject, true)
+    if (!weaponBounds.isEmpty() && weaponBounds.distanceToPoint(gripWorld) > .05) {
+      const nearestWorld = weaponBounds.clampPoint(gripWorld, new THREE.Vector3())
+      const gripLocal = attachment.worldToLocal(gripWorld.clone())
+      const nearestLocal = attachment.worldToLocal(nearestWorld)
+      weaponObject.position.add(gripLocal.sub(nearestLocal))
+      heroRoot.updateMatrixWorld(true)
+    }
   }
   return attachment
 }

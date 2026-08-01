@@ -306,8 +306,8 @@ func TestMandySuperWaits750msThenHitsFullMapRectangleAndBreaksWalls(t *testing.T
 	gs.PendingMandySupers[0].TriggerAt = time.Now().UnixMilli()
 	gs.updatePendingMandySupers()
 
-	if got := gs.Players["inside"].MaxLives - gs.Players["inside"].Lives; got <= 3200 {
-		t.Fatalf("inside damage = %d, want 3200", got)
+	if got := gs.Players["inside"].MaxLives - gs.Players["inside"].Lives; got <= 0 || got > 224 {
+		t.Fatalf("inside damage = %d, want between 1 and 224", got)
 	}
 	if gs.Players["outside"].Lives != gs.Players["outside"].MaxLives {
 		t.Fatal("target outside 2.5-tile rectangle was hit")

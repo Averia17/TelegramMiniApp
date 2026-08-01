@@ -5,10 +5,12 @@ import {Renderer} from "./Renderer"
 import {Input} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
 import {getHeroSkill} from "./heroSkills.js"
-import {getBattlePlayerCount, getBattleRewardMessage, getPlayerBattleStats, getStateBattleResult} from "./battleOutcome"
+import {getBattlePlayerCount, getPlayerBattleStats, getStateBattleResult} from "./battleOutcome"
+import {AbilityButton, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TouchStick} from "./BattleGameUI.jsx"
 import {releaseAllPreviewContexts} from "./rendering/shared/previewContextRegistry.js"
 import {WS_URL} from "../../utils/urls.js"
 import {getAccessToken} from "../../utils/auth.js"
+import {BattleLoading} from "../BattleLoading/BattleLoading.jsx"
 import "./BattleGame.css"
 
 const saveBattleResult = result => {
@@ -40,6 +42,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const [connected, setConnected] = useState(false)
   const [roomInfo, setRoomInfo] = useState(null)
   const [messages, setMessages] = useState([])
+  const [islandVoice, setIslandVoice] = useState(null)
   const [view, setViewState] = useState("connecting")
   const [deathInfo, setDeathInfo] = useState(null)
   const [battleResult, setBattleResult] = useState(null)
@@ -71,8 +74,15 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const playerName = effectivePlayerId ? `P${String(effectivePlayerId).slice(0, 6)}` : "Player"
 
   const addMessage = useCallback((msg) => {
+    if (msg.type === "island_voice") return
     setMessages(prev => [...prev.slice(-9), msg])
   }, [])
+
+  useEffect(() => {
+    if (!islandVoice) return undefined
+    const timeout = window.setTimeout(() => setIslandVoice(null), 6500)
+    return () => window.clearTimeout(timeout)
+  }, [islandVoice])
 
   useEffect(() => {
     const query = window.matchMedia("(pointer: coarse), (max-width: 700px)")
@@ -111,10 +121,11 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
       (state) => {
         latestStateRef.current = state
         simulation.ingest(state)
+        const displayState = simulation.getDisplayState(undefined, {copyEntities: true}) || state
         const now = performance.now()
         if (!lastUiUpdateRef.current || now - lastUiUpdateRef.current >= 100) {
           lastUiUpdateRef.current = now
-          setGameState(state)
+          setGameState(displayState)
         }
         const v = viewRef.current
         if (state?.game?.state === "game" && v !== "game") {
@@ -128,17 +139,19 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
       },
       (msg) => {
         addMessage(msg)
+        if (msg.type === "island_voice") {
+          setIslandVoice({text: msg.params?.text || "Остров смотрит.", trigger: msg.params?.trigger || "unknown"})
+        }
         if (msg.type === "room_joined") {
           setRoomInfo(msg.params)
           setView("lobby")
           if (msg.params?.roomId) {
-            const heroQuery = heroName ? `?hero=${encodeURIComponent(heroName)}` : ""
-            window.history.replaceState(null, "", `/battle/${msg.params.roomId}${heroQuery}`)
+            window.history.replaceState(null, "", `/battle/${msg.params.roomId}`)
           }
         }
         if (msg.type === "match_found") {
           if (msg.params?.roomId && clientRef.current) {
-			clientRef.current.joinById(msg.params.roomId, playerName, heroName)
+            clientRef.current.joinById(msg.params.roomId, playerName, heroName)
           }
         }
         if (msg.type === "start") {
@@ -169,8 +182,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
         }
         if (msg.type === "error" && roomId && msg.params?.message === "Room not found") {
           joinedRef.current = false
-          const heroQuery = heroName ? `?hero=${encodeURIComponent(heroName)}` : ""
-          navigate(`/battle${heroQuery}`, {replace: true})
+          navigate("/battle", {replace: true, state: {heroName}})
         }
       },
       () => {
@@ -178,6 +190,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
       },
       () => setConnected(false)
     )
+    client.setShootPrediction?.(details => simulation.predictLocalShoot(details))
     clientRef.current = client
     if (import.meta.env.DEV) window.__battleClient = client
     client.connect()
@@ -193,6 +206,17 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
         return JSON.stringify({
           coordinateSystem: "origin top-left; x right; y down",
           mode: state?.game?.state || viewRef.current,
+          island: {
+            name: state?.game?.islandName || null,
+            phase: state?.game?.phase || null,
+            phaseEndsAt: state?.game?.phaseEndsAt || 0,
+            event: state?.game?.islandEvent || null,
+            stormRadius: state?.game?.stormRadius || 0,
+            beaconOpen: Boolean(state?.game?.beaconOpen),
+            beaconHolder: state?.game?.beaconHolder || null,
+            beaconProgress: state?.game?.beaconProgress || 0,
+            suddenDeathDamage: state?.game?.suddenDeathDamage || 0,
+          },
           localPlayerId: localId || null,
           player: local ? {
             x: local.x,
@@ -279,16 +303,16 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   useEffect(() => {
     if (connected && roomId && !joinedRef.current && clientRef.current) {
       joinedRef.current = true
-	  clientRef.current.joinById(roomId, playerName, heroName)
+      clientRef.current.joinById(roomId, playerName, heroName)
     }
-	}, [connected, roomId, playerName, heroName, effectivePlayerId])
+  }, [connected, roomId, playerName, heroName, effectivePlayerId])
 
   useEffect(() => {
     if (connected && !roomId && !joinedRef.current && clientRef.current) {
       joinedRef.current = true
-	  clientRef.current.findMatch(playerName, heroName)
+      clientRef.current.findMatch(playerName, heroName)
     }
-	}, [connected, roomId, playerName, heroName, effectivePlayerId])
+  }, [connected, roomId, playerName, heroName, effectivePlayerId])
 
   const handleBackToMenu = () => {
     joinedRef.current = false
@@ -312,42 +336,40 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
 
   return (
     <div className={`battle-game ${mobileMode ? "battle-game--mobile" : "battle-game--desktop"}`}>
-	  {import.meta.env.DEV && <output data-testid="battle-debug" style={{display:"none"}}>{JSON.stringify({
-		connected,
-		stateHz: clientRef.current?.stateHz,
-		stateBytes: clientRef.current?.lastStateBytes,
-		renderer: rendererRef.current?.mode,
-		fps: rendererRef.current?.impl?.fps,
-		drawCalls: rendererRef.current?.impl?.renderer?.info?.render?.calls,
-		triangles: rendererRef.current?.impl?.renderer?.info?.render?.triangles,
-		playerId: clientRef.current?.playerId,
-		state: gameState?.game?.state,
-		x: localPlayer?.x,
-		y: localPlayer?.y,
-		ack: localPlayer?.ack,
-		lives: localPlayer?.lives,
-		invulnerable: localPlayer?.invulnerable,
-		attackPulse: localPlayer?.attackPulse,
-		ammo: localPlayer?.ammo,
-		reloadProgress: localPlayer?.reloadProgress,
-		shield: localPlayer?.shield,
-		haste: localPlayer?.haste,
-		stun: localPlayer?.stun,
-		vine: localPlayer?.vine,
-		vortex: localPlayer?.vortex,
-		flying: localPlayer?.flying,
-		inBush: Boolean(localPlayer && gameState?.map?.walls?.some(wall => (wall.type === "bush" || wall.type === "half") && localPlayer.x >= wall.minX && localPlayer.x <= wall.maxX && localPlayer.y >= wall.minY && localPlayer.y <= wall.maxY)),
-	  })}</output>}
+      {import.meta.env.DEV && <output data-testid="battle-debug" style={{display:"none"}}>{JSON.stringify({
+        connected,
+        stateHz: clientRef.current?.stateHz,
+        stateBytes: clientRef.current?.lastStateBytes,
+        renderer: rendererRef.current?.mode,
+        fps: rendererRef.current?.impl?.fps,
+        drawCalls: rendererRef.current?.impl?.renderer?.info?.render?.calls,
+        triangles: rendererRef.current?.impl?.renderer?.info?.render?.triangles,
+        playerId: clientRef.current?.playerId,
+        state: gameState?.game?.state,
+        x: localPlayer?.x,
+        y: localPlayer?.y,
+        ack: localPlayer?.ack,
+        lives: localPlayer?.lives,
+        invulnerable: localPlayer?.invulnerable,
+        attackPulse: localPlayer?.attackPulse,
+        ammo: localPlayer?.ammo,
+        reloadProgress: localPlayer?.reloadProgress,
+        shield: localPlayer?.shield,
+        haste: localPlayer?.haste,
+        stun: localPlayer?.stun,
+        vine: localPlayer?.vine,
+        vortex: localPlayer?.vortex,
+        flying: localPlayer?.flying,
+        inBush: Boolean(localPlayer && gameState?.map?.walls?.some(wall => (wall.type === "bush" || wall.type === "half") && localPlayer.x >= wall.minX && localPlayer.x <= wall.maxX && localPlayer.y >= wall.minY && localPlayer.y <= wall.maxY)),
+      })}</output>}
       <canvas ref={canvasRef} className="battle-canvas"/>
 
       {view === "connecting" && (
-        <div className="battle-overlay">
-          <div className="battle-menu">
-            <div className="battle-logo"><span>STAR</span> BRAWL</div>
-            <div className="spinner"/>
-            <p>Поиск арены...</p>
-          </div>
-        </div>
+        <BattleLoading
+          progress={connected ? 62 : 42}
+          status={connected ? "Получаем карту арены..." : "Подключаемся к арене..."}
+        />
+
       )}
 
       {view === "lobby" && roomInfo && (
@@ -355,7 +377,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
           <div className="lobby-info">
             <div className="lobby-kicker">BATTLE ARENA</div>
             <h3>{roomInfo.roomName}</h3>
-            <p className="lobby-mode">{roomInfo.mode} · {roomInfo.mapName}</p>
+            <p className="lobby-mode">{roomInfo.mode} · {roomInfo.mapName === "battle-royale" ? "Остров Первого Испытания" : roomInfo.mapName}</p>
             <div className="lobby-player-count"><strong>{playerCount}</strong><span>/{roomInfo.maxPlayers}</span></div>
             <p>Код команды <span className="room-code" onClick={() => navigator.clipboard.writeText(roomInfo.roomId)} title="Скопировать">{roomInfo.roomId}</span></p>
             {gameState?.players && clientRef.current?.playerId && (() => {
@@ -375,9 +397,11 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
         <>
           <header className="battle-topbar">
             <button className="battle-exit-btn" onClick={handleBackToMenu} aria-label="Выйти">✕</button>
-            <div className="battle-mode-pill"><span>⚡</span> BATTLE ROYALE</div>
+            <div className="battle-mode-pill"><span>⚡</span> BRAWL STARS</div>
             <div className="battle-alive"><i/> {alivePlayerCount} В БОЮ</div>
           </header>
+          <IslandPhaseHud state={gameState?.game}/>
+          <IslandVoiceNotice voice={islandVoice}/>
           {localPlayer && (
             <div className="battle-player-card">
               <div className="player-avatar">{String(localPlayer.hero || heroName || "H").slice(0, 1).toUpperCase()}</div>
@@ -442,18 +466,18 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
         </div>
       )}
 
-	  {view === "timeout" && (
-		<div className="battle-overlay battle-result-overlay">
-		  <div className="battle-result-card">
-			<div className="battle-result-crown">⌛</div>
-			<h2>ВРЕМЯ ВЫШЛО</h2>
-			<p>Матч завершён по таймеру.</p>
-			<BattleRewardNotice result={battleResult}/>
-			<BattleResultStats result={battleResult}/>
-			<button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
-		  </div>
-		</div>
-	  )}
+      {view === "timeout" && (
+        <div className="battle-overlay battle-result-overlay">
+          <div className="battle-result-card">
+            <div className="battle-result-crown">⌛</div>
+            <h2>ВРЕМЯ ВЫШЛО</h2>
+            <p>Матч завершён по таймеру.</p>
+            <BattleRewardNotice result={battleResult}/>
+            <BattleResultStats result={battleResult}/>
+            <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
+          </div>
+        </div>
+      )}
 
       <div className="battle-messages">
         {messages.map((msg, i) => (
@@ -477,63 +501,4 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   )
 }
 
-const TouchStick = ({kind, control}) => {
-  let x = 0
-  let y = 0
-  if (control) {
-    const dx = control.current.x - control.start.x
-    const dy = control.current.y - control.start.y
-    const distance = Math.hypot(dx, dy)
-    const scale = distance > 28 ? 28 / distance : 1
-    x = dx * scale
-    y = dy * scale
-  }
-  return <div className={`mobile-stick mobile-stick-${kind}${control ? " mobile-stick--active" : ""}`}
-    style={control ? {left: control.start.x, top: control.start.y, "--stick-x": `${x}px`, "--stick-y": `${y}px`} : undefined}>
-    <span>{kind === "fire" ? "✦" : ""}</span>
-  </div>
-}
-
-const BattleResultStats = ({result}) => result && (
-  <div className="battle-result-stats">
-    <span><b>#{result.place || (result.won ? 1 : "—")}</b>место</span>
-    <span><b>{result.kills || 0}</b>бойцов</span>
-    <span><b>{result.monsters || 0}</b>мобов</span>
-    <span><b>{Math.round(result.duration || 0)}с</b>время</span>
-  </div>
-)
-
-const BattleRewardNotice = ({result}) => {
-  const message = getBattleRewardMessage(result)
-  return message ? <p className="battle-reward-notice">{message}</p> : null
-}
-
-const AbilityButton = ({keyName, label, description, cooldown = 0, charge = 100, isSuper = false, disabled = false, onUse}) => (
-  <button className={`battle-ability${isSuper && charge >= 100 ? " battle-ability--ready" : ""}`} title={`${label}: ${description}`} aria-label={`${label}: ${description}`} disabled={disabled || cooldown > 0 || (isSuper && charge < 100)} onClick={onUse} style={isSuper ? {"--charge": `${charge}%`} : undefined}>
-    {isSuper && <i className="battle-ability__charge"/>}
-    <b>{cooldown > 0 ? cooldown.toFixed(1) : isSuper && charge < 100 ? `${Math.round(charge)}%` : keyName}</b>
-    <span>{label}</span>
-  </button>
-)
-
-const BattleMiniMap = ({state, localId, renderer}) => {
-  const map = state?.map
-  if (!map) return null
-  const width = map.width || 1
-  const height = map.height || 1
-  const visibleEnemies = Object.entries(state.players || {}).filter(([id]) =>
-    String(id) !== String(localId) && renderer?.isPlayerVisible(id))
-  return (
-    <aside className="battle-minimap" aria-label="Миникарта">
-      {(map.walls || []).map((wall, index) => (
-        <i key={index} className={`mini-obstacle mini-obstacle--${wall.type}`} style={{left: `${wall.minX / width * 100}%`, top: `${wall.minY / height * 100}%`, width: `${(wall.maxX - wall.minX) / width * 100}%`, height: `${Math.max(2.5, (wall.maxY - wall.minY) / height * 100)}%`}}/>
-      ))}
-      {state.players[localId] && (
-        <b className="mini-player mini-player--me" style={{left: `${state.players[localId].x / width * 100}%`, top: `${state.players[localId].y / height * 100}%`}}/>
-      )}
-      {visibleEnemies.map(([id, player]) => (
-        <b key={id} className="mini-player" style={{left: `${player.x / width * 100}%`, top: `${player.y / height * 100}%`}}/>
-      ))}
-    </aside>
-  )
-}
+// Legacy JSX kept below only as a migration note; live components are in BattleGameUI.jsx.

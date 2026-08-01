@@ -1,0 +1,1663 @@
+{
+  "generatedAt": "2026-08-01T15:37:27.254Z",
+  "scenes": 24,
+  "invalid": 0,
+  "results": [
+    {
+      "hero": "Shadow",
+      "slug": "shadow",
+      "skill": "attack",
+      "expectedClip": "Attack",
+      "state": {
+        "hero": "Shadow",
+        "requestedHero": "Shadow",
+        "state": "Skill / attack",
+        "animation": "idle",
+        "overlay": "attack",
+        "skillPulses": {
+          "attack": 1,
+          "super": 0,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 0.625,
+          "run": 0.375,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0.556,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.1,
+          "run": 0.065,
+          "hit": 0,
+          "aim": 0.1,
+          "aimSuper": 0.1,
+          "attack": 0.1,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\shadow-attack.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Shadow",
+      "slug": "shadow",
+      "skill": "super",
+      "expectedClip": "super",
+      "state": {
+        "hero": "Shadow",
+        "requestedHero": "Shadow",
+        "state": "Skill / super",
+        "animation": "idle",
+        "overlay": "super",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 0.833,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 2.55,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.55,
+          "aimSuper": 0.55,
+          "attack": 0.8,
+          "super": 0.15,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\shadow-super.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Shadow",
+      "slug": "shadow",
+      "skill": "gadget",
+      "expectedClip": "Gadget",
+      "state": {
+        "hero": "Shadow",
+        "requestedHero": "Shadow",
+        "state": "Skill / gadget",
+        "animation": "idle",
+        "overlay": "gadget",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 1
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 0,
+          "gadget": 1,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 3.3,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.3,
+          "aimSuper": 0.3,
+          "attack": 0.8,
+          "super": 0.9,
+          "gadget": 0.2,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\shadow-gadget.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Mandy",
+      "slug": "mandy",
+      "skill": "attack",
+      "expectedClip": "Attack",
+      "state": {
+        "hero": "Mandy",
+        "requestedHero": "Mandy",
+        "state": "Skill / attack",
+        "animation": "idle",
+        "overlay": "attack",
+        "skillPulses": {
+          "attack": 1,
+          "super": 0,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 1,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.25,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.25,
+          "aimSuper": 0.25,
+          "attack": 0.25,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\mandy-attack.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Mandy",
+      "slug": "mandy",
+      "skill": "super",
+      "expectedClip": "super",
+      "state": {
+        "hero": "Mandy",
+        "requestedHero": "Mandy",
+        "state": "Skill / super",
+        "animation": "idle",
+        "overlay": "super",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 1,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.2,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.2,
+          "aimSuper": 0.2,
+          "attack": 0.933,
+          "super": 0.65,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\mandy-super.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Mandy",
+      "slug": "mandy",
+      "skill": "gadget",
+      "expectedClip": "Gadget",
+      "state": {
+        "hero": "Mandy",
+        "requestedHero": "Mandy",
+        "state": "Skill / gadget",
+        "animation": "idle",
+        "overlay": "gadget",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 1
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 0,
+          "gadget": 1,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 3.25,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.25,
+          "aimSuper": 0.25,
+          "attack": 0.933,
+          "super": 1.833,
+          "gadget": 0.35,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\mandy-gadget.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Fairy Mina",
+      "slug": "fairy-mina",
+      "skill": "attack",
+      "expectedClip": "Attack",
+      "state": {
+        "hero": "Fairy Mina",
+        "requestedHero": "Fairy Mina",
+        "state": "Skill / attack",
+        "animation": "idle",
+        "overlay": "attack",
+        "skillPulses": {
+          "attack": 1,
+          "super": 0,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 1,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.35,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.35,
+          "aimSuper": 0.35,
+          "attack": 0.35,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\fairy-mina-attack.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Fairy Mina",
+      "slug": "fairy-mina",
+      "skill": "super",
+      "expectedClip": "super",
+      "state": {
+        "hero": "Fairy Mina",
+        "requestedHero": "Fairy Mina",
+        "state": "Skill / super",
+        "animation": "idle",
+        "overlay": "super",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 1,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.417,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.75,
+          "aimSuper": 0.75,
+          "attack": 0.8,
+          "super": 0.45,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\fairy-mina-super.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Fairy Mina",
+      "slug": "fairy-mina",
+      "skill": "gadget",
+      "expectedClip": "Gadget",
+      "state": {
+        "hero": "Fairy Mina",
+        "requestedHero": "Fairy Mina",
+        "state": "Skill / gadget",
+        "animation": "idle",
+        "overlay": "gadget",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 1
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 0,
+          "gadget": 1,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.483,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.15,
+          "aimSuper": 0.15,
+          "attack": 0.8,
+          "super": 1.833,
+          "gadget": 0.6,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\fairy-mina-gadget.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Brock Zeus",
+      "slug": "brock-zeus",
+      "skill": "attack",
+      "expectedClip": "Attack",
+      "state": {
+        "hero": "Brock Zeus",
+        "requestedHero": "Brock Zeus",
+        "state": "Skill / attack",
+        "animation": "idle",
+        "overlay": "attack",
+        "skillPulses": {
+          "attack": 1,
+          "super": 0,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 1,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.35,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.35,
+          "aimSuper": 0.35,
+          "attack": 0.35,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\brock-zeus-attack.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Brock Zeus",
+      "slug": "brock-zeus",
+      "skill": "super",
+      "expectedClip": "super",
+      "state": {
+        "hero": "Brock Zeus",
+        "requestedHero": "Brock Zeus",
+        "state": "Skill / super",
+        "animation": "idle",
+        "overlay": "super",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 1,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.417,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.75,
+          "aimSuper": 0.75,
+          "attack": 0.8,
+          "super": 1.2,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\brock-zeus-super.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Brock Zeus",
+      "slug": "brock-zeus",
+      "skill": "gadget",
+      "expectedClip": "Gadget",
+      "state": {
+        "hero": "Brock Zeus",
+        "requestedHero": "Brock Zeus",
+        "state": "Skill / gadget",
+        "animation": "idle",
+        "overlay": "gadget",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 1
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 0,
+          "gadget": 1,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 1.083,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.75,
+          "aimSuper": 0.75,
+          "attack": 0.8,
+          "super": 1.8,
+          "gadget": 0.6,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\brock-zeus-gadget.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Kaze",
+      "slug": "kaze",
+      "skill": "attack",
+      "expectedClip": "Attack",
+      "state": {
+        "hero": "Kaze",
+        "requestedHero": "Kaze",
+        "state": "Skill / attack",
+        "animation": "idle",
+        "overlay": "attack",
+        "skillPulses": {
+          "attack": 1,
+          "super": 0,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 1,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.2,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.2,
+          "aimSuper": 0.2,
+          "attack": 0.2,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\kaze-attack.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Kaze",
+      "slug": "kaze",
+      "skill": "super",
+      "expectedClip": "super",
+      "state": {
+        "hero": "Kaze",
+        "requestedHero": "Kaze",
+        "state": "Skill / super",
+        "animation": "idle",
+        "overlay": "super",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 1,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 1.767,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.1,
+          "aimSuper": 0.1,
+          "attack": 1.267,
+          "super": 0.9,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\kaze-super.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Kaze",
+      "slug": "kaze",
+      "skill": "gadget",
+      "expectedClip": "Gadget",
+      "state": {
+        "hero": "Kaze",
+        "requestedHero": "Kaze",
+        "state": "Skill / gadget",
+        "animation": "idle",
+        "overlay": "gadget",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 1
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 0,
+          "gadget": 1,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.05,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.05,
+          "aimSuper": 0.05,
+          "attack": 1.267,
+          "super": 1.133,
+          "gadget": 0.5,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\kaze-gadget.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Wukong Mico",
+      "slug": "wukong-mico",
+      "skill": "attack",
+      "expectedClip": "Attack",
+      "state": {
+        "hero": "Wukong Mico",
+        "requestedHero": "Wukong Mico",
+        "state": "Skill / attack",
+        "animation": "idle",
+        "overlay": "attack",
+        "skillPulses": {
+          "attack": 1,
+          "super": 0,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 1,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.2,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.2,
+          "aimSuper": 0.2,
+          "attack": 0.2,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\wukong-mico-attack.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Wukong Mico",
+      "slug": "wukong-mico",
+      "skill": "super",
+      "expectedClip": "super",
+      "state": {
+        "hero": "Wukong Mico",
+        "requestedHero": "Wukong Mico",
+        "state": "Skill / super",
+        "animation": "idle",
+        "overlay": "super",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 1,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 1.833,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.5,
+          "aimSuper": 0.5,
+          "attack": 1.333,
+          "super": 0.35,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\wukong-mico-super.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Wukong Mico",
+      "slug": "wukong-mico",
+      "skill": "gadget",
+      "expectedClip": "Gadget",
+      "state": {
+        "hero": "Wukong Mico",
+        "requestedHero": "Wukong Mico",
+        "state": "Skill / gadget",
+        "animation": "idle",
+        "overlay": "gadget",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 1
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 0,
+          "gadget": 1,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.1,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.1,
+          "aimSuper": 0.1,
+          "attack": 1.333,
+          "super": 3.667,
+          "gadget": 1.15,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\wukong-mico-gadget.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Damian",
+      "slug": "damian",
+      "skill": "attack",
+      "expectedClip": "Attack",
+      "state": {
+        "hero": "Damian",
+        "requestedHero": "Damian",
+        "state": "Skill / attack",
+        "animation": "idle",
+        "overlay": "attack",
+        "skillPulses": {
+          "attack": 1,
+          "super": 0,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 0.938,
+          "run": 0.062,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0.833,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.15,
+          "run": 0.098,
+          "hit": 0,
+          "aim": 0.15,
+          "aimSuper": 0.15,
+          "attack": 0.15,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\damian-attack.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Damian",
+      "slug": "damian",
+      "skill": "super",
+      "expectedClip": "super",
+      "state": {
+        "hero": "Damian",
+        "requestedHero": "Damian",
+        "state": "Skill / super",
+        "animation": "idle",
+        "overlay": "super",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 1,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 3.333,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0.933,
+          "super": 0.7,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\damian-super.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Damian",
+      "slug": "damian",
+      "skill": "gadget",
+      "expectedClip": "Gadget",
+      "state": {
+        "hero": "Damian",
+        "requestedHero": "Damian",
+        "state": "Skill / gadget",
+        "animation": "idle",
+        "overlay": "gadget",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 1
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 0,
+          "gadget": 1,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 3.35,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.35,
+          "aimSuper": 0.35,
+          "attack": 0.933,
+          "super": 1.333,
+          "gadget": 0.9,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\damian-gadget.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Persephone Lumi",
+      "slug": "persephone-lumi",
+      "skill": "attack",
+      "expectedClip": "Attack",
+      "state": {
+        "hero": "Persephone Lumi",
+        "requestedHero": "Persephone Lumi",
+        "state": "Skill / attack",
+        "animation": "idle",
+        "overlay": "attack",
+        "skillPulses": {
+          "attack": 1,
+          "super": 0,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 1,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 0.3,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.3,
+          "aimSuper": 0.3,
+          "attack": 0.3,
+          "super": 0,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\persephone-lumi-attack.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Persephone Lumi",
+      "slug": "persephone-lumi",
+      "skill": "super",
+      "expectedClip": "super",
+      "state": {
+        "hero": "Persephone Lumi",
+        "requestedHero": "Persephone Lumi",
+        "state": "Skill / super",
+        "animation": "idle",
+        "overlay": "super",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 0
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 1,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 2.117,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.45,
+          "aimSuper": 0.45,
+          "attack": 1.167,
+          "super": 0.5,
+          "gadget": 0,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\persephone-lumi-super.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    },
+    {
+      "hero": "Persephone Lumi",
+      "slug": "persephone-lumi",
+      "skill": "gadget",
+      "expectedClip": "Gadget",
+      "state": {
+        "hero": "Persephone Lumi",
+        "requestedHero": "Persephone Lumi",
+        "state": "Skill / gadget",
+        "animation": "idle",
+        "overlay": "gadget",
+        "skillPulses": {
+          "attack": 1,
+          "super": 1,
+          "gadget": 1
+        },
+        "aimWeight": 0,
+        "actionWeights": {
+          "idle": 1,
+          "run": 0,
+          "hit": 0,
+          "aim": 0,
+          "aimSuper": 0,
+          "attack": 0,
+          "super": 0,
+          "gadget": 1,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "clipTimes": {
+          "idle": 1.6,
+          "run": 0.13,
+          "hit": 0,
+          "aim": 0.6,
+          "aimSuper": 0.6,
+          "attack": 1.167,
+          "super": 1.333,
+          "gadget": 0.75,
+          "spawn": 0,
+          "victory": 0,
+          "defeat": 0
+        },
+        "fallbackEvents": [],
+        "clips": [
+          "Aim",
+          "AimSuper",
+          "Attack",
+          "death",
+          "Gadget",
+          "hit",
+          "idle",
+          "run",
+          "Spawn",
+          "super",
+          "Victory"
+        ],
+        "coordinateSystem": "Three.js: +Y up; ground plane XZ"
+      },
+      "screenshot": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\hero-browser-qa\\quality-v5\\persephone-lumi-gadget.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "pageErrors": [],
+      "apiWarnings": [
+        500
+      ],
+      "valid": true
+    }
+  ]
+}

@@ -1,13 +1,11 @@
 import assert from "node:assert/strict"
-import {readFile, readdir} from "node:fs/promises"
+import {readFile} from "node:fs/promises"
 import path from "node:path"
 
 const expectedClips = new Set([
-  "idle", "run", "hit", "death", "super", "Aim", "AimSuper", "Attack", "Spawn", "Victory",
+  "idle", "run", "hit", "death", "super", "Aim", "AimSuper", "Attack", "Gadget", "Spawn", "Victory",
 ])
 const heldRoles = new Set(["held-weapon", "throwable-weapon"])
-const nonHeroDirectories = new Set(["dynamic_equipment_qa"])
-
 const readGlbJson = async file => {
   const buffer = await readFile(file)
   assert.equal(buffer.toString("utf8", 0, 4), "glTF", `${file} is not GLB`)
@@ -17,7 +15,7 @@ const readGlbJson = async file => {
 }
 
 const validateHero = async (directory, slug) => {
-  const file = path.join(directory, slug, `${slug}.glb`)
+  const file = path.join(directory, "output_heroes", `${slug}_base.glb`)
   const document = await readGlbJson(file)
   const nodes = document.nodes || []
   const parentByNode = new Map()
@@ -64,11 +62,11 @@ const validateHero = async (directory, slug) => {
 }
 
 const heroesDirectory = path.resolve("public/assets/heroes")
-const entries = (await readdir(heroesDirectory, {withFileTypes: true}))
-  .filter(entry => entry.isDirectory()
-    && !entry.name.startsWith("output_")
-    && !nonHeroDirectories.has(entry.name))
-for (const entry of entries) {
-  await validateHero(heroesDirectory, entry.name)
+const entries = [
+  "brock-zeus", "damian", "fairy-mina", "kaze", "mandy", "needle",
+  "persephone-lumi", "wukong-mico",
+]
+for (const slug of entries) {
+  await validateHero(heroesDirectory, slug)
 }
-console.log(`Validated ${entries.length} canonical source hero GLBs`)
+console.log(`Validated ${entries.length} canonical runtime hero GLBs`)

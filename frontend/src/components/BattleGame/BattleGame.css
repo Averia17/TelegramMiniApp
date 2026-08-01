@@ -132,6 +132,30 @@
 .battle-alive { justify-self: end; background: linear-gradient(#302c56, #17182e); font-size: 13px; }
 .battle-alive i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 50%; background: #63e557; box-shadow: 0 0 10px #63e557; }
 
+.island-phase-hud {
+  position: absolute;
+  z-index: 12;
+  top: max(72px, calc(env(safe-area-inset-top) + 64px));
+  left: 50%;
+  width: min(260px, 48vw);
+  padding: 8px 12px 9px;
+  transform: translateX(-50%);
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, .62);
+  border-radius: 13px;
+  background: linear-gradient(145deg, rgba(35, 48, 113, .94), rgba(22, 25, 70, .9));
+  box-shadow: 0 4px 0 rgba(17, 25, 73, .8), 0 7px 18px rgba(8, 15, 49, .24);
+  pointer-events: none;
+  text-shadow: 0 2px 0 #17265f;
+}
+.island-phase-hud--landing { border-color: #8fe9ff; }.island-phase-hud--challenge { border-color: #ffdf6a; }.island-phase-hud--collapse { border-color: #ff7d78; background: linear-gradient(145deg, rgba(120, 39, 75, .95), rgba(44, 22, 66, .95)); }.island-phase-hud--beacon { border-color: #ffe45a; background: linear-gradient(145deg, rgba(106, 64, 159, .96), rgba(37, 25, 85, .94)); }
+.island-phase-hud__title { display: flex; align-items: center; gap: 7px; font-size: 16px; }.island-phase-hud__title span { color: #ffe052; font-size: 18px; }.island-phase-hud__meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 1px; color: #bcd4ff; font: 800 9px system-ui, sans-serif; letter-spacing: .5px; text-transform: uppercase; }.island-phase-hud__meta span { color: #fff2a0; font-size: 11px; }.island-phase-hud p { margin: 3px 0 0; color: rgba(255,255,255,.76); font: 700 10px system-ui, sans-serif; }.island-phase-hud small { display: block; margin-top: 3px; color: #ffb1a3; font: 900 9px system-ui, sans-serif; }.island-beacon-progress { height: 5px; margin-top: 6px; overflow: hidden; border-radius: 4px; background: rgba(15, 18, 58, .72); }.island-beacon-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ffbd42, #fff28a); box-shadow: 0 0 8px #ffe34f; transition: width .15s linear; }
+.island-voice-notice { position: absolute; z-index: 13; top: max(168px, calc(env(safe-area-inset-top) + 158px)); left: 50%; width: min(330px, 56vw); padding: 10px 14px 11px; transform: translateX(-50%); border: 1px solid rgba(231, 201, 255, .62); border-radius: 14px 14px 14px 3px; background: linear-gradient(145deg, rgba(24, 17, 54, .94), rgba(48, 26, 72, .9)); box-shadow: 0 12px 34px rgba(10, 4, 35, .42), 0 0 22px rgba(192, 127, 255, .14); animation: island-voice-in .35s ease-out; pointer-events: none; }
+.island-voice-notice__title { color: #e7c9ff; font: 900 9px system-ui, sans-serif; letter-spacing: 1.4px; }
+.island-voice-notice__title span { color: #ffcf63; margin-right: 5px; }
+.island-voice-notice p { margin: 5px 0 0; color: rgba(255, 255, 255, .92); font: italic 700 12px/1.35 Georgia, serif; }
+@keyframes island-voice-in { from { opacity: 0; transform: translate(-50%, -10px) scale(.97); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+
 .battle-player-card {
   position: absolute;
   z-index: 11;
@@ -223,6 +247,8 @@
 .death-skull { font-size: 72px; }
 
 .battle-minimap { position: absolute; z-index: 13; right: 16px; top: 76px; width: 154px; aspect-ratio: 4/3; overflow: hidden; border: 4px solid rgba(255,255,255,.82); border-radius: 15px; background: rgba(31,45,69,.78); box-shadow: 0 5px 0 #17233e,0 8px 18px rgba(0,0,0,.25); pointer-events: none; }
+.mini-storm { position: absolute; z-index: 1; left: 50%; top: 50%; transform: translate(-50%, -50%); min-width: 18%; min-height: 18%; border: 2px solid rgba(255, 105, 111, .95); border-radius: 50%; background: transparent; box-shadow: 0 0 0 999px rgba(71, 17, 65, .32), inset 0 0 14px rgba(255, 78, 92, .64); }
+.mini-beacon { position: absolute; z-index: 2; left: 50%; top: 50%; width: 10px; height: 10px; transform: translate(-50%, -50%); border: 2px solid #fff6a1; border-radius: 50%; background: #ffc83d; box-shadow: 0 0 12px 4px rgba(255, 216, 72, .82); }
 .mini-obstacle { position: absolute; min-width: 3px; border-radius: 2px; background: #d56d48; }
 .mini-obstacle--bush,.mini-obstacle--half { background: #48ad50; }.mini-obstacle--water { background: #43bde8; }.mini-obstacle--crates,.mini-obstacle--barrels { background: #d89037; }.mini-obstacle--crystal { background: #9c63f5; }.mini-obstacle--bones { background: #eee1bb; }.mini-obstacle--cactus { background: #248a57; }
 .mini-player { position: absolute; width: 7px; height: 7px; transform: translate(-50%,-50%); border: 1px solid #fff; border-radius: 50%; background: #ff4e57; box-shadow: 0 0 5px #ff4e57; }
@@ -256,6 +282,7 @@
   .battle-exit-btn { width: 36px; height: 36px; min-width: 36px; min-height: 36px; border-width: 2px; border-radius: 11px; box-shadow: 0 4px 0 #8d1733; }
   .battle-mode-pill { padding: 6px 9px; border-width: 2px; border-radius: 10px; box-shadow: 0 4px 0 #17265f; font-size: 9px; }
   .battle-alive { padding: 6px 8px; border-width: 2px; border-radius: 10px; box-shadow: 0 4px 0 #17265f; font-size: 8px; }
+  .island-phase-hud { top: max(51px, calc(env(safe-area-inset-top) + 45px)); width: min(205px, 48vw); padding: 5px 8px 6px; border-width: 1px; border-radius: 10px; }.island-phase-hud__title { font-size: 11px; }.island-phase-hud__title span { font-size: 13px; }.island-phase-hud__meta { font-size: 7px; }.island-phase-hud__meta span { font-size: 9px; }.island-phase-hud p, .island-phase-hud small { font-size: 8px; }.island-beacon-progress { height: 4px; margin-top: 4px; }.island-voice-notice { top: 124px; width: min(270px, 70vw); padding: 8px 10px; }.island-voice-notice p { font-size: 10px; }
   .battle-player-card { top: max(57px, calc(env(safe-area-inset-top) + 51px)); transform: scale(.82); transform-origin: left top; }
   .battle-minimap { width: 104px; top: 67px; right: 9px; border-width: 3px; }
   .battle-abilities { right: 22px; bottom: 122px; }.battle-ability { width: 62px; height: 62px; }.battle-ability:nth-child(2) { width: 50px; height: 50px; }

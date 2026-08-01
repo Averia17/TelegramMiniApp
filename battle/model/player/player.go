@@ -43,6 +43,7 @@ type Player struct {
 	HeatUntil         int64
 	AttackPulse       int
 	SuperPulse        int
+	GadgetPulse       int
 	Aiming            bool
 	AimDistance       float64
 	ShieldUntil       int64
@@ -52,6 +53,7 @@ type Player struct {
 	ChannelUntil      int64
 	VineUntil         int64
 	VortexUntil       int64
+	VortexTickAt      int64
 	FlyingUntil       int64
 	BlindUntil        int64
 	Dodges            int
@@ -67,6 +69,9 @@ type Player struct {
 	LastPrimaryAt     int64
 	LastSecondaryAt   int64
 	HasteUntil        int64
+	LunarSpeedUntil   int64
+	LunarDamageUntil  int64
+	LunarShield       bool
 	SlowUntil         int64
 	SlowMultiplier    float64
 	FocusStartedAt    int64
@@ -75,6 +80,9 @@ type Player struct {
 	SuppressedRage    int
 	StoneArmorUntil   int64
 	GadgetArmed       bool
+	KazeCritReady     bool
+	KazeComboHits     int
+	KazeComboUntil    int64
 	GadgetCharges     int
 	RegenRate         float64
 	RegenCarry        float64
@@ -104,6 +112,11 @@ func (p *Player) TakeDamage(amount int) {
 		return
 	}
 	p.LastDamageAt = time.Now().UnixMilli()
+	if p.LunarShield {
+		p.LunarShield = false
+		p.ShieldHP = 0
+		return
+	}
 	if p.ShieldHP >= amount {
 		p.ShieldHP -= amount
 		return

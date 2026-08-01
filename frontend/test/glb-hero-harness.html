@@ -21,7 +21,7 @@
   </style>
 </head>
 <body>
-<div id="app"><section id="viewport"><div id="state">Loading</div><canvas id="scene"></canvas></section><aside id="controls"><h1>Animation Lab</h1><p class="hint">Тестовая страница для просмотра всех клипов героя. Панель находится вне сцены и не перекрывает модель.</p><div class="group"><strong>Locomotion</strong><button data-animation="idle">Покой</button><button data-animation="run">Бег</button></div><div class="group"><strong>Events</strong><button data-animation="spawn">Появление</button><button data-animation="attack">Атака</button><button data-animation="super">Супер</button><button data-animation="hit">Получил удар</button><button data-animation="victory">Победа</button><button data-animation="defeat">Поражение</button></div><div class="group"><strong>Aim</strong><button data-animation="aim">Прицел</button><button data-animation="aimSuper">Прицел супер</button></div></aside></div>
+<div id="app"><section id="viewport"><div id="state">Loading</div><canvas id="scene"></canvas></section><aside id="controls"><h1>Animation Lab</h1><p class="hint">Просмотр locomotion, event и skill-анимаций выбранного героя. Skill-кнопки запускают тот же pulse-контур, что и игровой battle runtime.</p><div class="group"><strong>Locomotion</strong><button data-animation="idle">Покой</button><button data-animation="run">Бег</button></div><div class="group"><strong>Skills</strong><button data-skill="attack">Основная атака</button><button data-skill="super">Супер</button><button data-skill="gadget">Gadget</button></div><div class="group"><strong>Events</strong><button data-animation="spawn">Появление</button><button data-animation="hit">Получил удар</button><button data-animation="victory">Победа</button><button data-animation="defeat">Поражение</button></div><div class="group"><strong>Aim</strong><button data-animation="aim">Прицел</button><button data-animation="aimSuper">Прицел супер</button></div></aside></div>
 <script type="module">
   import * as THREE from "three"
   import {GLBHeroController} from "/src/components/BattleGame/rendering/heroes/GLBHeroController.js"
@@ -122,23 +122,38 @@
   if(query.has("aim")){
     aimPreview.update({aiming:true,x:0,y:0,rotation:0,...(attackAreas[hero]||{attackArchetype:"projectile",attackRange:600,color:"#fff"})})
   }
-  const clips={idle:"idle",run:"run",hit:"hit",aim:"Aim",aimSuper:"AimSuper",attack:"Attack",super:"super",spawn:"Spawn",victory:"Victory",defeat:"death"}
+  const clips={idle:"idle",run:"run",hit:"hit",aim:"Aim",aimSuper:"AimSuper",attack:"Attack",super:"super",gadget:"Gadget",spawn:"Spawn",victory:"Victory",defeat:"death"}
+  let attackPulse=forcedState==="attack"?1:0
+  let superPulse=forcedState==="super"?1:0
+  let gadgetPulse=forcedState==="gadget"?1:0
   const controller=new GLBHeroController(model,instance.animations,clips,{
     heroName:hero,
-    attackPulse:0,
-    superPulse:0,
-    spawnOnLoad:!forcedState||forcedState==="spawn",
-    fullBodySuper:false,
+    attackPulse,
+    superPulse,
+    gadgetPulse,
+    spawnOnLoad:forcedState==="spawn",
+    fullBodySuper:true,
   })
   let manualState=null
+  const setActiveButton=button=>document.querySelectorAll("button").forEach(item=>item.classList.toggle("active",item===button))
+  document.querySelectorAll("[data-skill]").forEach(button=>button.addEventListener("click",()=>{
+    const skill=button.dataset.skill
+    manualState=skill
+    if(skill==="attack")attackPulse++
+    if(skill==="super")superPulse++
+    if(skill==="gadget")gadgetPulse++
+    setActiveButton(button)
+    label.textContent=`Skill / ${skill}`
+  }))
   document.querySelectorAll("[data-animation]").forEach(button=>button.addEventListener("click",()=>{
     const animation=button.dataset.animation
     const played=animation==="spawn"?(controller.playSpawn(),true):["idle","run"].includes(animation)
       ?controller.transitionLocomotion(animation):["victory","defeat"].includes(animation)
-        ?controller.playOutcome(animation):controller.playSafe(animation)
+        ?controller.playOutcome(animation):["aim","aimSuper"].includes(animation)
+          ?(controller.clearOverlay(),true):controller.playSafe(animation)
     if(!played)return
     manualState=animation
-    document.querySelectorAll("[data-animation]").forEach(item=>item.classList.toggle("active",item===button))
+    setActiveButton(button)
     label.textContent=`Manual / ${animation}`
   }))
   const projectileRoot=new THREE.Group()
@@ -149,8 +164,6 @@
   if(query.has("bat"))monsterPreview.sync({
     bat_qa:{x:24,y:12,radius:24,rotation:-.35,lives:2700,maxLives:3600,tier:2},
   })
-  let attackPulse=forcedState==="attack"?1:0
-  let superPulse=forcedState==="super"?1:0
   let hit=0
   const clock=new THREE.Clock()
   function resize(){
@@ -163,7 +176,7 @@
   addEventListener("resize",resize);resize()
   renderer.setAnimationLoop(()=>{
     const dt=Math.min(.05,clock.getDelta())
-    const forcedCycles={spawn:.35,idle:10.5,run:2.6,aim:4.4,attack:5.05,aimSuper:7.4,super:8.05,victory:10.5,defeat:10.5}
+    const forcedCycles={spawn:.35,idle:10.5,run:2.6,aim:4.4,attack:5.05,aimSuper:7.4,super:8.05,gadget:5.05,victory:10.5,defeat:10.5}
     const cycle=manualState?0:(forcedState in forcedCycles?forcedCycles[forcedState]:(performance.now()/1000)%12)
     const moving=cycle>=2&&cycle<7
     const aiming=cycle>=4&&cycle<7
@@ -178,7 +191,7 @@
     monsterPreview.update(dt,performance.now()/1000)
     model.rotation.y=moving?-.45:0
     const manualMoving=manualState==="run"
-    controller.update(dt,{alive:true,moving:manualState?manualMoving:moving,aiming:manualState?manualState==="aim":aiming,superAiming:manualState?manualState==="aimSuper":forcedState==="aimSuper",result:manualState?(["victory","defeat"].includes(manualState)?manualState:null):["victory","defeat"].includes(forcedState)?forcedState:null,speed:(manualState?manualMoving:moving)?300:0,referenceSpeed:285,aimYaw:(manualState?manualState==="aim":aiming)?.95:0,attackPulse,superPulse})
+    controller.update(dt,{alive:true,moving:manualState?manualMoving:moving,aiming:manualState?manualState==="aim":aiming,superAiming:manualState?manualState==="aimSuper":forcedState==="aimSuper",result:manualState?(["victory","defeat"].includes(manualState)?manualState:null):["victory","defeat"].includes(forcedState)?forcedState:null,speed:(manualState?manualMoving:moving)?300:0,referenceSpeed:285,aimYaw:(manualState?manualState==="aim":aiming)?.95:0,attackPulse,superPulse,gadgetPulse})
     controller.setHitFlash(hit)
     hit*=Math.exp(-10*dt)
     renderer.render(scene,camera)
@@ -189,6 +202,14 @@
     clips:instance.animations.map(clip=>clip.name),
     triggerAttack:()=>{attackPulse+=1},
     triggerSuper:()=>{superPulse+=1},
+    triggerGadget:()=>{gadgetPulse+=1},
+    triggerSkill:skill=>{
+      manualState=skill
+      label.textContent=`Skill / ${skill}`
+      if(skill==="attack")attackPulse+=1
+      if(skill==="super")superPulse+=1
+      if(skill==="gadget")gadgetPulse+=1
+    },
   }
   window.render_game_to_text=()=>JSON.stringify({
     hero,
@@ -196,6 +217,7 @@
     state:label.textContent,
     animation:controller.state,
     overlay:controller.overlay,
+    skillPulses:{attack:attackPulse,super:superPulse,gadget:gadgetPulse},
     aimWeight:Number(controller.aimWeight.toFixed(3)),
     actionWeights:Object.fromEntries([...controller.actions.entries()].map(([name,action])=>[name,Number(action.getEffectiveWeight().toFixed(3))])),
     clipTimes:Object.fromEntries([...controller.actions.entries()].map(([name,action])=>[name,Number(action.time.toFixed(3))])),

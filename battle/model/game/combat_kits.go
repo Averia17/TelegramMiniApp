@@ -25,6 +25,7 @@ type ShadowKit struct{}
 
 type ScheduledShot struct {
 	Owner        string
+	CommandID    string
 	Angle        float64
 	SpawnAt      int64
 	Damage       int
@@ -38,17 +39,18 @@ type ScheduledShot struct {
 }
 
 type DamageZone struct {
-	Owner      string
-	X, Y       float64
-	Radius     float64
-	Damage     int
-	TicksLeft  int
-	NextTickAt int64
-	Interval   int64
-	ExpiresAt  int64
-	Kind       string
-	Color      string
-	Group      string
+	Owner        string
+	X, Y         float64
+	Radius       float64
+	Damage       int
+	PercentMaxHP float64
+	TicksLeft    int
+	NextTickAt   int64
+	Interval     int64
+	ExpiresAt    int64
+	Kind         string
+	Color        string
+	Group        string
 }
 
 type PendingMandySuper struct {
@@ -96,6 +98,8 @@ func (gs *GameState) autoAimTarget(owner string) (float64, float64) {
 	if kit := CombatKitFor(source.HeroName); kit != nil {
 		reach = kit.AttackRange()
 	}
+	// Enemy heroes are the intentional target for auto-aim. Monsters are only a
+	// fallback, so a nearby PvP opponent is never silently replaced by a mob.
 	var best *player.Player
 	bestDistance := reach
 	for _, candidate := range gs.Players {
@@ -109,6 +113,23 @@ func (gs *GameState) autoAimTarget(owner string) (float64, float64) {
 	}
 	if best != nil {
 		return screenAngleFromWorld(math.Atan2(best.Y-source.Y, best.X-source.X)), bestDistance
+	}
+	var bestMonsterX, bestMonsterY float64
+	bestMonsterDistance := reach
+	hasMonster := false
+	for _, candidate := range gs.Monsters {
+		if candidate == nil || !candidate.IsAlive() {
+			continue
+		}
+		distance := math.Hypot(candidate.X-source.X, candidate.Y-source.Y)
+		if distance <= bestMonsterDistance {
+			bestMonsterX, bestMonsterY = candidate.X, candidate.Y
+			bestMonsterDistance = distance
+			hasMonster = true
+		}
+	}
+	if hasMonster {
+		return screenAngleFromWorld(math.Atan2(bestMonsterY-source.Y, bestMonsterX-source.X)), bestMonsterDistance
 	}
 	if math.Hypot(source.MoveX, source.MoveY) > .01 {
 		return screenAngleFromWorld(math.Atan2(source.MoveY, source.MoveX)), reach
@@ -143,10 +164,14 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 			continue
 		}
 		damage := source.AttackDmg
-		if focused { damage = int(math.Round(float64(damage) * 1.4)) }
+		if focused {
+			damage = int(math.Round(float64(damage) * 1.4))
+		}
 		if gs.dealPlayerDamage(source, target, damage) > 0 {
 			hits++
-			if focused { target.StunUntil = ts + 500 }
+			if focused {
+				target.StunUntil = ts + 500
+			}
 			if slowUntil > 0 {
 				target.SlowUntil = slowUntil
 			}
@@ -157,7 +182,9 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 			continue
 		}
 		damage := source.AttackDmg
-		if focused { damage = int(math.Round(float64(damage) * 1.4)) }
+		if focused {
+			damage = int(math.Round(float64(damage) * 1.4))
+		}
 		gs.damageMonster(id, target, damage)
 		hits++
 	}
@@ -224,15 +251,15 @@ func (gs *GameState) updatePendingMandySupers() {
 			}
 			along := math.Abs((target.X-cast.X)*math.Cos(cast.Angle) + (target.Y-cast.Y)*math.Sin(cast.Angle))
 			progress := math.Min(1, along/math.Max(1, reach))
-			gs.dealPlayerDamage(source, target, int(math.Round(3200*(1+progress*.6))))
+			gs.dealPlayerDamage(source, target, int(math.Round(140*(1+progress*.6))))
 		}
 		for id, target := range gs.Monsters {
 			if target != nil && target.IsAlive() && insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {
-				gs.damageMonster(id, target, 3200)
+				gs.damageMonster(id, target, 140)
 			}
 		}
 		gs.destroyWallsInBeam(cast.X, cast.Y, cast.Angle, reach, 50)
-		gs.addEffect("mandy_super_wave", cast.X, cast.Y, cast.X+math.Cos(cast.Angle)*reach, cast.Y+math.Sin(cast.Angle)*reach, 50, cast.Angle, reach, 0, "#ffd84d", 3200, 700)
+		gs.addEffect("mandy_super_wave", cast.X, cast.Y, cast.X+math.Cos(cast.Angle)*reach, cast.Y+math.Sin(cast.Angle)*reach, 50, cast.Angle, reach, 0, "#ffd84d", 140, 700)
 	}
 	gs.PendingMandySupers = kept
 }
@@ -256,7 +283,7 @@ func (gs *GameState) destroyWallsInBeam(x, y, angle, reach, halfWidth float64) i
 		across := math.Abs(-dx*sine + dy*cosine)
 		alongExtent := math.Abs(cosine)*halfX + math.Abs(sine)*halfY
 		acrossExtent := math.Abs(sine)*halfX + math.Abs(cosine)*halfY
-		if wall.Type == "destructible" && along+alongExtent >= 0 && along-alongExtent <= reach && across <= halfWidth+acrossExtent {
+		if isDestructibleWall(wall.Type) && along+alongExtent >= 0 && along-alongExtent <= reach && across <= halfWidth+acrossExtent {
 			destroyed++
 			continue
 		}
@@ -285,7 +312,7 @@ func (ShellyKit) Basic(gs *GameState, source *player.Player, _ int64, angle, _ f
 func (ShellyKit) Super(gs *GameState, source *player.Player, _ int64, angle, _ float64) bool {
 	for index := 0; index < 9; index++ {
 		spread := (-20.0 + float64(index)*5.0) * math.Pi / 180
-		shot := gs.spawnAttackBullet(source, angle+spread, "super_shell", 720, 720, 7, 500, 1, false, false)
+		shot := gs.spawnAttackBullet(source, angle+spread, "super_shell", 72, 36, 7, 500, 1, false, false)
 		shot.Knockback = 95
 		shot.DestroyWalls = true
 	}
@@ -299,7 +326,7 @@ func (ColtKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ fl
 	// owner's current transform, so a moving Colt bends/shifts the whole burst.
 	for index := 0; index < 6; index++ {
 		gs.ScheduledShots = append(gs.ScheduledShots, &ScheduledShot{
-			Owner: source.PlayerId, Angle: angle, SpawnAt: ts + int64(index)*50,
+			Owner: source.PlayerId, CommandID: gs.activeCommandID, Angle: angle, SpawnAt: ts + int64(index)*50,
 			Damage: source.AttackDmg, Speed: source.BulletSpd, Size: source.BulletSz,
 			MaxRange: 650, Kind: "colt_round",
 		})
@@ -310,8 +337,8 @@ func (ColtKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ fl
 func (ColtKit) Super(gs *GameState, source *player.Player, ts int64, angle, _ float64) bool {
 	for index := 0; index < 12; index++ {
 		gs.ScheduledShots = append(gs.ScheduledShots, &ScheduledShot{
-			Owner: source.PlayerId, Angle: angle, SpawnAt: ts + int64(index)*50,
-			Damage: 420, Speed: 760, Size: 5, MaxRange: 850, Kind: "colt_super_round",
+			Owner: source.PlayerId, CommandID: gs.activeCommandID, Angle: angle, SpawnAt: ts + int64(index)*50,
+			Damage: 42, Speed: 38, Size: 5, MaxRange: 850, Kind: "colt_super_round",
 			Pierce: 99, DestroyWalls: true,
 		})
 	}
@@ -340,7 +367,7 @@ func (BarleyKit) Super(gs *GameState, source *player.Player, ts int64, angle, ai
 		target := gs.Map.ClampCircle(&geometry.CircleBody{X: centerX + offset.x, Y: centerY + offset.y, Radius: 8})
 		shotAngle := math.Atan2(target.Y-source.Y, target.X-source.X)
 		shotDistance := math.Hypot(target.X-source.X, target.Y-source.Y)
-		shot := gs.spawnAttackBullet(source, shotAngle, "barley_super_bottle", 760, 0, 10, shotDistance, 0, false, false)
+		shot := gs.spawnAttackBullet(source, shotAngle, "barley_super_bottle", 76, 0, 10, shotDistance, 0, false, false)
 		shot.Lobbed = true
 		shot.OriginX, shot.OriginY = source.X, source.Y
 		shot.TargetX, shot.TargetY = target.X, target.Y
@@ -366,7 +393,10 @@ func (gs *GameState) updateScheduledShots() {
 		if source == nil || !source.IsAlive() {
 			continue
 		}
+		previousCommandID, previousSourceID := gs.activeCommandID, gs.activeSourceID
+		gs.activeCommandID, gs.activeSourceID = scheduled.CommandID, scheduled.Owner
 		shot := gs.spawnAttackBullet(source, scheduled.Angle, scheduled.Kind, scheduled.Damage, scheduled.Speed, scheduled.Size, scheduled.MaxRange, 0, false, false)
+		gs.activeCommandID, gs.activeSourceID = previousCommandID, previousSourceID
 		shot.Knockback = scheduled.Knockback
 		shot.Pierce = scheduled.Pierce
 		shot.DestroyWalls = scheduled.DestroyWalls
@@ -384,7 +414,12 @@ func (gs *GameState) updateDamageZones() {
 		}
 		for zone.TicksLeft > 0 && now >= zone.NextTickAt {
 			if zone.Group == "" {
-				gs.radialDamage(zone.Owner, zone.X, zone.Y, zone.Radius, zone.Damage)
+				damage := zone.Damage
+				if zone.PercentMaxHP > 0 {
+					gs.radialDamagePercentMaxHP(zone.Owner, zone.X, zone.Y, zone.Radius, zone.PercentMaxHP)
+				} else {
+					gs.radialDamage(zone.Owner, zone.X, zone.Y, zone.Radius, damage)
+				}
 			} else {
 				hit := damagedByGroup[zone.Group]
 				if hit == nil {
@@ -410,7 +445,7 @@ func (gs *GameState) destroyWallsInSector(x, y, angle, reach, halfArc float64) i
 		centerX, centerY := (wall.MinX+wall.MaxX)/2, (wall.MinY+wall.MaxY)/2
 		dx, dy := centerX-x, centerY-y
 		delta := math.Atan2(math.Sin(math.Atan2(dy, dx)-angle), math.Cos(math.Atan2(dy, dx)-angle))
-		if wall.Type == "destructible" && math.Hypot(dx, dy) <= reach && math.Abs(delta) <= halfArc {
+		if isDestructibleWall(wall.Type) && math.Hypot(dx, dy) <= reach && math.Abs(delta) <= halfArc {
 			destroyed++
 			continue
 		}

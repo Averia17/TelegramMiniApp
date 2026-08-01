@@ -1,21 +1,20 @@
 import {lazy, Suspense, useEffect, useState} from "react"
-import {BrowserRouter, Route, Routes, useParams, useSearchParams} from "react-router-dom"
+import {BrowserRouter, Route, Routes, useLocation, useParams} from "react-router-dom"
 import LandingPage from "./pages/landing-page.jsx"
 import axios from "axios"
 import {API_URL} from "./utils/urls.js"
 import {authenticate} from "./utils/auth.js"
+import {BattleLoading} from "./components/BattleLoading/BattleLoading.jsx"
+import {loadBattleHero} from "./utils/battlePreferences.js"
 
 const BattleGame = lazy(() => import("./components/BattleGame/BattleGame.jsx").then(module => ({default: module.BattleGame})))
 
 const BattlePage = ({id}) => {
   const {roomId} = useParams()
-  const [searchParams] = useSearchParams()
-  const hero = searchParams.get("hero") || window.localStorage.getItem("battle_hero") || ""
-  useEffect(() => {
-    if (hero) window.localStorage.setItem("battle_hero", hero)
-  }, [hero])
+  const location = useLocation()
+  const hero = location.state?.heroName || loadBattleHero(id)
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<BattleLoading progress={32} status="Загружаем арену..." />}>
       <BattleGame playerId={id} roomId={roomId} heroName={hero}/>
     </Suspense>
   )

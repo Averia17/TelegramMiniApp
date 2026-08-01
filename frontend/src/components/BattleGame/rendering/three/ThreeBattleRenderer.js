@@ -9,6 +9,7 @@ import {SceneRoot} from "../SceneRoot"
 import {detectLowQualityDevice} from "../shared/quality"
 import {MonsterRenderer} from "../monsters/MonsterRenderer.js"
 import {PickupRenderer} from "../map/PickupRenderer.js"
+import {endBattlePerformance, startBattlePerformance} from "../shared/performance.js"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 
@@ -34,6 +35,7 @@ export class ThreeBattleRenderer {
     this.effects = new EffectRenderer(this.effectRoot)
     this.aim = new AimRenderer(this.aimRoot)
     this.state = null
+    this.mapState = null
     this.localPlayerId = null
     this.mapRenderer = new MapRenderer(this.mapRoot)
     this.time = 0
@@ -60,8 +62,13 @@ export class ThreeBattleRenderer {
 
   setState(state) {
     if (!state) return
+    const perfToken = startBattlePerformance("renderer.setState")
     this.state = state
-    this.mapRenderer.sync(state.map)
+    if (state.map !== this.mapState) {
+      this.mapState = state.map
+      this.mapRenderer.sync(state.map)
+    }
+    if (state.map) this.mapRenderer.syncIsland(state.game, state.map.width, state.map.height)
     const active = new Set()
     Object.entries(state.players || {}).forEach(([id, player]) => {
       if (!isAlivePlayerState(player)) return
@@ -86,9 +93,11 @@ export class ThreeBattleRenderer {
       color:"#8D52D9",life:1,maxLife:1,hp:totem.hp,maxHp:totem.maxHp,
     }))
     this.effects.sync([...(state.effects || []), ...totemEffects])
+    endBattlePerformance(perfToken)
   }
 
   render() {
+    const perfToken = startBattlePerformance("renderer.render")
     const now=performance.now();const delta=clamp((now-this.lastRenderAt)/1000,1/240,.05);this.lastRenderAt=now;this.time+=delta
     const walls=this.state?.map?.walls||[]
     this.players.forEach((view,id)=>view.update(delta,this.time,(id===this.localPlayerId||Boolean(this.state?.players?.[id]?.team&&this.state.players[id].team===this.state?.players?.[this.localPlayerId]?.team))&&isInsideBush(view.state,walls)))
@@ -96,7 +105,7 @@ export class ThreeBattleRenderer {
     this.projectiles.update(delta,this.time)
     this.monsters.update(delta,this.time)
     this.pickups.update(delta)
-    this.aim.update(this.state?.players?.[this.localPlayerId])
+    this.aim.update(this.state?.players?.[this.localPlayerId], delta)
     const local=this.players.get(this.localPlayerId)
     const map=this.state?.map||{width:1024,height:768}
     this.cameraRig.follow(local, map, delta)
@@ -107,6 +116,7 @@ export class ThreeBattleRenderer {
       this.fps=Math.round(this.performanceFrames*1000/elapsed);this.performanceFrames=0;this.performanceWindowAt=now
       if(this.fps<50&&!this.lowQuality)this.enableLowQuality()
     }
+    endBattlePerformance(perfToken)
   }
 
   enableLowQuality() {

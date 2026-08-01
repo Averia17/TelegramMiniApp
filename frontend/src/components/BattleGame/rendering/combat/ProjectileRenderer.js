@@ -2,6 +2,7 @@ import * as THREE from "three"
 import {WORLD_SCALE, worldToScene} from "../shared/coordinates.js"
 import {disposeObjectTree} from "../shared/disposal.js"
 import {createContactShadow, flatMaterial} from "../shared/materials.js"
+import {endBattlePerformance, startBattlePerformance} from "../shared/performance.js"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 
@@ -174,6 +175,7 @@ export class ProjectileRenderer {
   }
 
   sync(projectiles) {
+    const perfToken = startBattlePerformance("projectiles.sync")
     const active = new Set()
     projectiles.forEach((projectile, index) => {
       const id = String(projectile.id ?? `${projectile.playerId}:${index}`)
@@ -202,6 +204,7 @@ export class ProjectileRenderer {
       disposeObjectTree(mesh.userData.shadow)
       this.meshes.delete(id)
     })
+    endBattlePerformance(perfToken)
   }
 
   create(projectile) {

@@ -18,27 +18,54 @@ type ServerMessage struct {
 }
 
 type GameStateJSON struct {
-	State       string `json:"state"`
-	RoomName    string `json:"roomName"`
-	MapName     string `json:"mapName"`
-	MaxPlayers  int    `json:"maxPlayers"`
-	Mode        string `json:"mode"`
-	AlivePlayers int   `json:"alivePlayers"`
-	LobbyEndsAt int64  `json:"lobbyEndsAt,omitempty"`
-	GameEndsAt  int64  `json:"gameEndsAt,omitempty"`
+	State             string  `json:"state"`
+	RoomName          string  `json:"roomName"`
+	MapName           string  `json:"mapName"`
+	IslandName        string  `json:"islandName,omitempty"`
+	MaxPlayers        int     `json:"maxPlayers"`
+	Mode              string  `json:"mode"`
+	AlivePlayers      int     `json:"alivePlayers"`
+	LobbyEndsAt       int64   `json:"lobbyEndsAt,omitempty"`
+	GameEndsAt        int64   `json:"gameEndsAt,omitempty"`
+	Phase             string  `json:"phase,omitempty"`
+	PhaseStartedAt    int64   `json:"phaseStartedAt,omitempty"`
+	PhaseEndsAt       int64   `json:"phaseEndsAt,omitempty"`
+	IslandEvent       string  `json:"islandEvent,omitempty"`
+	StormRadius       float64 `json:"stormRadius,omitempty"`
+	StormDamage       int     `json:"stormDamage,omitempty"`
+	BeaconOpen        bool    `json:"beaconOpen,omitempty"`
+	BeaconHolder      string  `json:"beaconHolder,omitempty"`
+	BeaconProgress    float64 `json:"beaconProgress,omitempty"`
+	SuddenDeath       bool    `json:"suddenDeath,omitempty"`
+	SuddenDeathDamage int     `json:"suddenDeathDamage,omitempty"`
 }
 
 type StateUpdate struct {
-	Type     string                 `json:"type"`
-	Ts       int64                  `json:"ts"`
-	Game     GameStateJSON          `json:"game"`
-	Map      MapJSON                `json:"map"`
-	Players  map[string]PlayerJSON  `json:"players"`
-	Monsters map[string]MonsterJSON `json:"monsters"`
-	Bullets  []BulletJSON           `json:"bullets"`
-	Props    []PropJSON             `json:"props"`
-	Effects  []EffectJSON           `json:"effects,omitempty"`
-	Totems   []TotemJSON            `json:"totems,omitempty"`
+	Type         string                 `json:"type"`
+	Ts           int64                  `json:"ts"`
+	Game         GameStateJSON          `json:"game"`
+	Map          MapJSON                `json:"map"`
+	Players      map[string]PlayerJSON  `json:"players"`
+	Monsters     map[string]MonsterJSON `json:"monsters"`
+	Bullets      []BulletJSON           `json:"bullets"`
+	Props        []PropJSON             `json:"props"`
+	Effects      []EffectJSON           `json:"effects,omitempty"`
+	Totems       []TotemJSON            `json:"totems,omitempty"`
+	CombatEvents []CombatEventJSON      `json:"combatEvents,omitempty"`
+}
+
+type CombatEventJSON struct {
+	ID           uint64 `json:"id"`
+	Ts           int64  `json:"ts"`
+	Kind         string `json:"kind"`
+	CommandID    string `json:"commandId,omitempty"`
+	SourceID     string `json:"sourceId,omitempty"`
+	TargetType   string `json:"targetType,omitempty"`
+	TargetID     string `json:"targetId,omitempty"`
+	ProjectileID uint64 `json:"projectileId,omitempty"`
+	Damage       int    `json:"damage,omitempty"`
+	Accepted     bool   `json:"accepted,omitempty"`
+	Resolved     bool   `json:"resolved,omitempty"`
 }
 
 type TotemJSON struct {
@@ -81,6 +108,7 @@ type PlayerJSON struct {
 	MoveX            float64            `json:"moveX"`
 	MoveY            float64            `json:"moveY"`
 	Speed            float64            `json:"speed"`
+	AttackDamage     int                `json:"attackDamage"`
 	Ack              int64              `json:"ack"`
 	Hero             string             `json:"hero"`
 	AttackType       string             `json:"attackType,omitempty"`
@@ -96,6 +124,7 @@ type PlayerJSON struct {
 	Heat             int                `json:"heat,omitempty"`
 	AttackPulse      int                `json:"attackPulse,omitempty"`
 	SuperPulse       int                `json:"superPulse,omitempty"`
+	GadgetPulse      int                `json:"gadgetPulse,omitempty"`
 	FocusCharge      int                `json:"focusCharge,omitempty"`
 	Rage             int                `json:"rage,omitempty"`
 	SuppressedRage   int                `json:"suppressedRage,omitempty"`
@@ -124,10 +153,17 @@ type PlayerJSON struct {
 	PowerCores       int                `json:"powerCores,omitempty"`
 	DamageMultiplier float64            `json:"damageMultiplier,omitempty"`
 	Poisoned         bool               `json:"poisoned,omitempty"`
-	Cooldowns        map[string]float64 `json:"cooldowns,omitempty"`
+	Cooldowns        CooldownsJSON      `json:"cooldowns"`
 	AbilityAck       string             `json:"abilityAck,omitempty"`
 	AbilityAccepted  bool               `json:"abilityAccepted,omitempty"`
 	RegenRate        float64            `json:"regenRate,omitempty"`
+}
+
+// CooldownsJSON keeps the public object shape while avoiding a per-snapshot
+// map allocation and map encoding for the two fixed ability slots.
+type CooldownsJSON struct {
+	Primary   float64 `json:"primary"`
+	Secondary float64 `json:"secondary"`
 }
 
 type MonsterJSON struct {
@@ -147,10 +183,12 @@ type BulletJSON struct {
 	Z         float64 `json:"z,omitempty"`
 	Radius    float64 `json:"radius"`
 	PlayerId  string  `json:"playerId"`
+	CommandID string  `json:"commandId,omitempty"`
 	Team      string  `json:"team"`
 	Rotation  float64 `json:"rotation"`
 	Color     string  `json:"color"`
 	Kind      string  `json:"kind,omitempty"`
+	Damage    int     `json:"damage,omitempty"`
 	Speed     float64 `json:"speed,omitempty"`
 	MaxRange  float64 `json:"maxRange,omitempty"`
 	Travelled float64 `json:"travelled,omitempty"`
@@ -212,8 +250,8 @@ func NewServerMessage(msgType string, params interface{}) *ServerMessage {
 	}
 }
 
-func NewStateUpdate(g *GameStateJSON, m *MapJSON, players map[string]PlayerJSON, monsters map[string]MonsterJSON, bullets []BulletJSON, props []PropJSON, effects []EffectJSON) *StateUpdate {
-	return &StateUpdate{
+func NewStateUpdate(g *GameStateJSON, m *MapJSON, players map[string]PlayerJSON, monsters map[string]MonsterJSON, bullets []BulletJSON, props []PropJSON, effects []EffectJSON, combatEvents ...[]CombatEventJSON) *StateUpdate {
+	state := &StateUpdate{
 		Type:     "state",
 		Ts:       time.Now().UnixMilli(),
 		Game:     *g,
@@ -224,4 +262,8 @@ func NewStateUpdate(g *GameStateJSON, m *MapJSON, players map[string]PlayerJSON,
 		Props:    props,
 		Effects:  effects,
 	}
+	if len(combatEvents) > 0 {
+		state.CombatEvents = combatEvents[0]
+	}
+	return state
 }

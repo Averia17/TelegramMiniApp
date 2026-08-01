@@ -12,6 +12,12 @@ const propColors = {
   crystal: 0x7653dc,
   bones: 0xe7d9b7,
   destructible: 0xd6854d,
+  tree: 0x4f352b,
+  dead_tree: 0x77736a,
+  shipwreck: 0x6f4b35,
+  altar_three_moons: 0x5079b4,
+  sacrificial_stone: 0x8e394c,
+  menhir: 0x626879,
 }
 
 export const createProp = (wall, index, waterTexture) => {
@@ -33,7 +39,7 @@ export const createProp = (wall, index, waterTexture) => {
     return group
   }
 
-  const height = wall.type === "fence" ? 0.9 : wall.type === "crates" ? 1.65 : 2.15
+  const height = wall.type === "fence" ? 0.9 : wall.type === "crates" ? 1.65 : wall.type === "tree" ? 2.8 : wall.type === "shipwreck" ? 1.9 : wall.type === "menhir" ? 1.45 : 2.15
   const color = propColors[wall.type] || (index % 5 === 0 ? 0x9853a8 : 0xd2764f)
   const block = createColoredBox(width, height, depth, color)
   block.position.y = height / 2

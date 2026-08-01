@@ -21,9 +21,9 @@ const (
 	MonsterSight             = 192.0
 	MonsterChaseLeash        = 320.0
 	MonsterLostTargetDelay   = 2500
-	MonsterLives             = 2600
-	EliteMonsterLives        = 3800
-	MonsterAttackDamage      = 250
+	MonsterLives             = 260
+	EliteMonsterLives        = 380
+	MonsterAttackDamage      = 25
 	MonsterIdleDurationMin   = 1000
 	MonsterIdleDurationMax   = 3000
 	MonsterPatrolDurationMin = 1000

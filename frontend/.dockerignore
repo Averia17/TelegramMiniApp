@@ -1,1 +1,9 @@
 node_modules/
+dist/
+tmp/
+output/
+artifacts/
+assets-source/
+test/
+test-results/
+.playwright-cli/

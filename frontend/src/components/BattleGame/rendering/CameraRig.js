@@ -51,9 +51,14 @@ export class CameraRig {
       map.width,
       map.height,
     ))
+    // A dead local player is removed from the actor scene, but the camera must
+    // not switch to the map centre (the beacon lives there). Hold the last
+    // tracked hero position until the result overlay takes over.
     const desired = player
       ? worldToScene(player.x, player.y)
-      : worldToScene(map.width / 2, map.height / 2)
+      : this.initialized
+        ? this.target.clone()
+        : worldToScene(map.width / 2, map.height / 2)
     const halfX = (this.camera.right - this.camera.left) / 2 / WORLD_SCALE
     const halfY = (this.camera.top - this.camera.bottom) / 2 / Math.sin(CAMERA_ANGLE) / WORLD_SCALE
     desired.x = clamp(desired.x, Math.min(map.width / 2, halfX) * WORLD_SCALE, Math.max(map.width / 2, map.width - halfX) * WORLD_SCALE)

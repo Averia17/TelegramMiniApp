@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "harness": "http://localhost/test/glb-hero-harness.html?hero=",
+  "matrix": {
+    "heroes": 8,
+    "events_per_hero": 11,
+    "total": 88,
+    "passed": 88,
+    "fallback_events": 0,
+    "unexpected_browser_issues": 0,
+    "resolved_hero_assertions": true,
+    "gadget_clip_assertions": true,
+    "cold_load_retries": 0,
+    "backend_status": 200,
+    "live_matrix": true
+  },
+  "runtime_contract": {
+    "full_body_super": true,
+    "authored_root_motion_sanitization": true,
+    "canonical_glb_per_hero": true,
+    "frame_by_frame_blender_authoring": true
+  },
+  "blender_frame_audit": {
+    "scenes": 88,
+    "authored_frames": 3581,
+    "keyframes": 164214,
+    "finite_deformation": true,
+    "max_world_extent": 6.755,
+    "failures": 0
+  },
+  "events": [
+    "idle",
+    "run",
+    "spawn",
+    "attack",
+    "super",
+    "gadget",
+    "hit",
+    "victory",
+    "defeat",
+    "aim",
+    "aimSuper"
+  ],
+  "heroes": {
+    "Shadow": {"passed": 11, "clips": 11},
+    "Mandy": {"passed": 11, "clips": 11},
+    "Fairy Mina": {"passed": 11, "clips": 11},
+    "Brock Zeus": {"passed": 11, "clips": 11},
+    "Kaze": {"passed": 11, "clips": 11},
+    "Wukong Mico": {"passed": 11, "clips": 11},
+    "Damian": {"passed": 11, "clips": 11},
+    "Persephone Lumi": {"passed": 11, "clips": 11}
+  },
+  "expected_environment_warnings": [
+    "direct Vite port 4173 is not the Docker public route; use localhost:80 so nginx can resolve battle",
+    "headless Chromium may report a WebGL GPU stall"
+  ],
+  "screenshots": [
+    "frontend/tmp/qa-needle-attack.png",
+    "frontend/tmp/qa-mandy-attack.png",
+    "frontend/tmp/qa-fairy-mina-attack.png",
+    "frontend/tmp/qa-brock-zeus-attack.png",
+    "frontend/tmp/qa-kaze-attack.png",
+    "frontend/tmp/qa-wukong-mico-attack.png",
+    "frontend/tmp/qa-damian-attack.png",
+    "frontend/tmp/qa-persephone-lumi-attack.png"
+  ]
+}

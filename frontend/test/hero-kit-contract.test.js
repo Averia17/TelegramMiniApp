@@ -14,6 +14,14 @@ test("every hero has a complete normalized three-ability contract", () => {
   }
 })
 
+test("hero combat stats use integer values", () => {
+  for (const hero of HEROES_CONFIG) {
+    for (const field of ["maxLives", "speed", "attackDamage", "bulletSpeed"]) {
+      if (hero[field] !== undefined) assert.equal(Number.isInteger(hero[field]), true, `${hero.name} ${field} must be an integer`)
+    }
+  }
+})
+
 test("server hero kit payload takes precedence over local fallback", () => {
   const hero = normalizeHeroConfig({name: "Kaze", kit: {
     basic: {id: "server-basic", name: "Server basic", description: "authoritative"},

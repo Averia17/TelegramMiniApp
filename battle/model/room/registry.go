@@ -5,6 +5,7 @@ import (
 	"battle/model/player"
 	"battle/provider"
 	"sync"
+	"time"
 )
 
 var rooms = make(map[string]*Room)
@@ -19,23 +20,25 @@ func GetOrCreateRoom(roomId, roomName, mapName, mode string, maxPlayers int) *Ro
 	}
 
 	r := &Room{
-		Id:         roomId,
-		Name:       roomName,
-		MapName:    mapName,
-		Mode:       mode,
-		MaxPlayers: maxPlayers,
-		Clients:    make(map[string]*Client),
-		Broadcast:  make(chan []byte, 256),
-		Register:   make(chan *Client),
-		Unregister: make(chan *Client),
+		Id:           roomId,
+		Name:         roomName,
+		MapName:      mapName,
+		Mode:         mode,
+		MaxPlayers:   maxPlayers,
+		Clients:      make(map[string]*Client),
+		Disconnected: make(map[string]time.Time),
+		Broadcast:    make(chan []byte, 256),
+		Register:     make(chan *Client),
+		Unregister:   make(chan *Client),
 	}
 
 	gs := &game.GameState{
-		RoomName:   roomName,
-		MapName:    mapName,
-		MaxPlayers: maxPlayers,
-		Mode:       game.GameMode(mode),
-		Broadcast:  r.BroadcastMsg,
+		RoomName:     roomName,
+		MapName:      mapName,
+		MaxPlayers:   maxPlayers,
+		Mode:         game.GameMode(mode),
+		Broadcast:    r.BroadcastMsg,
+		SendToPlayer: r.SendToPlayer,
 		OnGameEnd: func(players map[string]*player.Player, winner string, duration int64) {
 			if Kafka == nil {
 				return

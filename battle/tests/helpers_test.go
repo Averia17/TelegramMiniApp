@@ -4,21 +4,38 @@ import (
 	"battle/handler"
 	mroom "battle/model/room"
 	"battle/provider"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
 
+const testAuthSecret = "test-auth-secret-with-at-least-32-characters"
+
+var testUserSequence int64 = 9_000_000_000
+
+func testAccessToken(userID int64) string {
+	payload, _ := json.Marshal(map[string]int64{"sub": userID, "exp": time.Now().Add(time.Minute).Unix()})
+	encoded := base64.RawURLEncoding.EncodeToString(payload)
+	mac := hmac.New(sha256.New, []byte(testAuthSecret))
+	_, _ = mac.Write([]byte(encoded))
+	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
 func setupTest(t *testing.T) (*httptest.Server, *provider.MockStore) {
 	t.Helper()
 
 	store := provider.NewMockStore()
+	t.Setenv("APP_AUTH_SECRET", testAuthSecret)
 	mroom.SetStore(store)
 	mroom.ResetRooms()
 
@@ -42,6 +59,11 @@ func wsDial(t *testing.T, ts *httptest.Server) *websocket.Conn {
 	conn, _, err := dialer.Dial(wsURL, nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
+	}
+	userID := atomic.AddInt64(&testUserSequence, 1)
+	if err := conn.WriteJSON(map[string]string{"type": "auth", "token": testAccessToken(userID)}); err != nil {
+		conn.Close()
+		t.Fatalf("auth: %v", err)
 	}
 	t.Cleanup(func() { conn.Close() })
 	return conn

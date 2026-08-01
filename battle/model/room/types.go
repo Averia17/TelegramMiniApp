@@ -23,15 +23,16 @@ type Client struct {
 }
 
 type Room struct {
-	Id         string
-	Name       string
-	MapName    string
-	Mode       string
-	MaxPlayers int
-	Clients    map[string]*Client
-	State      *game.GameState
-	Broadcast  chan []byte
-	Register   chan *Client
-	Unregister chan *Client
-	mu         sync.RWMutex
+	Id           string
+	Name         string
+	MapName      string
+	Mode         string
+	MaxPlayers   int
+	Clients      map[string]*Client
+	Disconnected map[string]time.Time
+	State        *game.GameState
+	Broadcast    chan []byte
+	Register     chan *Client
+	Unregister   chan *Client
+	mu           sync.RWMutex
 }

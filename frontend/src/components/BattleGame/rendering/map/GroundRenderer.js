@@ -30,21 +30,29 @@ export class GroundRenderer {
   constructor(root) {
     this.root = root
     this.mesh = null
+    this.theme = "default"
   }
 
-  sync(width, height) {
+  sync(width, height, theme = this.theme) {
     const sceneWidth = width * WORLD_SCALE
     const sceneHeight = height * WORLD_SCALE
-    const size = `${sceneWidth}:${sceneHeight}`
+    const size = `${sceneWidth}:${sceneHeight}:${theme}`
     if (this.mesh?.userData.size === size) return
     if (this.mesh) {
       this.root.remove(this.mesh)
       disposeObjectTree(this.mesh)
     }
-    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(sceneWidth, sceneHeight), flatMaterial(0xe89a61))
+    this.theme = theme
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(sceneWidth, sceneHeight), flatMaterial(theme === "island" ? 0x1ca8bd : 0xe89a61))
     this.mesh.rotation.x = -Math.PI / 2
     this.mesh.position.set(sceneWidth / 2, 0, sceneHeight / 2)
     this.mesh.userData.size = size
     this.root.add(this.mesh)
+  }
+
+  setTheme(theme) {
+    if (!this.mesh || this.theme === theme) return
+    this.theme = theme
+    this.mesh.material.color.setHex(theme === "island" ? 0x1ca8bd : 0xe89a61)
   }
 }

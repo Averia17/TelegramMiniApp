@@ -8,6 +8,7 @@
     "build": "vite build",
     "test": "node --test",
     "validate:heroes": "node scripts/validate-hero-glb.mjs",
+    "validate:hero-catalog": "python ../tools/validate_hero_catalog.py",
     "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },

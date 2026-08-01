@@ -6,6 +6,7 @@ files and never creates animation keys.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -24,11 +25,47 @@ HEROES = (
     "persephone-lumi",
     "wukong-mico",
 )
+EVENT_ACTIONS = {
+    "idle": "idle",
+    "run": "run",
+    "attack": "Attack",
+    "super": "super",
+    "aim": "Aim",
+    "aim-super": "AimSuper",
+    "hit": "hit",
+    "death": "death",
+    "spawn": "Spawn",
+    "victory": "Victory",
+    "gadget": "Gadget",
+}
 
 
-def actions_from_scene(path: Path, names: set[str]) -> None:
+def remove_actions(names: set[str]) -> None:
+    for name in names:
+        existing = bpy.data.actions.get(name)
+        if existing is not None:
+            bpy.data.actions.remove(existing)
+
+
+def action_from_scene(path: Path, canonical_name: str) -> None:
     with bpy.data.libraries.load(os.fspath(path), link=False) as (source, target):
-        target.actions = [name for name in source.actions if name in names]
+        candidate = next(
+            (
+                name
+                for name in source.actions
+                if name.casefold() == canonical_name.casefold()
+                or name.casefold().split(".")[0] == canonical_name.casefold()
+            ),
+            None,
+        )
+        target.actions = [candidate] if candidate else []
+    imported = next((action for action in target.actions if action is not None), None)
+    if imported is None:
+        raise RuntimeError(f"{path}: no authored Action matching {canonical_name!r}")
+    for action in list(bpy.data.actions):
+        if action != imported and action.name.casefold() == canonical_name.casefold():
+            bpy.data.actions.remove(action)
+    imported.name = canonical_name
 
 
 def export(hero: str) -> None:
@@ -39,30 +76,21 @@ def export(hero: str) -> None:
     )
     if armature is None:
         raise RuntimeError(f"{hero}: no armature in master")
-    for clip in (
-        "idle",
-        "run",
-        "aim",
-        "aim-super",
-        "attack",
-        "super",
-        "spawn",
-        "victory",
-        "defeat",
-    ):
-        source = hero_dir / "animations" / f"{clip}.blend"
-        if source.exists():
-            actions_from_scene(source, {clip.capitalize()})
-    for clip in ("attack", "super"):
+    # Every runtime event is sourced from its focused Blender scene. The
+    # exporter only assembles and serializes authored Actions; it never makes
+    # choreography or inserts animation keys.
+    for clip, canonical_name in EVENT_ACTIONS.items():
         source = hero_dir / "scenes" / f"{clip}.blend"
-        if source.exists():
-            actions_from_scene(source, {clip.capitalize()})
+        if not source.exists():
+            raise RuntimeError(f"{hero}: missing focused event scene {source}")
+        remove_actions({canonical_name})
+        action_from_scene(source, canonical_name)
     armature.animation_data_create()
-    if bpy.data.actions.get("Idle"):
-        armature.animation_data.action = bpy.data.actions["Idle"]
+    if bpy.data.actions.get("idle"):
+        armature.animation_data.action = bpy.data.actions["idle"]
     OUTPUT.mkdir(parents=True, exist_ok=True)
     out = OUTPUT / f"{hero}_base.glb"
-    temp_out = OUTPUT / f"{hero}_base_rebuilt.glb"
+    temp_out = OUTPUT / f".{hero}_base.tmp.glb"
     bpy.ops.export_scene.gltf(
         filepath=os.fspath(temp_out),
         export_format="GLB",
@@ -72,11 +100,31 @@ def export(hero: str) -> None:
         export_yup=True,
         export_extras=True,
     )
-    print(f"EXPORTED {hero}: {temp_out} (source runtime GLB was not overwritten)")
+    try:
+        temp_out.replace(out)
+        print(f"EXPORTED {hero}: {out}")
+    except PermissionError:
+        # A running dev server/antivirus can hold the previous canonical file
+        # open on Windows. Leave the verified temp beside it; the caller can
+        # finalize the atomic swap after Blender exits.
+        print(f"EXPORTED {hero}: {temp_out} (finalize after Blender exits)")
 
 
 def main() -> None:
-    for hero in HEROES:
+    manifest = json.loads(
+        (Path(__file__).with_name("hero_animation_scene_manifest.json")).read_text(
+            encoding="utf-8"
+        )
+    )
+    if tuple(manifest["heroes"]) != HEROES:
+        raise RuntimeError("manifest hero order does not match exporter hero order")
+    requested_hero = os.environ.get("HERO_FILTER")
+    heroes = [hero for hero in HEROES if not requested_hero or hero == requested_hero]
+    if requested_hero and not heroes:
+        raise RuntimeError(
+            f"HERO_FILTER={requested_hero!r} is not in the runtime hero list"
+        )
+    for hero in heroes:
         export(hero)
 
 

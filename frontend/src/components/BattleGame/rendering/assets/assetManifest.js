@@ -6,6 +6,7 @@ const clips = Object.freeze({
   aimSuper: "AimSuper",
   attack: "Attack",
   super: "super",
+  gadget: "Gadget",
   spawn: "Spawn",
   victory: "Victory",
   defeat: "death",
@@ -80,8 +81,21 @@ export const ENVIRONMENT_ASSETS = Object.freeze({
 
 export const getHeroAsset = name => HERO_ASSETS[name] || null
 
+const HERO_QUERY_ALIASES = Object.freeze({
+  shadow: "Shadow",
+  needle: "Shadow",
+  mandy: "Mandy",
+  "fairy-mina": "Fairy Mina",
+  "brock-zeus": "Brock Zeus",
+  kaze: "Kaze",
+  "wukong-mico": "Wukong Mico",
+  damian: "Damian",
+  "persephone-lumi": "Persephone Lumi",
+})
+
 export const resolveHeroName = name => {
-  return HERO_ASSETS[name] ? name : "Mandy"
+  if (HERO_ASSETS[name]) return name
+  return HERO_QUERY_ALIASES[String(name || "").trim().toLowerCase()] || "Mandy"
 }
 
 const visualsByType = Object.freeze({

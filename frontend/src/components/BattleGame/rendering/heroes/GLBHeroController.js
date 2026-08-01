@@ -96,6 +96,28 @@ const upperBodyClip = (clip, upperNames) => {
   return tracks.length ? new THREE.AnimationClip(`${clip.name}:upper`, clip.duration, tracks) : clip
 }
 
+const sanitizeAuthoredClip = (clip, root) => {
+  const tracks = clip.tracks.filter(track => {
+    const nodeName = trackNodeName(track.name)
+    const node = root.getObjectByName(nodeName)
+    const unsafeRoot = node && /(root|hips?|pelvis)/i.test(nodeName) && node.position.length() > 10
+    if (unsafeRoot) return false
+    if (!track.name.endsWith(".position")) return true
+    const maxPositionValue = Math.max(...track.values.map(value => Math.abs(value)))
+    return maxPositionValue <= 20
+  })
+  return tracks.length === clip.tracks.length
+    ? clip
+    : new THREE.AnimationClip(`${clip.name}:sanitized`, clip.duration, tracks)
+}
+
+const fullBodySuperClip = clip => {
+  const tracks = clip.tracks.filter(track => !/(root|hips?|pelvis)/i.test(trackNodeName(track.name)))
+  return tracks.length === clip.tracks.length
+    ? clip
+    : new THREE.AnimationClip(`${clip.name}:full-body`, clip.duration, tracks)
+}
+
 const configureOneShot = (action, holdFinalPose = false) => {
   action.setLoop(THREE.LoopOnce, 1)
   action.clampWhenFinished = holdFinalPose
@@ -157,6 +179,7 @@ export class GLBHeroController {
     this.overlay = null
     this.lastAttackPulse = options.attackPulse
     this.lastSuperPulse = options.superPulse
+    this.lastGadgetPulse = options.gadgetPulse
     this.lastSpawnPulse = options.spawnPulse
     this.heroName = options.heroName || ""
     this.previewLayout = Boolean(options.previewLayout)
@@ -326,11 +349,14 @@ export class GLBHeroController {
     for (const [semanticName, clipName] of Object.entries(clipNames)) {
       const source = THREE.AnimationClip.findByName(clips, clipName)
       if (!source) continue
-      const clip = ["aim", "super"].includes(semanticName) && !(semanticName === "super" && options.fullBodySuper)
-        ? upperBodyClip(source, this.rig.upperNames)
-        : source
+      const sanitizedSource = sanitizeAuthoredClip(source, this.root)
+      const clip = semanticName === "super" && options.fullBodySuper
+        ? fullBodySuperClip(sanitizedSource)
+        : ["aim", "super"].includes(semanticName)
+          ? upperBodyClip(sanitizedSource, this.rig.upperNames)
+          : sanitizedSource
       const action = this.mixer.clipAction(clip)
-      if (["attack", "super", "spawn", "hit", "defeat"].includes(semanticName)) {
+      if (["attack", "super", "gadget", "spawn", "hit", "defeat"].includes(semanticName)) {
         configureOneShot(action, semanticName === "spawn")
       }
       this.actions.set(semanticName, action)
@@ -399,8 +425,15 @@ export class GLBHeroController {
     return true
   }
 
+  clearOverlay() {
+    const previous = this.actions.get(this.overlay)
+    if (previous) previous.stop().setEffectiveWeight(0)
+    this.overlay = null
+  }
+
   playOutcome(name, fadeSeconds = LOCOMOTION_FADE) {
     if (!this.actions.has(name)) return this.playSafe(name, "idle", fadeSeconds)
+    this.clearOverlay()
     const action = this.actions.get(name)
     action.setLoop(THREE.LoopRepeat, Infinity)
     action.clampWhenFinished = false
@@ -408,6 +441,7 @@ export class GLBHeroController {
   }
 
   playSpawn() {
+    this.clearOverlay()
     this.root.visible = true
     this.spawnElapsed = 0
     const action = this.actions.get("spawn")
@@ -440,7 +474,7 @@ export class GLBHeroController {
     if (input.alive === false) {
       this.root.visible = true
       if (this.state !== "dead") {
-        this.overlay = null
+        this.clearOverlay()
         this.transitionLocomotion("defeat", 0.06)
         this.state = "dead"
       }
@@ -454,7 +488,9 @@ export class GLBHeroController {
     }
     this.lastSpawnPulse = input.spawnPulse
 
-    if (this.lastSuperPulse !== input.superPulse && input.superPulse !== undefined) {
+    if (this.lastGadgetPulse !== input.gadgetPulse && input.gadgetPulse !== undefined) {
+      this.playSafe("gadget")
+    } else if (this.lastSuperPulse !== input.superPulse && input.superPulse !== undefined) {
       this.playSafe("super")
     } else if (this.lastAttackPulse !== input.attackPulse && input.attackPulse !== undefined) {
       this.playSafe("attack")
@@ -462,6 +498,7 @@ export class GLBHeroController {
     }
     this.lastAttackPulse = input.attackPulse
     this.lastSuperPulse = input.superPulse
+    this.lastGadgetPulse = input.gadgetPulse
     if (this.cloud && this.cloudBasePosition) {
       this.attackVisualRemaining = Math.max(0, this.attackVisualRemaining - deltaSeconds)
       const attacking = this.overlay === "attack" || this.attackVisualRemaining > 0

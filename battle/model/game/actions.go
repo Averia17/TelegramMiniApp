@@ -21,10 +21,12 @@ type ShootValue struct {
 	Angle       float64 `json:"angle"`
 	AimDistance float64 `json:"aimDistance,omitempty"`
 	AutoAim     bool    `json:"autoAim,omitempty"`
+	ClientID    string  `json:"clientId,omitempty"`
 }
 
 type AbilityValue struct {
-	Slot string `json:"slot"`
+	Slot     string `json:"slot"`
+	TargetID string `json:"targetId,omitempty"`
 	// ClientID makes ability commands idempotently observable by prediction.
 	// It is echoed back in PlayerJSON once the server has accepted or rejected
 	// the command, so the client never guesses whether a cast happened.

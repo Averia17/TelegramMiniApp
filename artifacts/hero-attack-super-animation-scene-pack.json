@@ -1,0 +1,178 @@
+[
+  {
+    "hero": "brock-zeus",
+    "clip": "attack",
+    "action": "Attack",
+    "frame_start": 1,
+    "frame_end": 24,
+    "fps": 30,
+    "authored_keyframes": 24,
+    "touched_bones": 14,
+    "file": "frontend\\assets-source\\heroes\\brock-zeus\\scenes\\attack.blend"
+  },
+  {
+    "hero": "brock-zeus",
+    "clip": "super",
+    "action": "super",
+    "frame_start": 1,
+    "frame_end": 40,
+    "fps": 30,
+    "authored_keyframes": 40,
+    "touched_bones": 14,
+    "file": "frontend\\assets-source\\heroes\\brock-zeus\\scenes\\super.blend"
+  },
+  {
+    "hero": "damian",
+    "clip": "attack",
+    "action": "Attack",
+    "frame_start": 1,
+    "frame_end": 28,
+    "fps": 30,
+    "authored_keyframes": 28,
+    "touched_bones": 60,
+    "file": "frontend\\assets-source\\heroes\\damian\\scenes\\attack.blend"
+  },
+  {
+    "hero": "damian",
+    "clip": "super",
+    "action": "super",
+    "frame_start": 1,
+    "frame_end": 45,
+    "fps": 30,
+    "authored_keyframes": 45,
+    "touched_bones": 60,
+    "file": "frontend\\assets-source\\heroes\\damian\\scenes\\super.blend"
+  },
+  {
+    "hero": "fairy-mina",
+    "clip": "attack",
+    "action": "Attack",
+    "frame_start": 1,
+    "frame_end": 24,
+    "fps": 30,
+    "authored_keyframes": 24,
+    "touched_bones": 49,
+    "file": "frontend\\assets-source\\heroes\\fairy-mina\\scenes\\attack.blend"
+  },
+  {
+    "hero": "fairy-mina",
+    "clip": "super",
+    "action": "super",
+    "frame_start": 1,
+    "frame_end": 48,
+    "fps": 30,
+    "authored_keyframes": 48,
+    "touched_bones": 49,
+    "file": "frontend\\assets-source\\heroes\\fairy-mina\\scenes\\super.blend"
+  },
+  {
+    "hero": "kaze",
+    "clip": "attack",
+    "action": "Attack",
+    "frame_start": 1,
+    "frame_end": 26,
+    "fps": 30,
+    "authored_keyframes": 26,
+    "touched_bones": 50,
+    "file": "frontend\\assets-source\\heroes\\kaze\\scenes\\attack.blend"
+  },
+  {
+    "hero": "kaze",
+    "clip": "super",
+    "action": "super",
+    "frame_start": 1,
+    "frame_end": 34,
+    "fps": 30,
+    "authored_keyframes": 34,
+    "touched_bones": 50,
+    "file": "frontend\\assets-source\\heroes\\kaze\\scenes\\super.blend"
+  },
+  {
+    "hero": "mandy",
+    "clip": "attack",
+    "action": "Attack",
+    "frame_start": 1,
+    "frame_end": 28,
+    "fps": 30,
+    "authored_keyframes": 28,
+    "touched_bones": 49,
+    "file": "frontend\\assets-source\\heroes\\mandy\\scenes\\attack.blend"
+  },
+  {
+    "hero": "mandy",
+    "clip": "super",
+    "action": "super",
+    "frame_start": 1,
+    "frame_end": 55,
+    "fps": 30,
+    "authored_keyframes": 55,
+    "touched_bones": 49,
+    "file": "frontend\\assets-source\\heroes\\mandy\\scenes\\super.blend"
+  },
+  {
+    "hero": "needle",
+    "clip": "attack",
+    "action": "Attack",
+    "frame_start": 1,
+    "frame_end": 22,
+    "fps": 30,
+    "authored_keyframes": 22,
+    "touched_bones": 5,
+    "file": "frontend\\assets-source\\heroes\\needle\\scenes\\attack.blend"
+  },
+  {
+    "hero": "needle",
+    "clip": "super",
+    "action": "super",
+    "frame_start": 1,
+    "frame_end": 42,
+    "fps": 30,
+    "authored_keyframes": 42,
+    "touched_bones": 5,
+    "file": "frontend\\assets-source\\heroes\\needle\\scenes\\super.blend"
+  },
+  {
+    "hero": "persephone-lumi",
+    "clip": "attack",
+    "action": "Attack",
+    "frame_start": 1,
+    "frame_end": 35,
+    "fps": 30,
+    "authored_keyframes": 35,
+    "touched_bones": 82,
+    "file": "frontend\\assets-source\\heroes\\persephone-lumi\\scenes\\attack.blend"
+  },
+  {
+    "hero": "persephone-lumi",
+    "clip": "super",
+    "action": "super",
+    "frame_start": 1,
+    "frame_end": 40,
+    "fps": 30,
+    "authored_keyframes": 40,
+    "touched_bones": 82,
+    "file": "frontend\\assets-source\\heroes\\persephone-lumi\\scenes\\super.blend"
+  },
+  {
+    "hero": "wukong-mico",
+    "clip": "attack",
+    "action": "Attack",
+    "frame_start": 1,
+    "frame_end": 40,
+    "fps": 30,
+    "authored_keyframes": 40,
+    "touched_bones": 57,
+    "file": "frontend\\assets-source\\heroes\\wukong-mico\\scenes\\attack.blend"
+  },
+  {
+    "hero": "wukong-mico",
+    "clip": "super",
+    "action": "super",
+    "frame_start": 1,
+    "frame_end": 110,
+    "fps": 30,
+    "authored_keyframes": 110,
+    "touched_bones": 57,
+    "file": "frontend\\assets-source\\heroes\\wukong-mico\\scenes\\super.blend"
+  }
+]

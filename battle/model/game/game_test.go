@@ -4,6 +4,7 @@ import (
 	"battle/model/bullet"
 	"battle/model/monster"
 	"battle/model/player"
+	"battle/model/prop"
 	"battle/service/geometry"
 	"fmt"
 	"math"
@@ -29,6 +30,135 @@ func newTestGameState() *GameState {
 func TestBattleDurationIsFiveMinutes(t *testing.T) {
 	if GameDuration != 5*time.Minute {
 		t.Fatalf("game duration = %s, want 5m", GameDuration)
+	}
+}
+
+func TestIslandPhasesFollowMatchClock(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	now := time.Now().UnixMilli()
+	gs.MatchStartedAt = now - int64(31*time.Second/time.Millisecond)
+	gs.updateIsland(now)
+	if gs.IslandPhase != IslandPhaseHunt {
+		t.Fatalf("phase after 31 seconds = %q, want %q", gs.IslandPhase, IslandPhaseHunt)
+	}
+
+	gs.MatchStartedAt = now - int64(2*time.Minute+1*time.Second)/int64(time.Millisecond)
+	gs.updateIsland(now)
+	if gs.IslandPhase != IslandPhaseChallenge {
+		t.Fatalf("phase after 2:01 = %q, want %q", gs.IslandPhase, IslandPhaseChallenge)
+	}
+
+	gs.MatchStartedAt = now - int64(3*time.Minute+31*time.Second)/int64(time.Millisecond)
+	gs.updateIsland(now)
+	if gs.IslandPhase != IslandPhaseCollapse || gs.StormRadius <= 0 {
+		t.Fatalf("collapse state = phase %q, storm radius %.1f", gs.IslandPhase, gs.StormRadius)
+	}
+
+	gs.MatchStartedAt = now - int64(5*time.Minute)/int64(time.Millisecond)
+	gs.updateIsland(now)
+	if gs.IslandPhase != IslandPhaseBeacon || !gs.BeaconOpen {
+		t.Fatalf("beacon state = phase %q, open=%v", gs.IslandPhase, gs.BeaconOpen)
+	}
+}
+
+func TestCombatRemainsEnabledForLegacyLandingSnapshots(t *testing.T) {
+	gs := newTestGameState()
+	gs.MaxPlayers = 2
+	gs.PlayerAdd("attacker", "Attacker", "Colt")
+	gs.PlayerAdd("target", "Target", "Shelly")
+	gs.State = GameStateGame
+	gs.IslandPhase = IslandPhaseLanding
+	attacker := gs.Players["attacker"]
+	attacker.Ammo = 1
+	gs.playerShootWithCommand(attacker.PlayerId, time.Now().UnixMilli(), 0, "landing-shot", 300)
+	if attacker.Ammo != 0 {
+		t.Fatalf("attack from a legacy landing snapshot was blocked: ammo = %d", attacker.Ammo)
+	}
+}
+
+func TestMatchStartsWithCombatEnabled(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("attacker", "Attacker", "Colt")
+	gs.PlayerAdd("target", "Target", "Shelly")
+	gs.State = GameStateLobby
+	gs.startGame()
+
+	attacker := gs.Players["attacker"]
+	attacker.Ammo = 1
+	gs.playerShootWithCommand(attacker.PlayerId, time.Now().UnixMilli(), 0, "opening-shot", 300)
+
+	if gs.IslandPhase == IslandPhaseLanding {
+		t.Fatal("match still starts in the landing phase")
+	}
+	if attacker.Ammo != 0 {
+		t.Fatalf("opening attack was blocked: ammo = %d", attacker.Ammo)
+	}
+}
+
+func TestCombatAttackDamagesLunarCrate(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("attacker", "Attacker", "Wukong Mico")
+	gs.State = GameStateGame
+	gs.IslandPhase = IslandPhaseHunt
+	attacker := gs.Players["attacker"]
+	attacker.X, attacker.Y, attacker.Ammo = 100, 100, 1
+	crate := prop.NewLunarCrate(160, 100, "damage")
+	gs.Props = append(gs.Props, crate)
+
+	gs.playerShootWithCommand(attacker.PlayerId, time.Now().UnixMilli(), 0, "crate-hit", 120)
+
+	if crate.Lives >= crate.MaxLives {
+		t.Fatalf("attack did not damage lunar crate: %d/%d", crate.Lives, crate.MaxLives)
+	}
+}
+
+func TestBeaconRequiresTenSecondsOfContinuousControl(t *testing.T) {
+	gs := newTestGameState()
+	gs.MaxPlayers = 1
+	gs.State = GameStateGame
+	gs.IslandPhase = IslandPhaseBeacon
+	gs.BeaconOpen = true
+	gs.BeaconHoldStartedAt = make(map[string]int64)
+	gs.PlayerAdd("holder", "Holder", "Shelly")
+	player := gs.Players["holder"]
+	player.X, player.Y = gs.Map.WidthInPixels/2, gs.Map.HeightInPixels/2
+	now := time.Now().UnixMilli()
+	gs.updateBeacon(now)
+	if gs.beaconWinner(now) != nil {
+		t.Fatal("beacon awarded before ten seconds")
+	}
+	if gs.beaconWinner(now+BeaconHoldDuration.Milliseconds()-1) != nil {
+		t.Fatal("beacon awarded before hold duration elapsed")
+	}
+	if gs.beaconWinner(now+BeaconHoldDuration.Milliseconds()+1) == nil {
+		t.Fatal("beacon did not award after continuous hold")
+	}
+}
+
+func TestSuddenDeathDamageGrowsForTwoRemainingPlayers(t *testing.T) {
+	gs := newTestGameState()
+	gs.MaxPlayers = 2
+	gs.State = GameStateGame
+	gs.IslandPhase = IslandPhaseBeacon
+	gs.PlayerAdd("one", "One", "Shelly")
+	gs.PlayerAdd("two", "Two", "Colt")
+	first, second := gs.Players["one"], gs.Players["two"]
+	now := time.Now().UnixMilli()
+	gs.SuddenDeathStartedAt = now - 2*1000
+	gs.SuddenDeathNextTickAt = now
+	firstBefore, secondBefore := first.Lives, second.Lives
+	gs.applySuddenDeath(now)
+	firstAfterFirstTick, secondAfterFirstTick := first.Lives, second.Lives
+	gs.SuddenDeathNextTickAt = now + 1000
+	gs.applySuddenDeath(now + 1000)
+	if firstBefore-firstAfterFirstTick <= 0 || secondBefore-secondAfterFirstTick <= 0 {
+		t.Fatal("sudden death did not damage both remaining players")
+	}
+	firstTickDamage := firstBefore - firstAfterFirstTick
+	secondTickDamage := firstAfterFirstTick - first.Lives
+	if secondTickDamage <= firstTickDamage {
+		t.Fatalf("sudden death damage did not grow: first=%d second=%d", firstTickDamage, secondTickDamage)
 	}
 }
 
@@ -283,9 +413,11 @@ func TestMovementMatchesLocalEnginePixelsPerSecond(t *testing.T) {
 	}
 }
 
-func TestPlayerMovementUsesSlowerGlobalPace(t *testing.T) {
-	if PlayerSpeedScale != 0.60 {
-		t.Fatalf("player speed scale = %.2f, want 0.60", PlayerSpeedScale)
+func TestPlayerMovementUsesCompactSpeedAtRuntimeScale(t *testing.T) {
+	hero := GetHeroByName("Shadow")
+	player := hero.CreatePlayer("p1", "Alice", 0, 0)
+	if player.Speed != float64(hero.Speed)*RuntimeMovementSpeedScale {
+		t.Fatalf("player speed = %.2f, want %.2f", player.Speed, float64(hero.Speed)*RuntimeMovementSpeedScale)
 	}
 }
 
@@ -308,10 +440,10 @@ func TestDirectionChangeKeepsMovementContinuous(t *testing.T) {
 }
 
 func TestGameplayTempoAppliesMovementAttackAndProjectilePacing(t *testing.T) {
-	hero := GetHeroByName("Colt")
+	hero := GetHeroByName("Shadow")
 	p := hero.CreatePlayer("p1", "Alice", 100, 100)
-	if p.Speed != hero.Speed*PlayerSpeedScale {
-		t.Fatalf("player speed = %.2f, want %.2f", p.Speed, hero.Speed*PlayerSpeedScale)
+	if p.Speed != float64(hero.Speed)*RuntimeMovementSpeedScale {
+		t.Fatalf("player speed = %.2f, want %.2f", p.Speed, float64(hero.Speed)*RuntimeMovementSpeedScale)
 	}
 	if p.AttackRate != int64(math.Round(float64(hero.AttackRate)*AttackRateScale)) {
 		t.Fatalf("attack rate = %d, want scaled rate from %d", p.AttackRate, hero.AttackRate)
@@ -321,9 +453,9 @@ func TestGameplayTempoAppliesMovementAttackAndProjectilePacing(t *testing.T) {
 	}
 
 	gs := newTestGameState()
-	shot := gs.spawnAttackBullet(p, 0, "test", 1, hero.BulletSpeed, 4, 500, 0, false, false)
-	if shot.Speed != hero.BulletSpeed*ProjectileSpeedScale {
-		t.Fatalf("projectile speed = %.2f, want %.2f", shot.Speed, hero.BulletSpeed*ProjectileSpeedScale)
+	shot := gs.spawnAttackBullet(p, 0, "test", 1, p.BulletSpd, 4, 500, 0, false, false)
+	if shot.Speed != float64(hero.BulletSpeed)*RuntimeProjectileSpeedScale {
+		t.Fatalf("projectile speed = %.2f, want %.2f", shot.Speed, float64(hero.BulletSpeed)*RuntimeProjectileSpeedScale)
 	}
 }
 
@@ -417,7 +549,7 @@ func TestShotgunSpawnsFivePellets(t *testing.T) {
 
 func TestHeroCombatProfiles(t *testing.T) {
 	want := map[string]struct {
-		speed  float64
+		speed  int
 		damage int
 		rate   int64
 	}{
@@ -428,7 +560,7 @@ func TestHeroCombatProfiles(t *testing.T) {
 	for name, expected := range want {
 		hero := GetHeroByName(name)
 		if hero == nil || hero.Speed != expected.speed || hero.AttackDamage != expected.damage || hero.AttackRate != expected.rate {
-			t.Fatalf("%s profile = %#v, want speed=%.0f damage=%d rate=%d", name, hero, expected.speed, expected.damage, expected.rate)
+			t.Fatalf("%s profile = %#v, want speed=%d damage=%d rate=%d", name, hero, expected.speed, expected.damage, expected.rate)
 		}
 	}
 }
@@ -715,6 +847,23 @@ func TestGameStartLobby(t *testing.T) {
 	}
 }
 
+func TestLunarCratesArePreparedBeforeCombat(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateWaiting
+	gs.PlayerAdd("p1", "Alice", "")
+
+	gs.startLobby()
+
+	if len(gs.Props) != LunarCratesCount {
+		t.Fatalf("lobby crates = %d, want %d", len(gs.Props), LunarCratesCount)
+	}
+	for _, crate := range gs.Props {
+		if crate.Type != "lunar_crate" || crate.Lives <= 0 || !crate.Active {
+			t.Fatalf("invalid lobby crate: %#v", crate)
+		}
+	}
+}
+
 func TestGameStartGame(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateLobby
@@ -728,8 +877,8 @@ func TestGameStartGame(t *testing.T) {
 	if gs.GameEndsAt == 0 {
 		t.Error("GameEndsAt should be set")
 	}
-	if len(gs.Props) != FlasksCount {
-		t.Errorf("Props = %v, want %v", len(gs.Props), FlasksCount)
+	if len(gs.Props) != LunarCratesCount {
+		t.Errorf("Props = %v, want %v", len(gs.Props), LunarCratesCount)
 	}
 	if len(gs.Monsters) != MonstersCount {
 		t.Errorf("Monsters = %v, want %v", len(gs.Monsters), MonstersCount)
@@ -1053,8 +1202,8 @@ func TestPoisonMatchesLocalEngineTotalDamage(t *testing.T) {
 		target.PoisonTickAt = 0
 		gs.updateStatuses()
 	}
-	if got := before - target.Lives; got != 640 {
-		t.Fatalf("poison damage=%d, want total 640", got)
+	if got := before - target.Lives; got != 64 {
+		t.Fatalf("poison damage=%d, want total 64", got)
 	}
 }
 

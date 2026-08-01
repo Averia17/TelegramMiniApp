@@ -20,8 +20,8 @@ const HERO_DISPLAY_NAMES = {
 const heroDisplay = hero => HERO_DISPLAY_NAMES[hero?.name] || hero?.name
 
 const HERO_DETAILS = {
-  Shadow:{title:"Био-стрелок",attack:"1050 урона и 6 осколков при разрыве",super:"Q: замедляющая лиана · E: лечение 1450",passive:"Контролирует проходы и кусты"},
-  Mandy:{title:"Сахарный боец ближнего боя",attack:"1700 урона конусным ударом посоха",super:"Q: волна через всю карту · E: Карамелизация",passive:"Стоя 1 секунду, получает +35% к дальности"},
+  Shadow:{title:"Био-стрелок",attack:"65 урона и 6 осколков при разрыве",super:"Q: замедляющая лиана · E: лечение 145",passive:"Контролирует проходы и кусты"},
+  Mandy:{title:"Сахарный боец ближнего боя",attack:"60 урона конусным ударом посоха",super:"Q: волна через всю карту · E: Карамелизация",passive:"Стоя 1 секунду, получает +35% к дальности"},
 }
 
 const FALLBACK_HEROES = HEROES_CONFIG
@@ -94,7 +94,7 @@ export const HeroSelect = ({onSelect, selectedHero}) => {
 
       <div className="hero-quick-stats">
         <QuickStat icon="❤" value={selected.maxLives} label="ЗДОРОВЬЕ"/>
-        <QuickStat icon="⚡" value={Math.round(selected.speed * 10)} label="СКОРОСТЬ"/>
+        <QuickStat icon="⚡" value={selected.speed} label="СКОРОСТЬ"/>
         <QuickStat icon="✹" value={selected.attackDamage} label="УРОН"/>
       </div>
 

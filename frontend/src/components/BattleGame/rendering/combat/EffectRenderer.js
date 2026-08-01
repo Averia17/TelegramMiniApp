@@ -2,6 +2,7 @@ import * as THREE from "three"
 import {WORLD_SCALE, worldToScene} from "../shared/coordinates.js"
 import {disposeObjectTree} from "../shared/disposal.js"
 import {flatMaterial} from "../shared/materials.js"
+import {endBattlePerformance, startBattlePerformance} from "../shared/performance.js"
 
 const clamp = value => Math.max(0, Math.min(1, value))
 const MELEE_SWING_KINDS = new Set(["mandy_staff_swing", "mico_staff_swing"])
@@ -50,6 +51,7 @@ export class EffectRenderer {
   }
 
   sync(effects) {
+    const perfToken = startBattlePerformance("effects.sync")
     const active = new Set()
     effects.forEach((effect, index) => {
       const id = String(effect.id || `${effect.kind}:${index}`)
@@ -183,5 +185,6 @@ export class EffectRenderer {
       disposeObjectTree(mesh)
       this.meshes.delete(id)
     })
+    endBattlePerformance(perfToken)
   }
 }

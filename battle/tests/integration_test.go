@@ -3,11 +3,28 @@ package integration
 import (
 	"battle/provider"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+func dialAuthenticatedForIntegration(t *testing.T, wsURL string, userID int64) *websocket.Conn {
+	t.Helper()
+	t.Setenv("APP_AUTH_SECRET", testAuthSecret)
+	token := testAccessToken(userID)
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("authenticated dial: %v", err)
+	}
+	if err := conn.WriteJSON(map[string]string{"type": "auth", "token": token}); err != nil {
+		conn.Close()
+		t.Fatalf("authentication: %v", err)
+	}
+	return conn
+}
 
 func TestMockStore_ImplementsInterface(t *testing.T) {
 	var _ provider.Store = (*provider.MockStore)(nil)
@@ -60,6 +77,58 @@ func TestIntegration_LeaveDecrementsCount(t *testing.T) {
 		return r != nil && r.PlayerCount <= 1
 	})
 	_ = c2
+}
+
+func TestIntegration_ReconnectByPlayerIdReplacesSessionAndPreservesState(t *testing.T) {
+	ts, store := setupTest(t)
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
+
+	first := dialAuthenticatedForIntegration(t, wsURL, 2001)
+	if err := first.WriteMessage(websocket.TextMessage, []byte(`{"type":"join","playerName":"Reconnectable","heroName":"Shadow","roomName":"room-reconnect","roomMap":"arena"}`)); err != nil {
+		t.Fatalf("first join: %v", err)
+	}
+	joined := waitForMsg(t, first, "room_joined")
+	roomId := parseRoomId(joined)
+	waitState(t, first, 5*time.Second, func(msg map[string]interface{}) bool {
+		players, _ := msg["players"].(map[string]interface{})
+		player, _ := players["2001"].(map[string]interface{})
+		return player != nil && player["hero"] == "Shadow"
+	})
+	second := dialAuthenticatedForIntegration(t, wsURL, 2001)
+	if err := second.WriteMessage(websocket.TextMessage, []byte(`{"type":"join_by_id","roomId":"`+roomId+`","playerName":"ChangedName","heroName":"Mandy"}`)); err != nil {
+		t.Fatalf("reconnect join: %v", err)
+	}
+	waitForMsg(t, second, "room_joined")
+
+	first.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for {
+		if _, _, err := first.ReadMessage(); err != nil {
+			break
+		}
+	}
+
+	waitState(t, second, 5*time.Second, func(msg map[string]interface{}) bool {
+		players, _ := msg["players"].(map[string]interface{})
+		player, _ := players["2001"].(map[string]interface{})
+		return player != nil && player["name"] == "Reconnectable" && player["hero"] == "Shadow"
+	})
+
+	pollUntil(t, 5*time.Second, "one persisted player after reconnect", func() bool {
+		r, err := store.GetRoom(roomId)
+		return err == nil && r.PlayerCount == 1
+	})
+
+	second.Close()
+	third := dialAuthenticatedForIntegration(t, wsURL, 2001)
+	if err := third.WriteMessage(websocket.TextMessage, []byte(`{"type":"join_by_id","roomId":"`+roomId+`","playerName":"AfterInternetDrop","heroName":"Mandy"}`)); err != nil {
+		t.Fatalf("second reconnect join: %v", err)
+	}
+	waitForMsg(t, third, "room_joined")
+	waitState(t, third, 5*time.Second, func(msg map[string]interface{}) bool {
+		players, _ := msg["players"].(map[string]interface{})
+		player, _ := players["2001"].(map[string]interface{})
+		return player != nil && player["name"] == "Reconnectable" && player["hero"] == "Shadow"
+	})
 }
 
 func TestIntegration_AllLeaveRemovesRoom(t *testing.T) {

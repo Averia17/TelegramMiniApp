@@ -2,7 +2,7 @@
 
 ## Текущее состояние
 
-Проект уже использует один canonical gameplay GLB на героя с embedded clips, `AssetRegistry`, `SkeletonUtils.clone`, один `AnimationMixer` и страницу `test/glb-hero-harness.html`. Все 113 frontend-тестов проходят. Следующий этап — не переписывать архитектуру, а закрыть runtime-риски и довести authored pipeline до строгого контракта.
+Проект использует один canonical gameplay GLB на героя с embedded clips, `AssetRegistry`, `SkeletonUtils.clone`, один `AnimationMixer` и страницу `test/glb-hero-harness.html`. Все 134 frontend-теста проходят; дополнительно browser matrix покрывает 8 героев × 10 событий. Этот этап закрывает runtime-риски и доводит authored pipeline до строгого контракта.
 
 ## Цели
 
@@ -143,3 +143,4 @@
 | Procedural gait портит authored run | High | Authored priority gate |
 | Browser QA не запускается без Chromium | High | Установить/подключить browser runtime и явно помечать QA blocked |
 | Detached weapon получает другой transform после normalize | High | Socket/grip audit после каждого GLB round-trip |
+Runtime follow-up: authored full-body super включён в gameplay и harness; root/hips position tracks санитизируются; полный frontend suite — 144 tests (141 pass, 3 skipped), browser matrix — 80/80.

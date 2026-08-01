@@ -7,11 +7,11 @@ import (
 )
 
 func TestMonsterCombatBalanceKeepsFightsShortAndSurvivable(t *testing.T) {
-	if MonsterLives != 2600 || EliteMonsterLives != 3800 {
-		t.Fatalf("monster health: normal=%d elite=%d, want 2600/3800", MonsterLives, EliteMonsterLives)
+	if MonsterLives != 260 || EliteMonsterLives != 380 {
+		t.Fatalf("monster health: normal=%d elite=%d, want 260/380", MonsterLives, EliteMonsterLives)
 	}
-	if MonsterAttackDamage != 250 {
-		t.Fatalf("monster attack damage = %d, want 250", MonsterAttackDamage)
+	if MonsterAttackDamage != 25 {
+		t.Fatalf("monster attack damage = %d, want 25", MonsterAttackDamage)
 	}
 }
 

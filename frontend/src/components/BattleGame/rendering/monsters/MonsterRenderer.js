@@ -1,9 +1,21 @@
 import * as THREE from "three"
 import {WORLD_SCALE, worldToScene} from "../shared/coordinates.js"
 import {disposeObjectTree} from "../shared/disposal.js"
+import {endBattlePerformance, startBattlePerformance} from "../shared/performance.js"
 import {createContactShadow} from "../shared/materials.js"
 
 const BAT_HEIGHT = 22
+const DAMAGE_SEGMENT_DURATION = .42
+
+export const getDamageBarFractions = (current, damage, progress = 0) => {
+  const safeCurrent = Math.max(0, Math.min(1, Number(current) || 0))
+  const safeDamage = Math.max(safeCurrent, Math.min(1, Number(damage) || 0))
+  const safeProgress = Math.max(0, Math.min(1, Number(progress) || 0))
+  return {
+    current: safeCurrent,
+    damage: safeDamage + (safeCurrent - safeDamage) * safeProgress,
+  }
+}
 
 export const formatHealthLabel = (lives, maxLives) => {
   const maximum = Math.max(1, Math.round(Number(maxLives) || 1))
@@ -33,7 +45,7 @@ const createHealthBar = () => {
   }))
   background.scale.set(.92, .13, 1)
   const fill = new THREE.Sprite(new THREE.SpriteMaterial({
-    color: 0xf04f62,
+    color: 0x62e45f,
     depthTest: false,
     depthWrite: false,
   }))
@@ -41,11 +53,20 @@ const createHealthBar = () => {
   fill.scale.set(.8, .072, 1)
   fill.position.set(-.4, -.036, .01)
   fill.userData.fullWidth = .8
+  const damageFill = new THREE.Sprite(new THREE.SpriteMaterial({
+    color: 0xf04f62,
+    depthTest: false,
+    depthWrite: false,
+  }))
+  damageFill.center.set(0, .5)
+  damageFill.scale.set(.8, .072, 1)
+  damageFill.position.set(-.4, -.036, 0)
+  damageFill.userData.fullWidth = .8
   if (typeof document === "undefined") {
-    group.add(background, fill)
+    group.add(background, damageFill, fill)
     group.position.set(0, 1.16, 0)
     group.renderOrder = 18
-    return {group, fill, label: null}
+    return {group, fill, damageFill, label: null}
   }
   const canvas = document.createElement("canvas")
   canvas.width = 256
@@ -61,10 +82,10 @@ const createHealthBar = () => {
   label.scale.set(1.18, .25, 1)
   label.position.set(0, .14, .02)
   label.userData = {canvas, texture, signature: ""}
-  group.add(background, fill, label)
+  group.add(background, damageFill, fill, label)
   group.position.set(0, 1.16, 0)
   group.renderOrder = 18
-  return {group, fill, label}
+  return {group, fill, damageFill, label}
 }
 
 const updateHealthLabel = (label, state) => {
@@ -150,7 +171,11 @@ const createBat = state => {
     body,
     healthBar: health.group,
     healthFill: health.fill,
+    healthDamageFill: health.damageFill,
     healthLabel: health.label,
+    healthFraction: Math.max(0, Math.min(1, Number(state.lives) / Math.max(1, Number(state.maxLives)))),
+    damageFraction: Math.max(0, Math.min(1, Number(state.lives) / Math.max(1, Number(state.maxLives)))),
+    damageProgress: 1,
     targetX: state.x,
     targetY: state.y,
   }
@@ -165,6 +190,7 @@ export class MonsterRenderer {
   }
 
   sync(monsters = {}) {
+    const perfToken = startBattlePerformance("monsters.sync")
     const active = new Set()
     Object.entries(monsters || {}).forEach(([id, state]) => {
       if (Number(state?.lives) <= 0) return
@@ -180,7 +206,17 @@ export class MonsterRenderer {
       view.group.position.copy(worldToScene(state.x, state.y, BAT_HEIGHT))
       view.group.rotation.y = Math.PI / 2 - (Number(state.rotation) || 0)
       const health = Math.max(0, Math.min(1, Number(state.lives) / Math.max(1, Number(state.maxLives))))
-      view.healthFill.scale.x = view.healthFill.userData.fullWidth * health
+      if (health < view.healthFraction - .0001) {
+        view.damageFraction = Math.max(view.damageFraction, view.healthFraction)
+        view.damageProgress = 0
+      } else if (health > view.healthFraction + .0001) {
+        view.damageFraction = health
+        view.damageProgress = 1
+      }
+      view.healthFraction = health
+      const fractions = getDamageBarFractions(health, view.damageFraction, view.damageProgress)
+      view.healthFill.scale.x = view.healthFill.userData.fullWidth * fractions.current
+      view.healthDamageFill.scale.x = view.healthDamageFill.userData.fullWidth * fractions.damage
       updateHealthLabel(view.healthLabel, state)
     })
     this.views.forEach((view, id) => {
@@ -189,6 +225,7 @@ export class MonsterRenderer {
       disposeObjectTree(view.group)
       this.views.delete(id)
     })
+    endBattlePerformance(perfToken)
   }
 
   update(delta, time) {
@@ -200,6 +237,10 @@ export class MonsterRenderer {
       view.body.position.y = Math.sin(phase * .5) * .055
       view.group.position.y = BAT_HEIGHT * WORLD_SCALE + Math.sin(phase * .5) * .08
       view.group.rotation.z = Math.sin(phase * .35) * .035
+      view.damageProgress = Math.min(1, view.damageProgress + delta / DAMAGE_SEGMENT_DURATION)
+      const fractions = getDamageBarFractions(view.healthFraction, view.damageFraction, view.damageProgress)
+      view.healthDamageFill.scale.x = view.healthDamageFill.userData.fullWidth * fractions.damage
+      if (view.damageProgress >= 1) view.damageFraction = view.healthFraction
       void delta
     })
   }

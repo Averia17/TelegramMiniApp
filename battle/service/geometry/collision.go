@@ -91,8 +91,10 @@ func (sh *SpatialHash) Insert(wall *WallTile) {
 }
 
 func (sh *SpatialHash) QueryRect(minX, minY, maxX, maxY float64) []*WallTile {
-	seen := make(map[*WallTile]bool)
-	var result []*WallTile
+	// A query usually spans only a handful of cells. Keeping the already
+	// returned walls in a small slice avoids allocating a map on every
+	// collision probe while preserving deduplication for walls crossing cells.
+	result := make([]*WallTile, 0, 8)
 
 	minCX := int(math.Floor(minX / sh.cellSize))
 	maxCX := int(math.Floor(maxX / sh.cellSize))
@@ -103,11 +105,15 @@ func (sh *SpatialHash) QueryRect(minX, minY, maxX, maxY float64) []*WallTile {
 		for cy := minCY; cy <= maxCY; cy++ {
 			key := cx*73856093 ^ cy*19349663
 			for _, wall := range sh.cells[key] {
-				if !seen[wall] {
-					seen[wall] = true
-					if wall.MinX < maxX && wall.MaxX > minX && wall.MinY < maxY && wall.MaxY > minY {
-						result = append(result, wall)
+				duplicate := false
+				for _, existing := range result {
+					if existing == wall {
+						duplicate = true
+						break
 					}
+				}
+				if !duplicate && wall.MinX < maxX && wall.MaxX > minX && wall.MinY < maxY && wall.MaxY > minY {
+					result = append(result, wall)
 				}
 			}
 		}
@@ -117,6 +123,27 @@ func (sh *SpatialHash) QueryRect(minX, minY, maxX, maxY float64) []*WallTile {
 
 func (sh *SpatialHash) QueryCircle(c *CircleBody) []*WallTile {
 	return sh.QueryRect(c.Left(), c.Top(), c.Right(), c.Bottom())
+}
+
+// ContainsPoint checks only the spatial-hash cell containing the point. It is
+// used for visibility checks where scanning every map wall for every player
+// would otherwise happen on every network snapshot.
+func (sh *SpatialHash) ContainsPoint(x, y float64, collisionType string) bool {
+	if sh == nil || sh.cellSize <= 0 {
+		return false
+	}
+	cx := int(math.Floor(x / sh.cellSize))
+	cy := int(math.Floor(y / sh.cellSize))
+	key := cx*73856093 ^ cy*19349663
+	for _, wall := range sh.cells[key] {
+		if collisionType != "" && wall.Type != collisionType {
+			continue
+		}
+		if x >= wall.MinX && x <= wall.MaxX && y >= wall.MinY && y <= wall.MaxY {
+			return true
+		}
+	}
+	return false
 }
 
 func CorrectCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType string) {
@@ -161,7 +188,7 @@ func CollidesCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType
 }
 
 func IsBlockingWall(wallType string) bool {
-	return wallType != "half" && wallType != "bush"
+	return wallType != "half" && wallType != "bush" && wallType != "moon_mist"
 }
 
 func CorrectCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) {

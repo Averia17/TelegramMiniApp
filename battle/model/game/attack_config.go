@@ -38,7 +38,7 @@ type AttackConfig struct {
 }
 
 var heroAttackConfigs = map[string]AttackConfig{
-	"Shadow":          {Archetype: AttackProjectile, AimShape: "line", Range: 518, ProjectileKind: "spore", Modifier: "short_vault"},
+	"Shadow":          {Archetype: AttackProjectile, AimShape: "line", Range: 620, ProjectileKind: "spore", Modifier: "short_vault"},
 	"Mandy":           {Archetype: AttackMeleeCone, AimShape: "cone", Range: 70, HalfArcDegrees: 42, Modifier: "mandy_focus"},
 	"Fairy Mina":      {Archetype: AttackShotgun, AimShape: "cone", Range: 510, ProjectileKind: "mina_star", ProjectileCount: 3, SpreadDegrees: 24, SplashRadius: 38},
 	"Brock Zeus":      {Archetype: AttackProjectile, AimShape: "line", Range: 760, ProjectileKind: "zeus_lightning", SplashRadius: 72},
@@ -46,6 +46,13 @@ var heroAttackConfigs = map[string]AttackConfig{
 	"Wukong Mico":     {Archetype: AttackMeleeCone, AimShape: "cone", Range: 120, HalfArcDegrees: 50, Modifier: "mico_staff"},
 	"Damian":          {Archetype: AttackProjectile, AimShape: "line", Range: 640, ProjectileKind: "damian_orb"},
 	"Persephone Lumi": {Archetype: AttackProjectile, AimShape: "line", Range: 600, ProjectileKind: "lumi_orb", Modifier: "slow_trail"},
+}
+
+// GetAttackConfig returns the immutable wire-facing attack metadata without
+// scanning the full hero catalog. Snapshot generation calls this for every
+// player on every state update.
+func GetAttackConfig(hero string) AttackConfig {
+	return heroAttackConfigs[hero]
 }
 
 func withAttackConfigs(heroes []Hero) []Hero {
@@ -168,7 +175,7 @@ func executeConfiguredArea(gs *GameState, source *player.Player, ts int64, angle
 		if source.Souls >= 3 {
 			source.Souls = 0
 			source.Deflect = 1
-			gs.radialDamage(source.PlayerId, source.X, source.Y, 105, 600)
+			gs.radialDamage(source.PlayerId, source.X, source.Y, 105, 60)
 			gs.addEffect("spin", source.X, source.Y, 0, 0, 105, 0, 0, 0, "#d9ff8b", 0, 400)
 		}
 		return
@@ -205,7 +212,7 @@ func executeConfiguredReturning(gs *GameState, source *player.Player, angle floa
 	}
 	if config.Modifier == "recall" && active != nil {
 		source.X, source.Y, active.Active = active.X, active.Y, false
-		gs.radialDamage(source.PlayerId, source.X, source.Y, 105, 600)
+		gs.radialDamage(source.PlayerId, source.X, source.Y, 105, 60)
 		return
 	}
 	gs.spawnAttackBullet(source, angle, config.ProjectileKind, source.AttackDmg, source.BulletSpd, source.BulletSz, config.Range, config.Pierce, true, config.Poison)
@@ -221,7 +228,7 @@ func executeConfiguredDash(gs *GameState, source *player.Player, angle float64, 
 		if source.Souls >= 3 {
 			source.Souls = 0
 			source.Deflect = 1
-			gs.radialDamage(source.PlayerId, source.X, source.Y, 105, 600)
+			gs.radialDamage(source.PlayerId, source.X, source.Y, 105, 60)
 			gs.addEffect("spin", source.X, source.Y, 0, 0, 105, 0, 0, 0, "#d9ff8b", 0, 400)
 		}
 	}

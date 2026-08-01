@@ -1,0 +1,90 @@
+[
+  {
+    "hero": "brock-zeus",
+    "clip": "gadget",
+    "action": "Gadget",
+    "frame_start": 1,
+    "frame_end": 40,
+    "fps": 30,
+    "authored_keyframes": 40,
+    "touched_bones": 14,
+    "file": "frontend\\assets-source\\heroes\\brock-zeus\\scenes\\gadget.blend"
+  },
+  {
+    "hero": "damian",
+    "clip": "gadget",
+    "action": "Gadget",
+    "frame_start": 1,
+    "frame_end": 35,
+    "fps": 30,
+    "authored_keyframes": 35,
+    "touched_bones": 60,
+    "file": "frontend\\assets-source\\heroes\\damian\\scenes\\gadget.blend"
+  },
+  {
+    "hero": "fairy-mina",
+    "clip": "gadget",
+    "action": "Gadget",
+    "frame_start": 1,
+    "frame_end": 34,
+    "fps": 30,
+    "authored_keyframes": 34,
+    "touched_bones": 49,
+    "file": "frontend\\assets-source\\heroes\\fairy-mina\\scenes\\gadget.blend"
+  },
+  {
+    "hero": "kaze",
+    "clip": "gadget",
+    "action": "Gadget",
+    "frame_start": 1,
+    "frame_end": 48,
+    "fps": 30,
+    "authored_keyframes": 48,
+    "touched_bones": 50,
+    "file": "frontend\\assets-source\\heroes\\kaze\\scenes\\gadget.blend"
+  },
+  {
+    "hero": "mandy",
+    "clip": "gadget",
+    "action": "Gadget",
+    "frame_start": 1,
+    "frame_end": 58,
+    "fps": 30,
+    "authored_keyframes": 58,
+    "touched_bones": 49,
+    "file": "frontend\\assets-source\\heroes\\mandy\\scenes\\gadget.blend"
+  },
+  {
+    "hero": "needle",
+    "clip": "gadget",
+    "action": "Gadget",
+    "frame_start": 1,
+    "frame_end": 24,
+    "fps": 30,
+    "authored_keyframes": 24,
+    "touched_bones": 5,
+    "file": "frontend\\assets-source\\heroes\\needle\\scenes\\gadget.blend"
+  },
+  {
+    "hero": "persephone-lumi",
+    "clip": "gadget",
+    "action": "Gadget",
+    "frame_start": 1,
+    "frame_end": 30,
+    "fps": 30,
+    "authored_keyframes": 30,
+    "touched_bones": 82,
+    "file": "frontend\\assets-source\\heroes\\persephone-lumi\\scenes\\gadget.blend"
+  },
+  {
+    "hero": "wukong-mico",
+    "clip": "gadget",
+    "action": "Gadget",
+    "frame_start": 1,
+    "frame_end": 68,
+    "fps": 30,
+    "authored_keyframes": 68,
+    "touched_bones": 57,
+    "file": "frontend\\assets-source\\heroes\\wukong-mico\\scenes\\gadget.blend"
+  }
+]

@@ -56,6 +56,25 @@ func TestSpatialHashQueryNoMatch(t *testing.T) {
 	}
 }
 
+func TestSpatialHashContainsPointUsesNearbyWalls(t *testing.T) {
+	sh := NewSpatialHash(32)
+	sh.Insert(&WallTile{MinX: 20, MinY: 20, MaxX: 40, MaxY: 40, Type: "bush"})
+	sh.Insert(&WallTile{MinX: 64, MinY: 20, MaxX: 84, MaxY: 40, Type: "half"})
+
+	if !sh.ContainsPoint(30, 30, "bush") {
+		t.Fatal("expected point inside bush to be found")
+	}
+	if sh.ContainsPoint(30, 30, "half") {
+		t.Fatal("did not expect type-filtered point hit")
+	}
+	if !sh.ContainsPoint(70, 30, "half") {
+		t.Fatal("expected point inside half wall to be found")
+	}
+	if sh.ContainsPoint(200, 200, "bush") {
+		t.Fatal("did not expect distant point to be found")
+	}
+}
+
 func TestCollidesCircleWithWallsFull(t *testing.T) {
 	sh := NewSpatialHash(32)
 	sh.Insert(&WallTile{MinX: 50, MinY: 50, MaxX: 82, MaxY: 82, Type: "full"})

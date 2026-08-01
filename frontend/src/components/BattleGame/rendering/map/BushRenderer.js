@@ -2,9 +2,10 @@ import * as THREE from "three"
 import {WORLD_SCALE} from "../shared/coordinates.js"
 import {flatMaterial} from "../shared/materials.js"
 
-export const createBushField = walls => {
+export const createBushField = (walls, kind = "bush") => {
   const geometry = new THREE.IcosahedronGeometry(0.62, 0)
-  const bushes = new THREE.InstancedMesh(geometry, flatMaterial(0x4aaa57), walls.length * 3)
+  const material = flatMaterial(kind === "moon_mist" ? 0x9db9e8 : 0x4aaa57, kind === "moon_mist" ? {transparent: true, opacity: .62, depthWrite: false} : {})
+  const bushes = new THREE.InstancedMesh(geometry, material, walls.length * 3)
   const matrix = new THREE.Matrix4()
   const axis = new THREE.Vector3(0, 1, 0)
   let instance = 0

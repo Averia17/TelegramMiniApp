@@ -7,6 +7,8 @@ import {ProfileTab} from "../components/Tabs/ProfileTab.jsx"
 import {StoreTab} from "../components/Tabs/StoreTab.jsx"
 import "./landing-page.css"
 import {API_URL} from "../utils/urls.js"
+import {BattleLoading} from "../components/BattleLoading/BattleLoading.jsx"
+import {loadBattleHero, saveBattleHero} from "../utils/battlePreferences.js"
 
 const TABS = ["play", "rating", "profile", "store"]
 
@@ -15,17 +17,18 @@ const LandingPage = ({id}) => {
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get("tab")
   const [tab, setTab] = useState(() => TABS.includes(tabParam) ? tabParam : "play")
-  const [selectedHero, setSelectedHero] = useState(() => window.localStorage.getItem("battle_hero"))
+  const [selectedHero, setSelectedHero] = useState(() => loadBattleHero(id))
   const [economy, setEconomy] = useState({energy:100,max_energy:100,gold:0,next_energy_in:0})
   const [playError, setPlayError] = useState("")
+  const [battleStarting, setBattleStarting] = useState(false)
 
   const refreshEconomy = useCallback(() => axios.get(`${API_URL}/economy/me`).then(({data}) => setEconomy(data)).catch(() => {}), [])
   useEffect(() => { refreshEconomy(); const timer=setInterval(refreshEconomy,30000); return () => clearInterval(timer) }, [refreshEconomy])
 
   const selectHero = useCallback(hero => {
     setSelectedHero(hero)
-    if (hero) window.localStorage.setItem("battle_hero", hero)
-  }, [])
+    saveBattleHero(id, hero)
+  }, [id])
 
   useEffect(() => {
     if (TABS.includes(tabParam) && tabParam !== tab) setTab(tabParam)
@@ -39,11 +42,15 @@ const LandingPage = ({id}) => {
   const handlePlay = useCallback(async () => {
     if (!selectedHero) return
     setPlayError("")
+    setBattleStarting(true)
     try {
       const {data}=await axios.post(`${API_URL}/economy/me/battle`)
       setEconomy(data)
-      navigate(`/battle?hero=${encodeURIComponent(selectedHero)}`)
-    } catch (error) { setPlayError(error.response?.data?.detail || "Не удалось начать бой") }
+      navigate("/battle", {state: {heroName: selectedHero}})
+    } catch (error) {
+      setBattleStarting(false)
+      setPlayError(error.response?.data?.detail || "Не удалось начать бой")
+    }
   }, [id,navigate,selectedHero])
 
   const playerTag = `P${String(id || 0).slice(-6)}`
@@ -83,13 +90,15 @@ const LandingPage = ({id}) => {
               <div className="lp-event-icon">☠</div>
               <div><small>ОДИНОЧНОЕ СТОЛКНОВЕНИЕ</small><strong>Песчаный лабиринт</strong><span>Новая карта через 3ч.</span></div>
             </div>
-            <button className="lp-play-btn" disabled={!selectedHero} onClick={handlePlay}>
+            <button className="lp-play-btn" disabled={!selectedHero || battleStarting} onClick={handlePlay} aria-busy={battleStarting}>
               В БОЙ!
             </button>
             {playError && <div className="lp-play-error">{playError}</div>}
           </footer>
         </>
       )}
+
+      {battleStarting && <BattleLoading progress={18} status="Подготавливаем бой..." />}
 
       {tab !== "play" && (
         <>

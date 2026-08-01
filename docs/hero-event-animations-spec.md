@@ -7,7 +7,7 @@
 Перенос `AnimationClip` между разными GLB больше не используется.
 
 ```text
-frontend/public/assets/heroes/<hero>/<hero>.glb
+frontend/public/assets/heroes/output_heroes/<hero>_base.glb
   HeroRoot
     Armature
       ...bones
@@ -16,7 +16,7 @@ frontend/public/assets/heroes/<hero>/<hero>.glb
           held weapon
     meshes
     AnimationClips
-      Idle Run Aim AimSuper Attack Super Spawn Victory Defeat
+      idle run hit death super Aim AimSuper Attack Spawn Victory
 ```
 
 Исходные `.blend`, FBX и раздельные actions могут храниться отдельно. Их
@@ -64,7 +64,7 @@ npm run build
 
 `validate:heroes` проверяет:
 
-- наличие всех девяти clips;
+- наличие всех десяти clips;
 - именованные animation targets;
 - размещение weapon sockets под кистями;
 - канонические роли оборудования;

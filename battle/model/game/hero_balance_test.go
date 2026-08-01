@@ -4,11 +4,11 @@ import "testing"
 
 func TestRangedHeroesTradeSafetyForLowerBaseDamage(t *testing.T) {
 	wantDamage := map[string]int{
-		"Shadow":          650,
-		"Fairy Mina":      560,
-		"Brock Zeus":      1100,
-		"Damian":          950,
-		"Persephone Lumi": 850,
+		"Shadow":          65,
+		"Fairy Mina":      40,
+		"Brock Zeus":      80,
+		"Damian":          75,
+		"Persephone Lumi": 70,
 	}
 
 	for name, want := range wantDamage {
@@ -22,6 +22,52 @@ func TestRangedHeroesTradeSafetyForLowerBaseDamage(t *testing.T) {
 		if hero.AttackDamage != want {
 			t.Errorf("%s damage = %d, want %d", name, hero.AttackDamage, want)
 		}
+	}
+}
+
+func TestHeroConfigsUseCompactCombatValues(t *testing.T) {
+	want := map[string]struct {
+		health      int
+		damage      int
+		speed       int
+		bulletSpeed int
+	}{
+		"Shadow":          {620, 65, 12, 23},
+		"Mandy":           {720, 60, 13, 0},
+		"Fairy Mina":      {600, 40, 14, 30},
+		"Brock Zeus":      {620, 80, 12, 36},
+		"Kaze":            {650, 40, 16, 0},
+		"Wukong Mico":     {900, 85, 13, 0},
+		"Damian":          {640, 75, 13, 31},
+		"Persephone Lumi": {680, 70, 13, 28},
+	}
+
+	for name, expected := range want {
+		hero := GetHeroByName(name)
+		if hero == nil {
+			t.Fatalf("missing hero %q", name)
+		}
+		if hero.MaxLives != expected.health || hero.AttackDamage != expected.damage || hero.Speed != expected.speed || hero.BulletSpeed != expected.bulletSpeed {
+			t.Errorf("%s compact config = health=%d damage=%d speed=%d bulletSpeed=%d, want %d/%d/%d/%d", name, hero.MaxLives, hero.AttackDamage, hero.Speed, hero.BulletSpeed, expected.health, expected.damage, expected.speed, expected.bulletSpeed)
+		}
+	}
+}
+
+func TestCompactSpeedKeepsPreviousRuntimeTempo(t *testing.T) {
+	hero := GetHeroByName("Shadow")
+	p := hero.CreatePlayer("p1", "Alice", 100, 100)
+	if p.Speed != float64(hero.Speed)*RuntimeMovementSpeedScale {
+		t.Fatalf("runtime speed = %.2f, want %.2f", p.Speed, float64(hero.Speed)*RuntimeMovementSpeedScale)
+	}
+
+	gs := newTestGameState()
+	shot := gs.spawnAttackBullet(p, 0, "test", 1, p.BulletSpd, 4, 500, 0, false, false)
+	if shot.Speed != float64(hero.BulletSpeed)*RuntimeProjectileSpeedScale {
+		t.Fatalf("runtime projectile speed = %.2f, want %.2f", shot.Speed, float64(hero.BulletSpeed)*RuntimeProjectileSpeedScale)
+	}
+	accelerating := gs.spawnAttackBullet(p, 0, "laser", 1, p.BulletSpd, 4, 500, 0, false, false)
+	if accelerating.Acceleration != 21*RuntimeProjectileSpeedScale {
+		t.Fatalf("runtime projectile acceleration = %.2f, want %.2f", accelerating.Acceleration, 21*RuntimeProjectileSpeedScale)
 	}
 }
 

@@ -25,6 +25,12 @@ TODO:
 - Visually approve Needle V9 animation strength in the deterministic browser harness.
 - Remove HeroModelFactory only after all hero GLBs are available; it remains the fallback for other heroes.
 
+Camera/death flow fix:
+- The local hero is removed from the Three.js actor map when authoritative lives reach zero, so CameraRig must not interpret the missing target as a request to center on the beacon.
+- CameraRig now holds the last tracked hero position until the result overlay takes over; the existing authoritative defeat-result path remains unchanged.
+- Added a regression test covering the local hero disappearing after death.
+- Focused rendering tests pass. The generic browser client reached the app but was blocked by the existing authentication gate, so it could only verify the auth-failure page and its 404 console request.
+
 GLB authoring contract:
 - Use a clean root at the ground-contact center, with Y up and the hero facing +Z.
 - Export in metres with transforms applied; tune only manifest `scale` and `rotationOffset` in runtime.
@@ -220,3 +226,55 @@ Battle WebGL precision crash pass:
 - Added a locomotion layer over the authored Run clip: thighs swing in opposition while knees and feet receive their own phase-dependent motion.
 - Added regression coverage proving that moving heroes expose and animate both legs as separate rig parts.
 - All 100 frontend tests pass, targeted ESLint is clean, and the production build succeeds.
+
+## 2026-08-01 — Attack targeting, turning, and damage feedback
+
+- Auto-aim now prioritizes the nearest enemy hero inside the attack reach, then falls back to the nearest alive monster, then movement/current rotation.
+- During the short attack recoil window, the rendered hero eases toward the authoritative strike angle even while movement continues; the old movement-facing/attack-facing switch no longer snaps on attack or recovery.
+- Melee reach remains visible for a short strike window after aim input is released, using the configured range and arc.
+- Monster HP bars now keep the just-lost portion as a red trailing segment and settle it onto the current green fill over 420 ms.
+- Added frontend regression coverage for shortest-arc attack facing, melee strike reach visibility, and red damage-bar interpolation, plus Go regression coverage for hero-priority/monster-fallback auto-aim.
+- Focused frontend verification: 75 tests pass, production build succeeds, and targeted ESLint is clean.
+- Full frontend test run still has two pre-existing `NetworkSimulation` timing failures (`100.6` vs `112`, `101.5` vs `130`) unrelated to this change; focused rendering/attack tests pass.
+- Go verification was not available in this environment because the `go` executable is missing from PATH.
+- Playwright visual QA reached the Kaze attack harness and showed the loaded attack model/overlay; the harness also reported one expected backend 500 while its hero list endpoint was unavailable.
+
+## 2026-08-01 — Go toolchain setup
+
+- Installed the official Go 1.26.5 Windows amd64 portable distribution under `C:\Users\User\AppData\Local\Programs\go` after MSI installation was blocked by system policy 1625.
+- Added `C:\Users\User\AppData\Local\Programs\go\bin` to the user PATH; new terminals will resolve `go` directly. The current Codex process keeps its pre-existing PATH snapshot, so test commands in this session prepend the bin directory explicitly.
+- Verified `go version` and passing packages: `model/monster`, `model/player`, `service/geometry`, and `service/room`.
+- `model/game` remains blocked by pre-existing dirty `hero_balance_test.go` references to missing `Hero.Critical`, `CriticalHitConfig`, and `criticalDamageForRoll`; this is unrelated to the attack-direction change.
+
+## 2026-08-01 — 8-way movement and 32-direction attacks
+
+- Keyboard movement now uses an explicit eight-way compass normalizer; diagonal input remains unit speed instead of falling back to a cardinal direction.
+- Attack angles are stabilized to 32 sectors on the client and authoritatively on the server, including rotation updates and the actual shot angle.
+- Removed persistent attack rays, target rings, melee sectors, and super lanes; AimRenderer remains as a hidden compatibility node and never becomes visible during aiming or attack recoil.
+- Added frontend and Go regression tests for all eight movement directions, 32 attack sectors, and the absence of persistent attack-direction guides.
+- Focused frontend verification: 77 tests pass. The `model/game` Go package still cannot compile because of the unrelated pre-existing `rollBasicAttackDamage` reference in the dirty worktree.
+
+## 2026-08-01 — островные фазы боя
+
+- Added authoritative island phases: landing (30s), hunt (90s), challenge (90s), collapse (90s), and beacon finale.
+- Landing blocks player attacks/abilities while movement and pickups remain available; bots use the landing window to move toward crates.
+- Added storm radius/damage state, beacon hold tracking, a 10-second beacon win condition, and increasing damage when exactly two players remain in the finale.
+- Added random challenge-event metadata and synchronized phase/storm/beacon/sudden-death state to the frontend HUD, minimap, and Three.js map renderer.
+- Frontend production build passes. The Go island test cases are present, but package execution is currently blocked by pre-existing duplicate methods between `game_bots.go` and `game.go`. The full frontend suite still has unrelated pre-existing missing GLB asset and rendering-contract failures.
+
+## 2026-08-01 — Глас острова
+
+- Renamed the atmospheric interaction from «шёпот» to «Глас острова».
+- Added private server-to-player `island_voice` messages with a 12-second cooldown and Russian/hero-specific lines for phase changes, first kill, critical health, and the final duel.
+- Added a first-kill-only guard so the same player does not farm repeated lore messages.
+- Added a dedicated HUD notice with automatic dismissal and mobile styling; regular battle log does not duplicate the voice card.
+- Focused Go tests for island phases, landing, beacon, sudden death, privacy/cooldown, phase delivery, and first-kill behavior pass. Frontend production build passes.
+- Full `model/game` suite still contains unrelated pre-existing combat timing/kit failures; those were not changed by this slice.
+
+## 2026-08-01 — Остров Первого Испытания: авторский blockout
+
+- Replaced noisy battle-royale generation with a deterministic authored atoll layout: circular water boundary, four paired landing zones, beach ring, forest ring, central approach lanes and beacon moat.
+- Added map landmark collision types: ancient trees, destructible dead trees, shipwrecks, moon mist, Three Moons altar, sacrificial stone, menhirs and rune crates.
+- Added gameplay support for `moon_mist` concealment and `dead_tree` destruction while keeping ancient trees and shipwrecks blocking.
+- Added themed Three.js terrain dressing: turquoise water base, sand and forest rings, central stone plaza, root bridges and the First Light lighthouse with an intensified final-phase beam.
+- Map tests and focused island tests pass; frontend production build passes. Browser smoke was blocked at authentication (`Authentication failed`) before entering a room.

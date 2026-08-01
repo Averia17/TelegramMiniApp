@@ -50,3 +50,19 @@ func TestActivePlayerCountIncludesConcealedPlayers(t *testing.T) {
 		t.Fatalf("active player count = %d, want 2", got)
 	}
 }
+
+func TestCombatEventsForClientFiltersWithoutEmptyAllocation(t *testing.T) {
+	events := []game.CombatEvent{
+		{ID: 1, Ts: 900, SourceID: "viewer", Kind: "attack"},
+		{ID: 2, Ts: 900, SourceID: "enemy", TargetID: "other", Kind: "attack"},
+		{ID: 3, Ts: 900, TargetID: "viewer", Kind: "damage"},
+	}
+
+	visible := combatEventsForClient(events, "viewer", 1_000)
+	if len(visible) != 2 || visible[0].ID != 1 || visible[1].ID != 3 {
+		t.Fatalf("visible combat events = %#v, want events 1 and 3", visible)
+	}
+	if empty := combatEventsForClient(nil, "viewer", 1_000); empty != nil {
+		t.Fatalf("empty combat events = %#v, want nil", empty)
+	}
+}

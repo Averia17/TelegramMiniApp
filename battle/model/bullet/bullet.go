@@ -12,6 +12,7 @@ type Bullet struct {
 	geometry.CircleBody
 	ID           uint64
 	PlayerId     string
+	CommandID    string
 	Team         string
 	Rotation     float64
 	Active       bool
@@ -37,6 +38,8 @@ type Bullet struct {
 	Lobbed       bool
 	TargetX      float64
 	TargetY      float64
+	TargetID     string
+	Homing       bool
 	SpawnedAt    int64
 	LandsAt      int64
 	ZoneRadius   float64
@@ -54,7 +57,7 @@ func NewBullet(playerId, team string, x, y, radius, rotation float64, color stri
 		Rotation:   rotation,
 		Active:     true,
 		Color:      color,
-		Speed:      4,
+		Speed:      4.0,
 		MaxRange:   900,
 		OriginX:    x,
 		OriginY:    y,
@@ -76,6 +79,7 @@ func (b *Bullet) Move(speed float64) {
 func (b *Bullet) Reset(playerId, team string, x, y, radius, rotation float64, color string) {
 	b.ID = nextID.Add(1)
 	b.PlayerId = playerId
+	b.CommandID = ""
 	b.Team = team
 	b.X = x
 	b.Y = y
@@ -85,7 +89,7 @@ func (b *Bullet) Reset(playerId, team string, x, y, radius, rotation float64, co
 	b.Color = color
 	b.Damage = 0
 	b.Kind = ""
-	b.Speed = 4
+	b.Speed = 4.0
 	b.Acceleration = 0
 	b.MaxRange = 900
 	b.Travelled = 0
@@ -102,6 +106,7 @@ func (b *Bullet) Reset(playerId, team string, x, y, radius, rotation float64, co
 	b.DestroyWalls = false
 	b.Lobbed = false
 	b.TargetX, b.TargetY = 0, 0
+	b.TargetID, b.Homing = "", false
 	b.SpawnedAt, b.LandsAt = 0, 0
 	b.ZoneRadius, b.ZoneTicks, b.ZoneInterval = 0, 0, 0
 	b.ZoneGroup = ""

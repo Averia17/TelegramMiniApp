@@ -62,16 +62,16 @@ func TestFairyMinaSuperHealsAlliesButNotEnemies(t *testing.T) {
 	mina, ally, enemy := gs.Players["mina"], gs.Players["ally"], gs.Players["enemy"]
 	mina.Team, ally.Team, enemy.Team = "pink", "pink", "blue"
 	mina.X, mina.Y, ally.X, ally.Y, enemy.X, enemy.Y = 500, 500, 530, 500, 540, 500
-	ally.Lives, enemy.Lives = 1000, 1000
+	ally.Lives, enemy.Lives = 500, 1000
 	now := time.Now().UnixMilli()
 	MinaKit{}.Super(gs, mina, now, 0, 0)
 	gs.updateNewHeroSystems()
-	if ally.Lives <= 1000 || enemy.Lives != 1000 {
+	if ally.Lives <= 500 || enemy.Lives != 1000 {
 		t.Fatalf("aura ally=%d enemy=%d, want ally healed and enemy unchanged", ally.Lives, enemy.Lives)
 	}
 }
 
-func TestBrockSuperSchedulesSixWallBreakingStrikes(t *testing.T) {
+func TestBrockSuperSchedulesThreeTimedStrikes(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("brock", "Brock", "Brock Zeus")
@@ -79,7 +79,7 @@ func TestBrockSuperSchedulesSixWallBreakingStrikes(t *testing.T) {
 	p.X, p.Y = 400, 400
 	now := time.Now().UnixMilli()
 	BrockZeusKit{}.Super(gs, p, now, 0, 300)
-	if len(gs.LightningStrikes) != 6 || p.ChannelUntil != now+1000 {
+	if len(gs.LightningStrikes) != 3 || p.ChannelUntil != now+1000 {
 		t.Fatalf("strikes=%d channel=%d", len(gs.LightningStrikes), p.ChannelUntil)
 	}
 }
@@ -93,7 +93,7 @@ func TestKazeSuperCrossesAndStunsEnemy(t *testing.T) {
 	p.X, p.Y, enemy.X, enemy.Y = 500, 500, 650, 500
 	now := time.Now().UnixMilli()
 	KazeKit{}.Super(gs, p, now, 0, 0)
-	if enemy.Lives != enemy.MaxLives-2500 || enemy.StunUntil != now+500 {
+	if enemy.Lives != enemy.MaxLives-160 || enemy.StunUntil != now+500 {
 		t.Fatalf("enemy lives=%d stun=%d", enemy.Lives, enemy.StunUntil)
 	}
 }
@@ -142,6 +142,7 @@ func TestLumiRootTriggersOnceForTwoSeconds(t *testing.T) {
 	p.X, p.Y, enemy.X, enemy.Y = 400, 400, 500, 400
 	now := time.Now().UnixMilli()
 	PersephoneLumiKit{}.Super(gs, p, now, 0, 100)
+	time.Sleep(650 * time.Millisecond)
 	gs.updateNewHeroSystems()
 	if enemy.StunUntil < now+1900 {
 		t.Fatalf("root until=%d want about %d", enemy.StunUntil, now+2000)
@@ -156,12 +157,12 @@ func TestNewHeroGadgetsRespectSharedCooldownAndEmitCastFeedback(t *testing.T) {
 	now := time.Now().UnixMilli()
 
 	gs.playerAbility("kaze", now, "secondary")
-	if p.GadgetCharges != 2 || len(gs.Effects) == 0 || gs.Effects[len(gs.Effects)-1].Kind != "kaze_veil_step" {
-		t.Fatalf("first gadget charges=%d effects=%#v", p.GadgetCharges, gs.Effects)
+	if p.GadgetCharges != 2 || p.GadgetPulse != 1 || len(gs.Effects) == 0 || gs.Effects[len(gs.Effects)-1].Kind != "kaze_veil_step" {
+		t.Fatalf("first gadget charges=%d pulse=%d effects=%#v", p.GadgetCharges, p.GadgetPulse, gs.Effects)
 	}
 	gs.playerAbility("kaze", now+100, "secondary")
-	if p.GadgetCharges != 2 {
-		t.Fatalf("gadget ignored cooldown, charges=%d want 2", p.GadgetCharges)
+	if p.GadgetCharges != 2 || p.GadgetPulse != 1 {
+		t.Fatalf("gadget ignored cooldown, charges=%d pulse=%d want charges=2 pulse=1", p.GadgetCharges, p.GadgetPulse)
 	}
 }
 

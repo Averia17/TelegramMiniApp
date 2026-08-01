@@ -20,6 +20,7 @@ import {
 import {createProjectileVisual} from "../src/components/BattleGame/rendering/combat/ProjectileRenderer.js"
 import {
   MonsterRenderer,
+  getDamageBarFractions,
   formatHealthLabel,
 } from "../src/components/BattleGame/rendering/monsters/MonsterRenderer.js"
 import {getBattleWebGLContext} from "../src/components/BattleGame/rendering/SceneRoot.js"
@@ -44,7 +45,7 @@ import {
   getStateBattleResult,
 } from "../src/components/BattleGame/battleOutcome.js"
 import {isAlivePlayerState} from "../src/components/BattleGame/rendering/heroes/playerVisibility.js"
-import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG} from "../src/components/BattleGame/heroesConfig.js"
+import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG, RUNTIME_ANIMATION_REFERENCE_SPEED} from "../src/components/BattleGame/heroesConfig.js"
 import {
   getEnvironmentPlacements,
   replaceFallbackWithEnvironment,
@@ -81,9 +82,23 @@ test("world coordinates round-trip through the shared 2.5D transform", () => {
 test("hero speed config produces distinct authored run-cycle rates", () => {
   const shadow = HEROES_CONFIG.find(hero => hero.name === "Shadow")
   const kaze = HEROES_CONFIG.find(hero => hero.name === "Kaze")
-  assert.equal(ANIMATION_REFERENCE_SPEED, 240)
+  assert.equal(ANIMATION_REFERENCE_SPEED, 12)
+  assert.equal(RUNTIME_ANIMATION_REFERENCE_SPEED, 144)
   assert.ok(kaze.speed > shadow.speed)
   assert.equal(kaze.speed / ANIMATION_REFERENCE_SPEED > shadow.speed / ANIMATION_REFERENCE_SPEED, true)
+})
+
+test("hero fallback configs expose compact health, damage, and speed values", () => {
+  const shadow = HEROES_CONFIG.find(hero => hero.name === "Shadow")
+  const mico = HEROES_CONFIG.find(hero => hero.name === "Wukong Mico")
+  assert.deepEqual(
+    {health: shadow.maxLives, damage: shadow.attackDamage, speed: shadow.speed},
+    {health: 620, damage: 65, speed: 12},
+  )
+  assert.deepEqual(
+    {health: mico.maxLives, damage: mico.attackDamage, speed: mico.speed},
+    {health: 900, damage: 85, speed: 13},
+  )
 })
 
 test("hero turning follows the shortest arc through intermediate directions", () => {
@@ -102,7 +117,7 @@ test("bush concealment softly fades the brawler without adding hero-bound foliag
   assert.equal(getBushConcealmentMix(1, false, .1) < 1, true)
 })
 
-test("aim rendering uses a configured forward area for melee and a direction for ranged heroes", () => {
+test("attack direction guides never stay visible while aiming", () => {
   const root = new THREE.Group()
   const aim = new AimRenderer(root)
   aim.update({
@@ -115,10 +130,7 @@ test("aim rendering uses a configured forward area for melee and a direction for
     attackHalfArcDegrees: 55,
     color: "#B88CFF",
   })
-  assert.equal(aim.meleeArea.visible, true)
-  assert.equal(aim.line.visible, false)
-  assert.equal(aim.meleeArea.userData.halfArcDegrees, 55)
-  assert.equal(Math.abs(aim.meleeArea.scale.x - 105 * WORLD_SCALE) < .001, true)
+  assert.equal(aim.root.visible, false)
 
   aim.update({
     aiming: true,
@@ -129,9 +141,26 @@ test("aim rendering uses a configured forward area for melee and a direction for
     attackRange: 760,
     color: "#62C8FF",
   })
-  assert.equal(aim.meleeArea.visible, false)
-  assert.equal(aim.line.visible, true)
-  assert.equal(aim.target.visible, true)
+  assert.equal(aim.root.visible, false)
+})
+
+test("attack direction guides stay hidden after an attack pulse", () => {
+  const root = new THREE.Group()
+  const aim = new AimRenderer(root)
+  const base = {
+    aiming: false,
+    attackPulse: 1,
+    x: 100,
+    y: 200,
+    rotation: .4,
+    attackArchetype: "melee_cone",
+    attackRange: 120,
+    attackHalfArcDegrees: 48,
+    color: "#FFB33E",
+  }
+  aim.update({...base, attackPulse: 0})
+  aim.update(base, .016)
+  assert.equal(aim.root.visible, false)
 })
 
 test("server bats are rendered, animated, and removed with the monster snapshot", () => {
@@ -175,6 +204,11 @@ test("a monster with zero HP is removed even before the server drops its id", ()
 test("health labels show exact remaining and maximum HP", () => {
   assert.equal(formatHealthLabel(1840, 3600), "1840 / 3600")
   assert.equal(formatHealthLabel(-20, 3600), "0 / 3600")
+})
+
+test("damage bar keeps the just-lost HP visible as a red trailing segment", () => {
+  assert.deepEqual(getDamageBarFractions(0.62, 0.80), {current: 0.62, damage: 0.80})
+  assert.deepEqual(getDamageBarFractions(0.62, 0.80, 0.5), {current: 0.62, damage: 0.71})
 })
 
 test("monster health drops are visible until the player collects them", () => {
@@ -411,13 +445,25 @@ test("mobile camera starts on the player and fits the map after rotation", () =>
   assert.equal(camera.target.z, 384 * WORLD_SCALE)
 })
 
+test("camera keeps the last hero position when the local hero dies", () => {
+  const camera = new CameraRig()
+  const map = {width: 1024, height: 768}
+
+  camera.resize(390, 844)
+  camera.follow({x: 180, y: 260}, map, 1 / 60)
+  camera.follow(null, map, 1 / 60)
+
+  assert.equal(camera.target.x, 180 * WORLD_SCALE)
+  assert.equal(camera.target.z, 260 * WORLD_SCALE)
+})
+
 test("the hero manifest uses standardized base GLBs and optional detached weapons", () => {
   assert.deepEqual(Object.keys(HERO_ASSETS), ["Shadow", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"])
   for (const name of Object.keys(HERO_ASSETS)) {
     const asset = getHeroAsset(name)
     assert.equal(asset.id, name)
     assert.equal(asset.scale > 0, true)
-    assert.deepEqual(Object.keys(asset.clips), ["idle", "run", "hit", "aim", "aimSuper", "attack", "super", "spawn", "victory", "defeat"])
+    assert.deepEqual(Object.keys(asset.clips), ["idle", "run", "hit", "aim", "aimSuper", "attack", "super", "gadget", "spawn", "victory", "defeat"])
     assert.equal("eventAnimations" in asset, false)
     assert.match(asset.url, /\/assets\/heroes\/output_heroes\/[^/]+_base\.glb$/)
     if (asset.weaponUrl) {
@@ -433,12 +479,38 @@ test("the hero manifest uses standardized base GLBs and optional detached weapon
 
 test("hero asset resolution keeps canonical names and handles unknown names safely", () => {
   assert.equal(resolveHeroName("Mandy"), "Mandy")
+  assert.equal(resolveHeroName("needle"), "Shadow")
+  assert.equal(resolveHeroName("fairy-mina"), "Fairy Mina")
+  assert.equal(resolveHeroName("brock-zeus"), "Brock Zeus")
+  assert.equal(resolveHeroName("wukong-mico"), "Wukong Mico")
+  assert.equal(resolveHeroName("persephone-lumi"), "Persephone Lumi")
   assert.equal(resolveHeroName("missing-hero"), "Mandy")
 })
 
 test("the runtime renderer has no Canvas2D engine switch or fallback", async () => {
   const source = await readFile(projectFile("src/components/BattleGame/Renderer.js"), "utf8")
   assert.doesNotMatch(source, /CanvasRenderer|battle_renderer|renderer=|getContext\(["']2d["']\)/)
+})
+
+test("entering battle never falls back to a blank screen while the arena loads", async () => {
+  const appSource = await readFile(projectFile("src/App.jsx"), "utf8")
+  const landingSource = await readFile(projectFile("src/pages/landing-page.jsx"), "utf8")
+  const battleSource = await readFile(projectFile("src/components/BattleGame/BattleGame.jsx"), "utf8")
+
+  assert.match(appSource, /Suspense fallback=\{<BattleLoading/)
+  assert.match(landingSource, /setBattleStarting\(true\)/)
+  assert.match(landingSource, /<BattleLoading/)
+  assert.match(battleSource, /view === "connecting"[\s\S]*<BattleLoading/)
+})
+
+test("battle hero is not exposed or selected through query parameters", async () => {
+  const appSource = await readFile(projectFile("src/App.jsx"), "utf8")
+  const landingSource = await readFile(projectFile("src/pages/landing-page.jsx"), "utf8")
+  const battleSource = await readFile(projectFile("src/components/BattleGame/BattleGame.jsx"), "utf8")
+
+  assert.doesNotMatch(appSource, /searchParams\.get\(["']hero["']\)/)
+  assert.doesNotMatch(landingSource, /\/battle\?hero|hero=\$\{/)
+  assert.doesNotMatch(battleSource, /heroQuery|\/battle\/\$\{[^}]+\}\?hero/)
 })
 
 test("the battle renderer boundary forwards the final outcome animation", async () => {

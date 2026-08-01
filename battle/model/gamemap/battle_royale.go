@@ -7,11 +7,13 @@ import (
 	"battle/service/geometry"
 )
 
-// GenerateBattleRoyale builds the authoritative arena used by the new client.
-// It is symmetric for fairness, while the seed keeps matches visually varied.
+// GenerateBattleRoyale builds the authored arena for «Остров Первого Испытания».
+// The layout is rotationally fair: four landing pads feed four readable routes
+// into the forest, while the altar, sacrifice stone and beacon remain fixed landmarks.
 func GenerateBattleRoyale(seed int64) *GameMap {
 	const size = 60
 	const tile = 40.0
+	const center = 30
 	rng := rand.New(rand.NewSource(seed))
 	gm := &GameMap{
 		WidthInPixels: size * tile, HeightInPixels: size * tile,
@@ -20,7 +22,7 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 
 	occupied := make(map[[2]int]bool)
 	add := func(x, y int, kind string) {
-		if x < 2 || y < 2 || x >= size-2 || y >= size-2 {
+		if x < 0 || y < 0 || x >= size || y >= size {
 			return
 		}
 		key := [2]int{x, y}
@@ -33,55 +35,127 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 			MaxX: float64(x+1) * tile, MaxY: float64(y+1) * tile, Type: kind,
 		})
 	}
-
-	// Coherent two-octave gradient noise creates broad terrain clusters;
-	// mirroring the quadrant keeps competitive spawns fair.
-	for y := 3; y < size/2; y++ {
-		for x := 3; x < size/2; x++ {
-			if math.Hypot(float64(x-size/2), float64(y-size/2)) < 5 {
-				continue
+	addRect := func(minX, minY, maxX, maxY int, kind string) {
+		for y := minY; y <= maxY; y++ {
+			for x := minX; x <= maxX; x++ {
+				add(x, y, kind)
 			}
-			edge := minInt(x, y)
-			noise := gradientNoise(seed, float64(x)/6.5, float64(y)/6.5) + gradientNoise(seed+0x517cc1b727220a95, float64(x)/14, float64(y)/14)*.45
-			kind := ""
-			switch {
-			case edge > 2 && noise > .22:
-				if rng.Float64() < .68 {
-					kind = "destructible"
-				} else {
-					kind = "wall"
+		}
+	}
+	clear := func(x, y int) { delete(occupied, [2]int{x, y}) }
+	clearDisc := func(cx, cy int, radius float64) {
+		for y := cy - int(radius) - 1; y <= cy+int(radius)+1; y++ {
+			for x := cx - int(radius) - 1; x <= cx+int(radius)+1; x++ {
+				if math.Hypot(float64(x-cx), float64(y-cy)) <= radius {
+					clear(x, y)
 				}
-			case edge > 1 && noise > -.04:
-				kind = "bush"
-			case edge > 3 && noise < -.43:
-				kind = "water"
-			}
-			if kind == "" {
-				continue
-			}
-			for _, point := range [][2]int{{x, y}, {size - 1 - x, y}, {x, size - 1 - y}, {size - 1 - x, size - 1 - y}} {
-				add(point[0], point[1], kind)
 			}
 		}
 	}
 
-	angleOffset := rng.Float64() * math.Pi * 2
-	for index := 0; index < 8; index++ {
-		angle := angleOffset + float64(index)*math.Pi/4
-		radius := float64(size) * (.36 + rng.Float64()*.05)
-		x := int(math.Round(float64(size)/2 + math.Cos(angle)*radius))
-		y := int(math.Round(float64(size)/2 + math.Sin(angle)*radius))
-		for clearY := y - 2; clearY <= y+2; clearY++ {
-			for clearX := x - 2; clearX <= x+2; clearX++ {
-				if math.Hypot(float64(clearX-x), float64(clearY-y)) <= 2.2 {
-					delete(occupied, [2]int{clearX, clearY})
-				}
+	// Water is a real collision boundary, not just an edge clamp. The island
+	// is circular inside the 60x60 playable canvas, creating the atoll silhouette.
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			if math.Hypot(float64(x)+0.5-float64(center), float64(y)+0.5-float64(center)) > 27.25 {
+				add(x, y, "water")
 			}
 		}
-		gm.Spawners = append(gm.Spawners, &geometry.RectangleBody{X: float64(x) * tile, Y: float64(y) * tile, Width: tile, Height: tile})
 	}
 
-	// Remove obstacles cleared around spawns from the serialized/collision map.
+	// Outer ring: beach cover, tide fog and rune crates. These are mirrored
+	// across the four landing approaches so no spawn has a privileged route.
+	for _, patch := range [][2]int{{10, 12}, {14, 10}, {46, 12}, {50, 16}, {10, 46}, {14, 50}, {46, 48}, {50, 44}} {
+		add(patch[0], patch[1], "bush")
+		add(patch[0]+1, patch[1], "bush")
+		add(patch[0], patch[1]+1, "bush")
+	}
+	for _, patch := range [][2]int{{19, 8}, {41, 8}, {8, 21}, {51, 39}, {8, 39}, {51, 21}, {19, 51}, {41, 51}} {
+		add(patch[0], patch[1], "moon_mist")
+	}
+	for _, crate := range [][2]int{{20, 11}, {23, 9}, {37, 9}, {40, 11}, {11, 20}, {9, 23}, {51, 37}, {48, 40}, {11, 40}, {9, 37}, {49, 20}, {51, 23}, {20, 49}, {23, 51}, {37, 51}, {40, 49}} {
+		add(crate[0], crate[1], "crates")
+	}
+
+	// Forest ring: ancient trees are permanent cover, dead trees are destructible.
+	for _, tree := range [][2]int{
+		{15, 16}, {20, 14}, {25, 12}, {35, 12}, {40, 14}, {45, 16},
+		{13, 25}, {17, 21}, {43, 21}, {47, 25}, {13, 35}, {17, 39},
+		{43, 39}, {47, 35}, {15, 44}, {20, 46}, {25, 48}, {35, 48}, {40, 46}, {45, 44},
+	} {
+		add(tree[0], tree[1], "tree")
+	}
+	for _, dead := range [][2]int{{22, 18}, {38, 18}, {18, 30}, {42, 30}, {22, 42}, {38, 42}, {27, 15}, {33, 15}} {
+		add(dead[0], dead[1], "dead_tree")
+	}
+
+	// Two shipwreck labyrinths: outlines leave walkable rooms and narrow sightlines.
+	addWreck := func(x, y int, flip bool) {
+		addRect(x, y, x+4, y, "shipwreck")
+		addRect(x, y+4, x+4, y+4, "shipwreck")
+		if flip {
+			addRect(x, y+1, x, y+3, "shipwreck")
+			add(x+4, y+2, "shipwreck")
+		} else {
+			addRect(x+4, y+1, x+4, y+3, "shipwreck")
+			add(x, y+2, "shipwreck")
+		}
+	}
+	addWreck(20, 24, rng.Intn(2) == 0)
+	addWreck(35, 31, rng.Intn(2) == 0)
+
+	// Narrow water channels separate the forest pockets; the client dresses the
+	// two open crossings as glowing root bridges.
+	for y := 16; y <= 44; y++ {
+		if y != 29 && y != 30 && y != 31 {
+			add(11, y, "water")
+			add(48, y, "water")
+		}
+	}
+
+	// Heart moat: only north and south openings remain reachable in the finale.
+	for y := center - 6; y <= center+6; y++ {
+		for x := center - 6; x <= center+6; x++ {
+			distance := math.Hypot(float64(x-center), float64(y-center))
+			bridge := (y == center-5 || y == center+5) && x >= center-1 && x <= center+1
+			if distance >= 4.0 && distance <= 5.35 && !bridge {
+				add(x, y, "water")
+			}
+		}
+	}
+
+	// Four broad, readable approach lanes. Clearing them after dressing keeps
+	// the forest interesting without creating an accidental soft-lock.
+	for i := 8; i <= 27; i++ {
+		for offset := -1; offset <= 1; offset++ {
+			clear(center+offset, i)
+			clear(center+offset, size-1-i)
+			clear(i, center+offset)
+			clear(size-1-i, center+offset)
+		}
+	}
+	clearDisc(center, center, 3.4)
+
+	// Story landmarks sit in open, memorable spaces.
+	add(center, 18, "altar_three_moons")
+	add(18, center, "sacrificial_stone")
+	for _, menhir := range [][2]int{{24, 25}, {35, 25}, {24, 35}, {35, 35}, {27, 23}, {33, 23}} {
+		add(menhir[0], menhir[1], "menhir")
+	}
+
+	// Four landing zones, two spawn pads each. The paired pads make a clean
+	// beach zone for each direction while preserving eight-player capacity.
+	spawnCenters := [][2]int{{center, 8}, {51, center}, {center, 51}, {8, center}}
+	for _, spawn := range spawnCenters {
+		clearDisc(spawn[0], spawn[1], 2.5)
+		for _, offset := range [][2]int{{-1, 0}, {1, 0}} {
+			x, y := spawn[0]+offset[0], spawn[1]+offset[1]
+			gm.Spawners = append(gm.Spawners, &geometry.RectangleBody{X: float64(x) * tile, Y: float64(y) * tile, Width: tile, Height: tile})
+		}
+	}
+
+	// Filter cleared cells from the authored collision list and keep bush groups
+	// stable for visibility, healing and bot perception.
 	filtered := gm.Collisions[:0]
 	for _, wall := range gm.Collisions {
 		key := [2]int{int(wall.MinX / tile), int(wall.MinY / tile)}
@@ -90,37 +164,6 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 		}
 	}
 	gm.Collisions = filtered
-
-	// Distribute 12 central and 18 outer crates after spawn repair.
-	placeCrates := func(count int, central bool) {
-		placed := 0
-		for attempts := 0; placed < count && attempts < 3000; attempts++ {
-			angle := rng.Float64() * math.Pi * 2
-			radius := float64(size) * (.24 + rng.Float64()*.18)
-			if central {
-				radius = math.Sqrt(rng.Float64()) * float64(size) * .18
-			}
-			x := clampInt(int(math.Round(float64(size)/2+math.Cos(angle)*radius)), 2, size-3)
-			y := clampInt(int(math.Round(float64(size)/2+math.Sin(angle)*radius)), 2, size-3)
-			if occupied[[2]int{x, y}] {
-				continue
-			}
-			nearSpawn := false
-			for _, spawn := range gm.Spawners {
-				if math.Hypot(float64(x)-spawn.X/tile, float64(y)-spawn.Y/tile) < 3 {
-					nearSpawn = true
-					break
-				}
-			}
-			if nearSpawn {
-				continue
-			}
-			add(x, y, "crates")
-			placed++
-		}
-	}
-	placeCrates(12, true)
-	placeCrates(18, false)
 	assignBushGroups(gm.Collisions, tile)
 	return gm
 }
@@ -128,7 +171,7 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 func assignBushGroups(walls []*geometry.WallTile, tile float64) {
 	byCell := make(map[[2]int]*geometry.WallTile)
 	for _, wall := range walls {
-		if wall.Type == "bush" {
+		if wall.Type == "bush" || wall.Type == "moon_mist" {
 			byCell[[2]int{int(math.Round(wall.MinX / tile)), int(math.Round(wall.MinY / tile))}] = wall
 		}
 	}

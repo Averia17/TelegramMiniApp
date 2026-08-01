@@ -5,8 +5,8 @@ import {GLBHeroController} from "./GLBHeroController"
 import {worldToScene} from "../shared/coordinates"
 import {disposeObjectTree} from "../shared/disposal"
 import {createContactShadow} from "../shared/materials"
-import {advanceSmoothTurn} from "./turning"
-import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG} from "../../heroesConfig"
+import {advanceSmoothTurn, blendAngle} from "./turning"
+import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG, RUNTIME_ANIMATION_REFERENCE_SPEED} from "../../heroesConfig"
 import {
   BUSH_HERO_OPACITY,
   getBushConcealmentMix,
@@ -154,8 +154,9 @@ export class HeroView {
         heroName,
         attackPulse: this.state.attackPulse,
         superPulse: this.state.superPulse,
+        gadgetPulse: this.state.gadgetPulse,
         spawnPulse: this.spawnPulse,
-        fullBodySuper: false,
+        fullBodySuper: true,
       })
       this.group.remove(previous)
       disposeObjectTree(previous)
@@ -232,13 +233,18 @@ export class HeroView {
     )
     this.aimAngle = aimTurn.angle
     this.aimTurnVelocity = aimTurn.velocity
+    // During the attack recoil window the whole hero eases toward the actual
+    // strike angle, even if movement is still held in another direction. The
+    // old `moving ? bodyAngle : aimAngle` switch made attacks visually face
+    // movement while the server hit in the aimed direction, then snapped back.
+    const attackFacingMix = clamp(this.recoil * 5, 0, 1)
+    const visualAngle = blendAngle(this.bodyAngle, this.aimAngle, attackFacingMix)
     this.group.position.copy(worldToScene(this.x, this.y))
-    this.model.rotation.y = this.aimAngle
+    this.model.rotation.y = visualAngle
     this.model.userData.animate?.(time, moving ? 1 : 0.08, this.recoil)
     if (this.animation) {
       const configuredSpeed = heroSpeed(this.state.hero || this.state.name)
-      this.model.rotation.y = moving ? this.bodyAngle : this.aimAngle
-      const networkSpeed = Math.hypot(this.x - previousX, this.y - previousY) / Math.max(delta, 0.001)
+      this.model.rotation.y = visualAngle
       // The server's configured hero speed is authoritative for the gait. The
       // interpolated positional delta is noisy and must not erase per-hero
       // differences (Kaze should visibly cycle faster than Shadow).
@@ -246,20 +252,21 @@ export class HeroView {
         ? Math.max(configuredSpeed, Number(this.state.speed) || 0)
         : 0
       const aimDelta = Math.atan2(
-        Math.sin(this.aimAngle - this.model.rotation.y),
-        Math.cos(this.aimAngle - this.model.rotation.y),
+        Math.sin(this.aimAngle - visualAngle),
+        Math.cos(this.aimAngle - visualAngle),
       )
       this.animation.update(delta, {
         alive: this.state.lives > 0,
         moving,
         speed: effectiveSpeed,
-        referenceSpeed: ANIMATION_REFERENCE_SPEED,
+        referenceSpeed: RUNTIME_ANIMATION_REFERENCE_SPEED,
         aiming: Boolean(this.state.aiming),
         superAiming: Number(this.state.channel) > 0,
         aimYaw: this.state.aiming || this.recoil > 0.05 ? aimDelta : 0,
         attackHalfArcDegrees: this.state.attackHalfArcDegrees,
         attackPulse: this.state.attackPulse,
         superPulse: this.state.superPulse,
+        gadgetPulse: this.state.gadgetPulse,
         spawnPulse: this.spawnPulse,
         result: this.result,
       })
@@ -304,6 +311,6 @@ export class HeroView {
 }
 
 export const isInsideBush = (entity, walls = []) => Boolean(entity && walls.some(wall =>
-  (wall.type === "bush" || wall.type === "half") &&
+  (wall.type === "bush" || wall.type === "half" || wall.type === "moon_mist") &&
   entity.x >= wall.minX && entity.x <= wall.maxX &&
   entity.y >= wall.minY && entity.y <= wall.maxY))

@@ -8,8 +8,10 @@ services:
     working_dir: /app
     volumes:
       - .:/app
+      - battle-tmp:/app/tmp
     expose:
       - "8000"
+      - "6060"
     environment:
       - REDIS_ADDR=battle-redis:6379
       - KAFKA_ADDR=kafka:9092
@@ -35,3 +37,4 @@ networks:
 
 volumes:
   battle-redis-data:
+  battle-tmp:

@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schemaVersion": 1,
+  "catalogRevision": "2026-08-01",
+  "purpose": "Единый источник контекста по героям для gameplay, frontend, Blender и ИИ.",
+  "maintenance": {
+    "owner": "AI + game team",
+    "updatePolicy": "docs/hero-catalog-maintenance.md",
+    "lastReviewedBy": "Codex",
+    "lastReviewedAt": "2026-08-01"
+  },
+  "sourceFingerprints": {
+    "battle/model/game/heroes.go": "92C82560FBA63E654DC539153F493872013B8B58541C018423619642A771F755",
+    "battle/model/game/attack_config.go": "25BBC1995B101910870A96D6D863906340E8DC0C33653CD40750CC164C79E565",
+    "tools/blender/hero_animation_scene_manifest.json": "F90AA94C9F49BC10DB8143E3642788DD25D1C0428B2775DD515F459EAE3654BC"
+  },
+  "contracts": {
+    "runtimeAnimationFps": 30,
+    "runtimeAnimationClips": [
+      "idle",
+      "run",
+      "attack",
+      "super",
+      "aim",
+      "aim-super",
+      "hit",
+      "death",
+      "spawn",
+      "victory"
+    ],
+      "abilityAnimationClips": {
+      "basic": "Attack",
+      "super": "super",
+      "gadget": "Gadget"
+    },
+    "coordinateSystem": "Three.js: +Y up; ground plane XZ",
+    "runtimeModelPattern": "frontend/public/assets/heroes/output_heroes/<slug>_base.glb",
+    "runtimeWeaponPattern": "frontend/public/assets/heroes/output_weapons/<slug>_weapon.glb"
+  },
+  "heroes": [
+    {
+      "id": "shadow",
+      "slug": "shadow",
+      "name": "Shadow",
+      "status": "active",
+      "identity": {"role": "Controller", "color": "#75D947", "radius": 14},
+      "description": "Споровый контроллер: заражает врагов, замедляет их и создаёт опасные зоны.",
+      "balance": {"maxLives": 620, "speed": 12, "attackDamage": 65, "attackRateMs": 420, "reloadTimeMs": 1750, "maxAmmo": 3, "bulletSpeed": 22.5, "bulletSize": 15, "regenRate": 0.011, "attackType": "spore"},
+      "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 620, "projectileKind": "spore", "modifier": "short_vault"},
+      "abilities": {
+        "basic": {"id": "spore_thorn", "name": "Споровый шип", "description": "Самонаводящийся споровый снаряд накладывает споры.", "slot": "basic", "prediction": "projectile", "mechanics": ["самонаведение к ближайшей цели", "накопление спор"]},
+        "super": {"id": "hunter_root", "name": "Ловчий корень", "description": "Корень с задержкой обездвиживает врагов и оставляет замедляющую зону.", "slot": "primary", "prediction": "server", "mechanics": ["зона радиусом 120", "срабатывание через 800 мс", "оглушение и замедление"]},
+        "gadget": {"id": "spore_dash", "name": "Споровый рывок", "description": "Рывок оставляет облако спор и ослепляет врагов рядом с точкой старта.", "slot": "secondary", "prediction": "server", "mechanics": ["рывок на 320", "облако на 5 секунд", "до 3 стаков спор"]}
+      },
+      "animations": {"manifestSlug": "needle", "available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/needle/needle.blend", "sceneDirectory": "frontend/assets-source/heroes/needle/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/needle_base.glb", "runtimeWeapon": null, "status": "runtime_hero_ready_weapon_missing"},
+      "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
+    },
+    {
+      "id": "mandy",
+      "slug": "mandy",
+      "name": "Mandy",
+      "status": "active",
+      "identity": {"role": "Fighter", "color": "#F4C542", "radius": 14},
+      "description": "Ближний боец, который усиливает удары стойкой и пробивает карту волной разрушения.",
+      "balance": {"maxLives": 720, "speed": 12.5, "attackDamage": 60, "attackRateMs": 420, "reloadTimeMs": 1650, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "mandy_staff"},
+      "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 70, "halfArcDegrees": 42, "modifier": "mandy_focus"},
+      "abilities": {
+        "basic": {"id": "staff_strike", "name": "Удар посохом", "description": "Ближний удар; неподвижность усиливает удар и оглушает.", "slot": "basic", "prediction": "melee", "mechanics": ["сектор 70", "усиление в фокусе"]},
+        "super": {"id": "devastation_wave", "name": "Волна опустошения", "description": "Дальняя волна разрушает стены и наносит урон по линии карты.", "slot": "primary", "prediction": "server", "mechanics": ["каналинг 1200 мс", "задержка удара 750 мс", "разрушает стены"]},
+        "gadget": {"id": "unyielding_stance", "name": "Нерушимая стойка", "description": "Стойка защищает от контроля и снижает входящий урон.", "slot": "secondary", "prediction": "server", "mechanics": ["зона стойки", "замедление врагов рядом"]}
+      },
+      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/mandy/mandy.blend", "sceneDirectory": "frontend/assets-source/heroes/mandy/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/mandy_base.glb", "runtimeWeapon": "frontend/public/assets/heroes/output_weapons/mandy_weapon.glb", "status": "runtime_ready"},
+      "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/combat_kits.go", "frontend/src/components/BattleGame/heroesConfig.js"]
+    },
+    {
+      "id": "fairy-mina",
+      "slug": "fairy-mina",
+      "name": "Fairy Mina",
+      "status": "active",
+      "identity": {"role": "Support", "color": "#FF8FE8", "radius": 13},
+      "description": "Поддержка с веером звёздных снарядов, щитом и лечащей аурой.",
+      "balance": {"maxLives": 600, "speed": 13.5, "attackDamage": 40, "attackRateMs": 420, "reloadTimeMs": 1550, "maxAmmo": 3, "bulletSpeed": 29.5, "bulletSize": 7, "regenRate": 0.011, "attackType": "mina_star_fan"},
+      "basicAttack": {"archetype": "shotgun", "aimShape": "cone", "range": 510, "projectileKind": "mina_star", "projectileCount": 3, "spreadDegrees": 24, "splashRadius": 38},
+      "abilities": {
+        "basic": {"id": "star_fan", "name": "Звёздный веер", "description": "Три звезды летят веером, лечат союзников и поражают врагов.", "slot": "basic", "prediction": "projectile", "mechanics": ["3 снаряда", "разброс 24°", "радиус взрыва 38"]},
+        "super": {"id": "star_cocoon", "name": "Звёздный кокон", "description": "Щит создаёт лечащую ауру вокруг выбранного союзника.", "slot": "primary", "prediction": "server", "mechanics": ["щит 400", "длительность 4 секунды", "аура радиусом 160"]},
+        "gadget": {"id": "repelling_wave", "name": "Отталкивающая волна", "description": "Отбрасывает врагов и оглушает уже отмеченные цели.", "slot": "secondary", "prediction": "server", "mechanics": ["радиус 135", "отбрасывание", "оглушение отмеченных целей"]}
+      },
+      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/fairy-mina/fairy-mina.blend", "sceneDirectory": "frontend/assets-source/heroes/fairy-mina/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/fairy-mina_base.glb", "runtimeWeapon": null, "status": "runtime_hero_ready_weapon_missing"},
+      "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
+    },
+    {
+      "id": "brock-zeus",
+      "slug": "brock-zeus",
+      "name": "Brock Zeus",
+      "status": "active",
+      "identity": {"role": "Sharpshooter", "color": "#62C8FF", "radius": 14},
+      "description": "Дальний стрелок с взрывными молниями, штормом и пробивающим лучом.",
+      "balance": {"maxLives": 620, "speed": 12.25, "attackDamage": 80, "attackRateMs": 520, "reloadTimeMs": 1800, "maxAmmo": 3, "bulletSpeed": 36, "bulletSize": 8, "regenRate": 0.009, "attackType": "zeus_lightning"},
+      "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 760, "projectileKind": "zeus_lightning", "splashRadius": 72},
+      "abilities": {
+        "basic": {"id": "thunder_projectile", "name": "Грозовой снаряд", "description": "Взрывной снаряд наносит урон по области и разрушает стены.", "slot": "basic", "prediction": "projectile", "mechanics": ["дальность 760", "взрыв 72"]},
+        "super": {"id": "gods_hammer", "name": "Молот богов", "description": "Три удара молнии создают горящую зону.", "slot": "primary", "prediction": "server", "mechanics": ["3 удара", "задержка между ударами 400 мс", "последний удар создаёт огонь"]},
+        "gadget": {"id": "discharge_cable", "name": "Разрядный кабель", "description": "Следующий выстрел становится пробивающим лучом.", "slot": "secondary", "prediction": "server", "mechanics": ["луч до 800", "пробивает цели", "разрушает стены по линии"]}
+      },
+      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/brock-zeus/brock-zeus.blend", "sceneDirectory": "frontend/assets-source/heroes/brock-zeus/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/brock-zeus_base.glb", "runtimeWeapon": null, "status": "runtime_hero_ready_weapon_missing"},
+      "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
+    },
+    {
+      "id": "kaze",
+      "slug": "kaze",
+      "name": "Kaze",
+      "status": "active",
+      "identity": {"role": "Assassin", "color": "#B88CFF", "radius": 12},
+      "description": "Быстрый ассасин с двойным ударом, пробивающим рывком и невидимостью.",
+      "balance": {"maxLives": 650, "speed": 15.5, "attackDamage": 40, "attackRateMs": 220, "reloadTimeMs": 850, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.011, "attackType": "kaze_cross_slash"},
+      "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 105, "halfArcDegrees": 55, "modifier": "kaze_double"},
+      "abilities": {
+        "basic": {"id": "cross_slash", "name": "Косые удары", "description": "Два попадания открывают усиленный третий удар.", "slot": "basic", "prediction": "melee", "mechanics": ["две зоны удара", "комбо усиливает следующий удар"]},
+        "super": {"id": "piercing_dash", "name": "Пронизывающий рывок", "description": "Рывок поражает врагов на пути, помечает их и оглушает.", "slot": "primary", "prediction": "server", "mechanics": ["дистанция 320", "урон 160", "оглушение 500 мс"]},
+        "gadget": {"id": "vanish", "name": "Исчезновение", "description": "Невидимость на короткое время гарантирует усиленный первый удар.", "slot": "secondary", "prediction": "server", "mechanics": ["невидимость 3 секунды", "усиленный первый удар"]}
+      },
+      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/kaze/kaze.blend", "sceneDirectory": "frontend/assets-source/heroes/kaze/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/kaze_base.glb", "runtimeWeapon": "frontend/public/assets/heroes/output_weapons/kaze_weapon.glb", "status": "runtime_ready"},
+      "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
+    },
+    {
+      "id": "wukong-mico",
+      "slug": "wukong-mico",
+      "name": "Wukong Mico",
+      "status": "active",
+      "identity": {"role": "Tank", "color": "#FFB33E", "radius": 15},
+      "description": "Танк ближнего боя: накапливает ярость посохом и превращает её в вихрь.",
+      "balance": {"maxLives": 900, "speed": 12.75, "attackDamage": 85, "attackRateMs": 650, "reloadTimeMs": 1750, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "mico_staff"},
+      "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 120, "halfArcDegrees": 50, "modifier": "mico_staff"},
+      "abilities": {
+        "basic": {"id": "heavy_staff", "name": "Тяжёлый посох", "description": "Попадания накапливают ярость.", "slot": "basic", "prediction": "melee", "mechanics": ["сектор 120", "до 5 стаков ярости"]},
+        "super": {"id": "vengeance_vortex", "name": "Вихрь возмездия", "description": "Вихрь расходует ярость и наносит урон вокруг героя.", "slot": "primary", "prediction": "server", "mechanics": ["радиус зависит от ярости", "длительность зависит от ярости"]},
+        "gadget": {"id": "stone_armor", "name": "Каменная броня", "description": "Щит поглощает урон, а после окончания высвобождает подавленную ярость.", "slot": "secondary", "prediction": "server", "mechanics": ["щит на 4 секунды", "взрыв после окончания", "замедление от усиленного удара"]}
+      },
+      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/wukong-mico/wukong-mico.blend", "sceneDirectory": "frontend/assets-source/heroes/wukong-mico/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/wukong-mico_base.glb", "runtimeWeapon": "frontend/public/assets/heroes/output_weapons/wukong-mico_weapon.glb", "status": "runtime_ready"},
+      "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
+    },
+    {
+      "id": "damian",
+      "slug": "damian",
+      "name": "Damian",
+      "status": "active",
+      "identity": {"role": "Summoner", "color": "#8D52D9", "radius": 13},
+      "description": "Призывающий тёмных сфер и тотема, который самостоятельно атакует ближайшую цель.",
+      "balance": {"maxLives": 640, "speed": 12.5, "attackDamage": 75, "attackRateMs": 430, "reloadTimeMs": 1550, "maxAmmo": 3, "bulletSpeed": 30.5, "bulletSize": 9, "regenRate": 0.01, "attackType": "damian_dark_orb"},
+      "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 640, "projectileKind": "damian_orb"},
+      "abilities": {
+        "basic": {"id": "blight_orb", "name": "Сфера скверны", "description": "Попадания снижают исходящий урон врага.", "slot": "basic", "prediction": "projectile", "mechanics": ["дальность 640", "ослабление цели"]},
+        "super": {"id": "soul_totem", "name": "Тотем душ", "description": "Тотем живёт ограниченное время и автоматически атакует ближайшего врага.", "slot": "primary", "prediction": "server", "mechanics": ["300 HP", "жизнь 15 секунд", "выстрел каждые 850 мс"]},
+        "gadget": {"id": "exchange", "name": "Обмен", "description": "Меняет местами героя и тотем и наносит урон вокруг новой позиции.", "slot": "secondary", "prediction": "server", "mechanics": ["требует активный тотем", "радиальный урон", "ускорение на 2 секунды"]}
+      },
+      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/damian/damian.blend", "sceneDirectory": "frontend/assets-source/heroes/damian/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/damian_base.glb", "runtimeWeapon": "frontend/public/assets/heroes/output_weapons/damian_weapon.glb", "status": "runtime_ready"},
+      "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
+    },
+    {
+      "id": "persephone-lumi",
+      "slug": "persephone-lumi",
+      "name": "Persephone Lumi",
+      "status": "active",
+      "identity": {"role": "Controller", "color": "#D954A8", "radius": 13},
+      "description": "Контроллер поля: оставляет замедляющий световой след и выращивает сад корней.",
+      "balance": {"maxLives": 680, "speed": 12.5, "attackDamage": 70, "attackRateMs": 470, "reloadTimeMs": 1600, "maxAmmo": 3, "bulletSpeed": 28, "bulletSize": 10, "regenRate": 0.01, "attackType": "lumi_trail_orb"},
+      "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 600, "projectileKind": "lumi_orb", "modifier": "slow_trail"},
+      "abilities": {
+        "basic": {"id": "luminous_trail", "name": "Световой след", "description": "Снаряд оставляет след, который замедляет и раскрывает врагов.", "slot": "basic", "prediction": "projectile", "mechanics": ["снаряд создаёт след", "зона замедления"]},
+        "super": {"id": "root_garden", "name": "Сад корней", "description": "Поле корней обездвиживает вошедших врагов.", "slot": "primary", "prediction": "server", "mechanics": ["радиус 200", "срабатывание через 600 мс", "длительность 6 секунд"]},
+        "gadget": {"id": "flower_burst", "name": "Цветочный взрыв", "description": "Взрывает активный световой след или сад корней.", "slot": "secondary", "prediction": "server", "mechanics": ["урон по зоне", "замедление на 2 секунды"]}
+      },
+      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/persephone-lumi/persephone-lumi.blend", "sceneDirectory": "frontend/assets-source/heroes/persephone-lumi/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/persephone-lumi_base.glb", "runtimeWeapon": "frontend/public/assets/heroes/output_weapons/persephone-lumi_weapon.glb", "status": "runtime_ready"},
+      "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
+    }
+  ],
+  "pipelineNotes": {
+    "gameplayHeroSet": "The active set is read from battle/model/game/heroes.go.",
+    "manifestOnlyHeroes": ["needle"],
+    "knownGaps": ["Fairy Mina and Brock Zeus currently have no runtime weapon GLB in output_weapons."],
+    "animationSource": "tools/blender/hero_animation_scene_manifest.json"
+  }
+}

@@ -1,3 +1,5 @@
+import {normalizeEightWayMove, quantizeAngleToSectors} from "./direction.js"
+
 const AUTO_AIM_GESTURE_DRAG_LIMIT = 10
 
 export const isAutoAimAttackGesture = (dragDistance) =>
@@ -50,7 +52,8 @@ export class Input {
 
   resolveAimAngle(screenX, screenY, player, origin) {
     const projected = this.getAimAngleFromScreen?.(screenX, screenY, player)
-    return Number.isFinite(projected) ? projected : Math.atan2(screenY-origin.y, screenX-origin.x)
+    const angle = Number.isFinite(projected) ? projected : Math.atan2(screenY-origin.y, screenX-origin.x)
+    return quantizeAngleToSectors(angle)
   }
 
   resolveAimDistance(screenX, screenY, origin) {
@@ -298,9 +301,7 @@ export class Input {
     if (this.keys["KeyD"] || this.keys["ArrowRight"]) dx += 1
 
     if (dx !== 0 || dy !== 0) {
-      const length = Math.hypot(dx, dy)
-      dx /= length
-      dy /= length
+      ({x: dx, y: dy} = normalizeEightWayMove(dx, dy))
     }
     if (this.moveTouchId === null) this.sendMove(dx, dy)
     else this.sendMove(this.lastMoveX || 0, this.lastMoveY || 0)

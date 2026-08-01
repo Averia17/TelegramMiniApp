@@ -10,7 +10,7 @@ const movingSimulation = () => {
     ts: Date.now(),
     map: {width: 2000, height: 2000, walls: []},
     players: {
-      local: {x: 100, y: 100, radius: 14, speed: 120, lives: 100, ack: 0},
+      local: {x: 100, y: 100, radius: 14, speed: 6, lives: 100, ack: 0},
     },
   })
   simulation.setLocalPlayerId("local")
@@ -26,7 +26,7 @@ test("advancing a slow mobile frame preserves elapsed movement time", () => {
   slow.advance(0.1)
 
   assert.ok(Math.abs(smooth.predicted.x - slow.predicted.x) < 0.001)
-  assert.equal(slow.predicted.x, 112)
+  assert.equal(slow.predicted.x, 100.6)
 })
 
 test("a long suspended frame is capped to avoid a huge prediction jump", () => {
@@ -34,7 +34,7 @@ test("a long suspended frame is capped to avoid a huge prediction jump", () => {
 
   simulation.advance(2)
 
-  assert.equal(simulation.predicted.x, 130)
+  assert.ok(Math.abs(simulation.predicted.x - 101.5) < 0.001)
 })
 
 test("local prediction keeps moving through a 180-degree direction change", () => {
@@ -71,7 +71,7 @@ test("network correction cannot push the predicted player through a blocking wal
       walls: [{minX: 100, minY: 0, maxX: 140, maxY: 200, type: "wall"}],
     },
     players: {
-      local: {x: 70, y: 80, radius: 10, speed: 120, lives: 100, ack: 0},
+      local: {x: 70, y: 80, radius: 10, speed: 6, lives: 100, ack: 0},
     },
   })
   simulation.setLocalPlayerId("local")
@@ -81,4 +81,34 @@ test("network correction cannot push the predicted player through a blocking wal
 
   assert.equal(simulation.predicted.x, 90)
   assert.equal(simulation.predicted.y, 80)
+})
+
+test("display interpolation reuses entity objects between render frames", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  simulation.ingest({
+    type: "state",
+    ts: 1000,
+    players: {local: {x: 0, y: 0, lives: 100, maxLives: 100}},
+    monsters: {},
+    bullets: [],
+  })
+  simulation.ingest({
+    type: "state",
+    ts: 1100,
+    players: {local: {x: 100, y: 0, lives: 100, maxLives: 100}},
+    monsters: {},
+    bullets: [],
+  })
+  simulation.clockOffset = 0
+
+  const first = simulation.getDisplayState(1050)
+  const entity = first.players.local
+  const second = simulation.getDisplayState(1060)
+
+  assert.strictEqual(second.players.local, entity)
+  assert.equal(second.players.local.x, 60)
+
+  const uiSnapshot = simulation.getDisplayState(1070, {copyEntities: true})
+  const renderSnapshot = simulation.getDisplayState(1080)
+  assert.notStrictEqual(uiSnapshot.players.local, renderSnapshot.players.local)
 })

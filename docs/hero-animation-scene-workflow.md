@@ -1,51 +1,62 @@
 # Hero animation scenes
 
-Анимация способности принадлежит конкретному герою. Поэтому она авторится в
-отдельной Blender-сцене:
+Анимации способностей принадлежат конкретному герою и хранятся в отдельной
+папке:
 
 ```text
 frontend/assets-source/heroes/<hero>/
-  <hero>.blend                 # master: модель, риг, сокеты, сборка
-  animations/<event>.blend     # уже существующие event-клипы
-  scenes/attack.blend          # авторский basic attack этого героя
-  scenes/super.blend           # авторский super этого героя
-  scenes/gadget.blend          # авторский gadget этого героя
+  <hero>.blend                 # master: модель, rig, сокеты и сборка
+  animations/<event>.blend     # legacy clips, используемые как исходная поза
+  scenes/<event>.blend         # focused-сцена с авторингом по кадрам
+  scenes/gadget.blend          # focused-сцена Gadget
 ```
 
-Старые per-hero `build.py` и legacy-генераторы удалены. Сборщик не придумывает choreography и не
-ставит keyframes: он собирает actions из `animations/` и `scenes/` в master и
-экспортирует один runtime GLB героя. Для каждой ability-сцены action должен называться ровно
-`Attack`, `Super` или `Gadget`, а в сцене должны быть custom properties
-`hero_slug`, `clip_name`, `clip_kind`, `frame_start`, `frame_end`.
+Каждая focused-сцена сохраняет custom properties `hero_slug`, `clip_name`,
+`clip_kind`, `frame_start`, `frame_end`, `fps` и `authoring_status`.
+Авторинг записывает ключи на каждом кадре, затем оставляет их связанными
+плавными Bezier-кривыми с `AUTO_CLAMPED` handles. Поэтому движение остаётся
+покадровым и одновременно не дёргается между соседними кадрами.
 
-Заготовки создаются командой:
+Канонические имена Actions:
+
+```text
+attack -> Attack
+super  -> super
+gadget -> Gadget
+```
+
+Команды авторинга:
 
 ```powershell
-blender --background --python tools/blender/scaffold_hero_animation_scenes.py
+blender --background --python tools/blender/author_attack_super_animation_scenes.py
+blender --background --python tools/blender/author_gadget_animation_scenes.py
 ```
 
-Скрипт создаёт только отсутствующие файлы и не генерирует универсальные ключи.
-Для `attack` и `super` он переносит уже существующие authored event-сцены в
-новый ability-контур; `gadget` остаётся TODO до ручного авторинга.
-После авторинга экспортёр должен импортировать action из соответствующей
-сцены, сохранить его в master и экспортировать один `<hero>.glb`.
-
-Для этого используется `tools/blender/assemble_hero_from_scenes.py`:
+Отдельные skill GLB экспортируются из focused-сцен:
 
 ```powershell
-blender --background --python tools/blender/assemble_hero_from_scenes.py -- --hero mandy
+blender --background --python tools/blender/export_hero_ability_glbs.py
 ```
 
-Отдельные GLB способностей экспортируются так:
+Результат:
+
+```text
+frontend/public/assets/heroes/<hero>/abilities/attack.glb
+frontend/public/assets/heroes/<hero>/abilities/super.glb
+frontend/public/assets/heroes/<hero>/abilities/gadget.glb
+```
+
+Gameplay загружает canonical GLB с полным набором runtime-анимаций:
 
 ```powershell
-blender --background --python tools/blender/export_hero_ability_glbs.py -- --hero mandy
+blender --background --python tools/blender/export_runtime_heroes_from_scenes.py
 ```
 
-Результат появляется в `frontend/public/assets/heroes/<hero>/abilities/`.
-Экспортёр пропускает сцену без authored action, поэтому отсутствие `gadget.glb`
-явно сигнализирует, что способность ещё не анимирована.
+Результат находится в `frontend/public/assets/heroes/output_heroes/<slug>_base.glb`.
+`assetManifest.js` связывает героя с этим файлом и именами Actions. Для Gadget
+сервер увеличивает `gadgetPulse`, snapshot передаёт его в `HeroView`, а
+`GLBHeroController` запускает Action `Gadget`.
 
-Runtime не открывает `.blend`, `.fbx` или Python-скрипты: он загружает только
-готовые GLB из `frontend/public/assets`. Blender используется исключительно
-для ручного authoring и явного экспорта.
+Отдельные ability GLB нужны для skill-preview, QA и изолированных потребителей;
+игровой бой использует canonical base GLB, чтобы модель, оружие и все клипы
+оставались в одном runtime-ассете.

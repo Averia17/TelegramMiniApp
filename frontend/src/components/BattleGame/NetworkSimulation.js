@@ -1,7 +1,41 @@
+import {DamagePrediction} from "./DamagePrediction.js"
+
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const lerp = (a, b, t) => a + (b - a) * t
 const MAX_SIMULATION_STEP = .05
 const MAX_CATCH_UP_TIME = .25
+const SCREEN_DEPTH_SCALE = .66
+
+const worldAngleFromScreen = angle => Math.atan2(Math.sin(angle) / SCREEN_DEPTH_SCALE, Math.cos(angle))
+
+const angleDelta = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b))
+
+const isDefended = entity =>
+  Number(entity?.invulnerable) > 0 ||
+  Number(entity?.shield) > 0 ||
+  Number(entity?.shieldHp) > 0 ||
+  Number(entity?.shieldStacks) > 0 ||
+  (Number(entity?.stealth) > 0 && Number(entity?.dodges) > 0)
+
+const canDamage = (source, target) =>
+  target && Number(target.lives) > 0 &&
+  String(source?.playerId || "") !== String(target.playerId || "") &&
+  (!source?.team || source.team !== target.team) &&
+  !isDefended(target)
+
+const targetEntries = (players = {}, monsters = {}) => [
+  ...Object.entries(players).map(([id, entity]) => ({type: "players", id, entity})),
+  ...Object.entries(monsters).map(([id, entity]) => ({type: "monsters", id, entity})),
+]
+
+const distanceBetween = (a, b) => Math.hypot(Number(a?.x || 0) - Number(b?.x || 0), Number(a?.y || 0) - Number(b?.y || 0))
+
+const attackDamage = player => {
+  let damage = Number(player?.attackDamage) || 0
+  damage *= Math.max(1, Number(player?.damageMultiplier) || 1)
+  if (player?.hero === "Mandy" && Number(player?.focusCharge) >= 100) damage *= 1.4
+  return damage > 0 ? Math.max(1, Math.round(damage)) : 0
+}
 
 const blockingWall = wall => wall.type !== "half" && wall.type !== "bush"
 
@@ -45,36 +79,50 @@ const movementSpeed = player => {
 const interpolateAngle = (a = 0, b = 0, t) =>
   a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t
 
-const interpolateEntity = (older, newer, t) => ({
-  ...newer,
-  x: lerp(older.x, newer.x, t),
-  y: lerp(older.y, newer.y, t),
-  ...(Number.isFinite(older.z) && Number.isFinite(newer.z) ? {z: lerp(older.z, newer.z, t)} : {}),
-  rotation: interpolateAngle(older.rotation, newer.rotation, t),
-})
-
-const interpolateMap = (older = {}, newer = {}, t) => {
-  const previousMap = older || {}
-  const nextMap = newer || {}
-  const result = {...nextMap}
-  const ids = new Set([...Object.keys(previousMap), ...Object.keys(nextMap)])
-  ids.forEach(id => {
-    const from = previousMap[id]
-    const to = nextMap[id]
-    if (from && to) result[id] = interpolateEntity(from, to, t)
-    else if (to) result[id] = to
-  })
-  return result
+const updateInterpolatedEntity = (target, older, newer, t) => {
+  Object.assign(target, newer)
+  target.x = lerp(older.x, newer.x, t)
+  target.y = lerp(older.y, newer.y, t)
+  if (Number.isFinite(older.z) && Number.isFinite(newer.z)) target.z = lerp(older.z, newer.z, t)
+  else delete target.z
+  target.rotation = interpolateAngle(older.rotation, newer.rotation, t)
+  return target
 }
 
-const interpolateList = (older = [], newer = [], keyOf, t) => {
+const syncInterpolatedMap = (cache, older = {}, newer = {}, t) => {
+  const previousMap = older || {}
+  const nextMap = newer || {}
+  Object.keys(cache).forEach(id => {
+    if (!Object.prototype.hasOwnProperty.call(nextMap, id)) delete cache[id]
+  })
+  Object.entries(nextMap).forEach(([id, newerEntity]) => {
+    const olderEntity = previousMap[id]
+    const target = cache[id] || (cache[id] = {})
+    if (olderEntity) updateInterpolatedEntity(target, olderEntity, newerEntity, t)
+    else Object.assign(target, newerEntity)
+  })
+  return cache
+}
+
+const syncInterpolatedList = (cache, older = [], newer = [], keyOf, t) => {
   const previousList = Array.isArray(older) ? older : []
   const nextList = Array.isArray(newer) ? newer : []
   const previous = new Map(previousList.map((entity, index) => [String(keyOf(entity, index)), entity]))
-  return nextList.map((entity, index) => {
-    const from = previous.get(String(keyOf(entity, index)))
-    return from ? interpolateEntity(from, entity, t) : entity
+  const active = new Set()
+  const result = nextList.map((newerEntity, index) => {
+    const key = String(keyOf(newerEntity, index))
+    active.add(key)
+    const olderEntity = previous.get(key)
+    const target = cache.get(key) || {}
+    cache.set(key, target)
+    if (olderEntity) updateInterpolatedEntity(target, olderEntity, newerEntity, t)
+    else Object.assign(target, newerEntity)
+    return target
   })
+  cache.forEach((value, key) => {
+    if (!active.has(key)) cache.delete(key)
+  })
+  return result
 }
 
 export class NetworkSimulation {
@@ -90,6 +138,11 @@ export class NetworkSimulation {
     this.pendingInputs = []
     this.positionHistory = []
     this.clockOffset = null
+    this.damagePrediction = new DamagePrediction()
+    this.displayPlayers = {}
+    this.displayMonsters = {}
+    this.displayBullets = new Map()
+    this.displayTotems = new Map()
   }
 
   setLocalPlayerId(id) {
@@ -109,9 +162,63 @@ export class NetworkSimulation {
     const measuredOffset = Date.now() - Number(state.ts || Date.now())
     this.clockOffset = this.clockOffset == null ? measuredOffset : lerp(this.clockOffset, measuredOffset, .08)
     this.latestState = state
+    this.damagePrediction.ingest(state)
+    this.damagePrediction.reconcileEvents(state.combatEvents, Date.now())
     this.snapshots.push(state)
     if (this.snapshots.length > 40) this.snapshots.shift()
     this.reconcile()
+  }
+
+  predictLocalShoot({angle, autoAim = false, commandId = "", now = Date.now()} = {}) {
+    if (autoAim) return []
+    const state = this.latestState
+    const sourceId = this.playerId
+    const sourceState = state?.players?.[sourceId]
+    if (state?.game?.state !== "game" || !sourceState || Number(sourceState.lives) <= 0 || Number(sourceState.ammo) <= 0) return []
+    if (Number(sourceState.stun) > 0 || Number(sourceState.channel) > 0) return []
+
+    const source = {
+      ...sourceState,
+      ...(this.predicted ? {x: this.predicted.x, y: this.predicted.y} : {}),
+    }
+    const damage = attackDamage(source)
+    if (!damage) return []
+    const archetype = source.attackArchetype || "projectile"
+    // Projectile impact is server-authoritative. Its travel and collision are
+    // deliberately not guessed from interpolated snapshots; only attacks whose
+    // damage is resolved on the command tick are eligible for local HP feedback.
+    if (archetype !== "melee_cone") return []
+    const worldAngle = worldAngleFromScreen(Number(angle) || 0)
+    const range = Math.max(1, Number(source.attackRange) || 430)
+    const predicted = []
+
+    targetEntries(state.players, state.monsters).forEach(({type, id, entity}) => {
+      if (!canDamage(source, entity)) return
+      const target = {...entity, x: Number(entity.x), y: Number(entity.y)}
+      let hit = false
+      if (archetype === "melee_cone") {
+        const reach = range + Number(target.radius || 0)
+        const halfArc = (Number(source.attackHalfArcDegrees) || 45) * Math.PI / 180
+        const direction = Math.atan2(target.y - source.y, target.x - source.x)
+        hit = distanceBetween(source, target) <= reach && Math.abs(angleDelta(direction, worldAngle)) <= halfArc
+      }
+      if (!hit) return
+      predicted.push({type, id, distance: distanceBetween(source, target)})
+    })
+
+    // A normal projectile stops at the first player/monster. Melee may hit all
+    // targets in its sector, matching the server's basic melee contract.
+    const selected = archetype === "melee_cone"
+      ? predicted
+      : predicted.sort((a, b) => a.distance - b.distance).slice(0, 1)
+    return selected.map(({type, id}) => this.damagePrediction.predictDamage({
+      targetType: type,
+      targetId: id,
+      damage,
+      id: `local-shot:${commandId || sourceId}:${type}:${id}`,
+      commandId,
+      now,
+    }))
   }
 
   seedLocalPlayer() {
@@ -196,7 +303,7 @@ export class NetworkSimulation {
     while (this.positionHistory.length && this.positionHistory[0].time < now - 2000) this.positionHistory.shift()
   }
 
-  getDisplayState(now = Date.now()) {
+  getDisplayState(now = Date.now(), {copyEntities = false} = {}) {
     if (!this.latestState) return null
     const targetTime = this.localTimeToServer(now - this.interpolationDelay)
     let older = this.snapshots[0] || this.latestState
@@ -212,18 +319,24 @@ export class NetworkSimulation {
     }
     const span = Math.max(1, Number(newer.ts) - Number(older.ts))
     const t = clamp((targetTime - Number(older.ts)) / span, 0, 1)
-    const players = interpolateMap(older.players, newer.players, t)
+    const players = syncInterpolatedMap(this.displayPlayers, older.players, newer.players, t)
     if (this.playerId && players[this.playerId] && this.predicted) {
-      players[this.playerId] = {...players[this.playerId], x: this.predicted.x, y: this.predicted.y}
+      players[this.playerId].x = this.predicted.x
+      players[this.playerId].y = this.predicted.y
     }
-    const monsters = interpolateMap(older.monsters, newer.monsters, t)
-    const bullets = interpolateList(
+    const monsters = syncInterpolatedMap(this.displayMonsters, older.monsters, newer.monsters, t)
+    const bullets = syncInterpolatedList(
+      this.displayBullets,
       older.bullets,
       newer.bullets,
       (bullet, index) => bullet.id ?? `${bullet.playerId || ""}:${bullet.kind || ""}:${index}`,
       t,
     )
-    const totems = interpolateList(older.totems, newer.totems, (totem, index) => totem.owner ?? index, t)
-    return {...this.latestState, players, monsters, bullets, totems, networkSmoothed: true}
+    const totems = syncInterpolatedList(this.displayTotems, older.totems, newer.totems, (totem, index) => totem.owner ?? index, t)
+    return this.damagePrediction.applyToState(
+      {...this.latestState, players, monsters, bullets, totems, networkSmoothed: true},
+      now,
+      {mutateEntities: !copyEntities},
+    )
   }
 }

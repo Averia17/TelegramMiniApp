@@ -4,6 +4,12 @@ const shortestAngleDelta = (from, to) =>
 const clamp = (value, minimum, maximum) =>
   Math.max(minimum, Math.min(maximum, value))
 
+export const blendAngle = (current, target, amount = 1) => {
+  const safeAmount = clamp(Number(amount) || 0, 0, 1)
+  const delta = shortestAngleDelta(current, target)
+  return current + delta * safeAmount
+}
+
 export const advanceSmoothTurn = (
   current,
   target,

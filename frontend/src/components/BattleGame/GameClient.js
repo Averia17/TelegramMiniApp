@@ -5,6 +5,8 @@ const GAME_MESSAGES = new Set([
   "won",
   "timeout",
   "start",
+  "island_phase",
+  "island_voice",
   "stop",
   "waiting",
   "error",
@@ -38,7 +40,9 @@ export class GameClient {
     this.lastStateBytes = 0
     this.lastClientTs = 0
     this.abilitySequence = 0
+    this.shootSequence = 0
     this.pendingAbilities = new Map()
+    this.onShootPrediction = null
   }
 
   connect() {
@@ -126,13 +130,20 @@ export class GameClient {
   }
 
   shoot(angle, aimDistance = Infinity, autoAim = false) {
-    this.send("shoot", {angle, aimDistance, autoAim})
+    const commandId = `${this.playerId || "local"}:shoot:${++this.shootSequence}`
+    const ts = this.send("shoot", {angle, aimDistance, autoAim, clientId: commandId})
+    if (ts !== null) this.onShootPrediction?.({angle, aimDistance, autoAim, commandId, now: ts})
+    return ts
   }
 
-  ability(slot) {
+  setShootPrediction(handler) {
+    this.onShootPrediction = typeof handler === "function" ? handler : null
+  }
+
+  ability(slot, targetId = undefined) {
     const clientId = `${this.playerId || "local"}:${++this.abilitySequence}`
     this.pendingAbilities.set(clientId, {slot, sentAt: Date.now()})
-    this.send("ability", {slot, clientId})
+    this.send("ability", {slot, clientId, ...(targetId ? {targetId} : {})})
     return clientId
   }
 

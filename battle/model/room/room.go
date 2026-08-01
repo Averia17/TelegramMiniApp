@@ -4,14 +4,21 @@ import (
 	"battle/model/game"
 	"battle/provider"
 	"encoding/json"
-	"fmt"
 	"log"
-	"math"
 	"time"
 )
 
 var Store provider.Store
 var Kafka *provider.KafkaProducer
+
+const reconnectGracePeriod = 2 * time.Minute
+
+type preparedStateUpdate struct {
+	client      *Client
+	state       *game.StateUpdate
+	mapRevision int
+	sendingMap  bool
+}
 
 func SetStore(s provider.Store) {
 	Store = s
@@ -37,16 +44,40 @@ func (r *Room) Run() {
 			if client.State == nil {
 				client.State = make(chan []byte, 1)
 			}
+			if r.Disconnected == nil {
+				r.Disconnected = make(map[string]time.Time)
+			}
 			emptySince = time.Time{}
+			previous := r.Clients[client.Id]
+			existingPlayer := r.State.Players[client.Id]
 			r.Clients[client.Id] = client
-			lateJoin := r.State.State == game.GameStateGame
-			r.State.PlayerAdd(client.Id, client.Name, client.HeroName)
-			if lateJoin {
-				if joined := r.State.Players[client.Id]; joined != nil {
-					joined.InvulnerableUntil = time.Now().Add(3 * time.Second).UnixMilli()
+			delete(r.Disconnected, client.Id)
+
+			if previous != nil && previous != client {
+				// A newer authenticated connection owns this player now. The old
+				// read pump may still send Unregister, so Unregister must verify
+				// that it is still the current client before removing anything.
+				close(previous.Send)
+				if previous.Conn != nil {
+					_ = previous.Conn.Close()
 				}
 			}
-			if Store != nil {
+
+			if existingPlayer != nil {
+				// Reconnects resume the authoritative server-side player. Client
+				// supplied name/hero values must not reset battle progress.
+				client.Name = existingPlayer.Name
+				client.HeroName = existingPlayer.HeroName
+			} else {
+				lateJoin := r.State.State == game.GameStateGame
+				r.State.PlayerAdd(client.Id, client.Name, client.HeroName)
+				if lateJoin {
+					if joined := r.State.Players[client.Id]; joined != nil {
+						joined.InvulnerableUntil = time.Now().Add(3 * time.Second).UnixMilli()
+					}
+				}
+			}
+			if Store != nil && previous == nil {
 				playerRecord := &provider.PlayerRecord{
 					PlayerId: client.Id,
 					RoomId:   r.Id,
@@ -60,9 +91,9 @@ func (r *Room) Run() {
 
 		case client := <-r.Unregister:
 			r.mu.Lock()
-			if _, ok := r.Clients[client.Id]; ok {
-				r.State.PlayerRemove(client.Id)
+			if current, ok := r.Clients[client.Id]; ok && current == client {
 				delete(r.Clients, client.Id)
+				r.Disconnected[client.Id] = time.Now()
 				close(client.Send)
 				if Store != nil {
 					if err := Store.RemovePlayerFromRoom(r.Id, client.Id); err != nil {
@@ -70,7 +101,7 @@ func (r *Room) Run() {
 					}
 				}
 			}
-			if len(r.Clients) == 0 {
+			if len(r.Clients) == 0 && len(r.Disconnected) == 0 {
 				emptySince = time.Now()
 			}
 			r.mu.Unlock()
@@ -88,9 +119,14 @@ func (r *Room) Run() {
 			r.mu.RUnlock()
 
 		case <-ticker.C:
+			var updates []preparedStateUpdate
 			r.mu.Lock()
+			r.expireDisconnectedPlayers()
 			if len(r.Clients) == 0 {
-				shouldClose := !emptySince.IsZero() && time.Since(emptySince) >= 30*time.Second
+				if len(r.Disconnected) == 0 && emptySince.IsZero() {
+					emptySince = time.Now()
+				}
+				shouldClose := len(r.Disconnected) == 0 && !emptySince.IsZero() && time.Since(emptySince) >= 30*time.Second
 				r.mu.Unlock()
 				if shouldClose {
 					RemoveRoom(r.Id)
@@ -101,9 +137,10 @@ func (r *Room) Run() {
 			r.State.Update()
 			frame++
 			if frame%2 == 0 {
-				r.sendStateUpdate()
+				updates = r.prepareStateUpdates()
 			}
 			r.mu.Unlock()
+			r.queueStateUpdates(updates)
 
 		case <-redisTicker.C:
 			r.mu.RLock()
@@ -121,6 +158,17 @@ func (r *Room) Run() {
 				Store.SaveRoom(roomRecord)
 			}
 		}
+	}
+}
+
+func (r *Room) expireDisconnectedPlayers() {
+	now := time.Now()
+	for playerID, disconnectedAt := range r.Disconnected {
+		if now.Sub(disconnectedAt) < reconnectGracePeriod {
+			continue
+		}
+		delete(r.Disconnected, playerID)
+		r.State.PlayerRemove(playerID)
 	}
 }
 
@@ -148,298 +196,6 @@ func (r *Room) SendToPlayer(playerId string, msgType string, params interface{})
 		default:
 		}
 	}
-}
-
-func (r *Room) sendStateUpdate() {
-	if len(r.Clients) == 0 {
-		return
-	}
-
-	playerCount := len(r.State.Players)
-	players := make(map[string]game.PlayerJSON, playerCount)
-	for id, p := range r.State.Players {
-		now := time.Now().UnixMilli()
-		attackConfig := game.AttackConfig{}
-		if hero := game.GetHeroByName(p.HeroName); hero != nil {
-			attackConfig = hero.Attack
-		}
-		primaryCooldown := math.Max(0, float64(p.LastPrimaryAt+game.AbilityCooldownMs(p.HeroName, "primary")-now)/1000)
-		secondaryCooldown := math.Max(0, float64(p.LastSecondaryAt+game.AbilityCooldownMs(p.HeroName, "secondary")-now)/1000)
-		reloadProgress := 0.0
-		if p.Ammo < p.MaxAmmo && p.ReloadTime > 0 && p.NextAmmoAt > 0 {
-			reloadProgress = math.Max(0, math.Min(1, 1-float64(p.NextAmmoAt-now)/float64(p.ReloadTime)))
-		}
-		players[id] = game.PlayerJSON{
-			X:                p.X,
-			Y:                p.Y,
-			Radius:           p.Radius,
-			PlayerId:         p.PlayerId,
-			Name:             p.Name,
-			Lives:            p.Lives,
-			MaxLives:         p.MaxLives,
-			Team:             p.Team,
-			Color:            p.Color,
-			Kills:            p.Kills,
-			Rotation:         p.Rotation,
-			MoveX:            p.MoveX,
-			MoveY:            p.MoveY,
-			Speed:            p.Speed,
-			Ack:              p.Ack,
-			Hero:             p.HeroName,
-			AttackType:       p.AttackType,
-			AttackArchetype:  attackConfig.Archetype,
-			AttackRange:      attackConfig.Range,
-			AttackHalfArc:    attackConfig.HalfArcDegrees,
-			ShieldHP:         p.ShieldHP,
-			ShieldStacks:     p.ShieldStacks,
-			Marks:            p.Marks,
-			SporeStacks:      r.State.SporeStacks[p.PlayerId],
-			Doomed:           secondsRemaining(r.State.DoomedUntil[p.PlayerId], now),
-			SuperCharge:      p.SuperCharge,
-			Heat:             p.Heat,
-			AttackPulse:      p.AttackPulse,
-			SuperPulse:       p.SuperPulse,
-			FocusCharge:      p.FocusCharge,
-			Rage:             p.Rage,
-			SuppressedRage:   p.SuppressedRage,
-			GadgetArmed:      p.GadgetArmed,
-			GadgetCharges:    p.GadgetCharges,
-			Ammo:             p.Ammo,
-			MaxAmmo:          p.MaxAmmo,
-			ReloadProgress:   reloadProgress,
-			HitImpulseX:      p.HitImpulseX,
-			HitImpulseY:      p.HitImpulseY,
-			Aiming:           p.Aiming,
-			AimDistance:      p.AimDistance,
-			Shield:           secondsRemaining(p.ShieldUntil, now),
-			Haste:            secondsRemaining(p.HasteUntil, now),
-			Stealth:          secondsRemaining(p.StealthUntil, now),
-			Invulnerable:     secondsRemaining(p.InvulnerableUntil, now),
-			Blind:            secondsRemaining(p.BlindUntil, now),
-			Stun:             secondsRemaining(p.StunUntil, now),
-			Channel:          secondsRemaining(p.ChannelUntil, now),
-			Vine:             secondsRemaining(p.VineUntil, now),
-			Vortex:           secondsRemaining(p.VortexUntil, now),
-			Flying:           secondsRemaining(p.FlyingUntil, now),
-			Evolution:        p.Evolution,
-			Souls:            p.Souls,
-			Deflect:          p.Deflect,
-			PowerCores:       p.PowerCores,
-			DamageMultiplier: p.DamageMultiplier,
-			Cooldowns:        map[string]float64{"primary": primaryCooldown, "secondary": secondaryCooldown},
-			AbilityAck:       p.LastAbilityID,
-			AbilityAccepted:  p.LastAbilityOK,
-			Poisoned:         p.PoisonUntil > time.Now().UnixMilli(),
-			RegenRate:        p.RegenRate,
-		}
-	}
-
-	var monsters map[string]game.MonsterJSON
-	if len(r.State.Monsters) > 0 {
-		monsters = make(map[string]game.MonsterJSON, len(r.State.Monsters))
-		for id, m := range r.State.Monsters {
-			monsters[id] = game.MonsterJSON{
-				X:        m.X,
-				Y:        m.Y,
-				Radius:   m.Radius,
-				Rotation: m.Rotation,
-				Lives:    m.Lives,
-				MaxLives: m.MaxLives,
-				Tier:     m.Tier,
-			}
-		}
-	}
-
-	var bullets []game.BulletJSON
-	for _, b := range r.State.Bullets {
-		if b.Active {
-			z := 0.0
-			if b.Lobbed && b.LandsAt > b.SpawnedAt {
-				progress := math.Max(0, math.Min(1, float64(time.Now().UnixMilli()-b.SpawnedAt)/float64(b.LandsAt-b.SpawnedAt)))
-				z = math.Sin(progress*math.Pi) * 90
-			}
-			bullets = append(bullets, game.BulletJSON{
-				ID:        b.ID,
-				X:         b.X,
-				Y:         b.Y,
-				Z:         z,
-				Radius:    b.Radius,
-				PlayerId:  b.PlayerId,
-				Team:      b.Team,
-				Rotation:  b.Rotation,
-				Color:     b.Color,
-				Kind:      b.Kind,
-				Speed:     b.Speed,
-				MaxRange:  b.MaxRange,
-				Travelled: b.Travelled,
-				Returning: b.Returning,
-				Splash:    b.Splash,
-				Chain:     b.Chain,
-				Bounces:   b.Bounces,
-				Lobbed:    b.Lobbed,
-				TargetX:   b.TargetX,
-				TargetY:   b.TargetY,
-			})
-		}
-	}
-
-	var props []game.PropJSON
-	for _, p := range r.State.Props {
-		if p.Active {
-			props = append(props, game.PropJSON{
-				X:      p.X,
-				Y:      p.Y,
-				Radius: p.Radius,
-				Type:   p.Type,
-				Active: p.Active,
-			})
-		}
-	}
-	var effects []game.EffectJSON
-	now := time.Now().UnixMilli()
-	for _, effect := range r.State.Effects {
-		if effect == nil || effect.ExpiresAt <= now {
-			continue
-		}
-		maxLife := float64(effect.ExpiresAt-effect.CreatedAt) / 1000
-		effects = append(effects, game.EffectJSON{Id: fmt.Sprintf("%d:%s:%.0f:%.0f", effect.CreatedAt, effect.Kind, effect.X, effect.Y), Kind: effect.Kind, X: effect.X, Y: effect.Y, ToX: effect.ToX, ToY: effect.ToY, Radius: effect.Radius, Angle: effect.Angle, Range: effect.Range, Arc: effect.Arc, Color: effect.Color, Damage: effect.Damage, Life: float64(effect.ExpiresAt-now) / 1000, MaxLife: maxLife})
-	}
-
-	gameState := game.GameStateJSON{
-		State:       r.State.State,
-		RoomName:    r.State.RoomName,
-		MapName:     r.State.MapName,
-		MaxPlayers:  r.State.MaxPlayers,
-		Mode:        string(r.State.Mode),
-		AlivePlayers: activePlayerCount(r.State),
-		LobbyEndsAt: r.State.LobbyEndsAt,
-		GameEndsAt:  r.State.GameEndsAt,
-	}
-
-	var fullMapJSON game.MapJSON
-	var compactMapJSON game.MapJSON
-	needsFullMap := false
-	for _, client := range r.Clients {
-		if client.MapRevision != r.State.MapRevision || client.MapSyncFrames < 3 {
-			needsFullMap = true
-			break
-		}
-	}
-	if r.State.Map != nil {
-		compactMapJSON = game.MapJSON{
-			Width: r.State.Map.WidthInPixels, Height: r.State.Map.HeightInPixels, TileSize: game.TileSize,
-		}
-		if needsFullMap {
-			walls := make([]game.WallJSON, 0, len(r.State.Map.Collisions))
-			for _, w := range r.State.Map.Collisions {
-				walls = append(walls, game.WallJSON{
-					MinX: w.MinX, MinY: w.MinY, MaxX: w.MaxX, MaxY: w.MaxY, Type: w.Type, BushGroup: w.BushGroup,
-				})
-			}
-			fullMapJSON = compactMapJSON
-			fullMapJSON.Walls = walls
-		}
-	}
-
-	for _, client := range r.Clients {
-		mapChanged := client.MapRevision != r.State.MapRevision
-		if mapChanged {
-			client.MapSyncFrames = 0
-		}
-		sendingMap := mapChanged || client.MapSyncFrames < 3
-		mapJSON := compactMapJSON
-		if sendingMap {
-			mapJSON = fullMapJSON
-		}
-		visiblePlayers := visiblePlayersForClient(r.State, client.Id, players, now)
-		clientState := game.NewStateUpdate(&gameState, &mapJSON, visiblePlayers, monsters, bullets, props, effects)
-		for _, totem := range r.State.Totems {
-			if totem != nil {
-				clientState.Totems = append(clientState.Totems, game.TotemJSON{Owner: totem.Owner, X: totem.X, Y: totem.Y, HP: totem.HP, MaxHP: 3000})
-			}
-		}
-		data, err := json.Marshal(clientState)
-		if err != nil {
-			continue
-		}
-		queued := false
-		select {
-		case client.State <- data:
-			queued = true
-		default:
-			select {
-			case <-client.State:
-			default:
-			}
-			select {
-			case client.State <- data:
-				queued = true
-			default:
-			}
-		}
-		if sendingMap && queued {
-			client.MapRevision = r.State.MapRevision
-			client.MapSyncFrames++
-		}
-	}
-}
-
-func activePlayerCount(state *game.GameState) int {
-	if state == nil {
-		return 0
-	}
-	count := 0
-	for _, candidate := range state.Players {
-		if candidate != nil && candidate.IsAlive() {
-			count++
-		}
-	}
-	return count
-}
-
-func visiblePlayersForClient(state *game.GameState, viewerID string, all map[string]game.PlayerJSON, now int64) map[string]game.PlayerJSON {
-	viewer := state.Players[viewerID]
-	if viewer == nil {
-		return all
-	}
-	visible := make(map[string]game.PlayerJSON, len(all))
-	for id, snapshot := range all {
-		target := state.Players[id]
-		if target == nil {
-			continue
-		}
-		if id == viewerID || (viewer.Team != "" && viewer.Team == target.Team) || target.RevealedUntil > now || math.Hypot(target.X-viewer.X, target.Y-viewer.Y) <= 100 {
-			visible[id] = snapshot
-			continue
-		}
-		concealed := target.StealthUntil > now || playerInsideBush(state, target.X, target.Y)
-		if !concealed {
-			visible[id] = snapshot
-		}
-	}
-	return visible
-}
-
-func playerInsideBush(state *game.GameState, x, y float64) bool {
-	if state == nil || state.Map == nil {
-		return false
-	}
-	for _, wall := range state.Map.Collisions {
-		if wall == nil || (wall.Type != "bush" && wall.Type != "half") {
-			continue
-		}
-		if x >= wall.MinX && x <= wall.MaxX && y >= wall.MinY && y <= wall.MaxY {
-			return true
-		}
-	}
-	return false
-}
-
-func secondsRemaining(until, now int64) float64 {
-	if until <= now {
-		return 0
-	}
-	return float64(until-now) / 1000
 }
 
 func (r *Room) HandleMessage(client *Client, data []byte) {
