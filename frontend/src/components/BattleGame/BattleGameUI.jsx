@@ -1,8 +1,7 @@
 import {getBattleRewardMessage} from "./battleOutcome"
 
 const ISLAND_PHASES = {
-  landing: {label: "Высадка", icon: "⚓", tone: "landing", hint: "Урон отключён · собирай ящики"},
-  hunt: {label: "Охота", icon: "◈", tone: "hunt", hint: "Остров спокоен · ищи соперников"},
+  hunt: {label: "Охота и бой", icon: "◈", tone: "hunt", hint: "Дерись с первой секунды и ломай лунные ящики"},
   challenge: {label: "Испытание", icon: "✦", tone: "challenge", hint: "Остров меняет правила"},
   collapse: {label: "Сжатие", icon: "◉", tone: "collapse", hint: "Шторм движется к центру"},
   beacon: {label: "Маяк", icon: "✹", tone: "beacon", hint: "Удерживай свет 10 секунд"},

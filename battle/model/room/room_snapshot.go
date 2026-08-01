@@ -73,6 +73,9 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			AimDistance:      p.AimDistance,
 			Shield:           secondsRemaining(p.ShieldUntil, now),
 			Haste:            secondsRemaining(p.HasteUntil, now),
+			LunarSpeed:       secondsRemaining(p.LunarSpeedUntil, now),
+			LunarDamage:      secondsRemaining(p.LunarDamageUntil, now),
+			LunarShield:      p.LunarShield,
 			Stealth:          secondsRemaining(p.StealthUntil, now),
 			Invulnerable:     secondsRemaining(p.InvulnerableUntil, now),
 			Blind:            secondsRemaining(p.BlindUntil, now),
@@ -149,11 +152,14 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 	for _, p := range r.State.Props {
 		if p.Active {
 			props = append(props, game.PropJSON{
-				X:      p.X,
-				Y:      p.Y,
-				Radius: p.Radius,
-				Type:   p.Type,
-				Active: p.Active,
+				X:        p.X,
+				Y:        p.Y,
+				Radius:   p.Radius,
+				Type:     p.Type,
+				LootType: p.LootType,
+				Lives:    p.Lives,
+				MaxLives: p.MaxLives,
+				Active:   p.Active,
 			})
 		}
 	}

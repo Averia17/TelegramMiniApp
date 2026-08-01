@@ -1084,7 +1084,11 @@ func (gs *GameState) collectPickups(p *player.Player) {
 					p.LunarShield = true
 					p.ShieldHP = 300
 				case "lunar_cooldown":
-					p.LastPrimaryAt = math.MaxInt64Value(p.LastPrimaryAt - 5_000)
+					if p.LastPrimaryAt > 5_000 {
+						p.LastPrimaryAt -= 5_000
+					} else {
+						p.LastPrimaryAt = 0
+					}
 				}
 				gs.addEffect("lunar_pickup", p.X, p.Y, 0, 0, 24, 0, 0, 0, lunarLootColor(pr.LootType), 0, 700)
 			}
@@ -1429,6 +1433,17 @@ func (gs *GameState) spawnAttackBullet(p *player.Player, angle float64, kind str
 		b.Acceleration = 19 * RuntimeProjectileSpeedScale
 	}
 	return b
+}
+
+func (gs *GameState) damageMultiplier(p *player.Player) float64 {
+	if p == nil {
+		return 1
+	}
+	multiplier := math.Max(1, p.DamageMultiplier)
+	if p.LunarDamageUntil > time.Now().UnixMilli() {
+		multiplier *= 1.2
+	}
+	return multiplier
 }
 
 func (gs *GameState) chainDamage(owner string, first *player.Player, radius float64, count, damage int) {

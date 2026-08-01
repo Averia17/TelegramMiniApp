@@ -6,6 +6,12 @@ import {createContactShadow, flatMaterial} from "../shared/materials.js"
 const pickupKey = pickup =>
   `${pickup.type}:${Math.round(Number(pickup.x) || 0)}:${Math.round(Number(pickup.y) || 0)}`
 
+const lunarColor = lootType => {
+  if (lootType === "speed") return 0x4ea7ff
+  if (lootType === "damage") return 0xff4e57
+  return 0xffd34e
+}
+
 const createHealthPotion = () => {
   const group = new THREE.Group()
   group.userData.type = "potion-red"
@@ -45,6 +51,50 @@ const createHealthPotion = () => {
   return group
 }
 
+const createLunarCrate = pickup => {
+  const color = lunarColor(pickup.lootType)
+  const group = new THREE.Group()
+  group.userData.type = pickup.type
+  group.userData.color = color
+  const crate = new THREE.Mesh(
+    new THREE.BoxGeometry(27 * WORLD_SCALE, 20 * WORLD_SCALE, 27 * WORLD_SCALE),
+    flatMaterial(color),
+  )
+  crate.position.y = 11 * WORLD_SCALE
+  const band = new THREE.Mesh(
+    new THREE.BoxGeometry(29 * WORLD_SCALE, 4 * WORLD_SCALE, 29 * WORLD_SCALE),
+    flatMaterial(0xfff1bd),
+  )
+  band.position.y = 11 * WORLD_SCALE
+  const core = new THREE.Mesh(
+    new THREE.OctahedronGeometry(6 * WORLD_SCALE, 0),
+    flatMaterial(0xffffff),
+  )
+  core.position.y = 22 * WORLD_SCALE
+  group.add(createContactShadow(16 * WORLD_SCALE), crate, band, core)
+  return group
+}
+
+const createLunarReward = pickup => {
+  const color = lunarColor(pickup.lootType || pickup.type.replace("lunar_", ""))
+  const group = new THREE.Group()
+  group.userData.type = pickup.type
+  group.userData.color = color
+  const orb = new THREE.Mesh(
+    new THREE.OctahedronGeometry(9 * WORLD_SCALE, 0),
+    flatMaterial(color),
+  )
+  orb.position.y = 13 * WORLD_SCALE
+  group.add(createContactShadow(11 * WORLD_SCALE), orb)
+  return group
+}
+
+const createPickup = pickup => {
+  if (pickup.type === "lunar_crate") return createLunarCrate(pickup)
+  if (String(pickup.type).startsWith("lunar_")) return createLunarReward(pickup)
+  return createHealthPotion()
+}
+
 export class PickupRenderer {
   constructor(root) {
     this.root = root
@@ -60,7 +110,7 @@ export class PickupRenderer {
       active.add(key)
       let view = this.pickups.get(key)
       if (!view) {
-        view = createHealthPotion()
+        view = createPickup(pickup)
         view.userData.phase = this.pickups.size * 1.7
         this.pickups.set(key, view)
         this.root.add(view)

@@ -225,6 +225,29 @@ test("monster health drops are visible until the player collects them", () => {
   renderer.dispose()
 })
 
+test("lunar crates and their reward colors render as distinct pickups", () => {
+  const root = new THREE.Group()
+  const renderer = new PickupRenderer(root)
+
+  renderer.sync([
+    {x: 120, y: 220, radius: 22, type: "lunar_crate", lootType: "speed", active: true},
+    {x: 180, y: 220, radius: 16, type: "lunar_damage", lootType: "damage", active: true},
+  ])
+
+  assert.equal(root.children.length, 2)
+  assert.equal(root.children[0].userData.type, "lunar_crate")
+  assert.equal(root.children[0].userData.color, 0x4ea7ff)
+  assert.equal(root.children[1].userData.type, "lunar_damage")
+  assert.equal(root.children[1].userData.color, 0xff4e57)
+  renderer.dispose()
+})
+
+test("the phase HUD no longer advertises a landing phase", async () => {
+  const source = await readFile(projectFile("src/components/BattleGame/BattleGameUI.jsx"), "utf8")
+  assert.doesNotMatch(source, /\blanding:\s*\{/)
+  assert.match(source, /hunt:\s*\{/)
+})
+
 test("collecting a health drop shows an explicit healing marker", () => {
   const root = new THREE.Group()
   const renderer = new EffectRenderer(root)

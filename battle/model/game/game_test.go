@@ -113,6 +113,46 @@ func TestCombatAttackDamagesLunarCrate(t *testing.T) {
 	}
 }
 
+func TestDestroyedLunarCrateDropsCollectibleBuff(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("attacker", "Attacker", "Wukong Mico")
+	gs.State = GameStateGame
+	gs.IslandPhase = IslandPhaseHunt
+	attacker := gs.Players["attacker"]
+	crate := prop.NewLunarCrate(160, 100, "speed")
+	crate.Lives = 1
+	gs.Props = append(gs.Props, crate)
+
+	if !gs.damageLunarCrate(attacker, crate, 1) {
+		t.Fatal("crate damage was not accepted")
+	}
+	var reward *prop.Prop
+	for _, candidate := range gs.Props {
+		if candidate.Type == "lunar_speed" {
+			reward = candidate
+			break
+		}
+	}
+	if crate.Active || reward == nil || !reward.Active {
+		t.Fatalf("crate/reward state = crate active %v, reward %#v", crate.Active, reward)
+	}
+
+	attacker.X, attacker.Y = reward.X, reward.Y
+	gs.collectPickups(attacker)
+	if reward.Active || attacker.LunarSpeedUntil <= time.Now().UnixMilli() {
+		t.Fatalf("speed buff was not collected: active=%v until=%d", reward.Active, attacker.LunarSpeedUntil)
+	}
+}
+
+func TestLunarShieldBlocksTheFirstIncomingHit(t *testing.T) {
+	p := &player.Player{Lives: 500, MaxLives: 500, LunarShield: true, ShieldHP: 300}
+	p.TakeDamage(100)
+
+	if p.Lives != 500 || p.LunarShield {
+		t.Fatalf("shield after first hit = lives %d, active %v", p.Lives, p.LunarShield)
+	}
+}
+
 func TestBeaconRequiresTenSecondsOfContinuousControl(t *testing.T) {
 	gs := newTestGameState()
 	gs.MaxPlayers = 1

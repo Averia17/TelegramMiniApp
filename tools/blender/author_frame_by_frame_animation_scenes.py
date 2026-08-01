@@ -17,6 +17,8 @@ from pathlib import Path
 import bpy
 from mathutils import Euler, Quaternion, Vector
 
+import hero_skill_spec
+
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 MANIFEST = Path(__file__).with_name("hero_animation_scene_manifest.json")
@@ -161,6 +163,16 @@ HERO_FRAMES = {
     },
 }
 
+# Keep the long-form body choreography on the same event clocks used by the
+# skill contract.  The locomotion/event timings above remain hero-specific,
+# while attack/super/gadget clips use the semantic frame counts and markers.
+for _hero, _skill_frames in hero_skill_spec.FRAME_ENDS.items():
+    if _hero not in HERO_FRAMES:
+        continue
+    for _clip, _frame_count in _skill_frames.items():
+        if _clip in HERO_FRAMES[_hero]:
+            HERO_FRAMES[_hero][_clip] = _frame_count
+
 GADGET_FRAMES = {
     "needle": 24,
     "mandy": 58,
@@ -260,6 +272,38 @@ def pose_quaternion(item):
     if item["rotation_mode"] == "AXIS_ANGLE":
         return Quaternion(item["rotation_axis_angle"])
     return item["rotation_euler"].to_quaternion()
+
+
+def write_pose_quaternion(item, value):
+    """Store a quaternion back in the capture's original rotation mode."""
+    mode = item["rotation_mode"]
+    if mode == "QUATERNION":
+        item["rotation_quaternion"] = value
+    elif mode == "AXIS_ANGLE":
+        angle, axis = value.to_axis_angle()
+        item["rotation_axis_angle"] = (angle, axis.x, axis.y, axis.z)
+    else:
+        item["rotation_euler"] = value.to_euler(mode)
+
+
+def limit_frame_rotation_delta(captured, previous, max_degrees=32.0):
+    """Prevent a source clip's one-frame Euler/rig snap from reaching GLB.
+
+    Several legacy Actions contain a large shoulder turn over one source frame.
+    Sampling them at 30 fps preserves that discontinuity unless the evaluated
+    pose is gently advanced over subsequent frames.  Quaternion slerp keeps
+    the shortest arc and leaves every ordinary frame untouched.
+    """
+    limit = math.radians(max_degrees)
+    for name, item in captured.items():
+        current = pose_quaternion(item)
+        prior = previous.get(name)
+        if prior is not None:
+            delta = prior.rotation_difference(current)
+            if delta.angle > limit:
+                current = prior.slerp(current, limit / delta.angle)
+                write_pose_quaternion(item, current)
+        previous[name] = current.copy()
 
 
 def import_source_rig(path: Path, scene):
@@ -1410,6 +1454,7 @@ def author_scene(hero, clip, master, target):
     }
     extra_location = {groups.get("hips")} - {None}
     extra_scale = {groups.get("spine_upper")} - {None}
+    previous_pose = {}
     for frame in range(1, end + 1):
         normalized = (frame - 1) / max(1.0, float(end - 1))
         source_frame = source_start + normalized * (source_end - source_start)
@@ -1430,6 +1475,7 @@ def author_scene(hero, clip, master, target):
             frame_rotation, frame_location, frame_scale = apply_choreography(
                 hero, clip, normalized, groups, captured
             )
+        limit_frame_rotation_delta(captured, previous_pose)
         extra_rotation.update(frame_rotation)
         extra_location.update(frame_location)
         extra_scale.update(frame_scale)
@@ -1462,6 +1508,11 @@ def author_scene(hero, clip, master, target):
     scene["fps"] = 30
     scene["authoring_status"] = "AUTHORED_FRAME_BY_FRAME"
     scene["authoring_method"] = "real_source_action_retimed_and_baked_every_frame"
+    scene["skill_event_frames"] = json.dumps(
+        hero_skill_spec.EVENT_FRAMES.get(hero, {}).get(clip, {}),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
     scene["source_of_truth"] = (
         f"{source_path.relative_to(ROOT)}::{SOURCE_ACTION_NAMES[source_clip]}"
     )

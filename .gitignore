@@ -95,6 +95,10 @@ ngrok.yml
 .playwright-cli/
 .tmp/
 output/
+/artifacts/
+/frontend/tmp/
+/frontend/tmp-*.png
+/frontend/test-results/
 
 # Local compiled service binaries
 /battle/battle
