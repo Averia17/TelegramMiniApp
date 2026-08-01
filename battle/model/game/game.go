@@ -79,6 +79,10 @@ type GameState struct {
 	DamageZones        []*DamageZone
 	PendingMandySupers []*PendingMandySuper
 	HeroZones          []*HeroZone
+	SporeStacks        map[string]int
+	DoomedUntil        map[string]int64
+	DamianDebuffs      map[string]int
+	LightMarkedUntil   map[string]int64
 	LightningStrikes   []*LightningStrike
 	Totems             map[string]*Totem
 	Skyfalls           []*Skyfall
@@ -121,6 +125,10 @@ func InitGameState(gs *GameState) {
 	gs.DamageZones = make([]*DamageZone, 0)
 	gs.PendingMandySupers = make([]*PendingMandySuper, 0)
 	gs.HeroZones = make([]*HeroZone, 0)
+	gs.SporeStacks = make(map[string]int)
+	gs.DoomedUntil = make(map[string]int64)
+	gs.DamianDebuffs = make(map[string]int)
+	gs.LightMarkedUntil = make(map[string]int64)
 	gs.LightningStrikes = make([]*LightningStrike, 0)
 	gs.Totems = make(map[string]*Totem)
 	gs.Skyfalls = make([]*Skyfall, 0)
@@ -273,7 +281,7 @@ func (gs *GameState) updatePlayers() {
 			}
 		case "ability":
 			if v, ok := action.Value.(*AbilityValue); ok {
-				gs.playerAbility(action.PlayerId, time.Now().UnixMilli(), v.Slot)
+				gs.playerAbility(action.PlayerId, time.Now().UnixMilli(), v.Slot, v.ClientID)
 			}
 		case "aiming":
 			if v, ok := action.Value.(*AimingValue); ok {
@@ -412,6 +420,9 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 		return 0
 	}
 	if target.ShieldUntil > time.Now().UnixMilli() {
+		if target.StoneArmorUntil > time.Now().UnixMilli() {
+			target.SuppressedRage += amount
+		}
 		amount = int(math.Round(float64(amount) * .6))
 	}
 	if target.ShieldStacks > 0 {
@@ -427,6 +438,12 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 }
 
 func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int) int {
+	if source != nil && gs.DamianDebuffs[source.PlayerId] > 0 {
+		amount = int(math.Round(float64(amount) * (1 - .08*float64(gs.DamianDebuffs[source.PlayerId]))))
+	}
+	if target != nil && gs.DoomedUntil[target.PlayerId] > time.Now().UnixMilli() {
+		amount = int(math.Round(float64(amount) * 1.3))
+	}
 	wasAlive := target != nil && target.IsAlive()
 	dealt := gs.applyDamageAmount(target, amount)
 	if dealt > 0 {
@@ -439,6 +456,10 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		}
 	}
 	if wasAlive && !target.IsAlive() {
+		if source != nil && source.HeroName == "Kaze" && gs.DoomedUntil[target.PlayerId] > time.Now().UnixMilli() {
+			source.LastPrimaryAt = 0
+			source.SuperCharge = 100
+		}
 		killerName := "Unknown"
 		if source != nil {
 			killerName = source.Name
@@ -618,6 +639,11 @@ func (gs *GameState) updateBullets() {
 		}
 
 		for _, p := range gs.Players {
+			if b.Kind == "mina_star" && p.IsAlive() && (p.PlayerId == b.PlayerId || (b.Team != "" && p.Team == b.Team)) && segmentHitsCircle(previousX, previousY, b.X, b.Y, p.X, p.Y, p.Radius+b.Radius) {
+				p.Lives = int(math.Min(float64(p.MaxLives), float64(p.Lives+15)))
+				b.Active = false
+				continue
+			}
 			if !p.CanBulletHurt(b.PlayerId, b.Team) || !segmentHitsCircle(previousX, previousY, b.X, b.Y, p.X, p.Y, p.Radius+b.Radius) {
 				continue
 			}
@@ -663,6 +689,22 @@ func (gs *GameState) updateBullets() {
 			}
 			if b.Kind == "pellet" && p.Marks < 5 {
 				p.Marks++
+			}
+			if b.Kind == "mina_star" {
+				p.Marks = 1
+				gs.LightMarkedUntil[p.PlayerId] = time.Now().UnixMilli() + 4000
+			}
+			if b.Kind == "damian_orb" || b.Kind == "damian_totem_orb" {
+				gs.DamianDebuffs[p.PlayerId] = int(math.Min(3, float64(gs.DamianDebuffs[p.PlayerId]+1)))
+			}
+			if b.Kind == "spore" {
+				gs.SporeStacks[p.PlayerId] = gs.SporeStacks[p.PlayerId] + 1
+				if gs.SporeStacks[p.PlayerId] >= 3 {
+					gs.SporeStacks[p.PlayerId] = 0
+					p.SlowUntil = time.Now().UnixMilli() + 2000
+					p.SlowMultiplier = .60
+					gs.addEffect("shadow_roots", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#75d947", 0, 2000)
+				}
 			}
 			if b.Kind == "spore" || b.Kind == "quantum" {
 				gs.radialDamageExcept(b.PlayerId, b.X, b.Y, map[string]float64{"spore": 115, "quantum": 75}[b.Kind], b.Damage, p.PlayerId)
@@ -1456,7 +1498,9 @@ func (gs *GameState) updatePlayerMovement() {
 			speed *= 1.22
 		}
 		if p.SlowUntil > now {
-			speed *= .45
+			multiplier := p.SlowMultiplier
+			if multiplier <= 0 { multiplier = .45 }
+			speed *= multiplier
 		}
 		magnitude := math.Hypot(p.MoveX, p.MoveY)
 		geometry.MoveCircleWithBlockingWalls(
@@ -1510,8 +1554,14 @@ func (gs *GameState) collectPickups(p *player.Player) {
 	}
 }
 
-func (gs *GameState) playerAbility(id string, ts int64, slot string) {
+func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ...string) {
 	p := gs.Players[id]
+	ackID := ""
+	if len(clientID) > 0 { ackID = clientID[0] }
+	if p != nil {
+		p.LastAbilityID = ackID
+		p.LastAbilityOK = false
+	}
 	if p == nil || !p.IsAlive() || p.StunUntil > ts || gs.State != GameStateGame {
 		return
 	}
@@ -1527,7 +1577,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 	if !primary {
 		switch p.HeroName {
 		case "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi":
-			gs.useNewHeroGadget(p, ts)
+			p.LastAbilityOK = gs.useNewHeroGadget(p, ts)
 			return
 		}
 	}
@@ -1536,8 +1586,12 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 			return
 		}
 		p.GadgetCharges--
+		p.ShieldUntil = ts + 3000
+		p.ChannelUntil = ts + 3000
 		p.GadgetArmed = true
+		gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "mandy_stance", X: p.X, Y: p.Y, Radius: 160, CreatedAt: ts, ExpiresAt: ts + 3000, NextTickAt: ts, Triggered: map[string]bool{}})
 		p.LastSecondaryAt = ts
+		p.LastAbilityOK = true
 		return
 	}
 	if primary && p.SuperCharge < 100 {
@@ -1558,6 +1612,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 				p.SuperPulse++
 			}
 			p.RevealedUntil = time.Now().UnixMilli() + 2000
+			p.LastAbilityOK = true
 			return
 		}
 	}
@@ -1568,6 +1623,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string) {
 	} else {
 		p.LastSecondaryAt = ts
 	}
+	p.LastAbilityOK = true
 
 	angle := p.Rotation
 	gs.addEffect("burst", p.X, p.Y, 0, 0, 95, angle, 0, 0, p.Color, 0, 420)

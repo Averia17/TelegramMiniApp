@@ -6,20 +6,29 @@
   <link rel="icon" href="data:,">
   <title>GLB Hero QA Harness</title>
   <style>
-    html,body{margin:0;height:100%;overflow:hidden;background:#d87850}
+    html,body{margin:0;min-height:100%;background:#d87850}
     canvas{display:block;width:100%;height:100%}
-    #state{position:fixed;left:18px;top:16px;padding:9px 14px;border-radius:10px;background:#17213bcc;color:#fff;font:800 15px system-ui}
+    #app{display:grid;grid-template-columns:minmax(0,1fr) 260px;min-height:100vh}
+    #viewport{position:relative;min-height:100vh}
+    #state{position:absolute;left:18px;top:16px;padding:9px 14px;border-radius:10px;background:#17213bcc;color:#fff;font:800 15px system-ui}
+    #controls{padding:22px 16px;background:#111a32;color:#fff;font:14px system-ui;box-shadow:-8px 0 24px #42233144}
+    #controls h1{margin:0 0 4px;font-size:20px}.hint{margin:0 0 18px;color:#aebce3;font-size:12px;line-height:1.4}
+    #hero-select{width:100%;margin:8px 0 18px;padding:10px;border:1px solid #536da7;border-radius:8px;background:#24365f;color:#fff;font:700 14px system-ui}
+    #hero-error{margin:-10px 0 18px;color:#ff9e9e;font-size:12px;line-height:1.4}
+    .group{margin:0 0 16px}.group strong{display:block;margin-bottom:7px;color:#ffd95a;font-size:11px;text-transform:uppercase;letter-spacing:1px}
+    button{width:100%;margin:3px 0;padding:9px 10px;border:1px solid #536da7;border-radius:8px;background:#24365f;color:#fff;text-align:left;font-weight:700;cursor:pointer}
+    button:hover,button.active{border-color:#ffd95a;background:#9b563f} @media(max-width:700px){#app{display:block}#viewport{height:70vh;min-height:460px}#controls{min-height:30vh}}
   </style>
 </head>
 <body>
-<div id="state">Loading</div>
-<canvas id="scene"></canvas>
+<div id="app"><section id="viewport"><div id="state">Loading</div><canvas id="scene"></canvas></section><aside id="controls"><h1>Animation Lab</h1><p class="hint">Тестовая страница для просмотра всех клипов героя. Панель находится вне сцены и не перекрывает модель.</p><div class="group"><strong>Locomotion</strong><button data-animation="idle">Покой</button><button data-animation="run">Бег</button></div><div class="group"><strong>Events</strong><button data-animation="spawn">Появление</button><button data-animation="attack">Атака</button><button data-animation="super">Супер</button><button data-animation="hit">Получил удар</button><button data-animation="victory">Победа</button><button data-animation="defeat">Поражение</button></div><div class="group"><strong>Aim</strong><button data-animation="aim">Прицел</button><button data-animation="aimSuper">Прицел супер</button></div></aside></div>
 <script type="module">
   import * as THREE from "three"
   import {GLBHeroController} from "/src/components/BattleGame/rendering/heroes/GLBHeroController.js"
   import {ProjectileRenderer} from "/src/components/BattleGame/rendering/combat/ProjectileRenderer.js"
   import {AimRenderer} from "/src/components/BattleGame/rendering/combat/AimRenderer.js"
   import {assetRegistry} from "/src/components/BattleGame/rendering/assets/AssetRegistry.js"
+  import {resolveHeroName} from "/src/components/BattleGame/rendering/assets/assetManifest.js"
   import {BUSH_HERO_OPACITY} from "/src/components/BattleGame/rendering/heroes/BushConcealment.js"
   import {createBushField} from "/src/components/BattleGame/rendering/map/BushRenderer.js"
   import {MonsterRenderer} from "/src/components/BattleGame/rendering/monsters/MonsterRenderer.js"
@@ -51,7 +60,34 @@
   scene.add(ground)
 
   const query=new URLSearchParams(location.search)
-  const hero=query.get("hero")||"Mandy"
+  const requestedHero=query.get("hero")||"Mandy"
+  const hero=resolveHeroName(requestedHero)
+  const heroSelect=document.createElement("select")
+  heroSelect.id="hero-select"
+  heroSelect.innerHTML="<option>Загрузка героев...</option>"
+  const controls=document.querySelector("#controls")
+  controls.insertBefore(heroSelect, controls.querySelector(".group"))
+  heroSelect.addEventListener("change",()=>{
+    const next=new URL(location.href)
+    next.searchParams.set("hero",heroSelect.value)
+    next.searchParams.delete("state")
+    location.assign(next.href)
+  })
+  try {
+    const response=await fetch("/api/battle/heroes")
+    if(!response.ok) throw new Error(`HTTP ${response.status}`)
+    const heroes=await response.json()
+    heroSelect.innerHTML=heroes.map(item=>`<option value="${item.name}">${item.name}</option>`).join("")
+    heroSelect.value=hero
+  } catch(error) {
+    heroSelect.disabled=true
+    heroSelect.innerHTML="<option>Герои недоступны</option>"
+    const errorMessage=document.createElement("p")
+    errorMessage.id="hero-error"
+    errorMessage.textContent="Не удалось загрузить список героев с backend. Проверьте battle-сервис."
+    controls.insertBefore(errorMessage, controls.querySelector(".group"))
+    console.warn("Could not load heroes from battle backend",error)
+  }
   const instance=await assetRegistry.instantiateHero(hero)
   const model=instance.root
   scene.add(model)
@@ -86,7 +122,7 @@
   if(query.has("aim")){
     aimPreview.update({aiming:true,x:0,y:0,rotation:0,...(attackAreas[hero]||{attackArchetype:"projectile",attackRange:600,color:"#fff"})})
   }
-  const clips={idle:"Idle",run:"Run",aim:"Aim",aimSuper:"AimSuper",attack:"Attack",super:"Super",spawn:"Spawn",victory:"Victory",defeat:"Defeat"}
+  const clips={idle:"idle",run:"run",hit:"hit",aim:"Aim",aimSuper:"AimSuper",attack:"Attack",super:"super",spawn:"Spawn",victory:"Victory",defeat:"death"}
   const controller=new GLBHeroController(model,instance.animations,clips,{
     heroName:hero,
     attackPulse:0,
@@ -94,6 +130,17 @@
     spawnOnLoad:!forcedState||forcedState==="spawn",
     fullBodySuper:false,
   })
+  let manualState=null
+  document.querySelectorAll("[data-animation]").forEach(button=>button.addEventListener("click",()=>{
+    const animation=button.dataset.animation
+    const played=animation==="spawn"?(controller.playSpawn(),true):["idle","run"].includes(animation)
+      ?controller.transitionLocomotion(animation):["victory","defeat"].includes(animation)
+        ?controller.playOutcome(animation):controller.playSafe(animation)
+    if(!played)return
+    manualState=animation
+    document.querySelectorAll("[data-animation]").forEach(item=>item.classList.toggle("active",item===button))
+    label.textContent=`Manual / ${animation}`
+  }))
   const projectileRoot=new THREE.Group()
   const projectiles=new ProjectileRenderer(projectileRoot)
   const attackPreview=query.has("attack")
@@ -117,20 +164,21 @@
   renderer.setAnimationLoop(()=>{
     const dt=Math.min(.05,clock.getDelta())
     const forcedCycles={spawn:.35,idle:10.5,run:2.6,aim:4.4,attack:5.05,aimSuper:7.4,super:8.05,victory:10.5,defeat:10.5}
-    const cycle=forcedState in forcedCycles?forcedCycles[forcedState]:(performance.now()/1000)%12
+    const cycle=manualState?0:(forcedState in forcedCycles?forcedCycles[forcedState]:(performance.now()/1000)%12)
     const moving=cycle>=2&&cycle<7
     const aiming=cycle>=4&&cycle<7
     if(cycle>=5&&cycle<5+dt){attackPulse++;hit=1}
     if(cycle>=8&&cycle<8+dt)superPulse++
     const state=cycle<2?"Spawn / Idle":cycle<4?"Run":cycle<7?"Run + Aim + Attack":cycle<9?"Super":"Idle"
-    label.textContent=state
+    if(!manualState) label.textContent=state
     const attackFlight=attackPreview||(cycle>=4.65&&cycle<6.35)
     const projectileX=attackPreview?23:-18+(cycle-4.65)*38
     projectiles.sync(hero==="Shadow"&&attackFlight?[{id:"qa-spore",kind:"spore",color:"#75D947",radius:15,x:projectileX,y:0,z:attackPreview?12:Math.sin((cycle-4.65)/1.7*Math.PI)*22}]:[])
     projectiles.update(dt,performance.now()/1000)
     monsterPreview.update(dt,performance.now()/1000)
     model.rotation.y=moving?-.45:0
-    controller.update(dt,{alive:true,moving,aiming,superAiming:forcedState==="aimSuper",result:["victory","defeat"].includes(forcedState)?forcedState:null,speed:moving?300:0,referenceSpeed:285,aimYaw:aiming?.95:0,attackPulse,superPulse})
+    const manualMoving=manualState==="run"
+    controller.update(dt,{alive:true,moving:manualState?manualMoving:moving,aiming:manualState?manualState==="aim":aiming,superAiming:manualState?manualState==="aimSuper":forcedState==="aimSuper",result:manualState?(["victory","defeat"].includes(manualState)?manualState:null):["victory","defeat"].includes(forcedState)?forcedState:null,speed:(manualState?manualMoving:moving)?300:0,referenceSpeed:285,aimYaw:(manualState?manualState==="aim":aiming)?.95:0,attackPulse,superPulse})
     controller.setHitFlash(hit)
     hit*=Math.exp(-10*dt)
     renderer.render(scene,camera)
@@ -143,10 +191,15 @@
     triggerSuper:()=>{superPulse+=1},
   }
   window.render_game_to_text=()=>JSON.stringify({
+    hero,
+    requestedHero,
     state:label.textContent,
     animation:controller.state,
     overlay:controller.overlay,
     aimWeight:Number(controller.aimWeight.toFixed(3)),
+    actionWeights:Object.fromEntries([...controller.actions.entries()].map(([name,action])=>[name,Number(action.getEffectiveWeight().toFixed(3))])),
+    clipTimes:Object.fromEntries([...controller.actions.entries()].map(([name,action])=>[name,Number(action.time.toFixed(3))])),
+    fallbackEvents:controller.fallbackEvents,
     clips:instance.animations.map(clip=>clip.name),
     coordinateSystem:"Three.js: +Y up; ground plane XZ",
   })

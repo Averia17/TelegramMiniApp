@@ -1,0 +1,19 @@
+[
+  {
+    "hero": "kaze",
+    "actions": [
+      "Aim",
+      "AimSuper",
+      "Attack",
+      "Spawn",
+      "Victory",
+      "death",
+      "hit",
+      "idle",
+      "run",
+      "super"
+    ],
+    "glb": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\kaze\\kaze.glb",
+    "runtime_glb": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\frontend\\public\\assets\\heroes\\output_heroes\\kaze_base.glb"
+  }
+]

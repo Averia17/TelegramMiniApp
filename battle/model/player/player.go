@@ -59,6 +59,8 @@ type Player struct {
 	Deflect           int
 	Evolution         int
 	LastAbilityTick   int64
+	LastAbilityID     string
+	LastAbilityOK     bool
 	PowerCores        int
 	DamageMultiplier  float64
 	IsBot             bool
@@ -66,8 +68,12 @@ type Player struct {
 	LastSecondaryAt   int64
 	HasteUntil        int64
 	SlowUntil         int64
+	SlowMultiplier    float64
 	FocusStartedAt    int64
 	FocusCharge       int
+	Rage              int
+	SuppressedRage    int
+	StoneArmorUntil   int64
 	GadgetArmed       bool
 	GadgetCharges     int
 	RegenRate         float64

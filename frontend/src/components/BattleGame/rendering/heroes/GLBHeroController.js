@@ -3,6 +3,8 @@ import {createNeedleSporeVisual, createProjectileVisual} from "../combat/Project
 import {getAttackSwingYaw} from "./attackSwing.js"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+export const LOCOMOTION_FADE = 0.16
+export const OVERLAY_FADE = 0.18
 const UPPER_BONE = /(spine|chest|neck|head|shoulder|clavicle|arm|hand|finger|weapon)/i
 const LOWER_BONE = /(root|hips?|pelvis|leg|thigh|calf|foot|toe)/i
 
@@ -313,10 +315,13 @@ export class GLBHeroController {
     this.aimPitch = 0
     this.appliedUpperAim = new THREE.Quaternion()
     this.appliedHeadAim = new THREE.Quaternion()
+    this.appliedLegGait = new Map()
     // Rich GLBs already contain authored attack motion. Applying another
     // bind-pose-relative Euler rotation here twists shoulders and makes held
     // weapons drift. Brock's non-skeletal cast remains handled by cloudCaster.
     this.attackPoseNodes = []
+    this.lastHitAmount = 0
+    this.fallbackEvents = []
 
     for (const [semanticName, clipName] of Object.entries(clipNames)) {
       const source = THREE.AnimationClip.findByName(clips, clipName)
@@ -325,10 +330,14 @@ export class GLBHeroController {
         ? upperBodyClip(source, this.rig.upperNames)
         : source
       const action = this.mixer.clipAction(clip)
-      if (["attack", "super", "spawn"].includes(semanticName)) {
+      if (["attack", "super", "spawn", "hit", "defeat"].includes(semanticName)) {
         configureOneShot(action, semanticName === "spawn")
       }
       this.actions.set(semanticName, action)
+    }
+    for (const action of this.actions.values()) {
+      action.enabled = true
+      action.setEffectiveWeight(0)
     }
     for (const semanticName of ["aim", "aimSuper"]) {
       const aim = this.actions.get(semanticName)
@@ -337,40 +346,65 @@ export class GLBHeroController {
       aim.setEffectiveWeight(0)
       aim.play()
     }
+    const runClip = this.actions.get("run")?.getClip()
+    this.proceduralRunFallback = Boolean(runClip && !runClip.tracks.some(track => /(leg|thigh|calf|shin|foot|toe)/i.test(track.name)))
+    this.proceduralAimFallback = !this.actions.get("aim")?.getClip().tracks.length
 
     this.mixer.addEventListener("finished", event => {
       const finished = [...this.actions.entries()].find(([, action]) => action === event.action)?.[0]
       if (finished === this.overlay) this.overlay = null
-      if (finished === "spawn") this.state = null
+      if (finished === "spawn") {
+        event.action.stop().setEffectiveWeight(0)
+        this.state = null
+      }
     })
     if ((this.actions.has("spawn") || this.spawnCactus) && options.spawnOnLoad !== false) this.playSpawn()
   }
 
-  transitionLocomotion(name, fadeSeconds = 0.16) {
+  transitionLocomotion(name, fadeSeconds = LOCOMOTION_FADE) {
     const next = this.actions.get(name)
     if (!next || this.state === name) return Boolean(next)
     const previous = this.actions.get(this.state)
     next.enabled = true
-    next.setEffectiveWeight(1)
-    next.reset().play()
+    next.reset().setEffectiveWeight(1).play()
     if (previous && previous !== next && !["spawn"].includes(this.state)) {
       previous.crossFadeTo(next, fadeSeconds, false)
+    } else {
+      if (previous && previous !== next) previous.fadeOut(fadeSeconds)
+      next.setEffectiveWeight(1)
     }
     this.state = name
     return true
   }
 
-  playOverlay(name, fadeSeconds = 0.04) {
+  playSafe(name, fallback = "idle", fadeSeconds = OVERLAY_FADE) {
+    if (this.actions.has(name)) return this.playOverlay(name, fadeSeconds)
+    const event = {hero: this.heroName, requested: name, fallback}
+    this.fallbackEvents.push(event)
+    if (this.fallbackEvents.length > 32) this.fallbackEvents.shift()
+    console.warn(`[GLBHeroController] Missing animation "${name}" for ${this.heroName || "hero"}; falling back to "${fallback}".`)
+    if (fallback === "idle" || fallback === "run") this.transitionLocomotion(fallback, fadeSeconds)
+    return false
+  }
+
+  playOverlay(name, fadeSeconds = OVERLAY_FADE) {
     const next = this.actions.get(name)
     if (!next) return false
     const previous = this.actions.get(this.overlay)
     if (previous && previous !== next) previous.fadeOut(fadeSeconds)
     next.enabled = true
-    next.setEffectiveWeight(1)
-    next.reset().fadeIn(fadeSeconds).play()
+    next.reset().setEffectiveWeight(1).fadeIn(fadeSeconds).play()
     this.overlay = name
     if (name === "attack" && this.heldProjectile) this.heldProjectile.visible = true
     return true
+  }
+
+  playOutcome(name, fadeSeconds = LOCOMOTION_FADE) {
+    if (!this.actions.has(name)) return this.playSafe(name, "idle", fadeSeconds)
+    const action = this.actions.get(name)
+    action.setLoop(THREE.LoopRepeat, Infinity)
+    action.clampWhenFinished = false
+    return this.transitionLocomotion(name, fadeSeconds)
   }
 
   playSpawn() {
@@ -404,10 +438,13 @@ export class GLBHeroController {
     if (this.meleeWeapon && input.alive !== false) this.meleeWeapon.visible = true
     this.elapsed += deltaSeconds
     if (input.alive === false) {
-      this.root.visible = false
-      this.mixer.stopAllAction()
-      this.state = "dead"
-      this.overlay = null
+      this.root.visible = true
+      if (this.state !== "dead") {
+        this.overlay = null
+        this.transitionLocomotion("defeat", 0.06)
+        this.state = "dead"
+      }
+      this.mixer.update(deltaSeconds)
       return
     }
     if (this.lastSpawnPulse !== input.spawnPulse && input.spawnPulse !== undefined) {
@@ -418,9 +455,9 @@ export class GLBHeroController {
     this.lastSpawnPulse = input.spawnPulse
 
     if (this.lastSuperPulse !== input.superPulse && input.superPulse !== undefined) {
-      this.playOverlay("super")
+      this.playSafe("super")
     } else if (this.lastAttackPulse !== input.attackPulse && input.attackPulse !== undefined) {
-      this.playOverlay("attack")
+      this.playSafe("attack")
       this.attackVisualRemaining = .42
     }
     this.lastAttackPulse = input.attackPulse
@@ -523,15 +560,15 @@ export class GLBHeroController {
       this.root.scale.copy(this.spawnScale)
       this.root.position.copy(this.basePosition)
     }
-    if (input.result && this.actions.has(input.result)) {
-      this.transitionLocomotion(input.result, 0.24)
+    if (input.result) {
+      this.playOutcome(input.result, LOCOMOTION_FADE)
     } else if (this.state !== "spawn") {
       this.transitionLocomotion(input.moving ? "run" : "idle")
     }
 
     const run = this.actions.get("run")
     if (run) {
-      const referenceSpeed = Math.max(1, Number(input.referenceSpeed) || 1)
+      const referenceSpeed = Math.max(1, Number(input.referenceSpeed) || 240)
       run.timeScale = clamp((Number(input.speed) || 0) / referenceSpeed, 0.65, 1.65)
       if (input.moving) {
         const cycle = run.getClip().duration > 0 ? run.time / run.getClip().duration : 0
@@ -566,6 +603,10 @@ export class GLBHeroController {
     this.aimPitch = THREE.MathUtils.damp(this.aimPitch, Number(input.aimPitch) || 0, 18, deltaSeconds)
     if (this.rig.upperRoot) this.rig.upperRoot.quaternion.multiply(this.appliedUpperAim.clone().invert())
     if (this.rig.head) this.rig.head.quaternion.multiply(this.appliedHeadAim.clone().invert())
+    for (const [bone, applied] of this.appliedLegGait) {
+      bone.quaternion.multiply(applied.clone().invert())
+    }
+    this.appliedLegGait.clear()
     this.mixer.update(deltaSeconds)
     const attackAction = this.actions.get("attack")
     const attackPhase = attackAction
@@ -574,9 +615,9 @@ export class GLBHeroController {
     this.attackSwingYaw = this.overlay === "attack"
       ? getAttackSwingYaw(attackPhase, input.attackHalfArcDegrees)
       : 0
-    if (input.moving) {
+    if (input.moving && this.proceduralRunFallback) {
       const speedRatio = clamp(
-        (Number(input.speed) || 0) / Math.max(1, Number(input.referenceSpeed) || 1),
+        (Number(input.speed) || 0) / Math.max(1, Number(input.referenceSpeed) || 240),
         .65,
         1.65,
       )
@@ -584,9 +625,17 @@ export class GLBHeroController {
       for (const [side, leg] of Object.entries(this.rig.legs)) {
         const direction = side === "left" ? 1 : -1
         const swing = Math.sin(gait) * direction
-        if (leg.upper) leg.upper.rotateX(swing * .34)
-        if (leg.lower) leg.lower.rotateX(Math.max(0, -swing) * .28 + Math.abs(Math.sin(gait)) * .08)
-        if (leg.foot) leg.foot.rotateX(-swing * .16 - Math.max(0, swing) * .08)
+        const gaitAngles = [
+          [leg.upper, swing * .34],
+          [leg.lower, Math.max(0, -swing) * .28 + Math.abs(Math.sin(gait)) * .08],
+          [leg.foot, -swing * .16 - Math.max(0, swing) * .08],
+        ]
+        for (const [bone, angle] of gaitAngles) {
+          if (!bone) continue
+          const applied = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), angle)
+          bone.quaternion.multiply(applied)
+          this.appliedLegGait.set(bone, applied)
+        }
       }
     }
     if (this.throwableWeapon) {
@@ -628,7 +677,7 @@ export class GLBHeroController {
         this.heldProjectile.rotation.set(0.18, 0.35, -0.12)
       }
     }
-    if (this.rig.upperRoot) {
+    if (this.rig.upperRoot && this.proceduralAimFallback) {
       this.appliedUpperAim.setFromEuler(new THREE.Euler(
         clamp(this.aimPitch, -0.45, 0.45),
         clamp(this.aimYaw, -1.25, 1.25),
@@ -636,22 +685,24 @@ export class GLBHeroController {
         "YXZ",
       ))
       this.rig.upperRoot.quaternion.multiply(this.appliedUpperAim)
-    } else {
+    } else if (this.proceduralAimFallback) {
       this.appliedUpperAim.identity()
     }
-    if (this.rig.head) {
+    if (this.rig.head && this.proceduralAimFallback) {
       this.appliedHeadAim.setFromAxisAngle(
         new THREE.Vector3(0, 1, 0),
         clamp(this.aimYaw * 0.18, -0.22, 0.22),
       )
       this.rig.head.quaternion.multiply(this.appliedHeadAim)
-    } else {
+    } else if (this.proceduralAimFallback) {
       this.appliedHeadAim.identity()
     }
   }
 
   setHitFlash(amount) {
     const hit = clamp(amount, 0, 1)
+    if (hit > .65 && this.lastHitAmount <= .65 && this.state !== "dead") this.playOverlay("hit", .025)
+    this.lastHitAmount = hit
     for (const material of this.heroMaterials) {
       if (material.uniforms?.hit) material.uniforms.hit.value = hit
       if (material.emissive) {

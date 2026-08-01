@@ -8,6 +8,10 @@ export const ATTACK_ARCHETYPES = Object.freeze({
   RETURNING: "returning",
 })
 
+// Reference locomotion speed used to turn gameplay speed (world units/sec)
+// into authored run-cycle time. Hero configs remain the source of truth.
+export const ANIMATION_REFERENCE_SPEED = 240
+
 export const HEROES_CONFIG = Object.freeze([
   {name:"Shadow",color:"#75D947",maxLives:6200,speed:240,attackDamage:750,attackType:"spore",role:"Controller",attack:{archetype:"projectile",aimShape:"line",range:620}},
   {name:"Mandy",color:"#F4C542",maxLives:7200,speed:250,attackDamage:1700,attackType:"mandy_staff",role:"Fighter",attack:{archetype:"melee_cone",aimShape:"cone",range:70,halfArcDegrees:42}},
@@ -18,6 +22,19 @@ export const HEROES_CONFIG = Object.freeze([
   {name:"Damian",color:"#8D52D9",maxLives:6400,speed:250,attackDamage:1200,attackType:"damian_dark_orb",role:"Summoner",attack:{archetype:"projectile",aimShape:"line",range:640}},
   {name:"Persephone Lumi",color:"#D954A8",maxLives:6800,speed:250,attackDamage:1050,attackType:"lumi_trail_orb",role:"Controller",attack:{archetype:"projectile",aimShape:"line",range:600}},
 ])
+
+// Fallback contract used before /heroes arrives. The server payload has the
+// same shape and replaces these values through normalizeHeroConfig.
+export const HERO_KITS = Object.freeze({
+  Shadow: {basic:{id:"spore_thorn",name:"Споровый шип",description:"Самонаводящийся шип накладывает Споры."},super:{id:"hunter_root",name:"Ловчий корень",description:"Корень подбрасывает врагов и оставляет замедляющую зону.",slot:"primary",prediction:"server"},gadget:{id:"spore_dash",name:"Споровый рывок",description:"Рывок оставляет облако спор.",slot:"secondary",prediction:"server"}},
+  Mandy: {basic:{id:"staff_strike",name:"Удар посохом",description:"Неподвижность усиливает удар и оглушает."},super:{id:"devastation_wave",name:"Волна опустошения",description:"Дальняя волна разрушает стены.",slot:"primary",prediction:"server"},gadget:{id:"unyielding_stance",name:"Нерушимая стойка",description:"Стойка защищает от контроля и снижает урон.",slot:"secondary",prediction:"server"}},
+  "Fairy Mina": {basic:{id:"star_fan",name:"Звёздный веер",description:"Звёзды лечат союзников и метят врагов."},super:{id:"star_cocoon",name:"Звёздный кокон",description:"Щит создаёт лечащую ауру.",slot:"primary",prediction:"server"},gadget:{id:"repelling_wave",name:"Отталкивающая волна",description:"Отбрасывает врагов и оглушает отмеченных.",slot:"secondary",prediction:"server"}},
+  "Brock Zeus": {basic:{id:"thunder_projectile",name:"Грозовой снаряд",description:"Взрывной снаряд разрушает стены."},super:{id:"gods_hammer",name:"Молот богов",description:"Три удара молнии создают горящую зону.",slot:"primary",prediction:"server"},gadget:{id:"discharge_cable",name:"Разрядный кабель",description:"Следующий выстрел становится пробивающим лучом.",slot:"secondary",prediction:"server"}},
+  Kaze: {basic:{id:"cross_slash",name:"Косые удары",description:"Два попадания открывают усиленный третий удар."},super:{id:"piercing_dash",name:"Пронзающий рывок",description:"Рывок помечает врагов и усиливает получаемый ими урон.",slot:"primary",prediction:"server"},gadget:{id:"vanish",name:"Исчезновение",description:"Невидимость гарантирует критический первый удар.",slot:"secondary",prediction:"server"}},
+  "Wukong Mico": {basic:{id:"heavy_staff",name:"Тяжёлый посох",description:"Попадания накапливают Ярость."},super:{id:"vengeance_vortex",name:"Вихрь возмездия",description:"Вихрь расходует Ярость и наносит урон вокруг.",slot:"primary",prediction:"server"},gadget:{id:"stone_armor",name:"Каменная броня",description:"Щит накапливает урон и взрывается после окончания.",slot:"secondary",prediction:"server"}},
+  Damian: {basic:{id:"blight_orb",name:"Сфера скверны",description:"Попадания снижают исходящий урон врага."},super:{id:"soul_totem",name:"Тотем душ",description:"Тотем автономно атакует ближайшего врага.",slot:"primary",prediction:"server"},gadget:{id:"exchange",name:"Обмен",description:"Меняет место с тотемом и взрывает его.",slot:"secondary",prediction:"server"}},
+  "Persephone Lumi": {basic:{id:"luminous_trail",name:"Световой след",description:"След замедляет и раскрывает врагов."},super:{id:"root_garden",name:"Сад корней",description:"Поле корней обездвиживает вошедших врагов.",slot:"primary",prediction:"server"},gadget:{id:"flower_burst",name:"Цветочный взрыв",description:"Взрывает активный след или сад.",slot:"secondary",prediction:"server"}},
+})
 
 export const HERO_AIM_DEFAULTS = Object.freeze({
   projectile: {shape: "line", color: "#ffffff"},
@@ -33,8 +50,16 @@ export const HERO_AIM_DEFAULTS = Object.freeze({
 export const normalizeHeroConfig = hero => {
   const attack = hero?.attack || {}
   const visual = HERO_AIM_DEFAULTS[attack.archetype] || HERO_AIM_DEFAULTS.projectile
+  const fallbackKit = HERO_KITS[hero?.name] || {}
+  const rawKit = hero?.kit || fallbackKit
+  const kit = Object.fromEntries(["basic", "super", "gadget"].map(slot => [slot, {
+    ...(rawKit[slot] || fallbackKit[slot] || {}),
+    slot: rawKit[slot]?.slot || (slot === "basic" ? "basic" : slot === "super" ? "primary" : "secondary"),
+    prediction: rawKit[slot]?.prediction || (slot === "basic" ? "projectile" : "server"),
+  }]))
   return {
     ...hero,
+    kit,
     stats: {
       maxHealth: hero?.maxLives || 1,
       moveSpeed: hero?.speed || 0,

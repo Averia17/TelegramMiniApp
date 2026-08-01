@@ -465,18 +465,15 @@ func TestAmmoIsServerAuthoritativeAndReloadsSequentially(t *testing.T) {
 	}
 }
 
-func TestShadowShortAimVaultsWithoutProjectile(t *testing.T) {
+func TestShadowShortAimStillFiresSporeProjectile(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("shadow", "Shadow", "Shadow")
 	gs.State = GameStateGame
 	p := gs.Players["shadow"]
 	p.X, p.Y = 1200, 1200
 	gs.playerShoot("shadow", 1000, 0, 40)
-	if p.X < 1400 {
-		t.Fatalf("Shadow short aim x = %.1f, want a 210px vault", p.X)
-	}
-	if len(gs.Bullets) != 0 {
-		t.Fatalf("short aim created %d projectiles", len(gs.Bullets))
+	if p.X != 1200 || len(gs.Bullets) != 1 || gs.Bullets[0].Kind != "spore" {
+		t.Fatalf("Shadow short aim position=%.1f bullets=%#v", p.X, gs.Bullets)
 	}
 }
 

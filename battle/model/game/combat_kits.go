@@ -21,6 +21,7 @@ type ShellyKit struct{}
 type ColtKit struct{}
 type BarleyKit struct{}
 type MandyKit struct{}
+type ShadowKit struct{}
 
 type ScheduledShot struct {
 	Owner        string
@@ -59,6 +60,8 @@ type PendingMandySuper struct {
 
 func CombatKitFor(hero string) CombatKit {
 	switch hero {
+	case "Shadow":
+		return ShadowKit{}
 	case "Shelly":
 		return ShellyKit{}
 	case "Colt":
@@ -124,10 +127,11 @@ func (MandyKit) AttackRange() float64  { return 70 }
 
 func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ float64) {
 	reach := MandyKit{}.AttackRange()
-	if source.FocusCharge >= 100 {
+	focused := source.FocusCharge >= 100
+	if focused {
 		reach *= 1.35
 	}
-	halfArc := 42.0 * math.Pi / 180
+	halfArc := 60.0 * math.Pi / 180
 	hits := 0
 	slowUntil := int64(0)
 	if source.GadgetArmed {
@@ -138,8 +142,11 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 		if !target.CanBulletHurt(source.PlayerId, source.Team) || !insideSector(source.X, source.Y, target.X, target.Y, target.Radius, angle, reach, halfArc) {
 			continue
 		}
-		if gs.dealPlayerDamage(source, target, source.AttackDmg) > 0 {
+		damage := source.AttackDmg
+		if focused { damage = int(math.Round(float64(damage) * 1.4)) }
+		if gs.dealPlayerDamage(source, target, damage) > 0 {
 			hits++
+			if focused { target.StunUntil = ts + 500 }
 			if slowUntil > 0 {
 				target.SlowUntil = slowUntil
 			}
@@ -149,7 +156,9 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 		if target == nil || !target.IsAlive() || !insideSector(source.X, source.Y, target.X, target.Y, target.Radius, angle, reach, halfArc) {
 			continue
 		}
-		gs.damageMonster(id, target, source.AttackDmg)
+		damage := source.AttackDmg
+		if focused { damage = int(math.Round(float64(damage) * 1.4)) }
+		gs.damageMonster(id, target, damage)
 		hits++
 	}
 	if hits > 0 {
@@ -159,7 +168,7 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 }
 
 func (MandyKit) Super(gs *GameState, source *player.Player, ts int64, angle, _ float64) bool {
-	const windup = int64(750)
+	const windup = int64(1200)
 	source.MoveX, source.MoveY = 0, 0
 	source.ChannelUntil = ts + windup
 	gs.PendingMandySupers = append(gs.PendingMandySupers, &PendingMandySuper{
@@ -188,7 +197,7 @@ func (gs *GameState) updateMandyFocus() {
 		if source.FocusStartedAt == 0 {
 			source.FocusStartedAt = now
 		}
-		source.FocusCharge = int(math.Min(100, float64(now-source.FocusStartedAt)/10))
+		source.FocusCharge = int(math.Min(100, float64(now-source.FocusStartedAt)/20))
 	}
 }
 
@@ -213,7 +222,9 @@ func (gs *GameState) updatePendingMandySupers() {
 			if !target.CanBulletHurt(source.PlayerId, source.Team) || !insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {
 				continue
 			}
-			gs.dealPlayerDamage(source, target, 3200)
+			along := math.Abs((target.X-cast.X)*math.Cos(cast.Angle) + (target.Y-cast.Y)*math.Sin(cast.Angle))
+			progress := math.Min(1, along/math.Max(1, reach))
+			gs.dealPlayerDamage(source, target, int(math.Round(3200*(1+progress*.6))))
 		}
 		for id, target := range gs.Monsters {
 			if target != nil && target.IsAlive() && insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {

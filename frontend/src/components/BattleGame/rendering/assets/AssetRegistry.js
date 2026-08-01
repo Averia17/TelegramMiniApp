@@ -1,7 +1,7 @@
 import * as THREE from "three"
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js"
 import {clone} from "three/addons/utils/SkeletonUtils.js"
-import {ENVIRONMENT_ASSETS, HERO_ASSETS, getHeroAsset} from "./assetManifest.js"
+import {ENVIRONMENT_ASSETS, HERO_ASSETS, getHeroAsset, resolveHeroName} from "./assetManifest.js"
 
 const loadWith = loader => url => loader.loadAsync(url)
 
@@ -98,6 +98,15 @@ const attachWeaponObject = (heroRoot, target, weaponObject, role, name) => {
   return attachment
 }
 
+const removeEmbeddedDetachedWeapons = (heroRoot, attachments = []) => {
+  const names = new Set(attachments.map(({name}) => name).filter(Boolean))
+  if (!names.size) return
+  heroRoot.traverse(node => {
+    if (!names.has(node.name)) return
+    node.parent?.remove(node)
+  })
+}
+
 export const attachDetachedWeapon = (heroRoot, weaponScene, attachments = []) => {
   if (!weaponScene) return []
   if (attachments.length) {
@@ -133,7 +142,8 @@ export class AssetRegistry {
   }
 
   loadHero(name) {
-    const asset = this.manifest[name] || getHeroAsset(name)
+    const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
+    const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
     if (!asset?.available) return Promise.resolve(null)
     if (!this.heroLoads.has(asset.id)) {
       const pending = this.load(asset.url)
@@ -152,7 +162,8 @@ export class AssetRegistry {
   }
 
   loadHeroWeapon(name) {
-    const asset = this.manifest[name] || getHeroAsset(name)
+    const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
+    const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
     if (!asset?.weaponUrl) return Promise.resolve(null)
     if (!this.weaponLoads.has(asset.id)) {
       const pending = this.load(asset.weaponUrl).catch(error => {
@@ -165,7 +176,8 @@ export class AssetRegistry {
   }
 
   isHeroReady(name) {
-    const asset = this.manifest[name] || getHeroAsset(name)
+    const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
+    const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
     return Boolean(asset?.available && this.readyHeroes.has(asset.id))
   }
 
@@ -193,10 +205,11 @@ export class AssetRegistry {
   }
 
   async instantiateHero(name) {
-    const asset = this.manifest[name] || getHeroAsset(name)
+    const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
+    const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
     const [gltf, weaponGltf] = await Promise.all([
-      this.loadHero(name),
-      this.loadHeroWeapon(name),
+      this.loadHero(resolvedName),
+      this.loadHeroWeapon(resolvedName),
     ])
     if (!gltf) return null
     const animations = gltf.animations || []
@@ -209,6 +222,7 @@ export class AssetRegistry {
         child.receiveShadow = true
       }
     })
+    removeEmbeddedDetachedWeapons(root, asset.weaponAttachments)
     if (weaponGltf?.scene) {
       const weaponRoot = clone(weaponGltf.scene)
       weaponRoot.traverse(child => {

@@ -1,13 +1,14 @@
 const clips = Object.freeze({
-  idle: "Idle",
-  run: "Run",
+  idle: "idle",
+  run: "run",
+  hit: "hit",
   aim: "Aim",
   aimSuper: "AimSuper",
   attack: "Attack",
-  super: "Super",
+  super: "super",
   spawn: "Spawn",
   victory: "Victory",
-  defeat: "Defeat",
+  defeat: "death",
 })
 
 const detachedWeapons = new Set(["damian", "kaze", "mandy", "persephone-lumi", "wukong-mico"])
@@ -78,6 +79,10 @@ export const ENVIRONMENT_ASSETS = Object.freeze({
 })
 
 export const getHeroAsset = name => HERO_ASSETS[name] || null
+
+export const resolveHeroName = name => {
+  return HERO_ASSETS[name] ? name : "Mandy"
+}
 
 const visualsByType = Object.freeze({
   wall: "desert_wall_a",

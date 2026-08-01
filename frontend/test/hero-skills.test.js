@@ -23,3 +23,9 @@ test("unknown heroes receive safe localized fallback skills", () => {
   assert.equal(getHeroSkill("Unknown", "primary").name, "СУПЕР")
   assert.equal(getHeroSkill("Unknown", "secondary").name, "ГАДЖЕТ")
 })
+
+test("known hero HUD skills use the authoritative kit contract", () => {
+  assert.equal(getHeroSkill("Shadow", "primary").name, "Ловчий корень")
+  assert.equal(getHeroSkill("Shadow", "secondary").name, "Споровый рывок")
+  assert.equal(getHeroSkill("Wukong Mico", "primary").name, "Вихрь возмездия")
+})

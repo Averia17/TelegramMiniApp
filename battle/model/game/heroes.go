@@ -23,9 +23,38 @@ type Hero struct {
 	Desc         string       `json:"desc"`
 	RegenRate    float64      `json:"regenRate"`
 	Attack       AttackConfig `json:"attack"`
+	Kit          HeroKit       `json:"kit"`
 }
 
-var Heroes = withAttackConfigs([]Hero{
+// AbilityDefinition is the wire contract shared by the battle server and the
+// client. Mechanics stay in the concrete CombatKit; this metadata describes
+// how a command is presented and whether it is safe to predict locally.
+type AbilityDefinition struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Slot        string `json:"slot"`
+	Prediction  string `json:"prediction"`
+}
+
+type HeroKit struct {
+	Basic   AbilityDefinition `json:"basic"`
+	Super   AbilityDefinition `json:"super"`
+	Gadget  AbilityDefinition `json:"gadget"`
+}
+
+var heroKits = map[string]HeroKit{
+	"Shadow": {Basic: AbilityDefinition{"spore_thorn", "Споровый шип", "Самонаводящийся шип накладывает Споры.", "basic", "projectile"}, Super: AbilityDefinition{"hunter_root", "Ловчий корень", "Корень подбрасывает врагов и оставляет замедляющую зону.", "primary", "server"}, Gadget: AbilityDefinition{"spore_dash", "Споровый рывок", "Рывок оставляет облако спор.", "secondary", "server"}},
+	"Mandy": {Basic: AbilityDefinition{"staff_strike", "Удар посохом", "Неподвижность усиливает удар и оглушает.", "basic", "melee"}, Super: AbilityDefinition{"devastation_wave", "Волна опустошения", "Дальняя волна разрушает стены.", "primary", "server"}, Gadget: AbilityDefinition{"unyielding_stance", "Нерушимая стойка", "Стойка защищает от контроля и снижает урон.", "secondary", "server"}},
+	"Fairy Mina": {Basic: AbilityDefinition{"star_fan", "Звёздный веер", "Звёзды лечат союзников и метят врагов.", "basic", "projectile"}, Super: AbilityDefinition{"star_cocoon", "Звёздный кокон", "Щит создаёт лечащую ауру.", "primary", "server"}, Gadget: AbilityDefinition{"repelling_wave", "Отталкивающая волна", "Отбрасывает врагов и оглушает отмеченных.", "secondary", "server"}},
+	"Brock Zeus": {Basic: AbilityDefinition{"thunder_projectile", "Грозовой снаряд", "Взрывной снаряд разрушает стены.", "basic", "projectile"}, Super: AbilityDefinition{"gods_hammer", "Молот богов", "Три удара молнии создают горящую зону.", "primary", "server"}, Gadget: AbilityDefinition{"discharge_cable", "Разрядный кабель", "Следующий выстрел становится пробивающим лучом.", "secondary", "server"}},
+	"Kaze": {Basic: AbilityDefinition{"cross_slash", "Косые удары", "Два попадания открывают усиленный третий удар.", "basic", "melee"}, Super: AbilityDefinition{"piercing_dash", "Пронзающий рывок", "Рывок помечает врагов и усиливает получаемый ими урон.", "primary", "server"}, Gadget: AbilityDefinition{"vanish", "Исчезновение", "Невидимость гарантирует критический первый удар.", "secondary", "server"}},
+	"Wukong Mico": {Basic: AbilityDefinition{"heavy_staff", "Тяжёлый посох", "Попадания накапливают Ярость.", "basic", "melee"}, Super: AbilityDefinition{"vengeance_vortex", "Вихрь возмездия", "Вихрь расходует Ярость и наносит урон вокруг.", "primary", "server"}, Gadget: AbilityDefinition{"stone_armor", "Каменная броня", "Щит накапливает урон и взрывается после окончания.", "secondary", "server"}},
+	"Damian": {Basic: AbilityDefinition{"blight_orb", "Сфера скверны", "Попадания снижают исходящий урон врага.", "basic", "projectile"}, Super: AbilityDefinition{"soul_totem", "Тотем душ", "Тотем автономно атакует ближайшего врага.", "primary", "server"}, Gadget: AbilityDefinition{"exchange", "Обмен", "Меняет место с тотемом и взрывает его.", "secondary", "server"}},
+	"Persephone Lumi": {Basic: AbilityDefinition{"luminous_trail", "Световой след", "След замедляет и раскрывает врагов.", "basic", "projectile"}, Super: AbilityDefinition{"root_garden", "Сад корней", "Поле корней обездвиживает вошедших врагов.", "primary", "server"}, Gadget: AbilityDefinition{"flower_burst", "Цветочный взрыв", "Взрывает активный след или сад.", "secondary", "server"}},
+}
+
+var Heroes = withHeroKits(withAttackConfigs([]Hero{
 	{Name: "Shadow", Color: "#75D947", Radius: 14, MaxLives: 6200, Speed: 240, AttackDamage: 650, AttackRate: 420, ReloadTime: 1750, MaxAmmo: 3, BulletSpeed: 450, BulletSize: 15, AttackType: "spore", Role: "Controller", RegenRate: .011, Desc: "Spore capsule splits into six seeking thorns and zones enemies"},
 	{Name: "Mandy", Color: "#F4C542", Radius: 14, MaxLives: 7200, Speed: 250, AttackDamage: 1700, AttackRate: 420, ReloadTime: 1650, MaxAmmo: 3, AttackType: "mandy_staff", Role: "Fighter", RegenRate: .010, Desc: "Focused melee fighter with a map-wide ground-wave Super"},
 	{Name: "Fairy Mina", Color: "#FF8FE8", Radius: 13, MaxLives: 6000, Speed: 270, AttackDamage: 560, AttackRate: 420, ReloadTime: 1550, MaxAmmo: 3, BulletSpeed: 590, BulletSize: 7, AttackType: "mina_star_fan", Role: "Support", RegenRate: .011, Desc: "Three-star cone and a five-second healing aura"},
@@ -34,10 +63,17 @@ var Heroes = withAttackConfigs([]Hero{
 	{Name: "Wukong Mico", Color: "#FFB33E", Radius: 15, MaxLives: 9000, Speed: 255, AttackDamage: 1450, AttackRate: 650, ReloadTime: 1750, MaxAmmo: 3, AttackType: "mico_staff", Role: "Tank", RegenRate: .010, Desc: "Heavy close-range staff swings without forced movement"},
 	{Name: "Damian", Color: "#8D52D9", Radius: 13, MaxLives: 6400, Speed: 250, AttackDamage: 950, AttackRate: 430, ReloadTime: 1550, MaxAmmo: 3, BulletSpeed: 610, BulletSize: 9, AttackType: "damian_dark_orb", Role: "Summoner", RegenRate: .010, Desc: "Dark projectiles and an autonomous soul totem"},
 	{Name: "Persephone Lumi", Color: "#D954A8", Radius: 13, MaxLives: 6800, Speed: 250, AttackDamage: 850, AttackRate: 470, ReloadTime: 1600, MaxAmmo: 3, BulletSpeed: 560, BulletSize: 10, AttackType: "lumi_trail_orb", Role: "Controller", RegenRate: .010, Desc: "Slow trails and a rooting garden"},
-})
+}))
 
 func RandomHero() Hero {
 	return Heroes[rand.Intn(len(Heroes))]
+}
+
+func withHeroKits(heroes []Hero) []Hero {
+	for index := range heroes {
+		heroes[index].Kit = heroKits[heroes[index].Name]
+	}
+	return heroes
 }
 
 func GetHeroByName(name string) *Hero {
@@ -69,6 +105,7 @@ func (h Hero) CreatePlayer(id, name string, x, y float64) *player.Player {
 		AttackType:       h.AttackType,
 		RegenRate:        h.RegenRate,
 		DamageMultiplier: 1,
+		SlowMultiplier:   1,
 		GadgetCharges:    3,
 	}
 	return p

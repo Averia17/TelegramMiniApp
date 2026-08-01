@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width">
+<title>Dynamic equipment QA</title>
+<style>
+body{margin:0;padding:20px;background:#0c1220;color:#eef4ff;font:14px system-ui}h1{margin:0 0 12px}.summary{margin-bottom:16px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}.card{background:#172033;border:1px solid #2b3a57;border-radius:12px;padding:10px}.ok{color:#67e8a4}.fail{color:#ff7185}canvas{width:100%;height:320px;background:radial-gradient(circle,#52678b,#1b2941);border-radius:8px}.meta{display:flex;justify-content:space-between;padding:7px 2px 0}
+</style></head><body><h1>Dynamic equipment — WebGL QA</h1><div id="summary" class="summary">Загрузка…</div><div id="grid" class="grid"></div>
+<script type="module">
+import * as THREE from "three";
+import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
+const root="/assets/heroes/dynamic_equipment_qa";
+const report=await fetch(`${root}/blender_report.json`).then(r=>r.json());
+const loader=new GLTFLoader(); const results=[]; const clocks=[];
+for(const hero of report.heroes){
+ const card=document.createElement("section");card.className="card";card.innerHTML=`<canvas></canvas><div class="meta"><b>${hero.character}</b><span>загрузка…</span></div>`;document.querySelector("#grid").append(card);
+ const canvas=card.querySelector("canvas"),label=card.querySelector("span");
+ try{
+  const base=await loader.loadAsync(`${root}/output_heroes/${hero.character}_base.glb`); const scene=new THREE.Scene();scene.add(base.scene);
+  const sockets={r:base.scene.getObjectByName("weapon_socket_r"),l:base.scene.getObjectByName("weapon_socket_l")}; const attachments=[];
+  for(const side of ["r","l"]){
+   if(!hero.outputs?.[side])continue;
+   const weapon=await loader.loadAsync(`${root}/output_weapons/${hero.character}_weapon_${side}.glb`);
+   if(!sockets[side])throw new Error(`нет weapon_socket_${side}`);
+   sockets[side].add(weapon.scene);weapon.scene.position.set(0,0,0);weapon.scene.quaternion.identity();weapon.scene.scale.set(1,1,1);attachments.push({side,weapon:weapon.scene,socket:sockets[side]});
+  }
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(canvas.clientWidth,320,false);renderer.outputColorSpace=THREE.SRGBColorSpace;
+  const camera=new THREE.PerspectiveCamera(32,canvas.clientWidth/320,.01,1000);scene.add(new THREE.HemisphereLight(0xffffff,0x24334e,2.5));const key=new THREE.DirectionalLight(0xffffff,3);key.position.set(3,5,4);scene.add(key);
+  const box=new THREE.Box3().setFromObject(base.scene),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());base.scene.position.sub(center);camera.position.set(0,size.y*.08,Math.max(size.x,size.y,size.z)*2.2);camera.lookAt(0,0,0);
+  const mixer=new THREE.AnimationMixer(base.scene);const clip=base.animations.find(a=>/attack/i.test(a.name))||base.animations.find(a=>/idle/i.test(a.name))||base.animations[0];if(clip)mixer.clipAction(clip).play();
+  base.scene.updateMatrixWorld(true);const metrics=attachments.map(a=>({side:a.side,originDistance:a.socket.getWorldPosition(new THREE.Vector3()).distanceTo(a.weapon.getWorldPosition(new THREE.Vector3()))}));
+  const ok=!!sockets.r&&!!sockets.l&&metrics.every(m=>m.originDistance<1e-4);label.className=ok?"ok":"fail";label.textContent=`${ok?"OK":"FAIL"} · ${clip?.name||"без анимации"}`;
+  results.push({character:hero.character,ok,sockets:{r:!!sockets.r,l:!!sockets.l},weapons:metrics,animation:clip?.name||null});clocks.push({renderer,scene,camera,mixer,clock:new THREE.Clock()});
+ }catch(error){label.className="fail";label.textContent=String(error);results.push({character:hero.character,ok:false,error:String(error)});}
+}
+function frame(){for(const x of clocks){x.mixer.update(Math.min(x.clock.getDelta(),.05));x.renderer.render(x.scene,x.camera)}requestAnimationFrame(frame)}frame();
+const passed=results.filter(x=>x.ok).length;const summary=document.querySelector("#summary");summary.textContent=`${passed}/${results.length} героев прошли загрузку и привязку обеих рук`;summary.dataset.complete="true";summary.dataset.passed=passed;summary.dataset.total=results.length;window.__DYNAMIC_EQUIPMENT_QA__=results;
+</script></body></html>

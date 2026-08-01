@@ -37,6 +37,8 @@ export class GameClient {
     this.stateHz = 0
     this.lastStateBytes = 0
     this.lastClientTs = 0
+    this.abilitySequence = 0
+    this.pendingAbilities = new Map()
   }
 
   connect() {
@@ -71,6 +73,8 @@ export class GameClient {
       // Keep the last authoritative list for UI consumers such as the minimap.
       message.map = preserveAuthoritativeMapWalls(message.map, this.lastState?.map)
       this.lastState = message
+      const local = this.playerId && message.players?.[this.playerId]
+      if (local?.abilityAck) this.pendingAbilities.delete(local.abilityAck)
       this.onStateUpdate?.(message)
       return
     }
@@ -126,7 +130,10 @@ export class GameClient {
   }
 
   ability(slot) {
-    this.send("ability", {slot})
+    const clientId = `${this.playerId || "local"}:${++this.abilitySequence}`
+    this.pendingAbilities.set(clientId, {slot, sentAt: Date.now()})
+    this.send("ability", {slot, clientId})
+    return clientId
   }
 
   disconnect() {

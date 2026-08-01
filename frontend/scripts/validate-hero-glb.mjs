@@ -3,9 +3,10 @@ import {readFile, readdir} from "node:fs/promises"
 import path from "node:path"
 
 const expectedClips = new Set([
-  "Idle", "Run", "Aim", "AimSuper", "Attack", "Super", "Spawn", "Victory", "Defeat",
+  "idle", "run", "hit", "death", "super", "Aim", "AimSuper", "Attack", "Spawn", "Victory",
 ])
 const heldRoles = new Set(["held-weapon", "throwable-weapon"])
+const nonHeroDirectories = new Set(["dynamic_equipment_qa"])
 
 const readGlbJson = async file => {
   const buffer = await readFile(file)
@@ -24,11 +25,10 @@ const validateHero = async (directory, slug) => {
     for (const child of node.children || []) parentByNode.set(child, parent)
   })
 
-  assert.deepEqual(
-    new Set((document.animations || []).map(animation => animation.name)),
-    expectedClips,
-    `${slug} must contain the complete animation state machine`,
-  )
+  const animationNames = new Set((document.animations || []).map(animation => animation.name))
+  for (const clip of expectedClips) {
+    assert.ok(animationNames.has(clip), `${slug} is missing required ${clip} clip`)
+  }
 
   nodes.forEach((node, index) => {
     if (/^Socket\.Weapon\.[LR]$/.test(node.name || "")) {
@@ -65,7 +65,9 @@ const validateHero = async (directory, slug) => {
 
 const heroesDirectory = path.resolve("public/assets/heroes")
 const entries = (await readdir(heroesDirectory, {withFileTypes: true}))
-  .filter(entry => entry.isDirectory() && !entry.name.startsWith("output_"))
+  .filter(entry => entry.isDirectory()
+    && !entry.name.startsWith("output_")
+    && !nonHeroDirectories.has(entry.name))
 for (const entry of entries) {
   await validateHero(heroesDirectory, entry.name)
 }

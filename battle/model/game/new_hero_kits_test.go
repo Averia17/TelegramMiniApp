@@ -19,6 +19,40 @@ func TestNewHeroCombatKitsAreRegistered(t *testing.T) {
 	}
 }
 
+func TestShadowSporeStacksRootAndSlowOnThirdHit(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("shadow", "Shadow", "Shadow")
+	gs.PlayerAdd("enemy", "Enemy", "Shelly")
+	shadow, enemy := gs.Players["shadow"], gs.Players["enemy"]
+	shadow.X, shadow.Y, enemy.X, enemy.Y = 400, 400, 500, 400
+	for hit := 0; hit < 3; hit++ {
+		ShadowKit{}.Basic(gs, shadow, int64(1000+hit*500), 0, 0)
+		shot := gs.Bullets[len(gs.Bullets)-1]
+		shot.X, shot.Y = enemy.X, enemy.Y
+		gs.updateBullets()
+	}
+	if gs.SporeStacks[enemy.PlayerId] != 0 || enemy.SlowUntil <= 0 {
+		t.Fatalf("spore stacks=%d slowUntil=%d, want reset and slow", gs.SporeStacks[enemy.PlayerId], enemy.SlowUntil)
+	}
+}
+
+func TestShadowSuperDelaysRootsAndGadgetLeavesSporeCloud(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("shadow", "Shadow", "Shadow")
+	shadow := gs.Players["shadow"]
+	shadow.X, shadow.Y, shadow.SuperCharge = 400, 400, 100
+	now := int64(1000)
+	ShadowKit{}.Super(gs, shadow, now, 0, 100)
+	if len(gs.HeroZones) != 1 || gs.HeroZones[0].TriggerAt != now+800 {
+		t.Fatalf("roots=%#v, want delayed cast", gs.HeroZones)
+	}
+	if !gs.useNewHeroGadget(shadow, now+1) || len(gs.HeroZones) != 2 || gs.HeroZones[1].Kind != "shadow_spore_cloud" {
+		t.Fatalf("shadow gadget zones=%#v, want spore cloud", gs.HeroZones)
+	}
+}
+
 func TestFairyMinaSuperHealsAlliesButNotEnemies(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame

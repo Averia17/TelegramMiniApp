@@ -1,0 +1,114 @@
+[
+  {
+    "hero": "brock-zeus",
+    "blend": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\brock-zeus_reworked.blend",
+    "glb": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\brock-zeus_reworked.glb",
+    "export": [
+      "FINISHED"
+    ],
+    "changes": [
+      "death: removed 3 root transform channels",
+      "idle: grounded root translation",
+      "run: grounded root translation",
+      "Spawn: removed 6 root transform channels"
+    ]
+  },
+  {
+    "hero": "damian",
+    "blend": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\damian_reworked.blend",
+    "glb": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\damian_reworked.glb",
+    "export": [
+      "FINISHED"
+    ],
+    "changes": [
+      "death: removed 3 root transform channels",
+      "idle: grounded root translation",
+      "run: grounded root translation",
+      "Spawn: removed 6 root transform channels"
+    ]
+  },
+  {
+    "hero": "fairy-mina",
+    "blend": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\fairy-mina_reworked.blend",
+    "glb": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\fairy-mina_reworked.glb",
+    "export": [
+      "FINISHED"
+    ],
+    "changes": [
+      "death: removed 3 root transform channels",
+      "idle: grounded root translation",
+      "run: grounded root translation",
+      "Spawn: removed 6 root transform channels"
+    ]
+  },
+  {
+    "hero": "kaze",
+    "blend": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\kaze_reworked.blend",
+    "glb": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\kaze_reworked.glb",
+    "export": [
+      "FINISHED"
+    ],
+    "changes": [
+      "death: removed 3 root transform channels",
+      "idle: grounded root translation",
+      "run: grounded root translation",
+      "Spawn: removed 6 root transform channels"
+    ]
+  },
+  {
+    "hero": "mandy",
+    "blend": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\mandy_reworked.blend",
+    "glb": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\mandy_reworked.glb",
+    "export": [
+      "FINISHED"
+    ],
+    "changes": [
+      "death: removed 3 root transform channels",
+      "idle: grounded root translation",
+      "run: grounded root translation",
+      "Spawn: removed 9 root transform channels"
+    ]
+  },
+  {
+    "hero": "needle",
+    "blend": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\needle_reworked.blend",
+    "glb": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\needle_reworked.glb",
+    "export": [
+      "FINISHED"
+    ],
+    "changes": [
+      "death: removed 3 root transform channels",
+      "idle: grounded root translation",
+      "run: grounded root translation",
+      "Spawn: removed 14 root transform channels"
+    ]
+  },
+  {
+    "hero": "persephone-lumi",
+    "blend": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\persephone-lumi_reworked.blend",
+    "glb": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\persephone-lumi_reworked.glb",
+    "export": [
+      "FINISHED"
+    ],
+    "changes": [
+      "death: removed 3 root transform channels",
+      "idle: grounded root translation",
+      "run: grounded root translation",
+      "Spawn: removed 6 root transform channels"
+    ]
+  },
+  {
+    "hero": "wukong-mico",
+    "blend": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\wukong-mico_reworked.blend",
+    "glb": "C:\\Users\\User\\PycharmProjects\\TelegramMiniApp\\artifacts\\animation-rework\\wukong-mico_reworked.glb",
+    "export": [
+      "FINISHED"
+    ],
+    "changes": [
+      "death: removed 3 root transform channels",
+      "idle: grounded root translation",
+      "run: grounded root translation",
+      "Spawn: removed 6 root transform channels"
+    ]
+  }
+]

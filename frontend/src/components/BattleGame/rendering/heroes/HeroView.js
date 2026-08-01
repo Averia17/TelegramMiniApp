@@ -6,6 +6,7 @@ import {worldToScene} from "../shared/coordinates"
 import {disposeObjectTree} from "../shared/disposal"
 import {createContactShadow} from "../shared/materials"
 import {advanceSmoothTurn} from "./turning"
+import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG} from "../../heroesConfig"
 import {
   BUSH_HERO_OPACITY,
   getBushConcealmentMix,
@@ -13,6 +14,7 @@ import {
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const blend = (speed, delta) => 1 - Math.exp(-speed * delta)
+const heroSpeed = heroName => HEROES_CONFIG.find(hero => hero.name === heroName)?.speed || ANIMATION_REFERENCE_SPEED
 
 const createLabel = state => {
   const canvas = document.createElement("canvas")
@@ -234,9 +236,15 @@ export class HeroView {
     this.model.rotation.y = this.aimAngle
     this.model.userData.animate?.(time, moving ? 1 : 0.08, this.recoil)
     if (this.animation) {
+      const configuredSpeed = heroSpeed(this.state.hero || this.state.name)
       this.model.rotation.y = moving ? this.bodyAngle : this.aimAngle
       const networkSpeed = Math.hypot(this.x - previousX, this.y - previousY) / Math.max(delta, 0.001)
-      const effectiveSpeed = moving ? Math.max(networkSpeed, Number(this.state.speed) || 0) : 0
+      // The server's configured hero speed is authoritative for the gait. The
+      // interpolated positional delta is noisy and must not erase per-hero
+      // differences (Kaze should visibly cycle faster than Shadow).
+      const effectiveSpeed = moving
+        ? Math.max(configuredSpeed, Number(this.state.speed) || 0)
+        : 0
       const aimDelta = Math.atan2(
         Math.sin(this.aimAngle - this.model.rotation.y),
         Math.cos(this.aimAngle - this.model.rotation.y),
@@ -245,7 +253,7 @@ export class HeroView {
         alive: this.state.lives > 0,
         moving,
         speed: effectiveSpeed,
-        referenceSpeed: Number(this.state.speed) || 1,
+        referenceSpeed: ANIMATION_REFERENCE_SPEED,
         aiming: Boolean(this.state.aiming),
         superAiming: Number(this.state.channel) > 0,
         aimYaw: this.state.aiming || this.recoil > 0.05 ? aimDelta : 0,

@@ -7,6 +7,7 @@ import {
   ENVIRONMENT_ASSETS,
   HERO_ASSETS,
   getHeroAsset,
+  resolveHeroName,
   resolveEnvironmentVisual,
 } from "../src/components/BattleGame/rendering/assets/assetManifest.js"
 import {AssetRegistry, normalizeHeroHeight} from "../src/components/BattleGame/rendering/assets/AssetRegistry.js"
@@ -43,7 +44,7 @@ import {
   getStateBattleResult,
 } from "../src/components/BattleGame/battleOutcome.js"
 import {isAlivePlayerState} from "../src/components/BattleGame/rendering/heroes/playerVisibility.js"
-import {HEROES_CONFIG} from "../src/components/BattleGame/heroesConfig.js"
+import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG} from "../src/components/BattleGame/heroesConfig.js"
 import {
   getEnvironmentPlacements,
   replaceFallbackWithEnvironment,
@@ -75,6 +76,14 @@ test("world coordinates round-trip through the shared 2.5D transform", () => {
   const scene = worldToScene(320, 640, 24)
   assert.deepEqual(scene.toArray(), [320 * WORLD_SCALE, 24 * WORLD_SCALE, 640 * WORLD_SCALE])
   assert.deepEqual(sceneToWorld(scene), {x: 320, y: 640, height: 24})
+})
+
+test("hero speed config produces distinct authored run-cycle rates", () => {
+  const shadow = HEROES_CONFIG.find(hero => hero.name === "Shadow")
+  const kaze = HEROES_CONFIG.find(hero => hero.name === "Kaze")
+  assert.equal(ANIMATION_REFERENCE_SPEED, 240)
+  assert.ok(kaze.speed > shadow.speed)
+  assert.equal(kaze.speed / ANIMATION_REFERENCE_SPEED > shadow.speed / ANIMATION_REFERENCE_SPEED, true)
 })
 
 test("hero turning follows the shortest arc through intermediate directions", () => {
@@ -408,7 +417,7 @@ test("the hero manifest uses standardized base GLBs and optional detached weapon
     const asset = getHeroAsset(name)
     assert.equal(asset.id, name)
     assert.equal(asset.scale > 0, true)
-    assert.deepEqual(Object.keys(asset.clips), ["idle", "run", "aim", "aimSuper", "attack", "super", "spawn", "victory", "defeat"])
+    assert.deepEqual(Object.keys(asset.clips), ["idle", "run", "hit", "aim", "aimSuper", "attack", "super", "spawn", "victory", "defeat"])
     assert.equal("eventAnimations" in asset, false)
     assert.match(asset.url, /\/assets\/heroes\/output_heroes\/[^/]+_base\.glb$/)
     if (asset.weaponUrl) {
@@ -420,6 +429,11 @@ test("the hero manifest uses standardized base GLBs and optional detached weapon
   assert.equal(HERO_ASSETS.Mandy.weaponUrl, "/assets/heroes/output_weapons/mandy_weapon.glb")
   assert.equal(HERO_ASSETS.Damian.groundOffset, 0.25)
   assert.deepEqual(HEROES_CONFIG.map(hero => hero.name), Object.keys(HERO_ASSETS))
+})
+
+test("hero asset resolution keeps canonical names and handles unknown names safely", () => {
+  assert.equal(resolveHeroName("Mandy"), "Mandy")
+  assert.equal(resolveHeroName("missing-hero"), "Mandy")
 })
 
 test("the runtime renderer has no Canvas2D engine switch or fallback", async () => {
@@ -804,6 +818,7 @@ test("GLBHeroController drives locomotion speed and one-shot upper-body overlays
   assert.equal(controller.heldProjectile.visible, true)
   assert.equal(controller.actions.get("aim").isRunning(), true)
   assert.equal(controller.aimWeight > 0, true)
+  assert.equal(controller.actions.get("idle").getEffectiveWeight() < 1, true)
   controller.update(.25, {moving: true, aiming: true, speed: 300, referenceSpeed: 240, attackPulse: 1})
   assert.equal(controller.heldProjectile.visible, false)
   controller.update(.3, {moving: false, aiming: false, speed: 0, referenceSpeed: 240, attackPulse: 1})
@@ -819,6 +834,50 @@ test("GLBHeroController drives locomotion speed and one-shot upper-body overlays
   assert.equal(weightedTracks.includes("RightArm.quaternion"), true)
   assert.equal(weightedTracks.includes("RightFoot.quaternion"), true)
   weightedController.dispose()
+})
+
+test("procedural run gait never accumulates full rotations on untracked leg bones", () => {
+  const root = new THREE.Group()
+  const hips = new THREE.Bone()
+  hips.name = "Hips"
+  const leftLeg = new THREE.Bone()
+  leftLeg.name = "LeftUpperLeg"
+  const leftCalf = new THREE.Bone()
+  leftCalf.name = "LeftLowerLeg"
+  const leftFoot = new THREE.Bone()
+  leftFoot.name = "LeftFoot"
+  hips.add(leftLeg)
+  leftLeg.add(leftCalf)
+  leftCalf.add(leftFoot)
+  root.add(hips)
+  const run = new THREE.AnimationClip("run", 1, [
+    new THREE.QuaternionKeyframeTrack("Hips.quaternion", [0, 1], [0, 0, 0, 1, 0, 0, 0, 1]),
+  ])
+  const controller = new GLBHeroController(root, [run], {run: "run"}, {spawnOnLoad: false})
+  let maximumAngle = 0
+  for (let frame = 0; frame < 180; frame += 1) {
+    controller.update(1 / 60, {alive: true, moving: true, speed: 300, referenceSpeed: 300})
+    maximumAngle = Math.max(maximumAngle, leftLeg.quaternion.angleTo(new THREE.Quaternion()))
+  }
+  assert.ok(maximumAngle < .8, `leg accumulated ${maximumAngle.toFixed(3)} radians`)
+  controller.dispose()
+})
+
+test("authored run disables procedural leg gait while missing overlays fall back safely", () => {
+  const root = new THREE.Group()
+  const hips = new THREE.Bone(); hips.name = "Hips"
+  const leg = new THREE.Bone(); leg.name = "LeftLeg"
+  const foot = new THREE.Bone(); foot.name = "LeftFoot"
+  hips.add(leg); leg.add(foot); root.add(hips)
+  const authoredRun = new THREE.AnimationClip("Run", 1, [
+    new THREE.QuaternionKeyframeTrack("LeftLeg.quaternion", [0, 1], [0, 0, 0, 1, 0, 0, 0, 1]),
+  ])
+  const controller = new GLBHeroController(root, [authoredRun], {run: "Run"}, {spawnOnLoad: false, heroName: "Mandy"})
+  controller.update(.2, {moving: true, speed: 300, referenceSpeed: 300})
+  assert.equal(controller.proceduralRunFallback, false)
+  assert.equal(controller.playSafe("super"), false)
+  assert.equal(controller.fallbackEvents.at(-1).fallback, "idle")
+  controller.dispose()
 })
 
 test("hit flash updates cached hero materials without traversing the GLB every frame", () => {
@@ -859,7 +918,7 @@ test("ranged heroes visibly carry their held projectile before attacking", () =>
   controller.dispose()
 })
 
-test("GLBHeroController hides a dead model immediately and restores it for spawn", () => {
+test("GLBHeroController keeps a dead model visible for its authored death pose and restores spawn", () => {
   const root = new THREE.Group()
   const cactus = new THREE.Group()
   cactus.name = "SpawnCactus"
@@ -873,7 +932,7 @@ test("GLBHeroController hides a dead model immediately and restores it for spawn
   assert.equal(cactus.scale.y < .72, true)
   assert.equal(heroMesh.visible, true)
   controller.update(.016, {alive: false})
-  assert.equal(root.visible, false)
+  assert.equal(root.visible, true)
   controller.update(.016, {alive: true, spawnPulse: 1})
   assert.equal(root.visible, true)
   assert.equal(controller.state, "spawn")

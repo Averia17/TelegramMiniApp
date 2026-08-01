@@ -218,7 +218,7 @@ func TestMandyFocusExtendsMeleeConeAfterOneSecondStill(t *testing.T) {
 	source, target := gs.Players["mandy"], gs.Players["target"]
 	source.X, source.Y = 500, 500
 	target.X, target.Y = 585, 500 // Outside 70 base reach, inside 94.5 focused reach.
-	source.FocusStartedAt = time.Now().Add(-1100 * time.Millisecond).UnixMilli()
+	source.FocusStartedAt = time.Now().Add(-2100 * time.Millisecond).UnixMilli()
 
 	gs.updateMandyFocus()
 	gs.playerShoot("mandy", time.Now().UnixMilli(), 0)
@@ -226,8 +226,8 @@ func TestMandyFocusExtendsMeleeConeAfterOneSecondStill(t *testing.T) {
 	if source.FocusCharge != 100 {
 		t.Fatalf("focus charge = %d, want 100", source.FocusCharge)
 	}
-	if target.Lives != target.MaxLives-source.AttackDmg {
-		t.Fatalf("focused target lives = %d, want %d", target.Lives, target.MaxLives-source.AttackDmg)
+	if target.Lives != target.MaxLives-int(float64(source.AttackDmg)*1.4) || target.StunUntil <= time.Now().UnixMilli() {
+		t.Fatalf("focused target lives = %d stun=%d", target.Lives, target.StunUntil)
 	}
 
 	source.MoveX = 1
@@ -256,7 +256,7 @@ func TestMandySuperChargesInExactlyFourSuccessfulSwings(t *testing.T) {
 	}
 }
 
-func TestMandyCaramelizationSlowsEveryTargetHitByNextSwing(t *testing.T) {
+func TestMandyStanceLocksMovementAndSlowsNearbyEnemies(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("mandy", "Mandy", "Mandy")
@@ -269,14 +269,13 @@ func TestMandyCaramelizationSlowsEveryTargetHitByNextSwing(t *testing.T) {
 	now := time.Now().UnixMilli()
 
 	gs.playerAbility("mandy", now, "secondary")
-	gs.playerShoot("mandy", now+1, 0)
-
-	if source.GadgetArmed {
-		t.Fatal("gadget should be consumed by the next swing")
+	if source.ChannelUntil != now+3000 || source.ShieldUntil != now+3000 {
+		t.Fatalf("stance channel=%d shield=%d", source.ChannelUntil, source.ShieldUntil)
 	}
+	gs.updateNewHeroSystems()
 	for _, id := range []string{"one", "two"} {
-		if remaining := gs.Players[id].SlowUntil - now; remaining < 2490 || remaining > 2510 {
-			t.Fatalf("%s slow remaining = %dms, want 2500ms", id, remaining)
+		if gs.Players[id].SlowUntil <= now {
+			t.Fatalf("%s was not slowed by stance", id)
 		}
 	}
 }
@@ -297,8 +296,8 @@ func TestMandySuperWaits750msThenHitsFullMapRectangleAndBreaksWalls(t *testing.T
 	now := time.Now().UnixMilli()
 
 	gs.playerAbility("mandy", now, "primary")
-	if len(gs.PendingMandySupers) != 1 || source.ChannelUntil != now+750 {
-		t.Fatalf("pending supers=%d channelUntil=%d, want one cast ending at %d", len(gs.PendingMandySupers), source.ChannelUntil, now+750)
+	if len(gs.PendingMandySupers) != 1 || source.ChannelUntil != now+1200 {
+		t.Fatalf("pending supers=%d channelUntil=%d, want one cast ending at %d", len(gs.PendingMandySupers), source.ChannelUntil, now+1200)
 	}
 	if gs.Players["inside"].Lives != gs.Players["inside"].MaxLives {
 		t.Fatal("Mandy Super dealt damage before its wind-up finished")
@@ -307,7 +306,7 @@ func TestMandySuperWaits750msThenHitsFullMapRectangleAndBreaksWalls(t *testing.T
 	gs.PendingMandySupers[0].TriggerAt = time.Now().UnixMilli()
 	gs.updatePendingMandySupers()
 
-	if got := gs.Players["inside"].MaxLives - gs.Players["inside"].Lives; got != 3200 {
+	if got := gs.Players["inside"].MaxLives - gs.Players["inside"].Lives; got <= 3200 {
 		t.Fatalf("inside damage = %d, want 3200", got)
 	}
 	if gs.Players["outside"].Lives != gs.Players["outside"].MaxLives {

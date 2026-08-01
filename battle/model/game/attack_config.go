@@ -67,6 +67,8 @@ type ConfiguredBasicKit struct {
 
 func BasicCombatKitFor(hero string) BasicCombatKit {
 	switch hero {
+	case "Shadow":
+		return ShadowKit{}
 	case "Mandy":
 		return MandyKit{}
 	case "Fairy Mina":

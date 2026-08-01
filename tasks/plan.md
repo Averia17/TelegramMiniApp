@@ -1,58 +1,145 @@
-# Implementation Plan: Hero Event Animations
+# План: переработка authored-анимаций и runtime QA
 
-## Overview
+## Текущее состояние
 
-Separate authored one-shot hero animations into per-event Blender/GLB assets and
-make the battle renderer trigger them from game event pulses.
+Проект уже использует один canonical gameplay GLB на героя с embedded clips, `AssetRegistry`, `SkeletonUtils.clone`, один `AnimationMixer` и страницу `test/glb-hero-harness.html`. Все 113 frontend-тестов проходят. Следующий этап — не переписывать архитектуру, а закрыть runtime-риски и довести authored pipeline до строгого контракта.
 
-## Architecture Decisions
+## Цели
 
-- Keep one `AnimationMixer` per instantiated hero.
-- Load event GLBs as clip libraries; discard their duplicate scenes after extracting clips.
-- Use canonical event names and per-hero URLs from the asset manifest.
-- Remove procedural attack/spawn posing when an authored event clip is available.
-- Generate per-event files deterministically from each hero's source `.blend`.
+- Сохранить один самодостаточный GLB на героя.
+- Гарантировать безопасный fallback для отсутствующих клипов.
+- Сделать blending переходов стабильным: 0.15–0.20 секунды.
+- Не накладывать procedural gait/aim поверх authored-анимаций без явного fallback-режима.
+- Сделать harness пригодным для реального interrupt и visual QA.
+- Сохранить ручное создание анимаций в Blender; код использовать только для сборки, проверки, экспорта и runtime-оркестрации.
 
-## Task List
+## Архитектурные решения
 
-### Phase 1: Contract
+1. Canonical name: backend, manifest и harness используют только `Mandy`; опечатка `Mendy` не является alias.
+2. `AssetRegistry` остаётся единственной точкой загрузки GLB; неизвестный hero не должен приводить к обращению к `null`.
+3. `GLBHeroController` получает явные методы `transitionLocomotion`, `playOverlay`, `playOutcome` и `playSafe`, а отсутствие клипа становится диагностируемым fallback-событием.
+4. Для переходов используются константы `LOCOMOTION_FADE = 0.16` и `OVERLAY_FADE = 0.18`; новая action стартует с weight 0 и cross-fade’ится из предыдущей.
+5. Authored `run` и `aim` имеют приоритет. Procedural leg gait/aim разрешены только при отсутствии соответствующего authored clip и фиксируются в telemetry как fallback.
+6. Victory/defeat не смешиваются с обычным locomotion как случайный overlay: для них задаётся отдельная политика loop/hold/re-entry.
 
-- [x] Add failing tests for per-event asset URLs and pulse-driven playback.
-- [x] Extend the manifest and registry with cached event clip loading.
+## План работ
 
-### Phase 2: Mandy vertical slice
+### Фаза 1 — contract и безопасная загрузка
 
-- [x] Add Blender splitting/export tooling.
-- [x] Produce Mandy `attack` and `spawn` `.blend`/`.glb` assets.
-- [x] Play Mandy events through the existing hero mixer and return to locomotion.
+**Задача 1.1: Нормализация идентификаторов героя**
 
-### Checkpoint: Mandy
+- Использовать только canonical имя `Mandy` в manifest, backend и harness.
+- Использовать resolver в harness, `AssetRegistry` и входных runtime-командах.
+- При неизвестном имени выбирать `Mandy` или первый доступный hero и показывать warning.
 
-- [x] Focused tests pass.
-- [x] Mandy event GLBs validate.
-- [x] Frontend production build succeeds.
+Проверка: harness с корректным `?hero=Mandy` загружает валидный GLB; неизвестное имя безопасно отклоняется к default без exception.
 
-### Phase 3: All heroes
+**Задача 1.2: Manifest/clip contract**
 
-- [x] Generate event assets for all available heroes.
-- [x] Validate expected clip count/name and compatible track bindings.
-- [x] Update harness coverage for attack and spawn.
+- Проверять обязательные `idle`, `run`, `attack`, `spawn` и optional states.
+- Разделить missing clip, failed GLB load и invalid track binding.
+- Добавить тесты на canonical names и fallback metadata.
 
-### Checkpoint: Complete
+Проверка: `npm test -- --test-name-pattern="manifest|AssetRegistry|fallback"`.
 
-- [x] Full frontend tests pass; lint remains blocked by pre-existing unrelated violations.
-- [x] Production build succeeds.
-- [x] Browser harness renders event animations without console errors.
+### Checkpoint A
 
-## Risks and Mitigations
+- [ ] Invalid hero не ломает harness.
+- [x] `Mandy` остаётся единственным canonical именем; `Mendy` не добавляется в каталог.
+- [ ] Ошибка загрузки не маскируется под успешный fallback.
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Bone names differ | High | Validate every event track against the base scene |
-| Duplicate event scene costs memory | Medium | Cache clips, dispose the event scene immediately |
-| Existing working-tree edits overlap | High | Make narrow patches and never restore user files |
-| Blender version changes action API | Medium | Support both legacy f-curves and layered actions |
+### Фаза 2 — controller transitions
 
-## Open Questions
+**Задача 2.1: Исправить cross-fade**
 
-None. The user approved separate `.blend` and `.glb` files per event.
+- Вынести fade constants.
+- Перевести locomotion на `crossFadeFrom`/эквивалентный порядок с weight 0 у новой action.
+- Overlay fade увеличить с 0.04 до 0.18 сек.
+- При interrupt корректно остановить предыдущий overlay и сбросить его weight.
+
+Проверка: unit-тесты измеряют веса на старте transition и отсутствие резкого snap.
+
+**Задача 2.2: Safe playback и fallback**
+
+- Добавить `playSafe(name, fallback = "idle")`.
+- Для missing `super`, `aimSuper`, `victory`, `defeat` писать `console.warn` с hero/state.
+- Возвращать героя в idle/run по текущему locomotion-контексту.
+- Собирать список fallback-событий для browser JSON report.
+
+Проверка: запрос отсутствующего клипа не бросает exception, state становится idle, warning присутствует.
+
+**Задача 2.3: Outcome policy**
+
+- Реализовать `playOutcome("victory"|"defeat")`.
+- Настроить loop/hold отдельно от attack/super.
+- После завершения или interrupt возвращаться в idle.
+
+Проверка: victory/defeat не оставляют stale overlay и корректно прерываются атакой.
+
+### Checkpoint B
+
+- [ ] Controller стабильно проходит `run → super → attack → idle`.
+- [ ] Все optional clip fallback’и безопасны и диагностируются.
+- [ ] Fade duration соответствует 0.15–0.20 сек.
+
+### Фаза 3 — authored priority
+
+**Задача 3.1: Authored locomotion gate**
+
+- Отключить procedural leg gait, если есть authored `run`.
+- Оставить procedural gait только для явно отмеченного fallback-клипа.
+- Сохранить authored run timeScale по скорости без добавления независимой фазы ног.
+
+Проверка: тест подтверждает отсутствие bone quaternion edits при authored run.
+
+**Задача 3.2: Authored aim gate**
+
+- Не накладывать procedural upper-body aim на authored `Aim`/`AimSuper`, если клип содержит нужные tracks.
+- Использовать procedural yaw/pitch только для героев без authored aim или в специальном additive режиме.
+
+Проверка: track audit и browser visual check на Mandy/Kaze/Brock.
+
+### Фаза 4 — Blender и export validation
+
+- Для каждого героя проверить rig master, weapon pivot, right/left sockets и detached weapon attachment.
+- Покадрово проверить grip/clipping на attack, super, spawn и transitions.
+- Сохранить ручные Actions и Graph Editor curves; не генерировать animation keys кодом.
+- Собрать NLA и master GLB, затем выполнить round-trip импорт.
+
+Проверка: `npm run validate:heroes` плюс Blender audit JSON без critical issues.
+
+### Фаза 5 — harness и WebGL QA
+
+- Harness должен безопасно загружать invalid/alias hero и отображать resolved hero.
+- Добавить кнопки/сценарии interrupt: `run → super → attack → idle`, `aimSuper → attack`, `victory → defeat`.
+- В `window.render_game_to_text()` добавить resolved hero, active action weights, fallback events и current clip time.
+- Запустить browser smoke для всех героев и visual check оружия в переходах.
+- Если Chromium недоступен, зафиксировать это как infrastructure blocker и не считать visual QA пройденным только по unit-тестам.
+
+Проверка: Playwright/DevTools, screenshot и console log; zero uncaught errors, warnings только ожидаемые fallback’и.
+
+### Фаза 6 — отчётность
+
+- JSON на героя: asset URL, resolved hero, clip list, durations, states, fallback events, audit status, browser status.
+- Отдельно отмечать `passed`, `fallback`, `blocked`.
+- Не считать blocked WebGL QA успешным.
+
+## Definition of Done
+
+- `Mandy` загружается как единственное canonical имя.
+- Unknown hero не вызывает runtime exception.
+- Missing animation мягко возвращает героя в idle/run и создаёт warning.
+- Все переходы используют 0.15–0.20 сек blending.
+- Authored run/aim не искажаются постоянным procedural overlay.
+- Все canonical GLB проходят clip, socket, weapon и round-trip audits.
+- Harness проходит interrupt matrix и сохраняет JSON evidence.
+
+## Риски
+
+| Риск | Влияние | Митигирование |
+|---|---:|---|
+| В URL попадает опечатка `Mendy`, а canonical name — `Mandy` | Medium | Общий fallback unknown hero; не добавлять alias |
+| Cross-fade стартует с weight 1 | High | Тестировать веса до/после transition |
+| Procedural gait портит authored run | High | Authored priority gate |
+| Browser QA не запускается без Chromium | High | Установить/подключить browser runtime и явно помечать QA blocked |
+| Detached weapon получает другой transform после normalize | High | Socket/grip audit после каждого GLB round-trip |

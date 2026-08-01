@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "fps": 30,
+  "event_clips": ["idle", "run", "aim", "aim-super", "attack", "super", "spawn", "victory", "defeat"],
+  "ability_clips": ["attack", "super", "gadget"],
+  "heroes": ["brock-zeus", "damian", "fairy-mina", "kaze", "mandy", "needle", "persephone-lumi", "wukong-mico"],
+  "required_scene_metadata": ["hero_slug", "clip_name", "clip_kind", "frame_start", "frame_end"]
+}
