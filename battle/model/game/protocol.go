@@ -146,6 +146,7 @@ type PlayerJSON struct {
 	Invulnerable     float64       `json:"invulnerable,omitempty"`
 	Blind            float64       `json:"blind,omitempty"`
 	Stun             float64       `json:"stun,omitempty"`
+	Slow             float64       `json:"slow,omitempty"`
 	Channel          float64       `json:"channel,omitempty"`
 	Vine             float64       `json:"vine,omitempty"`
 	Vortex           float64       `json:"vortex,omitempty"`

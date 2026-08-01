@@ -834,7 +834,6 @@ func (gs *GameState) startLobby() {
 	gs.GameEndsAt = 0
 	gs.State = GameStateLobby
 	gs.propsClear()
-	gs.lunarCratesAdd(LunarCratesCount)
 	// Lobby is a live warm-up arena: connected players can move, rotate and
 	// inspect the map while waiting. Combat actions remain gated by StateGame.
 	gs.setPlayersActive(true)
@@ -874,9 +873,6 @@ func (gs *GameState) startGame() {
 	spawnProtectionUntil := time.Now().Add(SpawnProtectionDuration).UnixMilli()
 	for _, p := range gs.Players {
 		p.InvulnerableUntil = spawnProtectionUntil
-	}
-	if len(gs.Props) == 0 {
-		gs.lunarCratesAdd(LunarCratesCount)
 	}
 	gs.monstersAdd(MonstersCount)
 	gs.emitIslandVoiceToAll(IslandVoiceTriggerPhase, gs.MatchStartedAt)
@@ -1878,18 +1874,33 @@ func (gs *GameState) countActivePlayers() int {
 }
 
 func (gs *GameState) finishBattleIfDecided() bool {
-	if gs.State != GameStateGame || len(gs.Players) <= 1 {
+	if gs.State != GameStateGame || len(gs.Players) == 0 {
 		return false
+	}
+
+	activePlayers := gs.countActivePlayers()
+	if activePlayers == 0 {
+		// Elimination is terminal even when it happens before the island's
+		// beacon phase. There is no winner in a simultaneous all-dead result.
+		gs.onGameEnd(nil)
+		gs.startFinished()
+		return true
 	}
 
 	winner := ""
 	switch gs.Mode {
 	case ModeDeathmatch:
-		if gs.IslandPhase != IslandPhaseBeacon {
-			return false
-		}
-		if player := gs.beaconWinner(time.Now().UnixMilli()); player != nil {
-			winner = player.Name
+		if activePlayers == 1 {
+			if survivor := gs.getWinningPlayer(); survivor != nil {
+				winner = survivor.Name
+			}
+		} else {
+			if gs.IslandPhase != IslandPhaseBeacon {
+				return false
+			}
+			if player := gs.beaconWinner(time.Now().UnixMilli()); player != nil {
+				winner = player.Name
+			}
 		}
 	case ModeTeamDeathmatch:
 		team := gs.getWinningTeam()

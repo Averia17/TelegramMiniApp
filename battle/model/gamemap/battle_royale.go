@@ -7,9 +7,9 @@ import (
 	"battle/service/geometry"
 )
 
-// GenerateBattleRoyale builds the authored arena for «Остров Первого Испытания».
-// The layout is rotationally fair: four landing pads feed four readable routes
-// into the forest, while the altar, sacrifice stone and beacon remain fixed landmarks.
+// GenerateBattleRoyale builds the natural island arena for «Остров Первого Испытания».
+// The broad terrain is generated from low-frequency noise so every match keeps
+// the same readable landing zones without looking like a four-way mirror.
 func GenerateBattleRoyale(seed int64) *GameMap {
 	const size = 60
 	const tile = 40.0
@@ -53,43 +53,80 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 		}
 	}
 
-	// Water is a real collision boundary, not just an edge clamp. The island
-	// is circular inside the 60x60 playable canvas, creating the atoll silhouette.
+	// Water is a real collision boundary, not just an edge clamp. Noise on the
+	// shoreline makes the island feel hand-shaped instead of perfectly circular.
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
-			if math.Hypot(float64(x)+0.5-float64(center), float64(y)+0.5-float64(center)) > 27.25 {
+			distance := math.Hypot(float64(x)+0.5-float64(center), float64(y)+0.5-float64(center))
+			shoreline := 26.0 +
+				gradientNoise(seed+0x1b873593, float64(x)/5.2, float64(y)/5.2)*2.1 +
+				gradientNoise(seed+0x85ebca6b, float64(x)/11.0, float64(y)/11.0)*1.2
+			if distance > shoreline {
 				add(x, y, "water")
 			}
 		}
 	}
 
-	// Outer ring: beach cover, tide fog and rune crates. These are mirrored
-	// across the four landing approaches so no spawn has a privileged route.
-	for _, patch := range [][2]int{{10, 12}, {14, 10}, {46, 12}, {50, 16}, {10, 46}, {14, 50}, {46, 48}, {50, 44}} {
-		add(patch[0], patch[1], "bush")
-		add(patch[0]+1, patch[1], "bush")
-		add(patch[0], patch[1]+1, "bush")
-	}
-	for _, patch := range [][2]int{{19, 8}, {41, 8}, {8, 21}, {51, 39}, {8, 39}, {51, 21}, {19, 51}, {41, 51}} {
-		add(patch[0], patch[1], "moon_mist")
-	}
-	for _, crate := range [][2]int{{20, 11}, {23, 9}, {37, 9}, {40, 11}, {11, 20}, {9, 23}, {51, 37}, {48, 40}, {11, 40}, {9, 37}, {49, 20}, {51, 23}, {20, 49}, {23, 51}, {37, 51}, {40, 49}} {
-		add(crate[0], crate[1], "crates")
-	}
-
-	// Forest ring: ancient trees are permanent cover, dead trees are destructible.
-	for _, tree := range [][2]int{
-		{15, 16}, {20, 14}, {25, 12}, {35, 12}, {40, 14}, {45, 16},
-		{13, 25}, {17, 21}, {43, 21}, {47, 25}, {13, 35}, {17, 39},
-		{43, 39}, {47, 35}, {15, 44}, {20, 46}, {25, 48}, {35, 48}, {40, 46}, {45, 44},
-	} {
-		add(tree[0], tree[1], "tree")
-	}
-	for _, dead := range [][2]int{{22, 18}, {38, 18}, {18, 30}, {42, 30}, {22, 42}, {38, 42}, {27, 15}, {33, 15}} {
-		add(dead[0], dead[1], "dead_tree")
+	// Interior ponds break up the grass without cutting the four approach lanes.
+	for y := 8; y < size-8; y++ {
+		for x := 8; x < size-8; x++ {
+			if occupied[[2]int{x, y}] {
+				continue
+			}
+			distance := math.Hypot(float64(x)-center, float64(y)-center)
+			waterNoise := gradientNoise(seed+0x517cc1b7, float64(x)/4.5, float64(y)/4.5) +
+				gradientNoise(seed+0x68e31da4, float64(x)/10.0, float64(y)/10.0)*.55
+			if distance > 8 && distance < 23 && waterNoise < -.5 {
+				add(x, y, "water")
+			}
+		}
 	}
 
-	// Two shipwreck labyrinths: outlines leave walkable rooms and narrow sightlines.
+	// Grass is non-blocking concealment, laid down in large irregular patches.
+	// The two noise scales prevent a repetitive checkerboard while keeping the
+	// centre readable for combat.
+	for y := 4; y < size-4; y++ {
+		for x := 4; x < size-4; x++ {
+			if occupied[[2]int{x, y}] {
+				continue
+			}
+			distance := math.Hypot(float64(x)-center, float64(y)-center)
+			grassNoise := gradientNoise(seed+0x9e3779b9, float64(x)/5.8, float64(y)/5.8) +
+				gradientNoise(seed+0x243f6a88, float64(x)/13.0, float64(y)/13.0)*.5
+			if distance > 5 && grassNoise > -.04 {
+				add(x, y, "bush")
+			}
+		}
+	}
+
+	// Stone and timber walls follow the same terrain noise, creating cover
+	// clusters and winding sightlines instead of isolated symmetric pillars.
+	for y := 7; y < size-7; y++ {
+		for x := 7; x < size-7; x++ {
+			if occupied[[2]int{x, y}] {
+				continue
+			}
+			distance := math.Hypot(float64(x)-center, float64(y)-center)
+			wallNoise := gradientNoise(seed+0x632be59b, float64(x)/4.8, float64(y)/4.8) +
+				gradientNoise(seed+0x85157af5, float64(x)/9.5, float64(y)/9.5)*.6
+			if distance < 6 || wallNoise < .28 {
+				continue
+			}
+			kind := "destructible"
+			switch {
+			case wallNoise > .62:
+				kind = "tree"
+			case wallNoise > .45 && rng.Float64() < .55:
+				kind = "wall"
+			case rng.Float64() < .18:
+				kind = "dead_tree"
+			}
+			add(x, y, kind)
+		}
+	}
+
+	// A few irregular shipwreck frames act as landmarks without dominating the
+	// whole island. Their rotation varies per seed.
 	addWreck := func(x, y int, flip bool) {
 		addRect(x, y, x+4, y, "shipwreck")
 		addRect(x, y+4, x+4, y+4, "shipwreck")
@@ -101,40 +138,39 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 			add(x, y+2, "shipwreck")
 		}
 	}
-	addWreck(20, 24, rng.Intn(2) == 0)
-	addWreck(35, 31, rng.Intn(2) == 0)
+	addWreck(17, 23, rng.Intn(2) == 0)
+	addWreck(37, 34, rng.Intn(2) == 0)
+	addWreck(21, 38, rng.Intn(2) == 0)
 
-	// Narrow water channels separate the forest pockets; the client dresses the
-	// two open crossings as glowing root bridges.
-	for y := 16; y <= 44; y++ {
-		if y != 29 && y != 30 && y != 31 {
-			add(11, y, "water")
-			add(48, y, "water")
+	// Small beach grass clusters and old crates add visual texture around the
+	// outer ring, while remaining separate from combat booster drops.
+	for _, patch := range [][2]int{{11, 13}, {46, 15}, {12, 44}, {45, 47}, {18, 9}, {41, 50}} {
+		for _, offset := range [][2]int{{0, 0}, {1, 0}, {0, 1}} {
+			add(patch[0]+offset[0], patch[1]+offset[1], "bush")
 		}
 	}
-
-	// Heart moat: only north and south openings remain reachable in the finale.
-	for y := center - 6; y <= center+6; y++ {
-		for x := center - 6; x <= center+6; x++ {
-			distance := math.Hypot(float64(x-center), float64(y-center))
-			bridge := (y == center-5 || y == center+5) && x >= center-1 && x <= center+1
-			if distance >= 4.0 && distance <= 5.35 && !bridge {
-				add(x, y, "water")
-			}
-		}
+	for _, crate := range [][2]int{{19, 11}, {40, 12}, {11, 22}, {48, 38}, {12, 39}, {40, 48}, {22, 50}, {49, 20}} {
+		add(crate[0], crate[1], "crates")
 	}
 
-	// Four broad, readable approach lanes. Clearing them after dressing keeps
-	// the forest interesting without creating an accidental soft-lock.
+	// Four broad approach lanes are cleared after dressing. A tiny seeded bend
+	// makes their edges organic while leaving enough room for every spawn.
 	for i := 8; i <= 27; i++ {
-		for offset := -1; offset <= 1; offset++ {
-			clear(center+offset, i)
-			clear(center+offset, size-1-i)
-			clear(i, center+offset)
-			clear(size-1-i, center+offset)
-		}
+		bend := int(math.Round(gradientNoise(seed+int64(i)*0x9e37, float64(i)/3.5, 0) * 1.1))
+		clear(center+bend, i)
+		clear(center+bend+1, i)
+		clear(center-bend, size-1-i)
+		clear(center-bend-1, size-1-i)
+		clear(i, center-bend)
+		clear(i, center-bend-1)
+		clear(size-1-i, center+bend)
+		clear(size-1-i, center+bend+1)
 	}
-	clearDisc(center, center, 3.4)
+	clearDisc(center, center, 4.0)
+	for _, mist := range [][2]int{{17, 10}, {43, 12}, {12, 43}, {47, 47}} {
+		clear(mist[0], mist[1])
+		add(mist[0], mist[1], "moon_mist")
+	}
 
 	// Story landmarks sit in open, memorable spaces.
 	add(center, 18, "altar_three_moons")

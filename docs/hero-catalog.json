@@ -10,8 +10,8 @@
     "lastReviewedAt": "2026-08-01"
   },
   "sourceFingerprints": {
-    "battle/model/game/heroes.go": "92C82560FBA63E654DC539153F493872013B8B58541C018423619642A771F755",
-    "battle/model/game/attack_config.go": "25BBC1995B101910870A96D6D863906340E8DC0C33653CD40750CC164C79E565",
+    "battle/model/game/heroes.go": "A92F885B2F23A5FDE6051322D977C8F2A21020637F2536572E613664708E87A0",
+    "battle/model/game/attack_config.go": "57E615BEF15E05380FA2B57DEB284D22D510790D3EE47ACDA5D95781B69F9B90",
     "tools/blender/hero_animation_scene_manifest.json": "F90AA94C9F49BC10DB8143E3642788DD25D1C0428B2775DD515F459EAE3654BC"
   },
   "contracts": {
@@ -45,7 +45,7 @@
       "status": "active",
       "identity": {"role": "Controller", "color": "#75D947", "radius": 14},
       "description": "Споровый контроллер: заражает врагов, замедляет их и создаёт опасные зоны.",
-      "balance": {"maxLives": 620, "speed": 12, "attackDamage": 65, "attackRateMs": 420, "reloadTimeMs": 1750, "maxAmmo": 3, "bulletSpeed": 22.5, "bulletSize": 15, "regenRate": 0.011, "attackType": "spore"},
+      "balance": {"maxLives": 620, "speed": 12, "attackDamage": 65, "attackRateMs": 420, "reloadTimeMs": 1750, "maxAmmo": 3, "bulletSpeed": 23, "bulletSize": 15, "regenRate": 0.011, "attackType": "spore"},
       "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 620, "projectileKind": "spore", "modifier": "short_vault"},
       "abilities": {
         "basic": {"id": "spore_thorn", "name": "Споровый шип", "description": "Самонаводящийся споровый снаряд накладывает споры.", "slot": "basic", "prediction": "projectile", "mechanics": ["самонаведение к ближайшей цели", "накопление спор"]},
@@ -63,7 +63,7 @@
       "status": "active",
       "identity": {"role": "Fighter", "color": "#F4C542", "radius": 14},
       "description": "Ближний боец, который усиливает удары стойкой и пробивает карту волной разрушения.",
-      "balance": {"maxLives": 720, "speed": 12.5, "attackDamage": 60, "attackRateMs": 420, "reloadTimeMs": 1650, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "mandy_staff"},
+      "balance": {"maxLives": 720, "speed": 13, "attackDamage": 60, "attackRateMs": 420, "reloadTimeMs": 1650, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "mandy_staff"},
       "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 70, "halfArcDegrees": 42, "modifier": "mandy_focus"},
       "abilities": {
         "basic": {"id": "staff_strike", "name": "Удар посохом", "description": "Ближний удар; неподвижность усиливает удар и оглушает.", "slot": "basic", "prediction": "melee", "mechanics": ["сектор 70", "усиление в фокусе"]},
@@ -81,7 +81,7 @@
       "status": "active",
       "identity": {"role": "Support", "color": "#FF8FE8", "radius": 13},
       "description": "Поддержка с веером звёздных снарядов, щитом и лечащей аурой.",
-      "balance": {"maxLives": 600, "speed": 13.5, "attackDamage": 40, "attackRateMs": 420, "reloadTimeMs": 1550, "maxAmmo": 3, "bulletSpeed": 29.5, "bulletSize": 7, "regenRate": 0.011, "attackType": "mina_star_fan"},
+      "balance": {"maxLives": 600, "speed": 14, "attackDamage": 40, "attackRateMs": 420, "reloadTimeMs": 1550, "maxAmmo": 3, "bulletSpeed": 30, "bulletSize": 7, "regenRate": 0.011, "attackType": "mina_star_fan"},
       "basicAttack": {"archetype": "shotgun", "aimShape": "cone", "range": 510, "projectileKind": "mina_star", "projectileCount": 3, "spreadDegrees": 24, "splashRadius": 38},
       "abilities": {
         "basic": {"id": "star_fan", "name": "Звёздный веер", "description": "Три звезды летят веером, лечат союзников и поражают врагов.", "slot": "basic", "prediction": "projectile", "mechanics": ["3 снаряда", "разброс 24°", "радиус взрыва 38"]},
@@ -99,7 +99,7 @@
       "status": "active",
       "identity": {"role": "Sharpshooter", "color": "#62C8FF", "radius": 14},
       "description": "Дальний стрелок с взрывными молниями, штормом и пробивающим лучом.",
-      "balance": {"maxLives": 620, "speed": 12.25, "attackDamage": 80, "attackRateMs": 520, "reloadTimeMs": 1800, "maxAmmo": 3, "bulletSpeed": 36, "bulletSize": 8, "regenRate": 0.009, "attackType": "zeus_lightning"},
+      "balance": {"maxLives": 620, "speed": 12, "attackDamage": 80, "attackRateMs": 520, "reloadTimeMs": 1800, "maxAmmo": 3, "bulletSpeed": 36, "bulletSize": 8, "regenRate": 0.009, "attackType": "zeus_lightning"},
       "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 760, "projectileKind": "zeus_lightning", "splashRadius": 72},
       "abilities": {
         "basic": {"id": "thunder_projectile", "name": "Грозовой снаряд", "description": "Взрывной снаряд наносит урон по области и разрушает стены.", "slot": "basic", "prediction": "projectile", "mechanics": ["дальность 760", "взрыв 72"]},
@@ -117,7 +117,7 @@
       "status": "active",
       "identity": {"role": "Assassin", "color": "#B88CFF", "radius": 12},
       "description": "Быстрый ассасин с двойным ударом, пробивающим рывком и невидимостью.",
-      "balance": {"maxLives": 650, "speed": 15.5, "attackDamage": 40, "attackRateMs": 220, "reloadTimeMs": 850, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.011, "attackType": "kaze_cross_slash"},
+      "balance": {"maxLives": 650, "speed": 16, "attackDamage": 40, "attackRateMs": 220, "reloadTimeMs": 850, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.011, "attackType": "kaze_cross_slash"},
       "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 105, "halfArcDegrees": 55, "modifier": "kaze_double"},
       "abilities": {
         "basic": {"id": "cross_slash", "name": "Косые удары", "description": "Два попадания открывают усиленный третий удар.", "slot": "basic", "prediction": "melee", "mechanics": ["две зоны удара", "комбо усиливает следующий удар"]},
@@ -135,7 +135,7 @@
       "status": "active",
       "identity": {"role": "Tank", "color": "#FFB33E", "radius": 15},
       "description": "Танк ближнего боя: накапливает ярость посохом и превращает её в вихрь.",
-      "balance": {"maxLives": 900, "speed": 12.75, "attackDamage": 85, "attackRateMs": 650, "reloadTimeMs": 1750, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "mico_staff"},
+      "balance": {"maxLives": 900, "speed": 13, "attackDamage": 85, "attackRateMs": 650, "reloadTimeMs": 1750, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "mico_staff"},
       "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 120, "halfArcDegrees": 50, "modifier": "mico_staff"},
       "abilities": {
         "basic": {"id": "heavy_staff", "name": "Тяжёлый посох", "description": "Попадания накапливают ярость.", "slot": "basic", "prediction": "melee", "mechanics": ["сектор 120", "до 5 стаков ярости"]},
@@ -153,7 +153,7 @@
       "status": "active",
       "identity": {"role": "Summoner", "color": "#8D52D9", "radius": 13},
       "description": "Призывающий тёмных сфер и тотема, который самостоятельно атакует ближайшую цель.",
-      "balance": {"maxLives": 640, "speed": 12.5, "attackDamage": 75, "attackRateMs": 430, "reloadTimeMs": 1550, "maxAmmo": 3, "bulletSpeed": 30.5, "bulletSize": 9, "regenRate": 0.01, "attackType": "damian_dark_orb"},
+      "balance": {"maxLives": 640, "speed": 13, "attackDamage": 75, "attackRateMs": 430, "reloadTimeMs": 1550, "maxAmmo": 3, "bulletSpeed": 31, "bulletSize": 9, "regenRate": 0.01, "attackType": "damian_dark_orb"},
       "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 640, "projectileKind": "damian_orb"},
       "abilities": {
         "basic": {"id": "blight_orb", "name": "Сфера скверны", "description": "Попадания снижают исходящий урон врага.", "slot": "basic", "prediction": "projectile", "mechanics": ["дальность 640", "ослабление цели"]},
@@ -171,7 +171,7 @@
       "status": "active",
       "identity": {"role": "Controller", "color": "#D954A8", "radius": 13},
       "description": "Контроллер поля: оставляет замедляющий световой след и выращивает сад корней.",
-      "balance": {"maxLives": 680, "speed": 12.5, "attackDamage": 70, "attackRateMs": 470, "reloadTimeMs": 1600, "maxAmmo": 3, "bulletSpeed": 28, "bulletSize": 10, "regenRate": 0.01, "attackType": "lumi_trail_orb"},
+      "balance": {"maxLives": 680, "speed": 13, "attackDamage": 70, "attackRateMs": 470, "reloadTimeMs": 1600, "maxAmmo": 3, "bulletSpeed": 28, "bulletSize": 10, "regenRate": 0.01, "attackType": "lumi_trail_orb"},
       "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 600, "projectileKind": "lumi_orb", "modifier": "slow_trail"},
       "abilities": {
         "basic": {"id": "luminous_trail", "name": "Световой след", "description": "Снаряд оставляет след, который замедляет и раскрывает врагов.", "slot": "basic", "prediction": "projectile", "mechanics": ["снаряд создаёт след", "зона замедления"]},

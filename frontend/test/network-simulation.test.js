@@ -83,6 +83,29 @@ test("network correction cannot push the predicted player through a blocking wal
   assert.equal(simulation.predicted.y, 80)
 })
 
+test("local prediction allows movement through moon mist concealment", () => {
+  const simulation = new NetworkSimulation()
+  simulation.ingest({
+    type: "state",
+    ts: Date.now(),
+    map: {
+      width: 500,
+      height: 500,
+      walls: [{minX: 100, minY: 0, maxX: 140, maxY: 200, type: "moon_mist"}],
+    },
+    players: {
+      local: {x: 70, y: 80, radius: 10, speed: 6, lives: 100, ack: 0},
+    },
+  })
+  simulation.setLocalPlayerId("local")
+  simulation.correction = {x: 100, y: 0}
+
+  simulation.advance(0.05)
+
+  assert.ok(simulation.predicted.x > 100)
+  assert.equal(simulation.predicted.y, 80)
+})
+
 test("display interpolation reuses entity objects between render frames", () => {
   const simulation = new NetworkSimulation({interpolationDelay: 0})
   simulation.ingest({
@@ -111,4 +134,29 @@ test("display interpolation reuses entity objects between render frames", () => 
   const uiSnapshot = simulation.getDisplayState(1070, {copyEntities: true})
   const renderSnapshot = simulation.getDisplayState(1080)
   assert.notStrictEqual(uiSnapshot.players.local, renderSnapshot.players.local)
+})
+
+test("compact player snapshots clear status effects omitted after expiration", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  simulation.ingest({
+    type: "state",
+    ts: 1000,
+    players: {local: {x: 0, y: 0, lives: 100, maxLives: 100, shield: 1}},
+    monsters: {},
+    bullets: [],
+  })
+  simulation.clockOffset = 0
+  simulation.getDisplayState(1000)
+  simulation.ingest({
+    type: "state",
+    ts: 1100,
+    players: {local: {x: 100, y: 0, lives: 100, maxLives: 100}},
+    monsters: {},
+    bullets: [],
+  })
+  simulation.clockOffset = 0
+
+  const state = simulation.getDisplayState(1100)
+
+  assert.equal(state.players.local.shield, undefined)
 })

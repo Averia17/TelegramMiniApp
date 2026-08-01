@@ -96,6 +96,7 @@ def export(hero: str) -> None:
         export_format="GLB",
         export_animations=True,
         export_animation_mode="ACTIONS",
+        export_force_sampling=True,
         export_skins=True,
         export_yup=True,
         export_extras=True,

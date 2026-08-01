@@ -26,6 +26,13 @@ export const getBattlePlayerCount = state => {
   return Object.values(state?.players || {}).filter(player => Number(player?.lives) > 0).length
 }
 
+export const getSynchronizedBattleView = (authoritativeState, currentView) => {
+  if (["dead", "result", "timeout"].includes(currentView)) return null
+  if (authoritativeState === "game") return "game"
+  if (authoritativeState === "lobby" && currentView !== "connecting") return "lobby"
+  return null
+}
+
 export const getStateBattleResult = (state, playerId, currentView) => {
   if (!playerId || ["dead", "result", "timeout"].includes(currentView)) return null
   const authoritativeState = state?.game?.state

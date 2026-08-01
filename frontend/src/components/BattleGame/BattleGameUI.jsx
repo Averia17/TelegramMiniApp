@@ -75,6 +75,23 @@ export const BattleRewardNotice = ({result}) => {
   return message ? <p className="battle-reward-notice">{message}</p> : null
 }
 
+const formatEffectTime = seconds => seconds < 10 ? `${seconds.toFixed(1)}с` : `${Math.ceil(seconds)}с`
+
+export const ActiveStatusEffects = ({effects = []}) => {
+  if (!effects.length) return null
+  return (
+    <div className="active-status-effects" aria-label="Активные эффекты">
+      {effects.map(effect => (
+        <div key={effect.id} className={`status-effect status-effect--${effect.tone}`} title={effect.label}>
+          <span className="status-effect__icon" aria-hidden="true">{effect.icon}</span>
+          <span className="status-effect__label">{effect.label}</span>
+          {effect.remaining !== null && <small>{formatEffectTime(effect.remaining)}</small>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export const AbilityButton = ({keyName, label, description, cooldown = 0, charge = 100, isSuper = false, disabled = false, onUse}) => (
   <button className={`battle-ability${isSuper && charge >= 100 ? " battle-ability--ready" : ""}`} title={`${label}: ${description}`} aria-label={`${label}: ${description}`} disabled={disabled || cooldown > 0 || (isSuper && charge < 100)} onClick={onUse} style={isSuper ? {"--charge": `${charge}%`} : undefined}>
     {isSuper && <i className="battle-ability__charge"/>}

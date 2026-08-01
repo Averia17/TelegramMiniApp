@@ -43,6 +43,7 @@ import {
   getBattleRewardMessage,
   getPlayerBattleStats,
   getStateBattleResult,
+  getSynchronizedBattleView,
 } from "../src/components/BattleGame/battleOutcome.js"
 import {isAlivePlayerState} from "../src/components/BattleGame/rendering/heroes/playerVisibility.js"
 import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG, RUNTIME_ANIMATION_REFERENCE_SPEED} from "../src/components/BattleGame/heroesConfig.js"
@@ -584,6 +585,14 @@ test("a lethal battle snapshot opens results before the UI view catches up", () 
     monsters: 0,
     duration: 0,
   })
+})
+
+test("a post-death game snapshot cannot replace the defeat result view", () => {
+  assert.equal(getSynchronizedBattleView("game", "dead"), null)
+  assert.equal(getSynchronizedBattleView("game", "result"), null)
+  assert.equal(getSynchronizedBattleView("game", "timeout"), null)
+  assert.equal(getSynchronizedBattleView("game", "lobby"), "game")
+  assert.equal(getSynchronizedBattleView("lobby", "game"), "lobby")
 })
 
 test("dead heroes are excluded from the rendered player scene", () => {

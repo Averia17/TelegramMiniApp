@@ -4,6 +4,36 @@ import * as THREE from "three"
 
 import {GLBHeroController} from "../src/components/BattleGame/rendering/heroes/GLBHeroController.js"
 
+const poseClip = (name, duration = .4) => new THREE.AnimationClip(name, duration, [
+  new THREE.QuaternionKeyframeTrack("Upper.quaternion", [0, duration], [0, 0, 0, 1, 0, 0.7071068, 0, 0.7071068]),
+])
+
+test("full-body skill overlays suppress locomotion instead of averaging two poses", () => {
+  const root = new THREE.Group()
+  const upper = new THREE.Bone()
+  upper.name = "Upper"
+  root.add(upper)
+  const controller = new GLBHeroController(root, [
+    poseClip("Idle"),
+    poseClip("Attack"),
+  ], {
+    idle: "Idle",
+    attack: "Attack",
+  }, {
+    attackPulse: 0,
+    spawnOnLoad: false,
+  })
+
+  controller.update(.016, {alive: true, moving: false, attackPulse: 0})
+  controller.update(.016, {alive: true, moving: false, attackPulse: 1})
+  controller.update(.2, {alive: true, moving: false, attackPulse: 1})
+
+  assert.equal(controller.overlay, "attack")
+  assert.equal(controller.actions.get("idle").getEffectiveWeight(), 0)
+  assert.equal(controller.actions.get("attack").getEffectiveWeight(), 1)
+  controller.dispose()
+})
+
 test("spawn and outcome interrupt an active upper-body overlay", () => {
   const root = new THREE.Group()
   const hips = new THREE.Bone()

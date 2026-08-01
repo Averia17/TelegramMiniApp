@@ -80,6 +80,7 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			Invulnerable:     secondsRemaining(p.InvulnerableUntil, now),
 			Blind:            secondsRemaining(p.BlindUntil, now),
 			Stun:             secondsRemaining(p.StunUntil, now),
+			Slow:             secondsRemaining(p.SlowUntil, now),
 			Channel:          secondsRemaining(p.ChannelUntil, now),
 			Vine:             secondsRemaining(p.VineUntil, now),
 			Vortex:           secondsRemaining(p.VortexUntil, now),

@@ -5,8 +5,9 @@ import {Renderer} from "./Renderer"
 import {Input} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
 import {getHeroSkill} from "./heroSkills.js"
-import {getBattlePlayerCount, getPlayerBattleStats, getStateBattleResult} from "./battleOutcome"
-import {AbilityButton, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TouchStick} from "./BattleGameUI.jsx"
+import {getBattlePlayerCount, getPlayerBattleStats, getStateBattleResult, getSynchronizedBattleView} from "./battleOutcome"
+import {AbilityButton, ActiveStatusEffects, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TouchStick} from "./BattleGameUI.jsx"
+import {getActiveStatusEffects} from "./statusEffects.js"
 import {releaseAllPreviewContexts} from "./rendering/shared/previewContextRegistry.js"
 import {WS_URL} from "../../utils/urls.js"
 import {getAccessToken} from "../../utils/auth.js"
@@ -128,12 +129,8 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
           setGameState(displayState)
         }
         const v = viewRef.current
-        if (state?.game?.state === "game" && v !== "game") {
-          setView("game")
-        }
-        if (state?.game?.state === "lobby" && v !== "lobby" && v !== "connecting") {
-          setView("lobby")
-        }
+        const synchronizedView = getSynchronizedBattleView(state?.game?.state, v)
+        if (synchronizedView && synchronizedView !== v) setView(synchronizedView)
         const stateResult = getStateBattleResult(state, clientRef.current?.playerId, v)
         if (stateResult) finishBattle(stateResult)
       },
@@ -338,6 +335,12 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const health = localPlayer?.lives ?? 0
   const maxHealth = localPlayer?.maxLives ?? 1
   const healthPercent = Math.max(0, Math.min(100, (health / maxHealth) * 100))
+  const localPlayerInBush = Boolean(localPlayer && gameState?.map?.walls?.some(wall =>
+    (wall.type === "bush" || wall.type === "half") &&
+    localPlayer.x >= wall.minX && localPlayer.x <= wall.maxX &&
+    localPlayer.y >= wall.minY && localPlayer.y <= wall.maxY
+  ))
+  const activeStatusEffects = getActiveStatusEffects(localPlayer || {}, {inBush: localPlayerInBush})
 
   return (
     <div className={`battle-game ${mobileMode ? "battle-game--mobile" : "battle-game--desktop"}`}>
@@ -426,6 +429,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
                   </div>
                 )}
                 <small>❤ {health} / {maxHealth}</small>
+                <ActiveStatusEffects effects={activeStatusEffects}/>
               </div>
             </div>
           )}

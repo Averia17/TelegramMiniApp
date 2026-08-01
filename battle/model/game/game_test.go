@@ -887,20 +887,20 @@ func TestGameStartLobby(t *testing.T) {
 	}
 }
 
-func TestLunarCratesArePreparedBeforeCombat(t *testing.T) {
+func TestLobbyAndMatchDoNotAutoSpawnBoosterDrops(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateWaiting
 	gs.PlayerAdd("p1", "Alice", "")
 
 	gs.startLobby()
 
-	if len(gs.Props) != LunarCratesCount {
-		t.Fatalf("lobby crates = %d, want %d", len(gs.Props), LunarCratesCount)
+	if len(gs.Props) != 0 {
+		t.Fatalf("lobby booster drops = %d, want 0", len(gs.Props))
 	}
-	for _, crate := range gs.Props {
-		if crate.Type != "lunar_crate" || crate.Lives <= 0 || !crate.Active {
-			t.Fatalf("invalid lobby crate: %#v", crate)
-		}
+
+	gs.startGame()
+	if len(gs.Props) != 0 {
+		t.Fatalf("match booster drops = %d, want 0", len(gs.Props))
 	}
 }
 
@@ -917,8 +917,8 @@ func TestGameStartGame(t *testing.T) {
 	if gs.GameEndsAt == 0 {
 		t.Error("GameEndsAt should be set")
 	}
-	if len(gs.Props) != LunarCratesCount {
-		t.Errorf("Props = %v, want %v", len(gs.Props), LunarCratesCount)
+	if len(gs.Props) != 0 {
+		t.Errorf("Props = %v, want no automatic booster drops", len(gs.Props))
 	}
 	if len(gs.Monsters) != MonstersCount {
 		t.Errorf("Monsters = %v, want %v", len(gs.Monsters), MonstersCount)
@@ -1100,6 +1100,36 @@ func TestLethalPlayerDamageImmediatelyFinishesBattleAndReportsWinner(t *testing.
 	}
 	if attacker.Kills != 1 {
 		t.Fatalf("winner kills = %d, want 1", attacker.Kills)
+	}
+}
+
+func TestAllDeadPlayersFinishBattleRegardlessOfIslandPhase(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("p1", "Alice", "Colt")
+	gs.PlayerAdd("p2", "Bob", "Shelly")
+	gs.State = GameStateGame
+	gs.GameEndsAt = time.Now().Add(GameDuration).UnixMilli()
+	gs.IslandPhase = IslandPhaseHunt
+	gs.setPlayersActive(true)
+	gs.Players["p1"].Lives = 0
+	gs.Players["p2"].Lives = 0
+
+	var endCalls int
+	gs.OnGameEnd = func(_ map[string]*player.Player, winner string, _ int64) {
+		endCalls++
+		if winner != "" {
+			t.Fatalf("winner = %q, want empty draw winner", winner)
+		}
+	}
+
+	if !gs.finishBattleIfDecided() {
+		t.Fatal("all-dead battle was not marked as finished")
+	}
+	if gs.State != GameStateFinished {
+		t.Fatalf("state = %q, want %q", gs.State, GameStateFinished)
+	}
+	if endCalls != 1 {
+		t.Fatalf("OnGameEnd calls = %d, want 1", endCalls)
 	}
 }
 

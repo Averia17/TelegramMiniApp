@@ -183,6 +183,16 @@
 .focus-track span { display:block; height:100%; background:linear-gradient(90deg,#ff70b5,#ffe255); transition:width .08s linear; }
 .focus-track.is-ready { border-color:#fff3a0; box-shadow:0 0 12px #ffd84d,0 2px 0 #7d4b12; }
 
+.active-status-effects { display: flex; flex-wrap: wrap; gap: 4px; max-width: min(320px, 62vw); margin: 6px 0 0 4px; }
+.status-effect { display: inline-flex; align-items: center; gap: 4px; min-height: 21px; padding: 2px 6px 2px 3px; overflow: hidden; color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 8px; background: rgba(24, 27, 67, .88); box-shadow: 0 2px 0 rgba(16, 17, 43, .72); font: 900 8px/1 system-ui,sans-serif; letter-spacing: .25px; text-shadow: 0 1px 0 rgba(0,0,0,.65); white-space: nowrap; }
+.status-effect__icon { display: grid; flex: 0 0 16px; place-items: center; width: 16px; height: 16px; border-radius: 5px; background: rgba(255,255,255,.2); font-size: 11px; line-height: 1; }
+.status-effect small { color: #fff1a3; font: 900 8px/1 system-ui,sans-serif; }
+.status-effect--concealed { border-color: #83ef9a; background: linear-gradient(135deg, rgba(25, 101, 67, .94), rgba(20, 56, 55, .94)); box-shadow: 0 0 10px rgba(104, 247, 125, .22), 0 2px 0 #123c34; }
+.status-effect--concealed .status-effect__icon { background: #4dcc6d; }
+.status-effect--positive { border-color: #7cdbff; background: linear-gradient(135deg, rgba(26, 77, 137, .94), rgba(29, 42, 100, .94)); }
+.status-effect--defense { border-color: #ffe27c; background: linear-gradient(135deg, rgba(111, 78, 31, .94), rgba(60, 40, 62, .94)); }
+.status-effect--negative { border-color: #ff9a9f; background: linear-gradient(135deg, rgba(117, 40, 73, .94), rgba(60, 29, 71, .94)); }
+
 .battle-lobby-hud {
   position: absolute;
   inset: 0;
@@ -284,6 +294,7 @@
   .battle-alive { padding: 6px 8px; border-width: 2px; border-radius: 10px; box-shadow: 0 4px 0 #17265f; font-size: 8px; }
   .island-phase-hud { top: max(51px, calc(env(safe-area-inset-top) + 45px)); width: min(205px, 48vw); padding: 5px 8px 6px; border-width: 1px; border-radius: 10px; }.island-phase-hud__title { font-size: 11px; }.island-phase-hud__title span { font-size: 13px; }.island-phase-hud__meta { font-size: 7px; }.island-phase-hud__meta span { font-size: 9px; }.island-phase-hud p, .island-phase-hud small { font-size: 8px; }.island-beacon-progress { height: 4px; margin-top: 4px; }.island-voice-notice { top: 124px; width: min(270px, 70vw); padding: 8px 10px; }.island-voice-notice p { font-size: 10px; }
   .battle-player-card { top: max(57px, calc(env(safe-area-inset-top) + 51px)); transform: scale(.82); transform-origin: left top; }
+  .active-status-effects { max-width: 245px; }
   .battle-minimap { width: 104px; top: 67px; right: 9px; border-width: 3px; }
   .battle-abilities { right: 22px; bottom: 122px; }.battle-ability { width: 62px; height: 62px; }.battle-ability:nth-child(2) { width: 50px; height: 50px; }
 }

@@ -37,7 +37,7 @@ const attackDamage = player => {
   return damage > 0 ? Math.max(1, Math.round(damage)) : 0
 }
 
-const blockingWall = wall => wall.type !== "half" && wall.type !== "bush"
+const blockingWall = wall => wall.type !== "half" && wall.type !== "bush" && wall.type !== "moon_mist"
 
 const resolveWalls = (position, radius, walls) => {
   let {x, y} = position
@@ -79,8 +79,16 @@ const movementSpeed = player => {
 const interpolateAngle = (a = 0, b = 0, t) =>
   a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t
 
+const assignEntitySnapshot = (target, snapshot) => {
+  for (const key of Object.keys(target)) {
+    if (!Object.prototype.hasOwnProperty.call(snapshot, key)) delete target[key]
+  }
+  Object.assign(target, snapshot)
+  return target
+}
+
 const updateInterpolatedEntity = (target, older, newer, t) => {
-  Object.assign(target, newer)
+  assignEntitySnapshot(target, newer)
   target.x = lerp(older.x, newer.x, t)
   target.y = lerp(older.y, newer.y, t)
   if (Number.isFinite(older.z) && Number.isFinite(newer.z)) target.z = lerp(older.z, newer.z, t)
@@ -99,7 +107,7 @@ const syncInterpolatedMap = (cache, older = {}, newer = {}, t) => {
     const olderEntity = previousMap[id]
     const target = cache[id] || (cache[id] = {})
     if (olderEntity) updateInterpolatedEntity(target, olderEntity, newerEntity, t)
-    else Object.assign(target, newerEntity)
+    else assignEntitySnapshot(target, newerEntity)
   })
   return cache
 }
@@ -116,7 +124,7 @@ const syncInterpolatedList = (cache, older = [], newer = [], keyOf, t) => {
     const target = cache.get(key) || {}
     cache.set(key, target)
     if (olderEntity) updateInterpolatedEntity(target, olderEntity, newerEntity, t)
-    else Object.assign(target, newerEntity)
+    else assignEntitySnapshot(target, newerEntity)
     return target
   })
   cache.forEach((value, key) => {

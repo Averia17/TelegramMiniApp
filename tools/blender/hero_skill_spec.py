@@ -321,10 +321,13 @@ def _profile(hero: str, clip: str):
                         "shoulder_z": -10,
                     },
                     "R": {
-                        "shoulder": [(1, 0), (10, -28), (16, 38), (22, 20), (28, 0)],
-                        "elbow": [(1, 0), (10, 18), (16, -5), (28, 0)],
-                        "wrist": [(1, 0), (10, -5), (16, 2), (28, 0)],
-                        "shoulder_z": 10,
+                        # Mandy attacks with the left hand.  The right hand is
+                        # unarmed and should counterbalance close to the torso,
+                        # not mirror the staff swing across the body.
+                        "shoulder": [(1, 0), (10, -8), (16, 6), (22, 3), (28, 0)],
+                        "elbow": [(1, 0), (10, 6), (16, 1), (22, 2), (28, 0)],
+                        "wrist": [(1, 0), (10, -2), (16, 0), (28, 0)],
+                        "shoulder_z": 3,
                     },
                 },
                 fingers=[(1, 0), (10, 0), (16, 1), (28, 0)],

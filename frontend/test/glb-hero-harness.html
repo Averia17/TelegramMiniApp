@@ -123,9 +123,9 @@
     aimPreview.update({aiming:true,x:0,y:0,rotation:0,...(attackAreas[hero]||{attackArchetype:"projectile",attackRange:600,color:"#fff"})})
   }
   const clips={idle:"idle",run:"run",hit:"hit",aim:"Aim",aimSuper:"AimSuper",attack:"Attack",super:"super",gadget:"Gadget",spawn:"Spawn",victory:"Victory",defeat:"death"}
-  let attackPulse=forcedState==="attack"?1:0
-  let superPulse=forcedState==="super"?1:0
-  let gadgetPulse=forcedState==="gadget"?1:0
+  let attackPulse=0
+  let superPulse=0
+  let gadgetPulse=0
   const controller=new GLBHeroController(model,instance.animations,clips,{
     heroName:hero,
     attackPulse,
@@ -134,6 +134,9 @@
     spawnOnLoad:forcedState==="spawn",
     fullBodySuper:true,
   })
+  if(forcedState==="attack")attackPulse++
+  if(forcedState==="super")superPulse++
+  if(forcedState==="gadget")gadgetPulse++
   let manualState=null
   const setActiveButton=button=>document.querySelectorAll("button").forEach(item=>item.classList.toggle("active",item===button))
   document.querySelectorAll("[data-skill]").forEach(button=>button.addEventListener("click",()=>{

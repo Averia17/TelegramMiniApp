@@ -5,6 +5,7 @@ import {getAttackSwingYaw} from "./attackSwing.js"
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 export const LOCOMOTION_FADE = 0.16
 export const OVERLAY_FADE = 0.18
+const FULL_BODY_OVERLAYS = new Set(["attack", "super", "gadget", "hit", "spawn"])
 const UPPER_BONE = /(spine|chest|neck|head|shoulder|clavicle|arm|hand|finger|weapon)/i
 const LOWER_BONE = /(root|hips?|pelvis|leg|thigh|calf|foot|toe)/i
 
@@ -177,6 +178,7 @@ export class GLBHeroController {
     this.actions = new Map()
     this.state = null
     this.overlay = null
+    this.locomotionSuppressed = false
     this.lastAttackPulse = options.attackPulse
     this.lastSuperPulse = options.superPulse
     this.lastGadgetPulse = options.gadgetPulse
@@ -378,10 +380,18 @@ export class GLBHeroController {
 
     this.mixer.addEventListener("finished", event => {
       const finished = [...this.actions.entries()].find(([, action]) => action === event.action)?.[0]
-      if (finished === this.overlay) this.overlay = null
+      if (finished === this.overlay) {
+        const wasFullBody = FULL_BODY_OVERLAYS.has(finished)
+        this.overlay = null
+        if (wasFullBody) {
+          event.action.stop().setEffectiveWeight(0)
+          this.restoreLocomotion()
+        }
+      }
       if (finished === "spawn") {
         event.action.stop().setEffectiveWeight(0)
         this.state = null
+        this.restoreLocomotion()
       }
     })
     if ((this.actions.has("spawn") || this.spawnCactus) && options.spawnOnLoad !== false) this.playSpawn()
@@ -390,6 +400,10 @@ export class GLBHeroController {
   transitionLocomotion(name, fadeSeconds = LOCOMOTION_FADE) {
     const next = this.actions.get(name)
     if (!next || this.state === name) return Boolean(next)
+    if (this.locomotionSuppressed) {
+      this.state = name
+      return true
+    }
     const previous = this.actions.get(this.state)
     next.enabled = true
     next.reset().setEffectiveWeight(1).play()
@@ -416,6 +430,7 @@ export class GLBHeroController {
   playOverlay(name, fadeSeconds = OVERLAY_FADE) {
     const next = this.actions.get(name)
     if (!next) return false
+    if (FULL_BODY_OVERLAYS.has(name)) this.suppressLocomotion(fadeSeconds)
     const previous = this.actions.get(this.overlay)
     if (previous && previous !== next) previous.fadeOut(fadeSeconds)
     next.enabled = true
@@ -426,9 +441,30 @@ export class GLBHeroController {
   }
 
   clearOverlay() {
+    const previousName = this.overlay
     const previous = this.actions.get(this.overlay)
     if (previous) previous.stop().setEffectiveWeight(0)
     this.overlay = null
+    if (FULL_BODY_OVERLAYS.has(previousName)) this.restoreLocomotion()
+  }
+
+  suppressLocomotion(fadeSeconds = OVERLAY_FADE) {
+    if (this.locomotionSuppressed) return
+    this.locomotionSuppressed = true
+    for (const name of ["idle", "run"]) {
+      const action = this.actions.get(name)
+      if (action) action.fadeOut(fadeSeconds)
+    }
+  }
+
+  restoreLocomotion() {
+    if (!this.locomotionSuppressed) return
+    this.locomotionSuppressed = false
+    const name = this.state === "run" ? "run" : "idle"
+    const action = this.actions.get(name)
+    if (!action) return
+    action.enabled = true
+    action.reset().setEffectiveWeight(1).play()
   }
 
   playOutcome(name, fadeSeconds = LOCOMOTION_FADE) {
@@ -442,6 +478,7 @@ export class GLBHeroController {
 
   playSpawn() {
     this.clearOverlay()
+    this.suppressLocomotion(0)
     this.root.visible = true
     this.spawnElapsed = 0
     const action = this.actions.get("spawn")

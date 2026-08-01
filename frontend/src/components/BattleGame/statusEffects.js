@@ -1,0 +1,43 @@
+const TIMED_EFFECTS = [
+  {id: "shield", property: "shield", label: "ЩИТ", icon: "🛡️", tone: "defense"},
+  {id: "haste", property: "haste", label: "УСКОРЕНИЕ", icon: "⚡", tone: "positive"},
+  {id: "lunarSpeed", property: "lunarSpeed", label: "ЛУННАЯ СКОРОСТЬ", icon: "☾", tone: "positive"},
+  {id: "lunarDamage", property: "lunarDamage", label: "ЛУННЫЙ УРОН", icon: "✦", tone: "positive"},
+  {id: "stealth", property: "stealth", label: "НЕВИДИМОСТЬ", icon: "◌", tone: "concealed"},
+  {id: "invulnerable", property: "invulnerable", label: "НЕУЯЗВИМОСТЬ", icon: "✧", tone: "defense"},
+  {id: "blind", property: "blind", label: "ОСЛЕПЛЕНИЕ", icon: "☀", tone: "negative"},
+  {id: "stun", property: "stun", label: "СТАН", icon: "✹", tone: "negative"},
+  {id: "channel", property: "channel", label: "КАНАЛИЗАЦИЯ", icon: "◉", tone: "negative"},
+  {id: "vine", property: "vine", label: "СВЯЗАН", icon: "⌁", tone: "negative"},
+  {id: "vortex", property: "vortex", label: "ВОРОНКА", icon: "↻", tone: "negative"},
+  {id: "flying", property: "flying", label: "В ПОЛЁТЕ", icon: "↑", tone: "positive"},
+  {id: "slow", property: "slow", label: "ЗАМЕДЛЕНИЕ", icon: "❄", tone: "negative"},
+]
+const MIN_VISIBLE_TIMED_EFFECT_SECONDS = 0.05
+
+const addEffect = (effects, definition, remaining = null) => {
+  effects.push({...definition, remaining})
+}
+
+export const getActiveStatusEffects = (player = {}, {inBush = false} = {}) => {
+  const effects = []
+
+  if (inBush) {
+    addEffect(effects, {id: "bush", label: "СПРЯТАН В КУСТАХ", icon: "🌿", tone: "concealed"})
+  }
+
+  for (const definition of TIMED_EFFECTS) {
+    const remaining = Number(player[definition.property] || 0)
+    if (remaining >= MIN_VISIBLE_TIMED_EFFECT_SECONDS) addEffect(effects, definition, remaining)
+  }
+
+  if (player.lunarShield) {
+    addEffect(effects, {id: "lunarShield", label: "ЛУННЫЙ ЩИТ", icon: "🌙", tone: "defense"})
+  }
+
+  if (player.poisoned) {
+    addEffect(effects, {id: "poisoned", label: "ОТРАВЛЕНИЕ", icon: "☠", tone: "negative"})
+  }
+
+  return effects
+}

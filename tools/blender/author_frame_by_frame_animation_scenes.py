@@ -12,11 +12,13 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 from pathlib import Path
 
 import bpy
 from mathutils import Euler, Quaternion, Vector
 
+sys.path.insert(0, os.fspath(Path(__file__).resolve().parent))
 import hero_skill_spec
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -297,13 +299,55 @@ def limit_frame_rotation_delta(captured, previous, max_degrees=32.0):
     limit = math.radians(max_degrees)
     for name, item in captured.items():
         current = pose_quaternion(item)
-        prior = previous.get(name)
+        prior_record = previous.get(name)
+        prior = (
+            prior_record["quaternion"]
+            if isinstance(prior_record, dict)
+            else prior_record
+        )
         if prior is not None:
             delta = prior.rotation_difference(current)
             if delta.angle > limit:
                 current = prior.slerp(current, limit / delta.angle)
                 write_pose_quaternion(item, current)
-        previous[name] = current.copy()
+        if item["rotation_mode"] not in {"QUATERNION", "AXIS_ANGLE"}:
+            previous_euler = (
+                prior_record.get("euler")
+                if isinstance(prior_record, dict)
+                else None
+            )
+            if previous_euler is not None:
+                values = [item["rotation_euler"][index] for index in range(3)]
+                for index, value in enumerate(values):
+                    while value - previous_euler[index] > math.pi:
+                        value -= math.tau
+                    while value - previous_euler[index] < -math.pi:
+                        value += math.tau
+                    values[index] = value
+                item["rotation_euler"] = Euler(values, item["rotation_mode"])
+            # Some rigs use a non-XYZ Euler order whose equivalent Euler
+            # representation still crosses a wrap after the shortest-arc
+            # clamp. Promote only that bone to Quaternion; keeping ordinary
+            # bones in their source mode lets glTF retain their authored keys.
+            if prior is not None and prior.rotation_difference(
+                pose_quaternion(item)
+            ).angle > limit * 1.05:
+                item["rotation_mode"] = "QUATERNION"
+                item["rotation_quaternion"] = current
+        previous[name] = {
+            "quaternion": current.copy(),
+            "euler": item["rotation_euler"].copy()
+            if item["rotation_mode"] not in {"QUATERNION", "AXIS_ANGLE"}
+            else None,
+        }
+
+
+def promote_captured_rotations_to_quaternion(captured):
+    """Avoid Euler wrap jumps when the baked action is evaluated by glTF."""
+    for item in captured.values():
+        quaternion = pose_quaternion(item)
+        item["rotation_mode"] = "QUATERNION"
+        item["rotation_quaternion"] = quaternion
 
 
 def import_source_rig(path: Path, scene):
@@ -589,49 +633,134 @@ def apply_choreography(hero, clip, t, groups, captured):
             add_delta(pose, name, 3.0 * delayed_sine(t, 0.10 + index * 0.01, 1.0), 0, 0)
 
     elif clip == "attack":
-        # Shadow's reference timing: shoulder 0-6, elbow +2, wrist +4,
-        # fingers +6. The same stagger is retained for every hero.
-        anticipation = phase(t, 0.00, 0.25)
-        throw = phase(t, 0.25, 0.58)
-        settle = 1.0 - phase(t, 0.58, 1.0)
-        arm(
-            "R",
-            -38.0 * anticipation + 56.0 * throw + 5.0 * settle,
-            28.0 * phase(t, 0.08, 0.35) - 34.0 * phase(t, 0.34, 0.68),
-            -14.0 * phase(t, 0.17, 0.48) + 18.0 * phase(t, 0.48, 0.76),
-            1,
-        )
-        arm(
-            "L",
-            16.0 * anticipation - 10.0 * throw,
-            -12.0 * anticipation,
-            7.0 * phase(t, 0.24, 0.62),
-            -1,
-        )
-        add_delta(
-            pose,
-            hips,
-            14.0 * anticipation - 22.0 * throw + 4.0 * settle,
-            -8.0 * throw,
-            0,
-        )
-        add_delta(
-            pose, spine, -8.0 * anticipation + 12.0 * throw, -10.0 * throw, 4.0 * throw
-        )
-        add_delta(
-            pose, chest, -4.0 * anticipation + 8.0 * throw, -5.0 * throw, 2.0 * throw
-        )
-        add_delta(pose, head, 0, -14.0 * phase(t, 0.0, 0.22) + 3.0 * settle, 0)
-        add_hand_wave(pose, groups, "R", t, 0.34, 0.70, 12.0)
-        add_hand_wave(pose, groups, "L", t, 0.44, 0.78, 6.0)
-        for index, name in enumerate(groups.get("secondary", [])):
-            add_delta(
-                pose,
-                name,
-                10.0 * phase(t, 0.48 + index * 0.01, 0.70 + index * 0.01),
-                0,
-                0,
-            )
+        # Each hero has a different attack story.  Keep the timing in frame
+        # space so the same authoring code remains readable at 30 fps while
+        # the actual bone order is staggered shoulder -> elbow -> wrist ->
+        # fingers.  The old generic attack made every hero look like a head-
+        # first mannequin gesture and did not match the brief.
+        attack_frames = max(1.0, float(HERO_FRAMES[hero]["attack"] - 1))
+        frame_phase = lambda start, end: phase(t, start / attack_frames, end / attack_frames)
+
+        if hero == "needle":
+            wind = frame_phase(1, 8)
+            release = frame_phase(8, 14)
+            recover = frame_phase(14, 22)
+            add_delta(pose, hips, 20.0 * wind - 18.0 * release, 28.0 * wind, 0)
+            add_delta(pose, spine, -8.0 * wind + 10.0 * release, 20.0 * wind, 0)
+            arm("R", -42.0 * wind + 64.0 * release, 24.0 * frame_phase(3, 10) - 28.0 * frame_phase(10, 17), -18.0 * frame_phase(5, 12) + 15.0 * frame_phase(12, 19), 1)
+            arm("L", 12.0 * wind - 10.0 * release, -10.0 * wind, 6.0 * frame_phase(10, 18), -1)
+            add_delta(pose, head, 0, 8.0 * frame_phase(1, 5) - 3.0 * recover, 0)
+            add_hand_wave(pose, groups, "R", t, 10.0 / attack_frames, 18.0 / attack_frames, 10.0)
+
+        elif hero == "mandy":
+            wind = frame_phase(1, 10)
+            swing = frame_phase(10, 18)
+            follow = frame_phase(18, 28)
+            # Mandy's staff strike is an upper-body beat. Keep the pelvis
+            # grounded so the authored swing cannot rotate a leg into the air.
+            add_delta(pose, hips, 8.0 * wind - 12.0 * swing + 2.0 * follow, 10.0 * wind - 6.0 * swing, 0)
+            add_delta(pose, spine, -8.0 * wind + 16.0 * swing, 26.0 * wind - 12.0 * swing, 0)
+            arm("R", -46.0 * wind + 52.0 * swing + 8.0 * follow, 28.0 * frame_phase(5, 13) - 34.0 * frame_phase(13, 21), -15.0 * frame_phase(8, 16) + 12.0 * follow, 1)
+            arm("L", -34.0 * wind + 44.0 * swing, 24.0 * frame_phase(6, 14) - 28.0 * frame_phase(14, 22), -10.0 * frame_phase(9, 18), -1)
+            add_delta(pose, head, 0, -8.0 * wind + 5.0 * follow, 0)
+            add_hand_wave(pose, groups, "R", t, 14.0 / attack_frames, 24.0 / attack_frames, 7.0)
+            add_hand_wave(pose, groups, "L", t, 15.0 / attack_frames, 25.0 / attack_frames, 6.0)
+
+        elif hero == "fairy-mina":
+            wind = frame_phase(1, 8)
+            throw = frame_phase(8, 16)
+            recover = frame_phase(16, 24)
+            add_delta(pose, hips, -8.0 * wind + 5.0 * recover, -10.0 * wind + 14.0 * throw, 0)
+            add_delta(pose, spine, -10.0 * wind + 16.0 * throw, -8.0 * wind, 0)
+            arm("R", -38.0 * wind + 70.0 * throw - 12.0 * recover, 22.0 * frame_phase(4, 11) - 32.0 * frame_phase(11, 18), -18.0 * frame_phase(6, 13) + 14.0 * recover, 1)
+            arm("L", 14.0 * wind - 18.0 * throw, -12.0 * wind, 8.0 * frame_phase(12, 20), -1)
+            add_delta(pose, head, 0, 8.0 * frame_phase(1, 6) - 4.0 * recover, 0)
+            for index, name in enumerate(groups.get("wings", [])):
+                add_delta(pose, name, 12.0 * wind - 16.0 * throw + 8.0 * recover, 0, (-1 if index % 2 else 1) * 8.0 * throw)
+            add_hand_wave(pose, groups, "R", t, 10.0 / attack_frames, 20.0 / attack_frames, 8.0)
+
+        elif hero == "brock-zeus":
+            raise_phase = frame_phase(1, 7)
+            fire = frame_phase(7, 12)
+            recoil = frame_phase(12, 18)
+            add_delta(pose, hips, 8.0 * raise_phase - 12.0 * fire + 4.0 * recoil, -12.0 * raise_phase, 0)
+            add_delta(pose, spine, -8.0 * raise_phase + 14.0 * fire, -10.0 * raise_phase, 0)
+            arm("R", -52.0 * raise_phase + 62.0 * fire - 18.0 * recoil, 30.0 * raise_phase - 36.0 * fire, -18.0 * frame_phase(6, 11) + 10.0 * recoil, 1)
+            arm("L", -24.0 * raise_phase + 18.0 * fire, 16.0 * raise_phase - 12.0 * recoil, 6.0 * recoil, -1)
+            add_delta(pose, head, 0, -8.0 * frame_phase(1, 6) + 4.0 * recoil, 0)
+            add_hand_wave(pose, groups, "R", t, 9.0 / attack_frames, 16.0 / attack_frames, 5.0)
+
+        elif hero == "kaze":
+            # Four distinct beats from the brief: right diagonal, left
+            # diagonal, a held 0.4 s pause, then the cross/X strike.
+            right_wind = frame_phase(1, 6)
+            right_hit = frame_phase(6, 10)
+            left_wind = frame_phase(10, 14)
+            left_hit = frame_phase(14, 18)
+            pause = frame_phase(18, 26) * (1.0 - frame_phase(22, 26))
+            cross = frame_phase(22, 27)
+            recover = frame_phase(27, 38)
+            add_captured_location(captured, hips, 0, 0, -0.025 * (right_hit + left_hit) + 0.03 * recover, location_bones)
+            add_delta(pose, hips, 18.0 * right_wind - 16.0 * right_hit + 14.0 * left_wind - 12.0 * left_hit, 24.0 * right_wind - 18.0 * left_hit, 0)
+            add_delta(pose, spine, -16.0 * right_wind + 12.0 * right_hit - 14.0 * left_wind + 12.0 * left_hit, 18.0 * right_wind - 16.0 * left_hit, 0)
+            arm("R", -58.0 * right_wind + 72.0 * right_hit - 40.0 * cross, 32.0 * frame_phase(3, 8) - 38.0 * frame_phase(8, 13) + 24.0 * cross, -22.0 * frame_phase(5, 10) + 16.0 * frame_phase(10, 15) - 18.0 * cross, 1)
+            arm("L", -42.0 * left_wind + 68.0 * left_hit - 40.0 * cross, 28.0 * frame_phase(11, 16) - 36.0 * frame_phase(16, 21) + 24.0 * cross, -18.0 * frame_phase(13, 18) + 16.0 * frame_phase(18, 23) + 18.0 * cross, -1)
+            add_delta(pose, head, 0, 10.0 * frame_phase(1, 5) - 8.0 * frame_phase(22, 29), 0)
+            add_hand_wave(pose, groups, "R", t, 7.0 / attack_frames, 14.0 / attack_frames, 8.0)
+            add_hand_wave(pose, groups, "L", t, 15.0 / attack_frames, 24.0 / attack_frames, 8.0)
+            for index, name in enumerate(groups.get("special", [])):
+                add_delta(pose, name, 22.0 * (right_hit + left_hit + cross), 0, (index % 2 - 0.5) * 10.0 * cross)
+
+        elif hero == "wukong-mico":
+            wind = frame_phase(1, 12)
+            hit = frame_phase(12, 22)
+            follow = frame_phase(22, 32)
+            recover = frame_phase(32, 40)
+            add_delta(pose, hips, 18.0 * wind - 34.0 * hit + 8.0 * recover, 30.0 * wind - 20.0 * hit, 0)
+            add_delta(pose, spine, -10.0 * wind + 18.0 * hit, 28.0 * wind - 20.0 * hit, 0)
+            arm("R", -54.0 * wind + 76.0 * hit - 24.0 * follow, 30.0 * frame_phase(5, 14) - 36.0 * frame_phase(14, 24), -20.0 * frame_phase(8, 18) + 18.0 * follow, 1)
+            arm("L", 18.0 * wind - 32.0 * hit, -16.0 * wind + 24.0 * hit, 12.0 * frame_phase(12, 25), -1)
+            add_delta(pose, head, 0, -10.0 * wind + 5.0 * recover, 0)
+            add_hand_wave(pose, groups, "R", t, 15.0 / attack_frames, 30.0 / attack_frames, 9.0)
+            for index, name in enumerate(groups.get("special", [])):
+                add_delta(pose, name, 26.0 * frame_phase(10, 30), 0, 18.0 * math.sin(t * math.tau * 2.0 + index))
+
+        elif hero == "damian":
+            form = frame_phase(1, 12)
+            push = frame_phase(12, 18)
+            return_phase = frame_phase(18, 28)
+            add_delta(pose, hips, 8.0 * form - 12.0 * push + 4.0 * return_phase, -10.0 * form, 0)
+            add_delta(pose, spine, -8.0 * form + 12.0 * push, -8.0 * form, 0)
+            arm("L", -42.0 * form + 64.0 * push - 18.0 * return_phase, 24.0 * frame_phase(5, 13) - 32.0 * frame_phase(13, 20), -16.0 * frame_phase(8, 15) + 14.0 * return_phase, -1)
+            arm("R", 14.0 * form - 8.0 * push, -10.0 * form, 6.0 * return_phase, 1)
+            add_delta(pose, head, 0, -8.0 * frame_phase(1, 8) + 4.0 * return_phase, 0)
+            add_hand_wave(pose, groups, "L", t, 10.0 / attack_frames, 22.0 / attack_frames, 8.0)
+
+        elif hero == "persephone-lumi":
+            form = frame_phase(1, 10)
+            release = frame_phase(10, 16)
+            hold = frame_phase(16, 26)
+            recover = frame_phase(26, 35)
+            add_delta(pose, hips, -8.0 * form + 5.0 * recover, -12.0 * form + 10.0 * release, 0)
+            add_delta(pose, spine, -10.0 * form + 14.0 * release, -8.0 * form, 0)
+            arm("R", -42.0 * form + 68.0 * release - 20.0 * recover, 22.0 * frame_phase(5, 12) - 32.0 * frame_phase(12, 19), -18.0 * frame_phase(8, 15) + 12.0 * recover, 1)
+            arm("L", 16.0 * form - 12.0 * release, -12.0 * form, 6.0 * hold, -1)
+            add_delta(pose, head, 0, 8.0 * frame_phase(1, 7) - 4.0 * recover, 0)
+            add_hand_wave(pose, groups, "R", t, 11.0 / attack_frames, 23.0 / attack_frames, 8.0)
+            for index, name in enumerate(groups.get("ribbons", [])):
+                add_delta(pose, name, 10.0 * phase(t, (16 + index) / attack_frames, (26 + index) / attack_frames), 0, 0)
+
+        else:
+            anticipation = phase(t, 0.00, 0.25)
+            throw = phase(t, 0.25, 0.58)
+            settle = 1.0 - phase(t, 0.58, 1.0)
+            arm("R", -38.0 * anticipation + 56.0 * throw + 5.0 * settle, 28.0 * phase(t, 0.08, 0.35) - 34.0 * phase(t, 0.34, 0.68), -14.0 * phase(t, 0.17, 0.48) + 18.0 * phase(t, 0.48, 0.76), 1)
+            arm("L", 16.0 * anticipation - 10.0 * throw, -12.0 * anticipation, 7.0 * phase(t, 0.24, 0.62), -1)
+            add_delta(pose, hips, 14.0 * anticipation - 22.0 * throw + 4.0 * settle, -8.0 * throw, 0)
+            add_delta(pose, spine, -8.0 * anticipation + 12.0 * throw, -10.0 * throw, 4.0 * throw)
+            add_delta(pose, chest, -4.0 * anticipation + 8.0 * throw, -5.0 * throw, 2.0 * throw)
+            add_delta(pose, head, 0, -6.0 * phase(t, 0.0, 0.22) + 2.0 * settle, 0)
+            add_hand_wave(pose, groups, "R", t, 0.34, 0.70, 8.0)
 
     elif clip == "super":
         crouch = phase(t, 0.00, 0.33)
@@ -1446,6 +1575,17 @@ def author_scene(hero, clip, master, target):
     end = GADGET_FRAMES[hero] if clip == "gadget" else HERO_FRAMES[hero][clip]
     source_start, source_end = action_frame_range(base)
     source_rotation, source_location, source_scale = action_channel_bones(base)
+    # A head scale track is never part of the attack language in the brief.
+    # Some legacy Shadow source Actions contain a neutral-looking head scale
+    # channel; carrying it into glTF makes debugging suggest a head swell when
+    # the intended beat is a hand/body gesture. Keep head and neck scale at
+    # their authored rest values and animate them only through rotation.
+    source_scale = {
+        name
+        for name in source_scale
+        if clip == "idle"
+        and not any(token in name.casefold() for token in ("head", "neck"))
+    }
     extra_rotation = {
         name
         for value in groups.values()
@@ -1453,7 +1593,10 @@ def author_scene(hero, clip, master, target):
         if name and name in {bone.name for bone in armature.pose.bones}
     }
     extra_location = {groups.get("hips")} - {None}
-    extra_scale = {groups.get("spine_upper")} - {None}
+    # Scale is reserved for the breathing language in Idle. Skill/event
+    # clips must preserve the character's authored proportions; otherwise a
+    # spine scale can visually read as a swelling head or torso.
+    extra_scale = ({groups.get("spine_upper")} - {None}) if clip == "idle" else set()
     previous_pose = {}
     for frame in range(1, end + 1):
         normalized = (frame - 1) / max(1.0, float(end - 1))
@@ -1476,6 +1619,7 @@ def author_scene(hero, clip, master, target):
                 hero, clip, normalized, groups, captured
             )
         limit_frame_rotation_delta(captured, previous_pose)
+        promote_captured_rotations_to_quaternion(captured)
         extra_rotation.update(frame_rotation)
         extra_location.update(frame_location)
         extra_scale.update(frame_scale)

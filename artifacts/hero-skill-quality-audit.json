@@ -3,52 +3,37 @@
     "hero": "brock-zeus",
     "clip": "attack",
     "file": "frontend\\assets-source\\heroes\\brock-zeus\\scenes\\attack.blend",
-    "action": "Attack.001",
+    "action": "Attack",
     "frames": 24,
     "expected_frames": 24,
     "core_bones": 14,
-    "curve_count": 48,
-    "max_frame_delta_degrees": 91.418,
+    "curve_count": 60,
+    "max_frame_delta_degrees": 15.125,
     "max_frame_delta_bone": "R_Shoulder",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"Hips\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames",
-      "action_name:Attack.001",
-      "frame_jump:91.42deg:R_Shoulder"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "brock-zeus",
     "clip": "super",
     "file": "frontend\\assets-source\\heroes\\brock-zeus\\scenes\\super.blend",
-    "action": "super.001",
-    "frames": 40,
+    "action": "super",
+    "frames": 54,
     "expected_frames": 54,
     "core_bones": 14,
-    "curve_count": 54,
-    "max_frame_delta_degrees": 32.899,
+    "curve_count": 60,
+    "max_frame_delta_degrees": 29.6,
     "max_frame_delta_bone": "R_Shoulder",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"Hips\"].location"
-    ],
-    "attachment_issues": [
-      "frame_count:40!=expected:54",
-      "missing_skill_event_frames",
-      "action_name:super.001"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "brock-zeus",
@@ -58,73 +43,51 @@
     "frames": 40,
     "expected_frames": 40,
     "core_bones": 14,
-    "curve_count": 54,
-    "max_frame_delta_degrees": 0.442,
-    "max_frame_delta_bone": "Spine",
+    "curve_count": 60,
+    "max_frame_delta_degrees": 18.219,
+    "max_frame_delta_bone": "R_Shoulder",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"Hips\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "damian",
     "clip": "attack",
     "file": "frontend\\assets-source\\heroes\\damian\\scenes\\attack.blend",
-    "action": "Attack.001",
+    "action": "Attack",
     "frames": 28,
     "expected_frames": 28,
     "core_bones": 60,
-    "curve_count": 189,
-    "max_frame_delta_degrees": 45.675,
-    "max_frame_delta_bone": "L_shoulder_s",
+    "curve_count": 356,
+    "max_frame_delta_degrees": 4.815,
+    "max_frame_delta_bone": "L_wrist_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames",
-      "action_name:Attack.001",
-      "frame_jump:45.67deg:L_shoulder_s"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "damian",
     "clip": "super",
     "file": "frontend\\assets-source\\heroes\\damian\\scenes\\super.blend",
-    "action": "super.001",
-    "frames": 45,
+    "action": "super",
+    "frames": 40,
     "expected_frames": 40,
     "core_bones": 60,
-    "curve_count": 195,
-    "max_frame_delta_degrees": 29.098,
-    "max_frame_delta_bone": "spine_lower_s",
+    "curve_count": 356,
+    "max_frame_delta_degrees": 3.672,
+    "max_frame_delta_bone": "R_wrist_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "frame_count:45!=expected:40",
-      "missing_skill_event_frames",
-      "action_name:super.001"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "damian",
@@ -134,71 +97,51 @@
     "frames": 35,
     "expected_frames": 35,
     "core_bones": 60,
-    "curve_count": 192,
-    "max_frame_delta_degrees": 8.604,
-    "max_frame_delta_bone": "R_helmet_wing_s",
+    "curve_count": 356,
+    "max_frame_delta_degrees": 16.5,
+    "max_frame_delta_bone": "spine_lower_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "fairy-mina",
     "clip": "attack",
     "file": "frontend\\assets-source\\heroes\\fairy-mina\\scenes\\attack.blend",
-    "action": "Attack.001",
+    "action": "Attack",
     "frames": 24,
     "expected_frames": 24,
     "core_bones": 49,
-    "curve_count": 156,
-    "max_frame_delta_degrees": 74.06,
-    "max_frame_delta_bone": "R_shoulder_s",
+    "curve_count": 308,
+    "max_frame_delta_degrees": 12.464,
+    "max_frame_delta_bone": "R_wing_up_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames",
-      "action_name:Attack.001",
-      "frame_jump:74.06deg:R_shoulder_s"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "fairy-mina",
     "clip": "super",
     "file": "frontend\\assets-source\\heroes\\fairy-mina\\scenes\\super.blend",
-    "action": "super.001",
-    "frames": 48,
+    "action": "super",
+    "frames": 55,
     "expected_frames": 55,
     "core_bones": 49,
-    "curve_count": 156,
-    "max_frame_delta_degrees": 50.772,
-    "max_frame_delta_bone": "hips_s",
+    "curve_count": 308,
+    "max_frame_delta_degrees": 10.808,
+    "max_frame_delta_bone": "R_wing_down_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "frame_count:48!=expected:55",
-      "missing_skill_event_frames",
-      "action_name:super.001",
-      "frame_jump:50.77deg:hips_s"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "fairy-mina",
@@ -208,68 +151,51 @@
     "frames": 34,
     "expected_frames": 34,
     "core_bones": 49,
-    "curve_count": 153,
-    "max_frame_delta_degrees": 21.86,
-    "max_frame_delta_bone": "L_wing_up_s",
+    "curve_count": 308,
+    "max_frame_delta_degrees": 22.326,
+    "max_frame_delta_bone": "L_wing_down_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "kaze",
     "clip": "attack",
     "file": "frontend\\assets-source\\heroes\\kaze\\scenes\\attack.blend",
-    "action": "Attack.001",
-    "frames": 26,
+    "action": "Attack",
+    "frames": 38,
     "expected_frames": 38,
     "core_bones": 50,
-    "curve_count": 159,
-    "max_frame_delta_degrees": 74.918,
-    "max_frame_delta_bone": "R_shoulder_s",
+    "curve_count": 304,
+    "max_frame_delta_degrees": 19.942,
+    "max_frame_delta_bone": "spine_lower_s1",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "frame_count:26!=expected:38",
-      "missing_skill_event_frames",
-      "action_name:Attack.001",
-      "frame_jump:74.92deg:R_shoulder_s"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "kaze",
     "clip": "super",
     "file": "frontend\\assets-source\\heroes\\kaze\\scenes\\super.blend",
-    "action": "super.001",
+    "action": "super",
     "frames": 34,
     "expected_frames": 34,
     "core_bones": 50,
-    "curve_count": 159,
-    "max_frame_delta_degrees": 71.33,
-    "max_frame_delta_bone": "hips_s",
+    "curve_count": 304,
+    "max_frame_delta_degrees": 6.019,
+    "max_frame_delta_bone": "spine_lower_s1",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames",
-      "action_name:super.001",
-      "frame_jump:71.33deg:hips_s"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "kaze",
@@ -279,66 +205,51 @@
     "frames": 48,
     "expected_frames": 48,
     "core_bones": 50,
-    "curve_count": 156,
-    "max_frame_delta_degrees": 10.0,
-    "max_frame_delta_bone": "blade_s",
+    "curve_count": 304,
+    "max_frame_delta_degrees": 3.405,
+    "max_frame_delta_bone": "R_index_0_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "mandy",
     "clip": "attack",
     "file": "frontend\\assets-source\\heroes\\mandy\\scenes\\attack.blend",
-    "action": "Attack.001",
+    "action": "Attack",
     "frames": 28,
     "expected_frames": 28,
     "core_bones": 49,
-    "curve_count": 159,
-    "max_frame_delta_degrees": 124.473,
-    "max_frame_delta_bone": "R_shoulder_s_061",
+    "curve_count": 328,
+    "max_frame_delta_degrees": 10.833,
+    "max_frame_delta_bone": "hips_s_02",
+    "max_unarmed_arm_delta_degrees": 8.0,
+    "max_unarmed_arm_delta_bone": "R_shoulder_twist_s_079",
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s_02\"].location",
-      "pose.bones[\"hips_s_02\"].location",
-      "pose.bones[\"hips_s_02\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames",
-      "action_name:Attack.001",
-      "frame_jump:124.47deg:R_shoulder_s_061"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "mandy",
     "clip": "super",
     "file": "frontend\\assets-source\\heroes\\mandy\\scenes\\super.blend",
-    "action": "super.001",
+    "action": "super",
     "frames": 55,
     "expected_frames": 55,
     "core_bones": 49,
-    "curve_count": 159,
-    "max_frame_delta_degrees": 23.485,
-    "max_frame_delta_bone": "front_skirt_01_s_028",
+    "curve_count": 328,
+    "max_frame_delta_degrees": 10.027,
+    "max_frame_delta_bone": "spine_lower_s_030",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s_02\"].location",
-      "pose.bones[\"hips_s_02\"].location",
-      "pose.bones[\"hips_s_02\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames",
-      "action_name:super.001"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "mandy",
@@ -348,143 +259,51 @@
     "frames": 58,
     "expected_frames": 58,
     "core_bones": 49,
-    "curve_count": 162,
-    "max_frame_delta_degrees": 8.605,
-    "max_frame_delta_bone": "front_skirt_01_s_028",
+    "curve_count": 328,
+    "max_frame_delta_degrees": 2.937,
+    "max_frame_delta_bone": "R_index_02_s_068",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s_02\"].location",
-      "pose.bones[\"hips_s_02\"].location",
-      "pose.bones[\"hips_s_02\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "needle",
     "clip": "attack",
     "file": "frontend\\assets-source\\heroes\\needle\\scenes\\attack.blend",
-    "action": "Attack.002",
+    "action": "Attack",
     "frames": 24,
     "expected_frames": 24,
     "core_bones": 9,
-    "curve_count": 126,
-    "max_frame_delta_degrees": 11.576,
-    "max_frame_delta_bone": "RightArm",
+    "curve_count": 56,
+    "max_frame_delta_degrees": 8.603,
+    "max_frame_delta_bone": "Spine",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"LeftLeg\"].location",
-      "pose.bones[\"LeftLeg\"].location",
-      "pose.bones[\"LeftLeg\"].location",
-      "pose.bones[\"LeftFoot\"].location",
-      "pose.bones[\"LeftFoot\"].location",
-      "pose.bones[\"LeftFoot\"].location",
-      "pose.bones[\"RightLeg\"].location",
-      "pose.bones[\"RightLeg\"].location",
-      "pose.bones[\"RightLeg\"].location",
-      "pose.bones[\"RightFoot\"].location",
-      "pose.bones[\"RightFoot\"].location",
-      "pose.bones[\"RightFoot\"].location",
-      "pose.bones[\"Spine\"].location",
-      "pose.bones[\"Spine\"].location",
-      "pose.bones[\"Spine\"].location",
-      "pose.bones[\"Chest\"].location",
-      "pose.bones[\"Chest\"].location",
-      "pose.bones[\"Chest\"].location",
-      "pose.bones[\"Head\"].location",
-      "pose.bones[\"Head\"].location",
-      "pose.bones[\"Head\"].location",
-      "pose.bones[\"Flower\"].location",
-      "pose.bones[\"Flower\"].location",
-      "pose.bones[\"Flower\"].location",
-      "pose.bones[\"LeftArm\"].location",
-      "pose.bones[\"LeftArm\"].location",
-      "pose.bones[\"LeftArm\"].location",
-      "pose.bones[\"LeftHand\"].location",
-      "pose.bones[\"LeftHand\"].location",
-      "pose.bones[\"LeftHand\"].location",
-      "pose.bones[\"RightArm\"].location",
-      "pose.bones[\"RightArm\"].location",
-      "pose.bones[\"RightArm\"].location",
-      "pose.bones[\"RightHand\"].location",
-      "pose.bones[\"RightHand\"].location",
-      "pose.bones[\"RightHand\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames",
-      "action_name:Attack.002"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "needle",
     "clip": "super",
     "file": "frontend\\assets-source\\heroes\\needle\\scenes\\super.blend",
-    "action": "super.001",
+    "action": "super",
     "frames": 42,
     "expected_frames": 42,
     "core_bones": 9,
-    "curve_count": 126,
-    "max_frame_delta_degrees": 10.85,
-    "max_frame_delta_bone": "RightArm",
+    "curve_count": 56,
+    "max_frame_delta_degrees": 7.4,
+    "max_frame_delta_bone": "Spine",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"LeftLeg\"].location",
-      "pose.bones[\"LeftLeg\"].location",
-      "pose.bones[\"LeftLeg\"].location",
-      "pose.bones[\"LeftFoot\"].location",
-      "pose.bones[\"LeftFoot\"].location",
-      "pose.bones[\"LeftFoot\"].location",
-      "pose.bones[\"RightLeg\"].location",
-      "pose.bones[\"RightLeg\"].location",
-      "pose.bones[\"RightLeg\"].location",
-      "pose.bones[\"RightFoot\"].location",
-      "pose.bones[\"RightFoot\"].location",
-      "pose.bones[\"RightFoot\"].location",
-      "pose.bones[\"Spine\"].location",
-      "pose.bones[\"Spine\"].location",
-      "pose.bones[\"Spine\"].location",
-      "pose.bones[\"Chest\"].location",
-      "pose.bones[\"Chest\"].location",
-      "pose.bones[\"Chest\"].location",
-      "pose.bones[\"Head\"].location",
-      "pose.bones[\"Head\"].location",
-      "pose.bones[\"Head\"].location",
-      "pose.bones[\"Flower\"].location",
-      "pose.bones[\"Flower\"].location",
-      "pose.bones[\"Flower\"].location",
-      "pose.bones[\"LeftArm\"].location",
-      "pose.bones[\"LeftArm\"].location",
-      "pose.bones[\"LeftArm\"].location",
-      "pose.bones[\"LeftHand\"].location",
-      "pose.bones[\"LeftHand\"].location",
-      "pose.bones[\"LeftHand\"].location",
-      "pose.bones[\"RightArm\"].location",
-      "pose.bones[\"RightArm\"].location",
-      "pose.bones[\"RightArm\"].location",
-      "pose.bones[\"RightHand\"].location",
-      "pose.bones[\"RightHand\"].location",
-      "pose.bones[\"RightHand\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames",
-      "action_name:super.001"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "needle",
@@ -494,106 +313,51 @@
     "frames": 24,
     "expected_frames": 24,
     "core_bones": 9,
-    "curve_count": 126,
-    "max_frame_delta_degrees": 0.0,
-    "max_frame_delta_bone": null,
+    "curve_count": 56,
+    "max_frame_delta_degrees": 5.447,
+    "max_frame_delta_bone": "Hips",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"Hips\"].location",
-      "pose.bones[\"LeftLeg\"].location",
-      "pose.bones[\"LeftLeg\"].location",
-      "pose.bones[\"LeftLeg\"].location",
-      "pose.bones[\"LeftFoot\"].location",
-      "pose.bones[\"LeftFoot\"].location",
-      "pose.bones[\"LeftFoot\"].location",
-      "pose.bones[\"RightLeg\"].location",
-      "pose.bones[\"RightLeg\"].location",
-      "pose.bones[\"RightLeg\"].location",
-      "pose.bones[\"RightFoot\"].location",
-      "pose.bones[\"RightFoot\"].location",
-      "pose.bones[\"RightFoot\"].location",
-      "pose.bones[\"Spine\"].location",
-      "pose.bones[\"Spine\"].location",
-      "pose.bones[\"Spine\"].location",
-      "pose.bones[\"Chest\"].location",
-      "pose.bones[\"Chest\"].location",
-      "pose.bones[\"Chest\"].location",
-      "pose.bones[\"Head\"].location",
-      "pose.bones[\"Head\"].location",
-      "pose.bones[\"Head\"].location",
-      "pose.bones[\"Flower\"].location",
-      "pose.bones[\"Flower\"].location",
-      "pose.bones[\"Flower\"].location",
-      "pose.bones[\"LeftArm\"].location",
-      "pose.bones[\"LeftArm\"].location",
-      "pose.bones[\"LeftArm\"].location",
-      "pose.bones[\"LeftHand\"].location",
-      "pose.bones[\"LeftHand\"].location",
-      "pose.bones[\"LeftHand\"].location",
-      "pose.bones[\"RightArm\"].location",
-      "pose.bones[\"RightArm\"].location",
-      "pose.bones[\"RightArm\"].location",
-      "pose.bones[\"RightHand\"].location",
-      "pose.bones[\"RightHand\"].location",
-      "pose.bones[\"RightHand\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "persephone-lumi",
     "clip": "attack",
     "file": "frontend\\assets-source\\heroes\\persephone-lumi\\scenes\\attack.blend",
-    "action": "Attack.001",
+    "action": "Attack",
     "frames": 35,
     "expected_frames": 35,
     "core_bones": 82,
-    "curve_count": 255,
-    "max_frame_delta_degrees": 53.413,
+    "curve_count": 444,
+    "max_frame_delta_degrees": 8.185,
     "max_frame_delta_bone": "L_upper_shoulder_0_bend_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames",
-      "action_name:Attack.001",
-      "frame_jump:53.41deg:L_upper_shoulder_0_bend_s"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "persephone-lumi",
     "clip": "super",
     "file": "frontend\\assets-source\\heroes\\persephone-lumi\\scenes\\super.blend",
-    "action": "super.001",
+    "action": "super",
     "frames": 40,
     "expected_frames": 40,
     "core_bones": 82,
-    "curve_count": 255,
-    "max_frame_delta_degrees": 61.243,
-    "max_frame_delta_bone": "hips_s",
+    "curve_count": 444,
+    "max_frame_delta_degrees": 12.484,
+    "max_frame_delta_bone": "L_upper_shoulder_0_bend_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames",
-      "action_name:super.001",
-      "frame_jump:61.24deg:hips_s"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "persephone-lumi",
@@ -603,66 +367,51 @@
     "frames": 30,
     "expected_frames": 30,
     "core_bones": 82,
-    "curve_count": 252,
-    "max_frame_delta_degrees": 16.207,
-    "max_frame_delta_bone": "R_ribbon_0_s",
+    "curve_count": 444,
+    "max_frame_delta_degrees": 7.696,
+    "max_frame_delta_bone": "R_wrist_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "wukong-mico",
     "clip": "attack",
     "file": "frontend\\assets-source\\heroes\\wukong-mico\\scenes\\attack.blend",
-    "action": "Attack.001",
+    "action": "Attack",
     "frames": 40,
     "expected_frames": 40,
     "core_bones": 57,
-    "curve_count": 180,
-    "max_frame_delta_degrees": 39.549,
-    "max_frame_delta_bone": "L_shoulder_s",
+    "curve_count": 300,
+    "max_frame_delta_degrees": 11.566,
+    "max_frame_delta_bone": "hips_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames",
-      "action_name:Attack.001",
-      "frame_jump:39.55deg:L_shoulder_s"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "wukong-mico",
     "clip": "super",
     "file": "frontend\\assets-source\\heroes\\wukong-mico\\scenes\\super.blend",
-    "action": "super.001",
+    "action": "super",
     "frames": 110,
     "expected_frames": 110,
     "core_bones": 57,
-    "curve_count": 183,
-    "max_frame_delta_degrees": 29.098,
-    "max_frame_delta_bone": "spine_lower_s",
+    "curve_count": 300,
+    "max_frame_delta_degrees": 6.922,
+    "max_frame_delta_bone": "hips_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames",
-      "action_name:super.001"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   },
   {
     "hero": "wukong-mico",
@@ -672,21 +421,14 @@
     "frames": 68,
     "expected_frames": 68,
     "core_bones": 57,
-    "curve_count": 183,
-    "max_frame_delta_degrees": 15.479,
-    "max_frame_delta_bone": "Tail_01_s",
+    "curve_count": 300,
+    "max_frame_delta_degrees": 5.875,
+    "max_frame_delta_bone": "hips_s",
+    "max_unarmed_arm_delta_degrees": 0.0,
+    "max_unarmed_arm_delta_bone": null,
     "smooth_curves": true,
-    "position_tracks": [
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"Root\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location",
-      "pose.bones[\"hips_s\"].location"
-    ],
-    "attachment_issues": [
-      "missing_skill_event_frames"
-    ],
-    "status": "failed"
+    "position_tracks": [],
+    "attachment_issues": [],
+    "status": "passed"
   }
 ]

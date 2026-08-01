@@ -33,7 +33,7 @@ ROOT = authoring.ROOT
 SOURCE = authoring.SOURCE
 MANIFEST = authoring.MANIFEST
 
-METHOD = "rig_aware_idle_baseline_explicit_frame_keys_v3_detailed_skill_spec"
+METHOD = "rig_aware_idle_baseline_explicit_frame_keys_v4_natural_idle_motion_brief"
 
 
 def master_path(hero: str) -> Path:
@@ -151,8 +151,92 @@ PRIMARY_HANDS = {
 }
 
 
+def _add(pose, name, x=0.0, y=0.0, z=0.0):
+    if not name:
+        return
+    old = pose.get(name, (0.0, 0.0, 0.0))
+    pose[name] = (old[0] + x, old[1] + y, old[2] + z)
+
+
+def _arms(pose, groups, frame, arms):
+    for side, controls in arms.items():
+        sign = -1.0 if side == "L" else 1.0
+        shoulder = skill_spec.sample(frame, controls.get("shoulder", []))
+        elbow = skill_spec.sample(frame, controls.get("elbow", []))
+        wrist = skill_spec.sample(frame, controls.get("wrist", []))
+        _add(pose, groups.get(f"{side}_shoulder"), x=math.radians(shoulder), z=math.radians(sign * controls.get("shoulder_z", 0.0)))
+        _add(pose, groups.get(f"{side}_elbow"), x=math.radians(elbow), z=math.radians(sign * controls.get("elbow_z", 0.0)))
+        _add(pose, groups.get(f"{side}_wrist"), x=math.radians(wrist), z=math.radians(sign * controls.get("wrist_z", 0.0)))
+
+
+def _legs(pose, groups, frame, legs):
+    for side, controls in legs.items():
+        sign = -1.0 if side == "L" else 1.0
+        _add(pose, groups.get(f"{side}_upper_leg"), x=math.radians(skill_spec.sample(frame, controls.get("thigh", []))), z=math.radians(sign * controls.get("thigh_z", 0.0)))
+        _add(pose, groups.get(f"{side}_knee"), x=math.radians(skill_spec.sample(frame, controls.get("knee", []))))
+        _add(pose, groups.get(f"{side}_ankle"), x=math.radians(skill_spec.sample(frame, controls.get("ankle", []))))
+
+
+def idle_pose(hero: str, frame: int, end: int, groups: dict) -> dict:
+    """Small, readable idle loops authored from a neutral pose.
+
+    The old idle pass layered generic deltas over the imported idle Actions.
+    Those Actions use different local axes and could accumulate large twists on
+    some rigs.  Idle is deliberately baseline-driven now: only semantic body
+    chains receive bounded breathing, balance, and gaze offsets.
+    """
+    t = (frame - 1) / max(1.0, float(end - 1))
+    breath = math.sin(t * math.tau)
+    sway = math.sin(t * math.tau)
+    gaze = math.sin(t * math.tau * 0.5)
+    pose: dict[str, tuple[float, float, float]] = {}
+
+    # Shared mass language: feet stay planted, torso breathes, and the head
+    # never turns more than a few degrees from the authored neutral pose.
+    add_pose(pose, groups.get("hips"), 0, deg(1.2 * sway), 0)
+    add_pose(pose, groups.get("spine_lower"), deg(1.2 * sway), 0, 0)
+    add_pose(pose, groups.get("spine_upper"), deg(-1.4 * breath), 0, 0)
+
+    if hero == "mandy":
+        # Staff hand and belt hand remain readable and quiet; the prop follows
+        # its authored grip instead of being independently waved.
+        add_pose(pose, groups.get("head"), 0, deg(2.0 * gaze), 0)
+    elif hero == "fairy-mina":
+        add_pose(pose, groups.get("head"), 0, 0, deg(4.0 * gaze))
+        for index, name in enumerate(groups.get("wings", [])):
+            add_pose(pose, name, deg(3.0 * math.sin(t * math.tau + index * 0.8)), 0, 0)
+    elif hero == "brock-zeus":
+        add_pose(pose, groups.get("head"), 0, deg(4.0 * gaze), 0)
+        add_pose(pose, groups.get("R_shoulder"), deg(1.5 * breath), 0, 0)
+    elif hero == "kaze":
+        add_pose(pose, groups.get("spine_upper"), 0, deg(1.4 * sway), 0)
+        add_pose(pose, groups.get("head"), 0, deg(3.0 * gaze), 0)
+    elif hero == "wukong-mico":
+        # A primate-like crouch is expressed through the torso, not a root
+        # rotation. The free hand makes one restrained scratch gesture.
+        add_pose(pose, groups.get("spine_lower"), deg(-1.8 * sway), 0, 0)
+        add_pose(pose, groups.get("head"), 0, deg(4.0 * gaze), 0)
+        scratch = max(0.0, math.sin(t * math.tau - math.pi / 2.0))
+        add_pose(pose, groups.get("R_shoulder"), deg(3.0 * scratch), 0, 0)
+        add_pose(pose, groups.get("R_elbow"), deg(-2.5 * scratch), 0, 0)
+        add_pose(pose, groups.get("R_wrist"), deg(1.5 * scratch), 0, 0)
+    elif hero == "damian":
+        add_pose(pose, groups.get("head"), 0, deg(5.0 * gaze), 0)
+    elif hero == "persephone-lumi":
+        add_pose(pose, groups.get("head"), 0, 0, deg(4.0 * gaze))
+        reach = max(0.0, math.sin(t * math.tau - math.pi / 2.0))
+        add_pose(pose, groups.get("R_shoulder"), deg(-4.0 * reach), 0, 0)
+        add_pose(pose, groups.get("R_elbow"), deg(2.0 * reach), 0, 0)
+    else:
+        add_pose(pose, groups.get("head"), 0, deg(3.0 * gaze), 0)
+
+    return pose
+
+
 def skill_pose(hero: str, clip: str, frame: int, end: int, groups: dict) -> dict:
     """Return small, semantic local rotations for one explicit frame."""
+    if clip == "idle":
+        return idle_pose(hero, frame, end, groups)
     if hero in skill_spec.FRAME_ENDS and clip in skill_spec.FRAME_ENDS[hero]:
         return skill_spec.profile_pose(hero, clip, frame, groups)
     t = (frame - 1) / max(1.0, float(end - 1))
@@ -162,7 +246,36 @@ def skill_pose(hero: str, clip: str, frame: int, end: int, groups: dict) -> dict
         ("L", "R") if primary == "BOTH" else (primary, "L" if primary == "R" else "R")
     )
 
-    if clip == "attack":
+    if clip == "run":
+        # The legacy run actions are not retarget-safe: several of them carry
+        # a root/hip rotation that turns the character on its side in the
+        # focused scene. Build a restrained loop from the known idle pose so
+        # the feet, hands, and held props remain attached to the same rig.
+        stride = math.sin(t * math.tau)
+        _add(pose, groups.get("hips"), x=math.radians(2.0 * stride), y=math.radians(2.5 * stride))
+        _add(pose, groups.get("spine_lower"), x=math.radians(-7.0), y=math.radians(2.0 * stride))
+        _add(pose, groups.get("spine_upper"), x=math.radians(-3.0 * stride), y=math.radians(-2.0 * stride))
+        _add(pose, groups.get("head"), x=math.radians(1.5 * stride), y=math.radians(-2.0 * stride))
+        _arms(
+            pose,
+            groups,
+            frame,
+            {
+                "L": {"shoulder": [(1, -22), (end, 22)], "elbow": [(1, 12), (end, -12)], "wrist": [(1, 5), (end, -5)], "shoulder_z": 3, "elbow_z": 2},
+                "R": {"shoulder": [(1, 22), (end, -22)], "elbow": [(1, -12), (end, 12)], "wrist": [(1, -5), (end, 5)], "shoulder_z": 3, "elbow_z": 2},
+            },
+        )
+        _legs(
+            pose,
+            groups,
+            frame,
+            {
+                "L": {"thigh": [(1, -20), (end, 20)], "knee": [(1, 12), (end, 24)], "ankle": [(1, -6), (end, 6)]},
+                "R": {"thigh": [(1, 20), (end, -20)], "knee": [(1, 24), (end, 12)], "ankle": [(1, 6), (end, -6)]},
+            },
+        )
+
+    elif clip == "attack":
         anticipation = ease(t / 0.28)
         strike = ease((t - 0.28) / 0.18)
         recover = ease((t - 0.46) / 0.42)
@@ -302,6 +415,62 @@ def skill_pose(hero: str, clip: str, frame: int, end: int, groups: dict) -> dict
                 0,
             )
 
+    elif clip in {"aim", "aim-super"}:
+        add_pose(pose, groups.get("spine_upper"), deg(-4.0), 0, 0)
+        add_pose(pose, groups.get("head"), 0, deg(4.0), 0)
+        _arms(
+            pose,
+            groups,
+            frame,
+            {
+                "L": {"shoulder": [(1, -8), (end, -8)], "elbow": [(1, 10), (end, 10)], "wrist": [(1, -4), (end, -4)]},
+                "R": {"shoulder": [(1, 6), (end, 6)], "elbow": [(1, 8), (end, 8)], "wrist": [(1, 2), (end, 2)]},
+            },
+        )
+
+    elif clip == "hit":
+        recoil = 1.0 - skill_spec.sample(frame, [(1, 0), (max(2, int(end * 0.35)), 1), (end, 0)])
+        add_pose(pose, groups.get("hips"), deg(-8.0 * recoil), 0, 0)
+        add_pose(pose, groups.get("spine_lower"), deg(10.0 * recoil), 0, 0)
+        add_pose(pose, groups.get("spine_upper"), deg(6.0 * recoil), 0, 0)
+        add_pose(pose, groups.get("head"), deg(4.0 * recoil), 0, 0)
+
+    elif clip == "victory":
+        celebrate = skill_spec.sample(frame, [(1, 0), (max(2, int(end * 0.25)), 1), (max(3, int(end * 0.7)), 1), (end, 0)])
+        add_pose(pose, groups.get("spine_upper"), deg(-8.0 * celebrate), 0, 0)
+        add_pose(pose, groups.get("head"), deg(-6.0 * celebrate), 0, 0)
+        _arms(
+            pose,
+            groups,
+            frame,
+            {
+                "L": {"shoulder": [(1, 0), (max(2, int(end * 0.25)), -22), (end, 0)], "elbow": [(1, 0), (max(2, int(end * 0.25)), -8), (end, 0)]},
+                "R": {"shoulder": [(1, 0), (max(2, int(end * 0.25)), -18), (end, 0)], "elbow": [(1, 0), (max(2, int(end * 0.25)), -6), (end, 0)]},
+            },
+        )
+
+    elif clip == "death":
+        fall = skill_spec.sample(frame, [(1, 0), (max(2, int(end * 0.65)), 1), (end, 1)])
+        add_pose(pose, groups.get("hips"), deg(35.0 * fall), deg(-12.0 * fall), 0)
+        add_pose(pose, groups.get("spine_lower"), deg(28.0 * fall), 0, 0)
+        add_pose(pose, groups.get("spine_upper"), deg(38.0 * fall), 0, 0)
+        add_pose(pose, groups.get("head"), deg(18.0 * fall), 0, 0)
+        _legs(
+            pose,
+            groups,
+            frame,
+            {
+                "L": {"thigh": [(1, 0), (end, -24)], "knee": [(1, 0), (end, 20)]},
+                "R": {"thigh": [(1, 0), (end, 16)], "knee": [(1, 0), (end, 28)]},
+            },
+        )
+
+    elif clip == "spawn":
+        rise = skill_spec.sample(frame, [(1, 0), (max(2, int(end * 0.7)), 1), (end, 1)])
+        add_pose(pose, groups.get("spine_lower"), deg(12.0 * (1.0 - rise)), 0, 0)
+        add_pose(pose, groups.get("spine_upper"), deg(-8.0 * (1.0 - rise)), 0, 0)
+        add_pose(pose, groups.get("head"), deg(-12.0 * (1.0 - rise)), 0, 0)
+
     return pose
 
 
@@ -384,16 +553,16 @@ def author_scene(hero: str, clip: str, target: Path):
     armature = next(obj for obj in scene.objects if obj.type == "ARMATURE")
     armature.animation_data_create()
     idle_path = SOURCE / hero / "animations" / "idle.blend"
-    idle_action = authoring.import_source_action(idle_path, "Idle")
+    idle_action = None if hero == "damian" else authoring.import_source_action(idle_path, "Idle")
     armature.animation_data.action = idle_action
-    idle_start, _idle_end = authoring.action_frame_range(idle_action)
+    idle_start, _idle_end = authoring.action_frame_range(idle_action) if idle_action else (1, 1)
     scene.frame_set(int(idle_start))
     baseline = capture_rotations(armature)
-    action_name = {"attack": "Attack", "super": "super", "gadget": "Gadget"}[clip]
+    action_name = {"idle": "idle", "run": "run", "attack": "Attack", "super": "super", "aim": "Aim", "aim-super": "AimSuper", "hit": "hit", "death": "death", "spawn": "Spawn", "victory": "Victory", "gadget": "Gadget"}[clip]
     remove_existing_action(action_name)
     action = bpy.data.actions.new(f"__AUTHORED__{hero}_{clip}")
     armature.animation_data.action = action
-    end = skill_spec.FRAME_ENDS[hero][clip]
+    end = authoring.HERO_FRAMES[hero][clip] if clip in authoring.HERO_FRAMES[hero] else skill_spec.FRAME_ENDS[hero][clip]
     groups = rig_groups(armature)
     for frame in range(1, end + 1):
         scene.frame_set(frame)
@@ -409,7 +578,7 @@ def author_scene(hero: str, clip: str, target: Path):
     scene.name = f"{hero}_{clip}_authored"
     scene["hero_slug"] = hero
     scene["clip_name"] = action_name
-    scene["clip_kind"] = "ability"
+    scene["clip_kind"] = "locomotion" if clip in {"idle", "run"} else "event"
     scene["frame_start"] = 1
     scene["frame_end"] = end
     scene["fps"] = 30
@@ -424,7 +593,7 @@ def author_scene(hero: str, clip: str, target: Path):
         .get(clip, 0.0)
     )
     skill_event_frames = json.dumps(
-        skill_spec.EVENT_FRAMES[hero][clip], ensure_ascii=False, sort_keys=True
+        skill_spec.EVENT_FRAMES.get(hero, {}).get(clip, {}), ensure_ascii=False, sort_keys=True
     )
     scene["root_motion_contract"] = (
         "gameplay_root_stays_grounded; root_motion_meters_in_event_metadata"
@@ -451,7 +620,7 @@ def author_scene(hero: str, clip: str, target: Path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--hero", default="*")
-    parser.add_argument("--clips", nargs="+", default=["attack", "super", "gadget"])
+    parser.add_argument("--clips", nargs="+", default=["idle", "attack", "super", "gadget"])
     forwarded = (
         sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:]
     )
