@@ -16,10 +16,8 @@ services:
     working_dir: /home/node/app
     expose:
       - "5173"
-    environment:
-      # Docker Desktop on Windows may not forward filesystem events reliably.
-      CHOKIDAR_USEPOLLING: "true"
-      CHOKIDAR_INTERVAL: "1000"
+    # If Docker Desktop stops forwarding bind-mount events, add
+    # VITE_USE_POLLING: "true" under environment for this service.
     volumes:
       - ./frontend:/home/node/app
       - frontend-node-modules:/home/node/app/node_modules

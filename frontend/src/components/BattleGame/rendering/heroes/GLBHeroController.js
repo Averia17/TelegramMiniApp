@@ -5,7 +5,8 @@ import {getAttackSwingYaw} from "./attackSwing.js"
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 export const LOCOMOTION_FADE = 0.16
 export const OVERLAY_FADE = 0.18
-const FULL_BODY_OVERLAYS = new Set(["attack", "super", "gadget", "hit", "spawn"])
+const MANDY_SPAWN_STAFF_REVEAL_SECONDS = 20 / 30
+const FULL_BODY_OVERLAYS = new Set(["attack", "super", "gadget", "aimGadget", "hit", "spawn"])
 const UPPER_BONE = /(spine|chest|neck|head|shoulder|clavicle|arm|hand|finger|weapon)/i
 const LOWER_BONE = /(root|hips?|pelvis|leg|thigh|calf|foot|toe)/i
 
@@ -334,6 +335,7 @@ export class GLBHeroController {
     })
     if (this.spawnCactus) this.spawnCactus.visible = false
     this.spawnElapsed = 0
+    this.mandySpawnStaffElapsed = MANDY_SPAWN_STAFF_REVEAL_SECONDS
     this.spawnDuration = Math.max(0.9, Number(options.spawnDuration) || 1.45)
     this.aimWeight = 0
     this.aimYaw = 0
@@ -469,7 +471,13 @@ export class GLBHeroController {
 
   playOutcome(name, fadeSeconds = LOCOMOTION_FADE) {
     if (!this.actions.has(name)) return this.playSafe(name, "idle", fadeSeconds)
+    if (this.state === "spawn") {
+      const spawn = this.actions.get("spawn")
+      if (spawn) spawn.stop().setEffectiveWeight(0)
+      this.state = null
+    }
     this.clearOverlay()
+    if (this.locomotionSuppressed) this.restoreLocomotion()
     const action = this.actions.get(name)
     action.setLoop(THREE.LoopRepeat, Infinity)
     action.clampWhenFinished = false
@@ -481,6 +489,8 @@ export class GLBHeroController {
     this.suppressLocomotion(0)
     this.root.visible = true
     this.spawnElapsed = 0
+    this.mandySpawnStaffElapsed = 0
+    if (this.heroName === "Mandy" && this.meleeWeapon) this.meleeWeapon.visible = false
     const action = this.actions.get("spawn")
     if (this.spawnCactus && !action) {
       this.spawnCactus.visible = true
@@ -506,7 +516,16 @@ export class GLBHeroController {
   }
 
   update(deltaSeconds, input = {}) {
-    if (this.meleeWeapon && input.alive !== false) this.meleeWeapon.visible = true
+    if (this.state === "spawn" && this.heroName === "Mandy") {
+      this.mandySpawnStaffElapsed = Math.min(
+        MANDY_SPAWN_STAFF_REVEAL_SECONDS,
+        this.mandySpawnStaffElapsed + Math.max(0, deltaSeconds),
+      )
+    }
+    const mandyStaffRevealReady = this.heroName !== "Mandy"
+      || this.state !== "spawn"
+      || this.mandySpawnStaffElapsed >= MANDY_SPAWN_STAFF_REVEAL_SECONDS - 1e-6
+    if (this.meleeWeapon && input.alive !== false && mandyStaffRevealReady) this.meleeWeapon.visible = true
     this.elapsed += deltaSeconds
     if (input.alive === false) {
       this.root.visible = true

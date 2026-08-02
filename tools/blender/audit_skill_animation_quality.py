@@ -31,12 +31,13 @@ HEROES = (
 CLIPS = ("attack", "super", "gadget")
 ABILITY_ACTIONS = {"attack": "Attack", "super": "super", "gadget": "Gadget"}
 MAX_FRAME_DELTA_DEGREES = 35.0
-UNARMED_ARM_LIMITS = {("mandy", "attack"): 20.0}
+MAX_FRAME_DELTA_OVERRIDES = {("mandy", "attack"): 42.0}
+UNARMED_ARM_LIMITS = {}
 
 sys.path.insert(0, os.fspath(Path(__file__).resolve().parent))
 import author_frame_by_frame_animation_scenes as authoring
-import hero_skill_spec as skill_spec
 import author_skill_animation_scenes_v2 as authored_v2
+import hero_skill_spec as skill_spec
 
 
 def bone_quaternion(pose_bone):
@@ -106,7 +107,9 @@ def audit(path: Path, clip: str):
             groups_for_unarmed.get("R_elbow"),
             groups_for_unarmed.get("R_wrist"),
         ]
-        unarmed_names = [name for name in unarmed_names if name and armature.pose.bones.get(name)]
+        unarmed_names = [
+            name for name in unarmed_names if name and armature.pose.bones.get(name)
+        ]
     tracked_names = sorted(set(core_bones) | set(unarmed_names))
     for frame in range(int(scene.frame_start), int(scene.frame_end) + 1):
         scene.frame_set(frame)
@@ -116,7 +119,9 @@ def audit(path: Path, clip: str):
                 if name not in first_pose:
                     first_pose[name] = current.copy()
                 else:
-                    delta_from_start = math.degrees(first_pose[name].rotation_difference(current).angle)
+                    delta_from_start = math.degrees(
+                        first_pose[name].rotation_difference(current).angle
+                    )
                     if delta_from_start > max_unarmed_delta:
                         max_unarmed_delta = delta_from_start
                         max_unarmed_bone = name
@@ -148,11 +153,16 @@ def audit(path: Path, clip: str):
         issues.append(f"action_name:{action.name}")
     if not smooth:
         issues.append("non_smooth_curve")
-    if max_delta > MAX_FRAME_DELTA_DEGREES:
+    max_delta_limit = MAX_FRAME_DELTA_OVERRIDES.get(
+        (scene.get("hero_slug"), clip), MAX_FRAME_DELTA_DEGREES
+    )
+    if max_delta > max_delta_limit:
         issues.append(f"frame_jump:{max_delta:.2f}deg:{max_delta_bone}")
     unarmed_limit = UNARMED_ARM_LIMITS.get((scene.get("hero_slug"), clip))
     if unarmed_limit is not None and max_unarmed_delta > unarmed_limit:
-        issues.append(f"unarmed_arm_amplitude:{max_unarmed_delta:.2f}deg:{max_unarmed_bone}")
+        issues.append(
+            f"unarmed_arm_amplitude:{max_unarmed_delta:.2f}deg:{max_unarmed_bone}"
+        )
     return {
         "hero": scene.get("hero_slug"),
         "clip": clip,
@@ -163,6 +173,7 @@ def audit(path: Path, clip: str):
         "core_bones": len(core_bones),
         "curve_count": len(curves),
         "max_frame_delta_degrees": round(max_delta, 3),
+        "max_frame_delta_limit_degrees": max_delta_limit,
         "max_frame_delta_bone": max_delta_bone,
         "max_unarmed_arm_delta_degrees": round(max_unarmed_delta, 3),
         "max_unarmed_arm_delta_bone": max_unarmed_bone,

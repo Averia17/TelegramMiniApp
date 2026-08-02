@@ -38,6 +38,12 @@ SCENE_ACTIONS = {
     "victory": "Victory",
     "gadget": "Gadget",
 }
+NEEDLE_EXTRA_ACTIONS = {
+    "aim-gadget": "AimGadget",
+}
+MANDY_EXTRA_ACTIONS = {
+    "aim-gadget": "AimGadget",
+}
 
 
 def action_from_scene(path: Path, canonical_name: str) -> None:
@@ -63,8 +69,13 @@ def action_from_scene(path: Path, canonical_name: str) -> None:
 
 def export(hero: str) -> None:
     hero_dir = SOURCE / hero
+    scene_actions = dict(SCENE_ACTIONS)
+    if hero == "needle":
+        scene_actions.update(NEEDLE_EXTRA_ACTIONS)
+    elif hero == "mandy":
+        scene_actions.update(MANDY_EXTRA_ACTIONS)
     focused_scenes = {
-        clip: hero_dir / "scenes" / f"{clip}.blend" for clip in SCENE_ACTIONS
+        clip: hero_dir / "scenes" / f"{clip}.blend" for clip in scene_actions
     }
     missing = [path for path in focused_scenes.values() if not path.exists()]
     if missing:
@@ -89,7 +100,7 @@ def export(hero: str) -> None:
         if action != idle_action:
             bpy.data.actions.remove(action)
 
-    for clip, canonical_name in SCENE_ACTIONS.items():
+    for clip, canonical_name in scene_actions.items():
         if clip == "idle":
             continue
         action_from_scene(focused_scenes[clip], canonical_name)

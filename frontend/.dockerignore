@@ -4,6 +4,7 @@ tmp/
 output/
 artifacts/
 assets-source/
+public/assets/
 test/
 test-results/
 .playwright-cli/

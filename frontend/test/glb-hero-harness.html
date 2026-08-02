@@ -21,7 +21,7 @@
   </style>
 </head>
 <body>
-<div id="app"><section id="viewport"><div id="state">Loading</div><canvas id="scene"></canvas></section><aside id="controls"><h1>Animation Lab</h1><p class="hint">Просмотр locomotion, event и skill-анимаций выбранного героя. Skill-кнопки запускают тот же pulse-контур, что и игровой battle runtime.</p><div class="group"><strong>Locomotion</strong><button data-animation="idle">Покой</button><button data-animation="run">Бег</button></div><div class="group"><strong>Skills</strong><button data-skill="attack">Основная атака</button><button data-skill="super">Супер</button><button data-skill="gadget">Gadget</button></div><div class="group"><strong>Events</strong><button data-animation="spawn">Появление</button><button data-animation="hit">Получил удар</button><button data-animation="victory">Победа</button><button data-animation="defeat">Поражение</button></div><div class="group"><strong>Aim</strong><button data-animation="aim">Прицел</button><button data-animation="aimSuper">Прицел супер</button></div></aside></div>
+<div id="app"><section id="viewport"><div id="state">Loading</div><canvas id="scene"></canvas></section><aside id="controls"><h1>Animation Lab</h1><p class="hint">Просмотр locomotion, event и skill-анимаций выбранного героя. Skill-кнопки запускают тот же pulse-контур, что и игровой battle runtime.</p><div class="group"><strong>Locomotion</strong><button data-animation="idle">Покой</button><button data-animation="run">Бег</button></div><div class="group"><strong>Skills</strong><button data-skill="attack">Основная атака</button><button data-skill="super">Супер</button><button data-skill="gadget">Gadget</button></div><div class="group"><strong>Events</strong><button data-animation="spawn">Появление</button><button data-animation="hit">Получил удар</button><button data-animation="victory">Победа</button><button data-animation="defeat">Поражение</button></div><div class="group"><strong>Aim</strong><button data-animation="aim">Прицел</button><button data-animation="aimSuper">Прицел супер</button><button data-animation="aimGadget">Прицел gadget</button></div></aside></div>
 <script type="module">
   import * as THREE from "three"
   import {GLBHeroController} from "/src/components/BattleGame/rendering/heroes/GLBHeroController.js"
@@ -122,7 +122,7 @@
   if(query.has("aim")){
     aimPreview.update({aiming:true,x:0,y:0,rotation:0,...(attackAreas[hero]||{attackArchetype:"projectile",attackRange:600,color:"#fff"})})
   }
-  const clips={idle:"idle",run:"run",hit:"hit",aim:"Aim",aimSuper:"AimSuper",attack:"Attack",super:"super",gadget:"Gadget",spawn:"Spawn",victory:"Victory",defeat:"death"}
+  const clips={idle:"idle",run:"run",hit:"hit",aim:"Aim",aimSuper:"AimSuper",aimGadget:"AimGadget",attack:"Attack",super:"super",gadget:"Gadget",spawn:"Spawn",victory:"Victory",defeat:"death"}
   let attackPulse=0
   let superPulse=0
   let gadgetPulse=0

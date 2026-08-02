@@ -3,6 +3,7 @@
   "fps": 30,
   "event_clips": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"],
   "ability_clips": ["attack", "super", "gadget"],
+  "hero_animation_extras": {"mandy": ["aim-gadget"], "needle": ["aim-gadget"]},
   "heroes": ["brock-zeus", "damian", "fairy-mina", "kaze", "mandy", "needle", "persephone-lumi", "wukong-mico"],
   "required_scene_metadata": ["hero_slug", "clip_name", "clip_kind", "frame_start", "frame_end"]
 }

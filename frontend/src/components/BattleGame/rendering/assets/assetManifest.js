@@ -11,6 +11,8 @@ const clips = Object.freeze({
   victory: "Victory",
   defeat: "death",
 })
+const needleClips = Object.freeze({...clips, aimGadget: "AimGadget"})
+const mandyClips = Object.freeze({...clips, aimGadget: "AimGadget"})
 
 const detachedWeapons = new Set(["damian", "kaze", "mandy", "persephone-lumi", "wukong-mico"])
 const weaponAttachments = Object.freeze({
@@ -33,7 +35,7 @@ const weaponAttachments = Object.freeze({
   ]),
 })
 
-const hero = (id, scale = 0.92, rotationOffset = 0, assetId = id.toLowerCase()) => Object.freeze({
+const hero = (id, scale = 0.92, rotationOffset = 0, assetId = id.toLowerCase(), clipSet = clips) => Object.freeze({
   id,
   url: `/assets/heroes/output_heroes/${assetId}_base.glb`,
   weaponUrl: detachedWeapons.has(assetId)
@@ -44,12 +46,12 @@ const hero = (id, scale = 0.92, rotationOffset = 0, assetId = id.toLowerCase()) 
   scale,
   targetHeight: 2.45,
   rotationOffset,
-  clips,
+  clips: clipSet,
 })
 
 export const HERO_ASSETS = Object.freeze({
-  Shadow: hero("Shadow", 0.94, 0, "needle"),
-  Mandy: hero("Mandy"),
+  Shadow: hero("Shadow", 0.94, 0, "needle", needleClips),
+  Mandy: hero("Mandy", 0.92, 0, "mandy", mandyClips),
   "Fairy Mina": hero("Fairy Mina", 0.92, 0, "fairy-mina"),
   "Brock Zeus": Object.freeze({
     ...hero("Brock Zeus", 0.92, 0, "brock-zeus"),

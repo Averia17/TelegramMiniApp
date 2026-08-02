@@ -13,7 +13,7 @@ import math
 
 FRAME_ENDS = {
     "needle": {"attack": 24, "super": 42, "gadget": 24},
-    "mandy": {"attack": 28, "super": 55, "gadget": 58},
+    "mandy": {"attack": 20, "super": 60, "gadget": 24},
     "fairy-mina": {"attack": 24, "super": 55, "gadget": 34},
     "brock-zeus": {"attack": 24, "super": 54, "gadget": 40},
     "kaze": {"attack": 38, "super": 34, "gadget": 48},
@@ -32,9 +32,15 @@ EVENT_FRAMES = {
         "gadget": {"dash_start": 4, "dash_end": 10, "spore_start": 10, "spore_end": 20},
     },
     "mandy": {
-        "attack": {"impact": 16, "shockwave_start": 14, "shockwave_end": 16},
-        "super": {"wave_start": 38, "charge_end": 30},
-        "gadget": {"plant_start": 10, "stance_start": 18, "stance_end": 48},
+        "attack": {"impact": 8, "shockwave_start": 8, "shockwave_end": 12},
+        "super": {
+            "charge_end": 30,
+            "contact": 35,
+            "hold_start": 35,
+            "hold_end": 45,
+            "wave_start": 35,
+        },
+        "gadget": {"plant_start": 5, "stance_start": 12, "stance_end": 24},
     },
     "fairy-mina": {
         "attack": {"release": 12, "home_start": 12, "home_end": 20},

@@ -1,6 +1,5 @@
 import {lazy, Suspense, useEffect, useState} from "react"
 import {BrowserRouter, Route, Routes, useLocation, useParams} from "react-router-dom"
-import LandingPage from "./pages/landing-page.jsx"
 import axios from "axios"
 import {API_URL} from "./utils/urls.js"
 import {authenticate} from "./utils/auth.js"
@@ -8,6 +7,7 @@ import {BattleLoading} from "./components/BattleLoading/BattleLoading.jsx"
 import {loadBattleHero} from "./utils/battlePreferences.js"
 
 const BattleGame = lazy(() => import("./components/BattleGame/BattleGame.jsx").then(module => ({default: module.BattleGame})))
+const LandingPage = lazy(() => import("./pages/landing-page.jsx"))
 
 const BattlePage = ({id}) => {
   const {roomId} = useParams()
@@ -37,10 +37,12 @@ const App = () => {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={id ? <LandingPage id={id}/> : <div role="alert">{authError || "Авторизация…"}</div>}/>
-        <Route path="/battle/:roomId?" element={id ? <BattlePage id={id}/> : <></>}/>
-      </Routes>
+      <Suspense fallback={<BattleLoading progress={18} status="Загружаем интерфейс..." />}>
+        <Routes>
+          <Route path="/" element={id ? <LandingPage id={id}/> : <div role="alert">{authError || "Авторизация…"}</div>}/>
+          <Route path="/battle/:roomId?" element={id ? <BattlePage id={id}/> : <></>}/>
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }

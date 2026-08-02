@@ -1,7 +1,6 @@
-import {useCallback, useEffect, useState} from "react"
+import {lazy, Suspense, useCallback, useEffect, useState} from "react"
 import {useNavigate, useSearchParams} from "react-router-dom"
 import axios from "axios"
-import {HeroSelect} from "../components/HeroSelect/HeroSelect.jsx"
 import {Leaderboard} from "../components/Tabs/Leaderboard.jsx"
 import {ProfileTab} from "../components/Tabs/ProfileTab.jsx"
 import {StoreTab} from "../components/Tabs/StoreTab.jsx"
@@ -9,6 +8,8 @@ import "./landing-page.css"
 import {API_URL} from "../utils/urls.js"
 import {BattleLoading} from "../components/BattleLoading/BattleLoading.jsx"
 import {loadBattleHero, saveBattleHero} from "../utils/battlePreferences.js"
+
+const HeroSelect = lazy(() => import("../components/HeroSelect/HeroSelect.jsx").then(module => ({default: module.HeroSelect})))
 
 const TABS = ["play", "rating", "profile", "store"]
 
@@ -51,7 +52,7 @@ const LandingPage = ({id}) => {
       setBattleStarting(false)
       setPlayError(error.response?.data?.detail || "Не удалось начать бой")
     }
-  }, [id,navigate,selectedHero])
+  }, [navigate,selectedHero])
 
   const playerTag = `P${String(id || 0).slice(-6)}`
 
@@ -81,7 +82,9 @@ const LandingPage = ({id}) => {
           </nav>
 
           <div className="lp-content lp-content--play">
-            <HeroSelect onSelect={selectHero} selectedHero={selectedHero}/>
+            <Suspense fallback={<BattleLoading progress={28} status="Загружаем героев..." />}>
+              <HeroSelect onSelect={selectHero} selectedHero={selectedHero}/>
+            </Suspense>
           </div>
 
           <footer className="lp-battle-dock">

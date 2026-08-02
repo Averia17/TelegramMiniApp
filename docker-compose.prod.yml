@@ -33,6 +33,8 @@ services:
     restart: unless-stopped
     volumes:
       - frontend-dist:/src/public:ro
+      # Runtime GLB files live outside the image and can be replaced without a rebuild.
+      - ./frontend/public/assets:/src/public/assets:ro
     depends_on:
       account:
         condition: service_healthy

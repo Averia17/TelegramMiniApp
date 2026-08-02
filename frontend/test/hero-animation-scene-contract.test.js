@@ -17,7 +17,8 @@ const expectedSceneClips = [
 
 for (const hero of manifest.heroes) {
   test(`${hero} has one authored Blender scene for every runtime event`, async () => {
-    for (const clip of expectedSceneClips) {
+    const clips = [...expectedSceneClips, ...(manifest.hero_animation_extras?.[hero] || [])]
+    for (const clip of clips) {
       const file = path.join(sourceRoot, hero, "scenes", `${clip}.blend`)
       await assert.doesNotReject(access(file), `${hero}/${clip}.blend is missing`)
     }

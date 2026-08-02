@@ -487,7 +487,10 @@ test("the hero manifest uses standardized base GLBs and optional detached weapon
     const asset = getHeroAsset(name)
     assert.equal(asset.id, name)
     assert.equal(asset.scale > 0, true)
-    assert.deepEqual(Object.keys(asset.clips), ["idle", "run", "hit", "aim", "aimSuper", "attack", "super", "gadget", "spawn", "victory", "defeat"])
+    const expectedClipKeys = ["Shadow", "Mandy"].includes(name)
+      ? ["idle", "run", "hit", "aim", "aimSuper", "attack", "super", "gadget", "spawn", "victory", "defeat", "aimGadget"]
+      : ["idle", "run", "hit", "aim", "aimSuper", "attack", "super", "gadget", "spawn", "victory", "defeat"]
+    assert.deepEqual(Object.keys(asset.clips), expectedClipKeys)
     assert.equal("eventAnimations" in asset, false)
     assert.match(asset.url, /\/assets\/heroes\/output_heroes\/[^/]+_base\.glb$/)
     if (asset.weaponUrl) {
@@ -1148,7 +1151,7 @@ test("the fighter selection warms only the selected GLB while idle", async () =>
 test("hero equipment profiles hide detached ammo and animate Brock's nearby cloud", () => {
   const mandyRoot = new THREE.Group()
   const mandyWrist = new THREE.Bone()
-  mandyWrist.name = "R_wrist_s_064"
+  mandyWrist.name = "L_wrist_s_047"
   const mandyStaff = new THREE.Group()
   mandyStaff.name = "MandyStaff_Attachment"
   mandyStaff.userData.attachment_role = "held-weapon"

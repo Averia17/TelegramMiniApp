@@ -215,7 +215,12 @@ def validate() -> list[str]:
                 )
 
         animation = hero.get("animations", {})
-        if animation.get("available") != contracts.get("runtimeAnimationClips"):
+        manifest_slug = animation.get("manifestSlug", hero.get("slug"))
+        expected_animation_clips = list(contracts.get("runtimeAnimationClips", []))
+        expected_animation_clips.extend(
+            manifest.get("hero_animation_extras", {}).get(manifest_slug, [])
+        )
+        if animation.get("available") != expected_animation_clips:
             add_error(
                 errors,
                 f"{name}: per-hero animation list differs from the runtime contract",
@@ -233,7 +238,6 @@ def validate() -> list[str]:
         ).get("gadget"):
             add_error(errors, f"{name}: gadget ability animation mapping is stale")
 
-        manifest_slug = animation.get("manifestSlug", hero.get("slug"))
         if manifest_slug and manifest_slug not in manifest.get("heroes", []):
             add_error(
                 errors, f"{name}: animation manifest has no hero slug {manifest_slug!r}"
