@@ -6,6 +6,7 @@ services:
       dockerfile: Dockerfile
     expose:
       - "8000"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--reload", "--port", "8000"]
     volumes:
       - .:/app
     env_file: ../.env
@@ -15,6 +16,17 @@ services:
       APP_ENV: "development"
       APP_AUTH_SECRET: "${APP_AUTH_SECRET:-local-development-auth-secret-change-before-production}"
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
     networks:
       - app-net
 

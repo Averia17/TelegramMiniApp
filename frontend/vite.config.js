@@ -7,7 +7,15 @@ export default defineConfig({
     server: {
         watch: {
             usePolling: true,
-            interval: 300,
+            interval: 1000,
+            ignored: [
+                '**/node_modules/**',
+                '**/.git/**',
+                '**/.playwright-cli/**',
+                '**/dist/**',
+                '**/assets-source/**',
+                '**/public/assets/**',
+            ],
         },
         host: '0.0.0.0',
         strictPort: true,

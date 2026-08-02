@@ -25,6 +25,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
+
+
 allowed_origins = ["*"]
 if os.getenv("APP_ENV", "development").lower() == "production":
     allowed_origins = [

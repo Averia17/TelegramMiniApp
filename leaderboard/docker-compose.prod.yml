@@ -12,7 +12,16 @@ services:
       - KAFKA_ADDR=kafka:9092
     restart: always
     depends_on:
-      - leaderboard-redis
+      leaderboard-redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8001/health | grep -q 'status'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
     networks:
       - app-net
 
@@ -20,6 +29,12 @@ services:
     container_name: leaderboard-redis
     image: redis:7-alpine
     restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
     command: redis-server --appendonly yes --appendfsync everysec --auto-aof-rewrite-percentage 100 --auto-aof-rewrite-min-size 64mb
     volumes:
       - leaderboard-redis-data:/data

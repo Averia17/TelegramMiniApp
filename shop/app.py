@@ -7,6 +7,13 @@ from routes import router
 from starlette.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
+
+
 prefix_router = APIRouter(prefix="/api")
 
 

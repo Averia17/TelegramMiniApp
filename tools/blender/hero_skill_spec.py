@@ -110,7 +110,7 @@ def _add(pose, name, x=0.0, y=0.0, z=0.0):
     pose[name] = (old[0] + x, old[1] + y, old[2] + z)
 
 
-def _body(pose, groups, frame, body):
+def _body(pose, groups, frame, body, scale=1.0):
     mapping = {
         "hips_bend": (groups.get("hips"), "x"),
         "hips_twist": (groups.get("hips"), "y"),
@@ -124,16 +124,16 @@ def _body(pose, groups, frame, body):
     for channel, (name, axis) in mapping.items():
         if channel not in body:
             continue
-        value = sample(frame, body[channel])
+        value = sample(frame, body[channel]) * scale
         _add(pose, name, **{axis: math.radians(value)})
 
 
-def _arms(pose, groups, frame, arms):
+def _arms(pose, groups, frame, arms, scale=1.0):
     for side, controls in arms.items():
         sign = -1.0 if side == "L" else 1.0
-        shoulder = sample(frame, controls.get("shoulder", []))
-        elbow = sample(frame, controls.get("elbow", []))
-        wrist = sample(frame, controls.get("wrist", []))
+        shoulder = sample(frame, controls.get("shoulder", [])) * scale
+        elbow = sample(frame, controls.get("elbow", [])) * scale
+        wrist = sample(frame, controls.get("wrist", [])) * scale
         _add(
             pose,
             groups.get(f"{side}_shoulder"),
@@ -202,11 +202,32 @@ def _profile(hero: str, clip: str):
     p = {
         "body": {},
         "arms": {},
+        "body_scale": 1.0,
+        "arm_scale": 1.0,
         "legs": {},
         "fingers": [],
         "wings": None,
         "wing_wave": False,
     }
+    # The semantic profiles describe intent in degrees, while the source rigs
+    # need a larger chain motion to make held weapons read clearly in the
+    # orthographic gameplay camera. Keep timing and event frames unchanged;
+    # amplify only authored skill pose rotations, never idle/run/head-only
+    # motion. Values are tuned per hero because their bind poses and weapon
+    # grips have very different local axes.
+    skill_arm_scale = {
+        "needle": {"attack": 2.4, "super": 1.8, "gadget": 1.8},
+        "mandy": {"attack": 3.1, "super": 2.1, "gadget": 1.9},
+        "fairy-mina": {"attack": 2.5, "super": 1.9, "gadget": 1.9},
+        "brock-zeus": {"attack": 3.0, "super": 2.0, "gadget": 1.9},
+        "kaze": {"attack": 2.6, "super": 2.0, "gadget": 1.9},
+        "wukong-mico": {"attack": 3.0, "super": 2.0, "gadget": 1.9},
+        "damian": {"attack": 2.4, "super": 1.9, "gadget": 1.9},
+        "persephone-lumi": {"attack": 2.8, "super": 1.9, "gadget": 1.9},
+    }
+    if hero in skill_arm_scale and clip in skill_arm_scale[hero]:
+        p["arm_scale"] = skill_arm_scale[hero][clip]
+        p["body_scale"] = 1.2
     if hero == "needle":
         if clip == "attack":
             p.update(
@@ -1202,8 +1223,8 @@ def _profile(hero: str, clip: str):
 def profile_pose(hero: str, clip: str, frame: int, groups: dict):
     p = _profile(hero, clip)
     pose = {}
-    _body(pose, groups, frame, p["body"])
-    _arms(pose, groups, frame, p["arms"])
+    _body(pose, groups, frame, p["body"], p.get("body_scale", 1.0))
+    _arms(pose, groups, frame, p["arms"], p.get("arm_scale", 1.0))
     _legs(pose, groups, frame, p["legs"])
     if p["fingers"]:
         close = p["fingers"]

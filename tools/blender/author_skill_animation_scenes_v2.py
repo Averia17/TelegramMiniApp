@@ -91,6 +91,26 @@ def rig_groups(armature):
         groups[f"{side}_upper_leg"] = choose(names, side, ("upperleg", "thigh"))
         groups[f"{side}_knee"] = choose(names, side, ("lowerleg", "knee", "shin"))
         groups[f"{side}_ankle"] = choose(names, side, ("ankle", "foot", "toe"))
+    # Needle uses a compact legacy rig without L_/R_ markers. Its explicit
+    # LeftArm/RightArm chain must still receive the same semantic skill pose.
+    simple_chain = {
+        "L": ("LeftArm", "LeftHand", "LeftLeg", "LeftFoot"),
+        "R": ("RightArm", "RightHand", "RightLeg", "RightFoot"),
+    }
+    for side, chain in simple_chain.items():
+        fallback = (
+            f"{side}_shoulder",
+            f"{side}_elbow",
+            f"{side}_upper_leg",
+            f"{side}_ankle",
+        )
+        for key, name in zip(fallback, chain):
+            if groups[key] is None and name in names:
+                groups[key] = name
+        if groups[f"{side}_wrist"] is None and chain[1] in names:
+            groups[f"{side}_wrist"] = chain[1]
+        if groups[f"{side}_knee"] is None and chain[3] in names:
+            groups[f"{side}_knee"] = chain[3]
     groups["fingers_by_side"] = {}
     for side in ("L", "R"):
         groups["fingers_by_side"][side] = {

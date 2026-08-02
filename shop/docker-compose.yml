@@ -18,7 +18,18 @@ services:
       APP_AUTH_SECRET: "${APP_AUTH_SECRET:-local-development-auth-secret-change-before-production}"
     restart: unless-stopped
     depends_on:
-      - shop-db
+      shop-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     networks:
       - app-net
 
@@ -29,6 +40,12 @@ services:
     volumes:
       - shop-db-data:/var/lib/postgresql/data
     command: "postgres -c max_connections=150 -c shared_buffers=512MB -c effective_cache_size=1536MB -c maintenance_work_mem=128MB -c checkpoint_completion_target=0.9 -c wal_buffers=16MB -c default_statistics_target=100 -c random_page_cost=1.1 -c effective_io_concurrency=200 -c work_mem=3495kB -c min_wal_size=1GB -c max_wal_size=4GB -c max_worker_processes=2 -c max_parallel_workers_per_gather=1 -c max_parallel_workers=2 -c max_parallel_maintenance_workers=1"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U someusername -d bot"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     environment:
       POSTGRES_USER: someusername
       POSTGRES_PASSWORD: postgres_pass12345

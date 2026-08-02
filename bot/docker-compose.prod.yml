@@ -12,8 +12,10 @@ services:
     command: ["sh", "-c", "alembic upgrade head && exec python -m bot"]
     restart: always
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - app-net
     logging:
@@ -29,6 +31,12 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
     command: "postgres -c max_connections=150 -c shared_buffers=512MB"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U someusername -d bot"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     environment:
       POSTGRES_USER: someusername
       POSTGRES_PASSWORD: postgres_pass12345
@@ -43,9 +51,15 @@ services:
 
   redis:
     container_name: redis
-    image: redis:6.2-alpine
+    image: redis:7-alpine
     restart: always
     command: redis-server --port 6388 --save 20 1 --loglevel warning --requirepass someredispass
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 6388 -a someredispass ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
     volumes:
       - redis-data:/data
     networks:

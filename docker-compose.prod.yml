@@ -30,20 +30,27 @@ services:
       dockerfile: Dockerfile
     ports:
       - "80:80"
+    restart: unless-stopped
     volumes:
       - frontend-dist:/src/public:ro
     depends_on:
-      - account
-      - frontend
-      - battle
-      - shop
-      - leaderboard
+      account:
+        condition: service_healthy
+      frontend:
+        condition: service_completed_successfully
+      battle:
+        condition: service_healthy
+      shop:
+        condition: service_healthy
+      leaderboard:
+        condition: service_healthy
     networks:
       - app-net
 
   kafka:
     image: confluentinc/cp-kafka:7.4.10
     container_name: kafka
+    restart: unless-stopped
     expose:
       - "9092"
       - "29093"
@@ -63,6 +70,12 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD-SHELL", "cub kafka-ready -b localhost:9092 1 20"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
     volumes:
       - kafka-data:/var/lib/kafka/data
     networks:
@@ -72,6 +85,9 @@ services:
     image: provectuslabs/kafka-ui:latest
     restart: always
     container_name: kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
     expose:
       - "8080"
     environment:

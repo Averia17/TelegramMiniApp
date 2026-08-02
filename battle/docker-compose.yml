@@ -19,7 +19,16 @@ services:
       - APP_ENV=development
     restart: unless-stopped
     depends_on:
-      - battle-redis
+      battle-redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8000/health | grep -q 'status'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
     networks:
       - app-net
 
@@ -27,6 +36,12 @@ services:
     container_name: battle-redis
     image: redis:7-alpine
     restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
     volumes:
       - battle-redis-data:/data
     networks:
