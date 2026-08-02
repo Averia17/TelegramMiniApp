@@ -127,6 +127,7 @@
   let superPulse=0
   let gadgetPulse=0
   const controller=new GLBHeroController(model,instance.animations,clips,{
+    companionAnimations:instance.companionAnimations,
     heroName:hero,
     attackPulse,
     superPulse,
@@ -225,6 +226,22 @@
     actionWeights:Object.fromEntries([...controller.actions.entries()].map(([name,action])=>[name,Number(action.getEffectiveWeight().toFixed(3))])),
     clipTimes:Object.fromEntries([...controller.actions.entries()].map(([name,action])=>[name,Number(action.time.toFixed(3))])),
     fallbackEvents:controller.fallbackEvents,
+    cloud:(()=>{
+      if(!controller.cloud)return {state:controller.cloudState,actions:[...controller.cloudActions.keys()],position:null,scale:null}
+      const bounds=new THREE.Box3().setFromObject(controller.cloud)
+      const mesh=controller.cloud.getObjectByProperty("isMesh",true)
+      return {
+        state:controller.cloudState,
+        visible:controller.cloud.visible,
+        actions:[...controller.cloudActions.keys()],
+        position:bounds.getCenter(new THREE.Vector3()).toArray().map(value=>Number(value.toFixed(3))),
+        scale:mesh?mesh.getWorldScale(new THREE.Vector3()).toArray().map(value=>Number(value.toFixed(3))):controller.cloud.scale.toArray().map(value=>Number(value.toFixed(3))),
+        bounds:bounds.getSize(new THREE.Vector3()).toArray().map(value=>Number(value.toFixed(3))),
+        lightningCharge:Number((controller.cloud.userData.lightningCharge||0).toFixed(3)),
+        lightningVisible:Boolean(controller.cloudLightning?.visible),
+        materialColor:mesh?.material?.color?.getHexString()||null,
+      }
+    })(),
     clips:instance.animations.map(clip=>clip.name),
     coordinateSystem:"Three.js: +Y up; ground plane XZ",
   })

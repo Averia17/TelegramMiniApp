@@ -10,6 +10,8 @@ import {replaceFallbackWithEnvironment} from "./environmentPlacement.js"
 import {createMapSignature} from "./mapSignature.js"
 import {flatMaterial} from "../shared/materials.js"
 
+const ISLAND_TERRAIN_LAYER_HEIGHTS = [0.003, 0.006, 0.009]
+
 const mergeWalls = walls => [...walls]
   .sort((a, b) => a.type.localeCompare(b.type) || a.minY - b.minY || a.maxY - b.maxY || a.minX - b.minX)
   .reduce((merged, wall) => {
@@ -108,7 +110,7 @@ export class MapRenderer {
       const plaza = new THREE.Mesh(new THREE.CircleGeometry(205 * WORLD_SCALE, 64), new THREE.MeshBasicMaterial({color: 0x57616a}))
       ;[waterRing, forest, plaza].forEach((mesh, index) => {
         mesh.rotation.x = -Math.PI / 2
-        mesh.position.y = (index + 1) * .012
+        mesh.position.y = ISLAND_TERRAIN_LAYER_HEIGHTS[index]
         group.add(mesh)
       })
       const bridgeMaterial = flatMaterial(0x6d5237)

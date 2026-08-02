@@ -37,6 +37,16 @@ export const HERO_KITS = Object.freeze({
   "Persephone Lumi": {basic:{id:"luminous_trail",name:"Световой след",description:"След замедляет и раскрывает врагов."},super:{id:"root_garden",name:"Сад корней",description:"Поле корней обездвиживает вошедших врагов.",slot:"primary",prediction:"server"},gadget:{id:"flower_burst",name:"Цветочный взрыв",description:"Взрывает активный след или сад.",slot:"secondary",prediction:"server"}},
 })
 
+export const TIMED_KIT_DESCRIPTIONS = Object.freeze({
+  Needle: {basic: "Споровый шип сразу замедляет поражённых врагов на 2 секунды."},
+  Kaze: {basic: "Косые удары: усиленный удар доступен раз в 3 секунды."},
+  "Wukong Mico": {
+    basic: "Тяжёлый удар посохом наносит стабильный урон без накопления ярости.",
+    super: "Вихрь возмездия длится 5 секунд и наносит урон вокруг героя.",
+  },
+  Damian: {basic: "Сфера скверны ослабляет поражённого врага на 4 секунды."},
+})
+
 export const HERO_AIM_DEFAULTS = Object.freeze({
   projectile: {shape: "line", color: "#ffffff"},
   burst: {shape: "line", color: "#8ee8ff"},

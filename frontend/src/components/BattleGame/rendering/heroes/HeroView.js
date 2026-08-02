@@ -16,6 +16,14 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const blend = (speed, delta) => 1 - Math.exp(-speed * delta)
 const heroSpeed = heroName => HEROES_CONFIG.find(hero => hero.name === heroName)?.speed || ANIMATION_REFERENCE_SPEED
 
+const waitForHeroUpgradeIdle = () => new Promise(resolve => {
+  if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(resolve, {timeout: 800})
+    return
+  }
+  setTimeout(resolve, 0)
+})
+
 const createLabel = state => {
   const canvas = document.createElement("canvas")
   canvas.width = 256
@@ -140,6 +148,8 @@ export class HeroView {
   async loadGlb(heroName) {
     if (!assetRegistry.hasHero(heroName)) return
     try {
+      await waitForHeroUpgradeIdle()
+      if (this.disposed) return
       const instance = await assetRegistry.instantiateHero(heroName)
       if (!instance) return
       if (this.disposed) {
@@ -151,6 +161,7 @@ export class HeroView {
       this.modelMaterials = collectMaterials(this.model)
       this.modelOpacity = 1
       this.animation = new GLBHeroController(instance.root, instance.animations, instance.asset.clips, {
+        companionAnimations: instance.companionAnimations,
         heroName,
         attackPulse: this.state.attackPulse,
         superPulse: this.state.superPulse,

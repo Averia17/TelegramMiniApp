@@ -25,9 +25,8 @@ func InitGameState(gs *GameState) {
 	gs.DamageZones = make([]*DamageZone, 0)
 	gs.PendingMandySupers = make([]*PendingMandySuper, 0)
 	gs.HeroZones = make([]*HeroZone, 0)
-	gs.SporeStacks = make(map[string]int)
 	gs.DoomedUntil = make(map[string]int64)
-	gs.DamianDebuffs = make(map[string]int)
+	gs.DamianDebuffUntil = make(map[string]int64)
 	gs.LightMarkedUntil = make(map[string]int64)
 	gs.AbilityTargets = make(map[string]string)
 	gs.LightningStrikes = make([]*LightningStrike, 0)
@@ -294,6 +293,7 @@ func (gs *GameState) updateMonsters() {
 func (gs *GameState) updateStatuses() {
 	now := time.Now().UnixMilli()
 	for _, p := range gs.Players {
+		p.SuperCharge = SuperChargePercent(p, now)
 		gs.reloadAmmo(p, now)
 		if p.ShieldStackUntil > 0 && p.ShieldStackUntil <= now {
 			p.ShieldStacks, p.ShieldStackUntil = 0, 0
@@ -386,8 +386,8 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 }
 
 func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int) int {
-	if source != nil && gs.DamianDebuffs[source.PlayerId] > 0 {
-		amount = int(math.Round(float64(amount) * (1 - .08*float64(gs.DamianDebuffs[source.PlayerId]))))
+	if source != nil && gs.DamianDebuffUntil[source.PlayerId] > time.Now().UnixMilli() {
+		amount = int(math.Round(float64(amount) * .80))
 	}
 	if target != nil && gs.DoomedUntil[target.PlayerId] > time.Now().UnixMilli() {
 		amount = int(math.Round(float64(amount) * 1.3))
@@ -404,20 +404,7 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 			TargetType: "players", TargetID: target.PlayerId, ProjectileID: gs.activeProjectileID, Damage: dealt,
 		})
 	}
-	if dealt > 0 {
-		if source != nil && source.HeroName == "Mandy" {
-			// Mandy charges by successful staff swings, not proportional damage.
-		} else if source != nil && CombatKitFor(source.HeroName) == nil {
-			source.SuperCharge = int(math.Min(100, float64(source.SuperCharge+20)))
-		} else {
-			gs.awardSuperFromDamage(source, dealt)
-		}
-	}
 	if wasAlive && !target.IsAlive() {
-		if source != nil && source.HeroName == "Kaze" && gs.DoomedUntil[target.PlayerId] > time.Now().UnixMilli() {
-			source.LastPrimaryAt = 0
-			source.SuperCharge = 100
-		}
 		killerName := "Unknown"
 		if source != nil {
 			killerName = source.Name
@@ -489,12 +476,6 @@ func (gs *GameState) updateActiveAbilities() {
 			continue
 		}
 		source.LastAbilityTick = now
-		if source.HeroName == "Kaze" && source.KazeComboHits >= 2 {
-			if now >= source.KazeComboUntil {
-				gs.hitSector(source, source.Rotation, 105, .72, source.AttackDmg*2, false)
-				source.KazeComboHits = 0
-			}
-		}
 		if source.ChannelUntil > now {
 			gs.addEffect("beam", source.X, source.Y, source.X+math.Cos(source.Rotation)*840, source.Y+math.Sin(source.Rotation)*840, 0, 0, 0, 0, source.Color, 0, 90)
 			gs.beamDamage(source, source.Rotation, 840, 15)
@@ -680,16 +661,13 @@ func (gs *GameState) updateBullets() {
 				gs.LightMarkedUntil[p.PlayerId] = time.Now().UnixMilli() + 4000
 			}
 			if b.Kind == "damian_orb" || b.Kind == "damian_totem_orb" {
-				gs.DamianDebuffs[p.PlayerId] = int(math.Min(3, float64(gs.DamianDebuffs[p.PlayerId]+1)))
+				gs.DamianDebuffUntil[p.PlayerId] = time.Now().UnixMilli() + cappedSkillDuration(DamianDebuffDuration)
 			}
 			if b.Kind == "spore" {
-				gs.SporeStacks[p.PlayerId] = gs.SporeStacks[p.PlayerId] + 1
-				if gs.SporeStacks[p.PlayerId] >= 3 {
-					gs.SporeStacks[p.PlayerId] = 0
-					p.SlowUntil = time.Now().UnixMilli() + 2000
-					p.SlowMultiplier = .60
-					gs.addEffect("needle_roots", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#75d947", 0, 2000)
-				}
+				slowUntil := time.Now().UnixMilli() + cappedSkillDuration(NeedleSporeSlowDuration)
+				p.SlowUntil = slowUntil
+				p.SlowMultiplier = .60
+				gs.addEffect("needle_spores", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#75d947", 0, cappedSkillDuration(NeedleSporeSlowDuration))
 			}
 			if b.Kind == "spore" || b.Kind == "quantum" {
 				gs.radialDamageExcept(b.PlayerId, b.X, b.Y, map[string]float64{"spore": 115, "quantum": 75}[b.Kind], b.Damage, p.PlayerId)
@@ -1141,7 +1119,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 		p.LastAbilityOK = true
 		return
 	}
-	if primary && p.SuperCharge < 100 {
+	if primary && SuperChargePercent(p, ts) < 100 {
 		return
 	}
 	if primary {
@@ -1224,16 +1202,30 @@ func AbilityCooldownMs(heroName, slot string) int64 {
 		return 6500
 	}
 	switch heroName {
+	case "Needle":
+		return 12000
+	case "Mandy":
+		return 15000
+	case "Fairy Mina":
+		return 12000
+	case "Brock Zeus":
+		return 14000
+	case "Kaze":
+		return 10000
+	case "Wukong Mico":
+		return 11000
+	case "Damian":
+		return 15000
+	case "Persephone Lumi":
+		return 13000
 	case "Viper":
 		return 5800
 	case "Titan":
 		return 6000
-	case "Needle":
-		return 5600
 	case "Spark":
 		return 5000
 	}
-	return 6000
+	return 12000
 }
 
 func (gs *GameState) playerRotate(id string, ts int64, rotation float64, aimDistance ...float64) {
@@ -1552,7 +1544,6 @@ func (gs *GameState) hitSectorWithDamage(source *player.Player, angle, reach, ha
 		}
 		gs.damageMonster(id, target, damage)
 		hits++
-		source.SuperCharge = int(math.Min(100, float64(source.SuperCharge+20)))
 		gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ffe55c", damage, 520)
 	}
 	for _, crate := range gs.Props {
@@ -1586,9 +1577,6 @@ func (gs *GameState) damageLunarCrate(source *player.Player, crate *prop.Prop, d
 	reward.LootType = crate.LootType
 	gs.Props = append(gs.Props, reward)
 	gs.addEffect("crate_break", crate.X, crate.Y, 0, 0, 34, 0, 0, 0, lunarLootColor(crate.LootType), 0, 650)
-	if source != nil {
-		source.SuperCharge = int(math.Min(100, float64(source.SuperCharge+5)))
-	}
 	return true
 }
 
@@ -1671,19 +1659,15 @@ func (gs *GameState) radialDamageOnce(owner string, x, y, radius float64, damage
 	return hits
 }
 
-func (gs *GameState) awardSuperFromDamage(source *player.Player, damage int) {
-	if source == nil || damage <= 0 || source.SuperCharge >= 100 {
-		return
+func SuperChargePercent(p *player.Player, now int64) int {
+	if p == nil || p.LastPrimaryAt == 0 {
+		return 100
 	}
-	// 4000 actual PvP damage fills the meter. Carry preserves strict
-	// proportionality even when individual hits are smaller than one point.
-	source.SuperChargeCarry += float64(damage) / 40.0
-	gained := int(source.SuperChargeCarry)
-	if gained <= 0 {
-		return
+	cooldown := AbilityCooldownMs(p.HeroName, "primary")
+	if now <= p.LastPrimaryAt {
+		return 0
 	}
-	source.SuperCharge = int(math.Min(100, float64(source.SuperCharge+gained)))
-	source.SuperChargeCarry -= float64(gained)
+	return int(math.Min(100, float64(now-p.LastPrimaryAt)*100/float64(cooldown)))
 }
 
 func (gs *GameState) destroyWallsInRadius(x, y, radius float64) int {
@@ -1808,7 +1792,8 @@ func (gs *GameState) setPlayersActive(active bool) {
 		if active {
 			p.Lives = p.MaxLives
 			p.Kills = 0
-			p.SuperCharge = 0
+			p.SuperCharge = 100
+			p.LastPrimaryAt, p.LastSecondaryAt = 0, 0
 			p.FocusStartedAt, p.FocusCharge = 0, 0
 			p.GadgetArmed, p.GadgetCharges = false, 3
 			p.Ammo = p.MaxAmmo

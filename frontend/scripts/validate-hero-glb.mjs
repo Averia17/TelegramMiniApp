@@ -5,7 +5,7 @@ import path from "node:path"
 const expectedClips = new Set([
   "idle", "run", "hit", "death", "super", "Aim", "AimSuper", "Attack", "Gadget", "Spawn", "Victory",
 ])
-const extraClipsByHero = Object.freeze({needle: ["AimGadget"]})
+const extraClipsByHero = Object.freeze({"brock-zeus": ["AimGadget"], "fairy-mina": ["AimGadget"], kaze: ["AimGadget"], mandy: ["AimGadget"], needle: ["AimGadget"]})
 const heldRoles = new Set(["held-weapon", "throwable-weapon"])
 const readGlbJson = async file => {
   const buffer = await readFile(file)

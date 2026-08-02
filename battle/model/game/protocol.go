@@ -118,7 +118,6 @@ type PlayerJSON struct {
 	ShieldHP         int           `json:"shieldHp,omitempty"`
 	ShieldStacks     int           `json:"shieldStacks,omitempty"`
 	Marks            int           `json:"marks,omitempty"`
-	SporeStacks      int           `json:"sporeStacks,omitempty"`
 	Doomed           float64       `json:"doomed,omitempty"`
 	SuperCharge      int           `json:"superCharge"`
 	Heat             int           `json:"heat,omitempty"`
@@ -126,7 +125,6 @@ type PlayerJSON struct {
 	SuperPulse       int           `json:"superPulse,omitempty"`
 	GadgetPulse      int           `json:"gadgetPulse,omitempty"`
 	FocusCharge      int           `json:"focusCharge,omitempty"`
-	Rage             int           `json:"rage,omitempty"`
 	SuppressedRage   int           `json:"suppressedRage,omitempty"`
 	GadgetArmed      bool          `json:"gadgetArmed,omitempty"`
 	GadgetCharges    int           `json:"gadgetCharges,omitempty"`

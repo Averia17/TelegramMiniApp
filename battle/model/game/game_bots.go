@@ -325,7 +325,7 @@ func (gs *GameState) updateBots() {
 		moveX, moveY := gs.botTravelDirection(id, &bot.CircleBody, intentX, intentY, now)
 		gs.playerMove(id, now, moveX, moveY)
 		if !opening && targetVisible && closest < 520 {
-			if bot.SuperCharge >= 100 {
+			if SuperChargePercent(bot, now) >= 100 {
 				gs.playerAbility(id, now, "primary")
 			} else {
 				gs.playerShoot(id, now, screenAngleFromWorld(angle))

@@ -16,8 +16,9 @@ const (
 	GameStateGame     = "game"
 	GameStateFinished = "finished"
 
-	LobbyDuration = 10 * time.Second
-	GameDuration  = 5 * time.Minute
+	BattlePhaseSpeed = 2
+	LobbyDuration    = 10 * time.Second / BattlePhaseSpeed
+	GameDuration     = 5 * time.Minute / BattlePhaseSpeed
 
 	FlasksCount      = 8
 	LunarCratesCount = 12
@@ -94,9 +95,8 @@ type GameState struct {
 	DamageZones             []*DamageZone
 	PendingMandySupers      []*PendingMandySuper
 	HeroZones               []*HeroZone
-	SporeStacks             map[string]int
 	DoomedUntil             map[string]int64
-	DamianDebuffs           map[string]int
+	DamianDebuffUntil       map[string]int64
 	LightMarkedUntil        map[string]int64
 	AbilityTargets          map[string]string
 	LightningStrikes        []*LightningStrike

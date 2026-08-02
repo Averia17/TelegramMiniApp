@@ -16,11 +16,11 @@ const (
 	IslandPhaseCollapse  IslandPhase = "collapse"
 	IslandPhaseBeacon    IslandPhase = "beacon"
 
-	LandingDuration       = 30 * time.Second
-	HuntDuration          = 90 * time.Second
+	LandingDuration       = 30 * time.Second / BattlePhaseSpeed
+	HuntDuration          = 90 * time.Second / BattlePhaseSpeed
 	OpeningCombatDuration = LandingDuration + HuntDuration
-	ChallengeDuration     = 90 * time.Second
-	CollapseDuration      = 90 * time.Second
+	ChallengeDuration     = 90 * time.Second / BattlePhaseSpeed
+	CollapseDuration      = 90 * time.Second / BattlePhaseSpeed
 	BeaconHoldDuration    = 10 * time.Second
 	IslandTick            = time.Second
 	BeaconRadius          = 135.0

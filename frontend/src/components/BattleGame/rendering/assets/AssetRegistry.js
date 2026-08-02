@@ -157,6 +157,33 @@ export const attachDetachedWeapon = (heroRoot, weaponScene, attachments = []) =>
   return [attachWeaponObject(heroRoot, socket, weaponScene, "held-weapon", "Primary")]
 }
 
+export const attachCompanionCloud = (heroRoot, cloudScene) => {
+  if (!heroRoot || !cloudScene) return null
+  const target = heroRoot.getObjectByName("Root") || heroRoot
+  const cloud = cloudScene
+  // Preserve the glTF root name "Cloud" so companion animation tracks such
+  // as Cloud.position remain addressable by a dedicated AnimationMixer.
+  if (!/^Cloud$/i.test(cloud.name)) cloud.name = "HeroAttachment_Cloud"
+  cloud.userData.attachmentRole = "companion-cloud"
+  cloud.traverse(node => {
+    node.userData.attachmentRole = "companion-cloud"
+  })
+  target.add(cloud)
+  cloud.position.set(0, 0, 0)
+  cloud.rotation.set(0, 0, 0)
+  cloud.updateMatrixWorld(true)
+  const bounds = new THREE.Box3().setFromObject(cloud, true)
+  const size = bounds.getSize(new THREE.Vector3())
+  const extent = Math.max(size.x, size.y, size.z)
+  if (Number.isFinite(extent) && extent > .001) cloud.scale.multiplyScalar(.64 / extent)
+  cloud.updateMatrixWorld(true)
+  const centerWorld = new THREE.Box3().setFromObject(cloud, true).getCenter(new THREE.Vector3())
+  const targetWorld = target.localToWorld(new THREE.Vector3(.58, 1.32, -.10))
+  cloud.position.add(cloud.parent.worldToLocal(targetWorld).sub(cloud.parent.worldToLocal(centerWorld)))
+  cloud.userData.attachmentRole = "companion-cloud"
+  return cloud
+}
+
 export class AssetRegistry {
   constructor({manifest = HERO_ASSETS, environmentManifest = ENVIRONMENT_ASSETS, load = null} = {}) {
     this.manifest = manifest
@@ -164,6 +191,7 @@ export class AssetRegistry {
     this.load = load || loadWith(new GLTFLoader())
     this.heroLoads = new Map()
     this.weaponLoads = new Map()
+    this.companionLoads = new Map()
     this.readyHeroes = new Set()
     this.environmentLoads = new Map()
   }
@@ -210,6 +238,20 @@ export class AssetRegistry {
     return this.weaponLoads.get(asset.id)
   }
 
+  loadHeroCompanion(name) {
+    const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
+    const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
+    if (!asset?.companionUrl) return Promise.resolve(null)
+    if (!this.companionLoads.has(asset.id)) {
+      const pending = this.load(asset.companionUrl).catch(error => {
+        this.companionLoads.delete(asset.id)
+        throw error
+      })
+      this.companionLoads.set(asset.id, pending)
+    }
+    return this.companionLoads.get(asset.id)
+  }
+
   isHeroReady(name) {
     const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
     const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
@@ -242,9 +284,10 @@ export class AssetRegistry {
   async instantiateHero(name) {
     const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
     const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
-    const [gltf, weaponGltf] = await Promise.all([
+    const [gltf, weaponGltf, companionGltf] = await Promise.all([
       this.loadHero(resolvedName),
       this.loadHeroWeapon(resolvedName),
+      this.loadHeroCompanion(resolvedName),
     ])
     if (!gltf) return null
     const animations = gltf.animations || []
@@ -270,11 +313,23 @@ export class AssetRegistry {
       })
       attachDetachedWeapon(root, weaponRoot, asset.weaponAttachments)
     }
+    if (companionGltf?.scene) {
+      const cloudRoot = clone(companionGltf.scene)
+      cloudRoot.traverse(child => {
+        if (Array.isArray(child.material)) child.material = child.material.map(material => material.clone())
+        else if (child.material) child.material = child.material.clone()
+        if (child.isMesh) {
+          child.castShadow = true
+          child.receiveShadow = true
+        }
+      })
+      attachCompanionCloud(root, cloudRoot)
+    }
     normalizeHeroHeight(root, asset.targetHeight || 2.45)
     root.scale.multiplyScalar(asset.scale)
     root.position.y += asset.groundOffset || 0
     root.rotation.y = asset.rotationOffset
-    return {root, animations, asset}
+    return {root, animations, companionAnimations: companionGltf?.animations || [], asset}
   }
 
   async instantiateEnvironment(visual) {
@@ -297,6 +352,7 @@ export class AssetRegistry {
   clear() {
     this.heroLoads.clear()
     this.weaponLoads.clear()
+    this.companionLoads.clear()
     this.readyHeroes.clear()
     this.environmentLoads.clear()
   }

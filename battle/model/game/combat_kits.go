@@ -153,7 +153,6 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 		reach *= 1.35
 	}
 	halfArc := 60.0 * math.Pi / 180
-	hits := 0
 	slowUntil := int64(0)
 	if source.GadgetArmed {
 		slowUntil = ts + 2500
@@ -168,7 +167,6 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 			damage = int(math.Round(float64(damage) * 1.4))
 		}
 		if gs.dealPlayerDamage(source, target, damage) > 0 {
-			hits++
 			if focused {
 				target.StunUntil = ts + 500
 			}
@@ -186,10 +184,6 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 			damage = int(math.Round(float64(damage) * 1.4))
 		}
 		gs.damageMonster(id, target, damage)
-		hits++
-	}
-	if hits > 0 {
-		source.SuperCharge = int(math.Min(100, float64(source.SuperCharge+25)))
 	}
 	gs.addEffect("mandy_staff_swing", source.X, source.Y, 0, 0, reach, angle, reach, halfArc, source.Color, 0, 360)
 }

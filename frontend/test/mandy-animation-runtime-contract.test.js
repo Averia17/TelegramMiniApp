@@ -25,7 +25,7 @@ function glbJson(buffer) {
   return JSON.parse(buffer.toString("utf8", 20, 20 + jsonLength))
 }
 
-test("Mandy exposes the right-hand staff and AimGadget runtime clip", async () => {
+test("Mandy exposes the left-hand staff and AimGadget runtime clip", async () => {
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"))
   const catalog = JSON.parse(await readFile(catalogPath, "utf8"))
   const mandy = catalog.heroes.find(hero => hero.slug === "mandy")
@@ -37,16 +37,16 @@ test("Mandy exposes the right-hand staff and AimGadget runtime clip", async () =
   ])
   assert.equal(HERO_ASSETS.Mandy.weaponAttachments[0].target, "GripPrimaryMandyStaff_Attachment")
   assert.deepEqual(HERO_ASSETS.Mandy.weaponAttachments[0].localRotation, [
-    0, 0, 60 * Math.PI / 180,
+    0, 0, 0,
   ])
-  assert.deepEqual(HERO_ASSETS.Mandy.weaponAttachments[0].localPosition, [-0.9, 0.3, -0.1])
+  assert.deepEqual(HERO_ASSETS.Mandy.weaponAttachments[0].localPosition, [0, 0, 0])
   assert.equal(HERO_ASSETS.Mandy.clips.aimGadget, "AimGadget")
 })
 
-test("Mandy materializes the right-hand staff at Spawn brief frame 20", () => {
+test("Mandy materializes the left-hand staff at Spawn brief frame 20", () => {
   const root = new THREE.Group()
   const wrist = new THREE.Bone()
-  wrist.name = "R_wrist_s_064"
+  wrist.name = "L_wrist_s_047"
   const staff = new THREE.Group()
   staff.name = "MandyStaff_Attachment"
   staff.userData.attachment_role = "held-weapon"
@@ -82,12 +82,13 @@ test("Mandy authoring contract uses +1 Blender frames and FK foot slide", async 
   assert.match(authoring, /"run": 20[\s\S]*"attack": 16[\s\S]*"super": 50/)
   assert.match(authoring, /"victory": 60/)
   assert.match(authoring, /frame\s*\+\s*1/)
-  assert.match(authoring, /R_wrist_s_064/)
+  assert.match(authoring, /staff_hand.*L_wrist_s_047|hand_l.*L_wrist_s_047/)
   assert.match(authoring, /FINGER_BONES\s*=\s*\{[\s\S]*L_index_01_s_050[\s\S]*R_index_01_s_067/)
-  assert.match(authoring, /resolved_pose\.update\(poses\[brief_frame\]\)/)
-  assert.match(authoring, /thigh_r=\(30, 0, 0\)[\s\S]*foot_l=\(20, 0, 0\)/)
-  assert.match(authoring, /hand_r=\(0, 0, 1080\)/)
-  assert.match(authoring, /root_z=0\.15[\s\S]*upper_l=\(100, 0, 0\)[\s\S]*upper_r=\(100, 0, 0\)/)
+  assert.match(authoring, /scene\.frame_set\(20\)/)
+  assert.match(authoring, /staff\.location\.z \+=/)
+  assert.doesNotMatch(authoring, /pivot\.scale = \(0\.52, 0\.52, 0\.52\)/)
+  assert.match(authoring, /right_hand_contact.*forbidden/)
+  assert.doesNotMatch(authoring, /root_z=/)
   assert.match(authoring, /foot slide/i)
   assert.doesNotMatch(authoring, /IK_TARGET|ik_target|constraint/i)
 })
@@ -115,5 +116,6 @@ test("Mandy staff marker survives GLTFLoader name normalization", async () => {
   assert.equal(markerParentIndex, gripBoneIndex)
   assert.equal(marker.name.replaceAll(".", ""), HERO_ASSETS.Mandy.weaponAttachments[0].target)
 
-  assert.ok(weaponRoot?.mesh !== undefined)
+  assert.ok(weaponRoot)
+  assert.equal(weaponRoot?.extras?.grip_bone, "L_wrist_s_047")
 })

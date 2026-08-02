@@ -30,11 +30,11 @@ func TestAbilityCooldownMsKeepsHeroValues(t *testing.T) {
 		slot string
 		want int64
 	}{
-		{hero: "Needle", slot: "primary", want: 5600},
+		{hero: "Needle", slot: "primary", want: 12000},
 		{hero: "Viper", slot: "primary", want: 5800},
 		{hero: "Titan", slot: "primary", want: 6000},
 		{hero: "Spark", slot: "primary", want: 5000},
-		{hero: "Unknown", slot: "primary", want: 6000},
+		{hero: "Unknown", slot: "primary", want: 12000},
 		{hero: "Needle", slot: "secondary", want: 6500},
 	}
 	for _, test := range tests {

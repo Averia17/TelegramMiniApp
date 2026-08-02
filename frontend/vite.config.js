@@ -2,6 +2,10 @@ import {defineConfig} from 'vite'
 import react from '@vitejs/plugin-react'
 
 const usePolling = process.env.VITE_USE_POLLING === 'true'
+// Local npm runs use the host battle service; Docker overrides this with the
+// service DNS name below. Keeping the target configurable avoids proxying a
+// Windows-hosted dev server to the unreachable Docker hostname `battle`.
+const battleProxyTarget = process.env.VITE_BATTLE_PROXY_TARGET || 'http://localhost:8000'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -29,7 +33,7 @@ export default defineConfig({
         port: 5173,
         proxy: {
             '/api/battle': {
-                target: 'http://battle:8000',
+                target: battleProxyTarget,
                 changeOrigin: true,
                 ws: true,
                 rewrite: path => path.replace(/^\/api\/battle/, ''),

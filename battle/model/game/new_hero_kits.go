@@ -15,6 +15,28 @@ type WukongMicoKit struct{}
 type DamianKit struct{}
 type PersephoneLumiKit struct{}
 
+const (
+	// Active skill windows are deliberately short enough to leave counterplay;
+	// no hero skill may persist longer than this cap.
+	MaxHeroSkillDuration = 15 * time.Second
+
+	NeedleSporeSlowDuration       = 2 * time.Second
+	KazeEmpowerInterval           = 3 * time.Second
+	KazeEmpoweredDamageMultiplier = 1.75
+	MicoVortexDuration            = 5 * time.Second
+	DamianDebuffDuration          = 4 * time.Second
+)
+
+func cappedSkillDuration(duration time.Duration) int64 {
+	if duration > MaxHeroSkillDuration {
+		duration = MaxHeroSkillDuration
+	}
+	if duration < 0 {
+		return 0
+	}
+	return duration.Milliseconds()
+}
+
 type HeroZone struct {
 	Owner, Kind                                 string
 	X, Y, Radius                                float64
@@ -64,9 +86,10 @@ func (MinaKit) Super(gs *GameState, p *player.Player, ts int64, _, _ float64) bo
 		target = gs.Players[id]
 	}
 	target.ShieldHP = 400
-	target.ShieldUntil = ts + 4000
-	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "mina_heal", X: target.X, Y: target.Y, Radius: 160, CreatedAt: ts, ExpiresAt: ts + 4000, NextTickAt: ts, Triggered: map[string]bool{}})
-	gs.addEffect("mina_healing_aura", target.X, target.Y, 0, 0, 160, 0, 0, 0, "#ff9bea", 0, 4000)
+	duration := cappedSkillDuration(4 * time.Second)
+	target.ShieldUntil = ts + duration
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "mina_heal", X: target.X, Y: target.Y, Radius: 160, CreatedAt: ts, ExpiresAt: ts + duration, NextTickAt: ts, Triggered: map[string]bool{}})
+	gs.addEffect("mina_healing_aura", target.X, target.Y, 0, 0, 160, 0, 0, 0, "#ff9bea", 0, duration)
 	return true
 }
 
@@ -102,18 +125,15 @@ func (BrockZeusKit) Super(gs *GameState, p *player.Player, ts int64, angle, dist
 	return true
 }
 
-func (KazeKit) Basic(gs *GameState, p *player.Player, _ int64, angle, _ float64) {
+func (KazeKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64) {
 	damage := p.AttackDmg
-	if p.KazeCritReady {
-		damage *= 2
+	if p.KazeCritReady || ts >= p.KazeNextEmpoweredAt {
+		damage = int(math.Round(float64(p.AttackDmg) * KazeEmpoweredDamageMultiplier))
 		p.KazeCritReady = false
+		p.KazeNextEmpoweredAt = ts + KazeEmpowerInterval.Milliseconds()
 	}
-	left := gs.hitSector(p, angle-.22, 105, .72, damage, false)
-	right := gs.hitSector(p, angle+.22, 105, .72, damage, false)
-	if left+right >= 2 {
-		p.KazeComboHits = 2
-		p.KazeComboUntil = time.Now().UnixMilli() + 400
-	}
+	gs.hitSector(p, angle-.22, 105, .72, damage, false)
+	gs.hitSector(p, angle+.22, 105, .72, damage, false)
 	gs.addEffect("kaze_cross_slash", p.X, p.Y, 0, 0, 105, angle, 105, .9, p.Color, p.AttackDmg*2, 260)
 }
 func (KazeKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ float64) bool {
@@ -122,7 +142,7 @@ func (KazeKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ float64
 	for _, target := range gs.Players {
 		if target.CanBulletHurt(p.PlayerId, p.Team) && segmentHitsCircle(startX, startY, p.X, p.Y, target.X, target.Y, target.Radius+18) {
 			gs.dealPlayerDamage(p, target, 160)
-			gs.DoomedUntil[target.PlayerId] = ts + 3000
+			gs.DoomedUntil[target.PlayerId] = ts + cappedSkillDuration(3*time.Second)
 			target.StunUntil = ts + 500
 		}
 	}
@@ -133,9 +153,7 @@ func (KazeKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ float64
 func (WukongMicoKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64) {
 	const reach = 120.0
 	const halfArc = 50.0 * math.Pi / 180
-	if gs.hitSector(p, angle, reach, halfArc, p.AttackDmg, false) > 0 {
-		p.Rage = int(math.Min(5, float64(p.Rage+1)))
-	}
+	gs.hitSector(p, angle, reach, halfArc, p.AttackDmg, false)
 	if p.GadgetArmed {
 		for _, target := range gs.Players {
 			if target.CanBulletHurt(p.PlayerId, p.Team) &&
@@ -148,12 +166,10 @@ func (WukongMicoKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ f
 	}
 	gs.addEffect("mico_staff_swing", p.X, p.Y, 0, 0, reach, angle, reach, halfArc, p.Color, p.AttackDmg, 360)
 }
-func (WukongMicoKit) Super(gs *GameState, p *player.Player, _ int64, angle, _ float64) bool {
-	rage := p.Rage
-	duration := int64(3000 + rage*500)
-	radius := 165.0 + float64(rage)*12
-	p.Rage = 0
-	p.VortexUntil = time.Now().UnixMilli() + duration
+func (WukongMicoKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ float64) bool {
+	duration := cappedSkillDuration(MicoVortexDuration)
+	radius := 180.0
+	p.VortexUntil = ts + duration
 	gs.radialDamage(p.PlayerId, p.X, p.Y, radius, 140)
 	gs.addEffect("mico_staff_spin", p.X, p.Y, 0, 0, radius, angle, radius, math.Pi, p.Color, 140, duration)
 	return true
@@ -166,7 +182,7 @@ func (DamianKit) Super(gs *GameState, p *player.Player, ts int64, angle, distanc
 	distance = math.Max(55, math.Min(280, distance))
 	x, y := p.X+math.Cos(angle)*distance, p.Y+math.Sin(angle)*distance
 	body := gs.Map.ClampCircle(&geometry.CircleBody{X: x, Y: y, Radius: 20})
-	gs.Totems[p.PlayerId] = &Totem{Owner: p.PlayerId, X: body.X, Y: body.Y, HP: 300, ExpiresAt: ts + 15000, NextShotAt: ts + 500}
+	gs.Totems[p.PlayerId] = &Totem{Owner: p.PlayerId, X: body.X, Y: body.Y, HP: 300, ExpiresAt: ts + cappedSkillDuration(MaxHeroSkillDuration), NextShotAt: ts + 500}
 	gs.addEffect("damian_totem_spawn", body.X, body.Y, 0, 0, 28, 0, 0, 0, p.Color, 0, 700)
 	return true
 }
@@ -178,7 +194,8 @@ func (PersephoneLumiKit) Basic(gs *GameState, p *player.Player, ts int64, angle,
 func (PersephoneLumiKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
 	distance = math.Max(80, math.Min(520, distance))
 	x, y := p.X+math.Cos(angle)*distance, p.Y+math.Sin(angle)*distance
-	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "lumi_roots", X: x, Y: y, Radius: 200, CreatedAt: ts, TriggerAt: ts + 600, ExpiresAt: ts + 6600, NextTickAt: ts + 600, Triggered: map[string]bool{}})
+	duration := cappedSkillDuration(6600 * time.Millisecond)
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "lumi_roots", X: x, Y: y, Radius: 200, CreatedAt: ts, TriggerAt: ts + 600, ExpiresAt: ts + duration, NextTickAt: ts + 600, Triggered: map[string]bool{}})
 	gs.addEffect("lumi_roots", x, y, 0, 0, 200, 0, 0, 0, p.Color, 0, 6000)
 	return true
 }
@@ -217,7 +234,8 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 		gs.vaultMove(p, p.Rotation, 320)
 		for _, target := range gs.Players {
 			if target.CanBulletHurt(p.PlayerId, p.Team) && math.Hypot(target.X-originX, target.Y-originY) <= 75+target.Radius {
-				gs.SporeStacks[target.PlayerId] = int(math.Min(3, float64(gs.SporeStacks[target.PlayerId]+2)))
+				target.SlowUntil = ts + cappedSkillDuration(NeedleSporeSlowDuration)
+				target.SlowMultiplier = .60
 				target.BlindUntil = ts + 5000
 			}
 		}
@@ -243,7 +261,7 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 		}
 		gs.addEffect("mina_air_wave", p.X, p.Y, 0, 0, 135, 0, 0, 0, p.Color, 0, 450)
 	case "Kaze":
-		p.StealthUntil = ts + 3000
+		p.StealthUntil = ts + cappedSkillDuration(3*time.Second)
 		gs.addEffect("kaze_veil_step", p.X, p.Y, 0, 0, 74, p.Rotation, 0, 0, "#d7b8ff", 0, 700)
 	case "Damian":
 		totem := gs.Totems[p.PlayerId]
@@ -323,10 +341,8 @@ func (gs *GameState) updateNewHeroSystems() {
 			for _, target := range gs.Players {
 				owner := gs.Players[z.Owner]
 				if owner != nil && target.CanBulletHurt(owner.PlayerId, owner.Team) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {
-					gs.SporeStacks[target.PlayerId]++
-					if gs.SporeStacks[target.PlayerId] > 3 {
-						gs.SporeStacks[target.PlayerId] = 3
-					}
+					target.SlowUntil = now + cappedSkillDuration(NeedleSporeSlowDuration)
+					target.SlowMultiplier = .60
 				}
 			}
 			z.NextTickAt = now + 500

@@ -57,16 +57,16 @@ export const TouchStick = ({kind, control}) => {
   }
   return <div className={`mobile-stick mobile-stick-${kind}${control ? " mobile-stick--active" : ""}`}
     style={control ? {left: control.start.x, top: control.start.y, "--stick-x": `${x}px`, "--stick-y": `${y}px`} : undefined}>
-    <span>{kind === "fire" ? "вњ¦" : ""}</span>
+    <span>{kind === "fire" ? "✦" : ""}</span>
   </div>
 }
 
 export const BattleResultStats = ({result}) => result && (
   <div className="battle-result-stats">
-    <span><b>#{result.place || (result.won ? 1 : "вЂ”")}</b>РјРµСЃС‚Рѕ</span>
-    <span><b>{result.kills || 0}</b>Р±РѕР№С†РѕРІ</span>
-    <span><b>{result.monsters || 0}</b>РјРѕР±РѕРІ</span>
-    <span><b>{Math.round(result.duration || 0)}СЃ</b>РІСЂРµРјСЏ</span>
+    <span><b>#{result.place || (result.won ? 1 : "—")}</b>место</span>
+    <span><b>{result.kills || 0}</b>бойцов</span>
+    <span><b>{result.monsters || 0}</b>мобов</span>
+    <span><b>{Math.round(result.duration || 0)}с</b>время</span>
   </div>
 )
 
@@ -108,7 +108,7 @@ export const BattleMiniMap = ({state, localId, renderer}) => {
   const visibleEnemies = Object.entries(state.players || {}).filter(([id]) =>
     String(id) !== String(localId) && renderer?.isPlayerVisible(id))
   return (
-    <aside className="battle-minimap" aria-label="РњРёРЅРёРєР°СЂС‚Р°">
+    <aside className="battle-minimap" aria-label="Миникарта">
       {state.game?.stormRadius > 0 && <i className="mini-storm" style={{width: `${state.game.stormRadius / width * 200}%`, height: `${state.game.stormRadius / height * 200}%`}}/>}
       {state.game?.beaconOpen && <i className="mini-beacon"/>}
       {(map.walls || []).map((wall, index) => (

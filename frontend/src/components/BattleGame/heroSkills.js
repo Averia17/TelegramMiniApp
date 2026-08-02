@@ -1,4 +1,4 @@
-import {HERO_KITS} from "./heroesConfig.js"
+import {HERO_KITS, TIMED_KIT_DESCRIPTIONS} from "./heroesConfig.js"
 
 const skill = (name, description, effect) => Object.freeze({name, description, effect})
 
@@ -46,6 +46,6 @@ export const getHeroSkill = (hero, slot) =>
   (() => {
     const kitSlot = slot === "primary" ? "super" : slot === "secondary" ? "gadget" : "basic"
     const contract = HERO_KITS[String(hero || "")]?.[kitSlot]
-    if (contract) return skill(contract.name, contract.description, contract.id)
+    if (contract) return skill(contract.name, TIMED_KIT_DESCRIPTIONS[String(hero || "")]?.[kitSlot] || contract.description, contract.id)
     return HERO_SKILLS[String(hero || "")]?.[slot] || FALLBACK[slot] || FALLBACK.secondary
   })()

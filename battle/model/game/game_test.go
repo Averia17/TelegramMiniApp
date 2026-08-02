@@ -27,9 +27,30 @@ func newTestGameState() *GameState {
 	return gs
 }
 
-func TestBattleDurationIsFiveMinutes(t *testing.T) {
-	if GameDuration != 5*time.Minute {
-		t.Fatalf("game duration = %s, want 5m", GameDuration)
+func TestBattleDurationIsTwoAndHalfMinutes(t *testing.T) {
+	if GameDuration != 150*time.Second {
+		t.Fatalf("game duration = %s, want 2m30s", GameDuration)
+	}
+}
+
+func TestBattlePhasesRunAtDoubleSpeed(t *testing.T) {
+	if LobbyDuration != 5*time.Second {
+		t.Fatalf("lobby duration = %s, want 5s", LobbyDuration)
+	}
+	if GameDuration != 150*time.Second {
+		t.Fatalf("game duration = %s, want 2m30s", GameDuration)
+	}
+	if OpeningCombatDuration != 60*time.Second {
+		t.Fatalf("opening combat duration = %s, want 1m", OpeningCombatDuration)
+	}
+	if ChallengeDuration != 45*time.Second {
+		t.Fatalf("challenge duration = %s, want 45s", ChallengeDuration)
+	}
+	if CollapseDuration != 45*time.Second {
+		t.Fatalf("collapse duration = %s, want 45s", CollapseDuration)
+	}
+	if BeaconHoldDuration != 10*time.Second {
+		t.Fatalf("beacon hold duration = %s, want 10s", BeaconHoldDuration)
 	}
 }
 
@@ -43,19 +64,19 @@ func TestIslandPhasesFollowMatchClock(t *testing.T) {
 		t.Fatalf("phase after 31 seconds = %q, want %q", gs.IslandPhase, IslandPhaseHunt)
 	}
 
-	gs.MatchStartedAt = now - int64(2*time.Minute+1*time.Second)/int64(time.Millisecond)
+	gs.MatchStartedAt = now - int64(61*time.Second)/int64(time.Millisecond)
 	gs.updateIsland(now)
 	if gs.IslandPhase != IslandPhaseChallenge {
-		t.Fatalf("phase after 2:01 = %q, want %q", gs.IslandPhase, IslandPhaseChallenge)
+		t.Fatalf("phase after 1:01 = %q, want %q", gs.IslandPhase, IslandPhaseChallenge)
 	}
 
-	gs.MatchStartedAt = now - int64(3*time.Minute+31*time.Second)/int64(time.Millisecond)
+	gs.MatchStartedAt = now - int64(106*time.Second)/int64(time.Millisecond)
 	gs.updateIsland(now)
 	if gs.IslandPhase != IslandPhaseCollapse || gs.StormRadius <= 0 {
 		t.Fatalf("collapse state = phase %q, storm radius %.1f", gs.IslandPhase, gs.StormRadius)
 	}
 
-	gs.MatchStartedAt = now - int64(5*time.Minute)/int64(time.Millisecond)
+	gs.MatchStartedAt = now - int64(150*time.Second)/int64(time.Millisecond)
 	gs.updateIsland(now)
 	if gs.IslandPhase != IslandPhaseBeacon || !gs.BeaconOpen {
 		t.Fatalf("beacon state = phase %q, open=%v", gs.IslandPhase, gs.BeaconOpen)
@@ -1209,19 +1230,21 @@ func TestBulletVsPlayer(t *testing.T) {
 	}
 }
 
-func TestPlayerHitBuildsServerAuthoritativeSuperCharge(t *testing.T) {
+func TestPlayerHitDoesNotBuildSuperCharge(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("p1", "Alice", "Colt")
 	gs.PlayerAdd("p2", "Bob", "Viper")
 	gs.State = GameStateGame
 
 	attacker, target := gs.Players["p1"], gs.Players["p2"]
+	attacker.SuperCharge = 0
+	attacker.LastPrimaryAt = time.Now().UnixMilli()
 	beforeCharge := attacker.SuperCharge
 	gs.Bullets = append(gs.Bullets, bullet.NewBullet(attacker.PlayerId, "", target.X, target.Y, 4, 0, "#FFF"))
 	gs.updateBullets()
 
-	if attacker.SuperCharge-beforeCharge != 20 {
-		t.Fatalf("super charge before=%d after=%d, want delta 20", beforeCharge, attacker.SuperCharge)
+	if attacker.SuperCharge != beforeCharge {
+		t.Fatalf("super charge before=%d after=%d, want no hit-based gain", beforeCharge, attacker.SuperCharge)
 	}
 }
 

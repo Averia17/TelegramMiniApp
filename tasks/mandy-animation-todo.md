@@ -1,32 +1,69 @@
-# Mandy animation rework checklist
+# Mandy v4 — чеклист переработки
 
-- [x] Зафиксировать staff в правой руке через `R_wrist_s_064` и `Grip.Primary.MandyStaff_Attachment`.
-- [x] Перевести 0-based brief-кадры в Blender через `+1`; закрывающие ключи циклов дублируют первый ключ.
-- [x] Использовать FK foot slide до 10–15 см только в attack/super/hit; не добавлять IK-цели.
-- [x] Составить mapping Mandy bones для Root, spine, head, arms, legs и staff attachment.
-- [x] Добавить Mandy choreography profile с длительностями `90/20/16/50/60/60/12/40/45/60/16/60`; Victory получил 3 оборота посоха, прыжок и удар.
-- [x] Сгенерировать 12 focused Blender-сцен и authoring report.
-- [x] Проверить metadata, canonical Action names, 30 fps и отсутствие лишних Actions.
-- [x] Выполнить numeric audit: root X/Y, Z limits, joint limits, cycle closure, foot contacts и staff grip.
-- [x] Сохранить impact/contact/hold markers для attack, super и gadget.
-- [x] Добавить Mandy-specific `AimGadget` в manifest/catalog/exporter/runtime mapping.
-- [x] Исправить GLTFLoader-нормализацию имени grip-marker и локальные rotation/position detached staff.
-- [x] Экспортировать canonical `frontend/public/assets/heroes/output_heroes/mandy_base.glb`.
-- [x] Прогнать GLB audit, frontend tests, catalog validation, build и targeted lint.
-- [x] Выполнить browser harness sweep для Mandy Spawn, attack, super, gadget и AimGadget.
-- [x] Зафиксировать QA evidence и ограничения в этом checklist.
+## Stage 0 — диагностика и оружие
 
-## Evidence
+- [x] Открыть `mandy.blend` и создать отдельный `mandy_weapon.blend` из canonical staff source.
+- [ ] Записать bone hierarchy, rest pose, scale, local axes и Loc Up в `artifacts/mandy-rig-axis-diagnostic.json`.
+- [x] Подтвердить mapping `MandyRig` и `L_wrist_s_047` как единственную weapon hand.
+- [ ] Проверить `MandyStaff_SourcePivot`, `Grip.Primary.MandyStaff_Attachment` и `MandyStaff_Attachment`.
+- [ ] Если source `.blend` отсутствует, извлечь detached staff source из master без изменения визуального transform.
+- [ ] Зафиксировать `right_hand_contact=forbidden` и пройти Stage-0 gate.
 
-- v3 visual calibration: right-wrist staff socket, lowered idle arms, and
-  horizontal runtime staff attachment are checked in the direct harness.
+## Stage 1 — baseline и пилот
 
-- `artifacts/mandy-animation-authoring.json` — authoring report.
-- `artifacts/mandy-animation-validation.json` — `PASS`, 12/12 clips, 30 fps, ranges `1..duration+1`.
-- `npm test` — 182 passed, 3 skipped.
-- `npm run validate:heroes` — 8 canonical runtime GLBs validated.
-- `npm run validate:hero-catalog` — catalog synchronized.
-- `npm run build` — passed.
-- Targeted ESLint for Mandy controller/tests — passed.
-- Browser screenshot `frontend/output/playwright/mandy-idle-hand-aligned.png` — staff visible vertically, grounded, attached to the left-wrist chain.
-- Общий lint всё ещё содержит pre-existing ошибки в `BattleGameUI.jsx` и `StoreTab.jsx`, а также warning в `landing-page.jsx`; они не относятся к Mandy slice.
+- [x] Удалить из нового pass логику `R_wrist_s_064` как weapon hand и старый `root_z` assumption.
+- [ ] Создать чистую нейтральную pose baseline с torso pitch около 0°.
+- [ ] Переписать semantic mapping на реальные Mandy bones.
+- [ ] Сгенерировать только `idle.blend`.
+- [ ] Проверить Idle визуально: посох в левой руке, вертикаль, земля, пояс правой руки, нет torso penetration.
+- [ ] После Idle numeric + screenshot gate продолжить остальные клипы.
+
+## Stage 2 — 12 focused-сцен
+
+- [ ] Сгенерировать `idle` — 90 кадров.
+- [ ] Сгенерировать `run` — 20 кадров.
+- [ ] Сгенерировать `attack` / `Attack` — 16 кадров.
+- [ ] Сгенерировать `super` — 50 кадров.
+- [ ] Сгенерировать `aim` / `Aim` — 60 кадров.
+- [ ] Сгенерировать `aim-super` / `AimSuper` — 60 кадров.
+- [ ] Сгенерировать `hit` — 12 кадров.
+- [ ] Сгенерировать `death` — 40 кадров.
+- [ ] Сгенерировать `spawn` / `Spawn` — 45 кадров.
+- [ ] Сгенерировать `victory` / `Victory` — 60 кадров.
+- [ ] Сгенерировать `gadget` / `Gadget` — 16 кадров.
+- [ ] Сгенерировать `aim-gadget` / `AimGadget` — 60 кадров.
+- [ ] Во всех сценах сохранить metadata, 30 fps, Bezier/Auto Clamped и cycle contract.
+
+## Stage 3 — Blender QA
+
+- [ ] Проверить ровно 12 сцен и ровно один Action в каждой.
+- [x] Проверить `L_wrist_s_047` ancestry для staff/pivot/marker/grip bone.
+- [ ] Проверить отсутствие контакта правой кисти с staff во всех sampled frames.
+- [ ] Проверить Root local horizontal drift и подтверждённый Loc Up channel.
+- [ ] Проверить torso pitch ≤ 20°, finite transforms и joint limits.
+- [ ] Проверить стопы, FK slide policy и staff ground contacts.
+- [ ] Проверить cycle closure у пяти loop-клипов.
+- [ ] Сохранить `artifacts/mandy-animation-authoring.json` и `artifacts/mandy-animation-validation.json`.
+
+## Stage 4 — export/runtime
+
+- [ ] Обновить authoring/export scripts под левую weapon hand.
+- [ ] Экспортировать `mandy_base.glb` без дублирования staff geometry.
+- [x] Экспортировать/проверить `mandy_weapon.glb` с marker и `grip_bone=L_wrist_s_047`.
+- [x] Обновить catalog/manifest/exporter/runtime mapping и убрать старый right-hand contract.
+- [ ] Сохранить `AimGadget` как Mandy-specific extra.
+- [ ] Проверить canonical GLB path, animation list и возможный `.tmp.glb`.
+
+## Stage 5 — visual/release QA
+
+- [ ] Проверить exact frontend harness на ключевых кадрах всех 12 клипов.
+- [ ] Проверить переходы `idle → attack → idle`, `idle → super`, `spawn → idle`, `death`.
+- [ ] Запустить GLB audit, Mandy runtime tests, catalog validation, frontend tests, lint и build.
+- [ ] Зафиксировать screenshots и отдельно отметить unrelated pre-existing failures.
+
+## Definition of done
+
+- [x] Нет ни одной ссылки нового Mandy pass на `R_wrist_s_064` как weapon hand.
+- [ ] Посох виден и движется вместе с левой кистью в Blender и frontend.
+- [ ] Правая рука ни в одном клипе не берёт посох.
+- [ ] Все acceptance criteria из `tasks/mandy-animation-plan.md` выполнены.

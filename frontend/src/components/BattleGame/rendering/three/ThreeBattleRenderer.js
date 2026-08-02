@@ -42,6 +42,7 @@ export class ThreeBattleRenderer {
     this.lastRenderAt = performance.now()
     this.performanceWindowAt = this.lastRenderAt
     this.performanceFrames = 0
+    this.slowFrameCount = 0
     this.fps = 60
     this.resize(window.innerWidth, window.innerHeight)
   }
@@ -98,6 +99,7 @@ export class ThreeBattleRenderer {
 
   render() {
     const perfToken = startBattlePerformance("renderer.render")
+    const frameStartedAt = performance.now()
     const now=performance.now();const delta=clamp((now-this.lastRenderAt)/1000,1/240,.05);this.lastRenderAt=now;this.time+=delta
     const walls=this.state?.map?.walls||[]
     this.players.forEach((view,id)=>view.update(delta,this.time,(id===this.localPlayerId||Boolean(this.state?.players?.[id]?.team&&this.state.players[id].team===this.state?.players?.[this.localPlayerId]?.team))&&isInsideBush(view.state,walls)))
@@ -110,6 +112,11 @@ export class ThreeBattleRenderer {
     const map=this.state?.map||{width:1024,height:768}
     this.cameraRig.follow(local, map, delta)
     this.sceneRoot.render(this.camera)
+    const frameElapsed = performance.now() - frameStartedAt
+    if (!this.lowQuality) {
+      this.slowFrameCount = frameElapsed >= 22 ? this.slowFrameCount + 1 : 0
+      if (this.slowFrameCount >= 10) this.enableLowQuality()
+    }
     this.performanceFrames++
     const elapsed=now-this.performanceWindowAt
     if(elapsed>=2000){

@@ -1,188 +1,230 @@
-# План переработки анимаций Mandy
+# Mandy v4: план переработки анимаций
 
 ## Цель
 
-Переписать Mandy как набор из двенадцати детерминированных focused-сцен
-Blender, используя новый покадровый бриф: активный боец с посохом, все
-движения in-place, root не получает смещения по X/Y. После numeric и visual QA
-опубликовать один canonical `mandy_base.glb` со всеми двенадцатью Actions для
-Three.js runtime.
+Заново авторить Mandy на реальном риге из
+`frontend/assets-source/heroes/mandy/mandy.blend`, используя успешные правила
+Needle v3 и исправляя причину старого провала: посох должен быть дочерним
+объектом левой кисти во всех сценах и в runtime, а правая рука никогда не
+касается посоха.
 
-## Результаты аудита и решения
+Результат — 12 focused-сцен Blender, один canonical
+`frontend/public/assets/heroes/output_heroes/mandy_base.glb` с ригом и
+анимациями, а также отдельный `mandy_weapon.glb` с посохом и маркером,
+который runtime присоединяет к левому сокету.
 
-- Blender 5.2 установлен в `C:\Program Files\Blender Foundation\Blender 5.2\blender.exe`.
-- Реальный armature называется `MandyRig`. Основная цепочка тела:
-  `_rootJoint -> Root_2_01 -> hips_s_02`, позвоночник
-  `spine_lower_s_030 -> spine_mid_s_031 -> spine_upper_s_032 -> chest_s_033`,
-  голова `head_s_035`.
-- Левая рука: `L_shoulder_s_044`, `L_elbow_s_045`,
-  `L_forearm_twist_s_046`, `L_wrist_s_047`; правая рука имеет симметричную
-  цепочку `R_shoulder_s_061`, `R_elbow_s_062`, `R_forearm_twist_s_063`,
-  `R_wrist_s_064`.
-- Ноги: `L_upperLeg_s_03 -> L_lowerLeg_s_04 -> L_ankle_s_05 -> L_toes_s_06`
-  и `R_upperLeg_s_07 -> R_lowerLeg_s_08 -> R_ankle_s_09 -> R_toes_s_010`.
-- Staff attachment в текущем master `.blend` привязан к левой руке:
-  `R_wrist_s_064` через `MandyStaff_SourcePivot` и
-  `Grip.Primary.MandyStaff_Attachment`. Это является каноническим решением для
-  новой постановки; staff не переносить на правую руку.
-- Blender-авторинг должен использовать Z-up, 30 fps, явные pose keys и
-  `BEZIER` + `AUTO_CLAMPED`. Пользовательские кадры считаются 0-based, поэтому
-  при переносе в Blender к каждому номеру прибавляется `+1`: кадр 0 становится
-  frame 1, кадр 30 — frame 31. Длительность сцены не меняется: idle остаётся
-  90-кадровым клипом, а закрывающий ключ цикла ставится на frame 91 и совпадает
-  с frame 1; этот дублирующий ключ не должен добавлять длительность playback.
-- `mandy.blend` и legacy `animations/*.blend` не являются результатом новой
-  постановки. Источником runtime должны остаться focused-сцены в
-  `frontend/assets-source/heroes/mandy/scenes/`; master-файл не изменять
-  authoring-скриптом.
-- Глобальный runtime contract сейчас содержит десять event-клипов и один
-  `Gadget`. Новый `AimGadget` должен быть Mandy-specific extra, как отдельная
-  запись в manifest/catalog/runtime mapping, чтобы не требовать этот clip от
-  остальных героев.
+## Что выяснено до реализации
 
-## Канонический набор клипов
+- Реальная арматура называется `MandyRig`.
+- `Root_2_01` — корневой анимируемый bone; `_rootJoint` — его родитель.
+- `Root_2_01` направлен головой к хвосту вверх. В его bone-local осях local Y
+  соответствует Blender Z/up; это нужно зафиксировать микротестом Stage 0,
+  а не угадывать по названию канала.
+- Реальные кости не называются `Hips`, `Spine`, `LeftArm` и т. п.; это только
+  семантические имена нового authoring adapter.
+- В master уже есть корректная цепочка посоха:
+  `MandyStaff_SourcePivot` → `MandyRig/L_wrist_s_047`,
+  `Grip.Primary.MandyStaff_Attachment` → `L_wrist_s_047`,
+  `MandyStaff_Attachment` → `MandyStaff_SourcePivot`.
+- Файла `frontend/assets-source/heroes/mandy/mandy_weapon.blend` сейчас нет.
+  Поэтому Stage 0 должен сначала проверить, не появился ли он; если нет,
+  detached weapon нужно получить из уже существующего staff-меша master и
+  сохранить в отдельный source/export pipeline. Нельзя считать отсутствие
+  этого файла причиной для привязки к правой руке.
+- Старые focused-сцены, старый authoring script, `mandy_base.glb` и тесты,
+  где написано `right-hand staff`, считаются результатом ошибочного прохода и
+  должны быть перегенерированы/обновлены в рамках этого плана.
 
-| Scene clip | Action | Кадры | Длительность | Тип |
-| --- | --- | ---: | ---: | --- |
-| `idle` | `idle` | 90 | 3.0 s | loop |
-| `run` | `run` | 20 | 0.67 s | loop |
-| `attack` | `Attack` | 16 | 0.53 s | event |
-| `super` | `super` | 50 | 1.67 s | ability |
-| `aim` | `Aim` | 60 | 2.0 s | loop |
-| `aim-super` | `AimSuper` | 60 | 2.0 s | loop |
-| `hit` | `hit` | 12 | 0.4 s | event |
-| `death` | `death` | 40 | 1.33 s | event |
-| `spawn` | `Spawn` | 45 | 1.5 s | event |
-| `victory` | `Victory` | 60 | 2.0 s | event |
-| `gadget` | `Gadget` | 16 | 0.53 s | ability |
-| `aim-gadget` | `AimGadget` | 60 | 2.0 s | loop |
+## Канонический rig mapping
 
-Каждая сцена должна содержать полный mesh/armature Mandy, ровно один
-канонический authored Action и metadata `hero_slug`, `clip_name`, `clip_kind`,
-`frame_start`, `frame_end`, `fps`, `authoring_status`. Для loop-клипов конец
-цикла должен совпадать с начальной позой и не создавать скачок при повторении.
+| Семантика | Реальные bones |
+| --- | --- |
+| Root / Loc Up | `Root_2_01` (родитель `_rootJoint` не получает случайных offsets) |
+| Hips | `hips_s_02` |
+| Spine | `spine_lower_s_030`, `spine_mid_s_031`, `spine_upper_s_032`, `chest_s_033` |
+| Neck / Head | `neck_s_034`, `head_s_035` |
+| LeftArm | `L_clavicle_s_043`, `L_shoulder_s_044` |
+| LeftForearm | `L_elbow_s_045`, `L_forearm_twist_s_046` |
+| LeftHand | `L_wrist_s_047` |
+| RightArm | `R_clavicle_s_060`, `R_shoulder_s_061` |
+| RightForearm | `R_elbow_s_062`, `R_forearm_twist_s_063` |
+| RightHand | `R_wrist_s_064` |
+| LeftLeg / Foot | `L_upperLeg_s_03`, `L_lowerLeg_s_04`, `L_ankle_s_05`, `L_toes_s_06` |
+| RightLeg / Foot | `R_upperLeg_s_07`, `R_lowerLeg_s_08`, `R_ankle_s_09`, `R_toes_s_010` |
+| Weapon socket | `weapon_socket_r`, если он сохраняет родителя `L_wrist_s_047`; имя legacy не переименовывать без обновления export/runtime контрактов |
 
-## Покадровый контракт постановки
+`LeftHand` в этом документе означает `L_wrist_s_047`. Это обязательная
+проверка во всех authoring и validation скриптах:
 
-Новый бриф является источником choreographic intent. Авторинг должен сохранить
-его ключевые позы, а промежуточные кадры генерировать плавно. В mapping нужно
-использовать реальные Mandy-бones, а не буквальные имена `Spine`, `UpperArm.R`
-и `Thigh.R/L` из брифа:
+```text
+staff_hand = L_wrist_s_047
+staff_socket_parent = L_wrist_s_047
+right_hand_contact = forbidden
+```
 
-- `Root` — `_rootJoint`/`Root_2_01` согласно проверенному root-motion
-  контракту; X/Y всегда неподвижны, Z меняется только там, где это указано.
-- `Spine` — spine lower/mid/upper и chest; `Head` — `head_s_035`.
-- `UpperArm.R/L` — shoulder chain; `Forearm.R/L` — elbow/forearm chain;
-  `Hand.R/L` — wrist; пальцы сохраняют закрытый grip на staff, кроме
-  специально указанных моментов.
-- `Thigh`, `Shin`, `Foot` — upper leg, lower leg и ankle/toes chains.
-- Для staff нужно валидировать одновременно положение кистей, staff pivot,
-  ground contact и отсутствие прохождения посоха сквозь torso. Нельзя решать
-  такие ошибки только вращением пропа отдельно от руки.
+## Правила постановки
 
-Покадровые опорные точки для authoring:
+1. Посох всегда следует за `L_wrist_s_047`; prop не анимируется отдельно от
+   кисти. Если для точной посадки нужен Empty, он делается bone-parented к
+   `L_wrist_s_047`, после чего offset запекается.
+2. Правая рука не касается посоха ни в одном клипе, включая `super` и
+   `victory`. Её состояния: пояс, свободно вдоль тела или баланс назад/в
+   сторону.
+3. Все углы применяются как дельты в локальных осях реальных pose bones.
+   Семантические углы из брифа не копируются буквально: adapter калибрует их
+   по rest pose и распределяет torso pitch по spine chain.
+4. Суммарный визуальный наклон корпуса (`hips + spine chain + chest`) не
+   превышает 20°. Для приседа и прыжка высота меняется через подтверждённый
+   `Loc Up`, а не через опасное складывание pitch костей.
+5. In-place: локальные Root X/Z не меняются; только разрешённый `Loc Up`
+   используется в явно указанных приседаниях, прыжке, Spawn и Death. Root
+   motion проверяется в bone-local axes, не по предположительным мировым X/Y/Z.
+6. В циклах закрывающий ключ дублирует первый: пользовательский кадр 90
+   становится Blender frame 91, но playback duration остаётся 90 кадров.
+7. Для Spawn разрешается runtime-событие `staff_visible`, но когда посох
+   видим, его единственный родитель всё равно `L_wrist_s_047`.
 
-1. `idle`: кадры 0/30/60/90; вертикальный staff, правая/подтверждённая
-   weapon-hand держит его, вторая рука на поясе, дыхание и мягкие повороты
-   головы; root Z не меняется.
-2. `run`: кадры 0/6/12/18/24; staff горизонтально перед корпусом, руки и ноги
-   работают в противофазе, стопы поднимаются на 4–6 см, root XY не двигается.
-3. `attack`: кадры 0/4/8/12/20; замах, мощный горизонтальный удар справа
-   налево, impact на 8, возврат к idle. Локти не переразгибать; staff работает
-   через левую руку, правая рука стабилизирует движение.
-4. `super`: кадры 0/15/30/35/45/60; присед, резкий подъём, удар staff о землю,
-   удержание impact-позы и возврат. На impact ноги слегка согнуты, staff
-   касается земли, root Z допускает только описанный вертикальный impulse.
-5. `aim`: кадры 0/30/60; низкая боевая стойка, staff горизонтально перед
-   грудью, лёгкое покачивание без выхода из loop.
-6. `aim-super`: кадры 0/30/60; глубокий присед, staff нижним концом касается
-   земли перед Mandy, корпус и руки дают мелкую подготовительную вибрацию.
-7. `hit`: кадры 0/3/7/10/12; резкий recoil назад, staff взмывает вверх,
-   стопы остаются на месте, root Z не меняется.
-8. `death`: кадры 0/8/15/25/45; оседание на колени, staff остаётся в руке и
-   упирается в землю, левая/свободная рука безвольно падает, финальная поза
-   удерживается.
-9. `spawn`: кадры 0/10/20/45; скрюченная поза без staff, раскрытие корпуса,
-   материализация staff в левой weapon-hand и переход в idle.
-10. `victory`: кадры 0/8/10/15/20/25/30/35/40/60; три оборота staff
-    через левую wrist/forearm-цепь, пританцовывание, прыжок, подхват второй
-    рукой, удар о землю и гордая стойка.
-11. `gadget`: кадры 0/5/12/24; быстрый переход в широкую устойчивую
-    оборонительную стойку, staff горизонтально перед грудью, затем hold.
-12. `aim-gadget`: кадры 0/30/60; низкая боевая стойка и подготовка к gadget,
-    staff на уровне груди, небольшое покачивание и напряжение кистей.
+## 12 клипов
 
-## Execution slices
+Пользовательские номера кадров 0-based; в Blender к ним прибавляется 1.
 
-1. Зафиксировать contract перед авторингом: staff остаётся в левой руке,
-   0-based кадры переводятся в Blender через `+1`, а 15-сантиметровый выпад
-   attack реализуется FK-анимацией бедра/голени с разрешённым foot slide.
-2. Добавить Mandy-specific authoring layer, который использует реальный
-   `MandyRig`, legacy action только как baseline, а новый choreography profile
-   — как source of truth. Не копировать слепо текущие 28/55/58 frame skill
-   profiles: для Mandy применить новые 20/60/24 timings из этого брифа.
-3. Генерировать двенадцать focused-сцен и JSON authoring report; сохранить
-   frame markers для `attack` impact, `super` contact/hold и `gadget` stance,
-   чтобы animation и VFX/gameplay оставались синхронны.
-4. Добавить Mandy validation: exact action names, frame ranges, 30 fps, finite
-   transforms, root X/Y drift, допустимые root Z impulse, joint limits,
-   contact/foot sliding, staff grip/ground collision, cycle closure и отсутствие
-   лишних Actions в каждой focused-сцене.
-5. Расширить exporter и manifest/catalog так, чтобы при `HERO_FILTER=mandy`
-   импортировался `AimGadget`, а остальные герои продолжали экспортироваться
-   по прежнему контракту. Экспортировать
-   `frontend/public/assets/heroes/output_heroes/mandy_base.glb` атомарно из
-   focused-сцен.
-6. Обновить Mandy-specific animation metadata и runtime clip map; сохранить
-   `Attack`, `super`, `Gadget` как ability mapping и не менять глобальный
-   десятиклиповый fallback для остальных героев.
-7. Прогнать Blender audit, GLB structural audit, browser transition/frame
-   sweep, frontend tests, catalog validation, lint и build; отдельно сохранить
-   визуальные preview-кадры Mandy для idle/run/attack/super/aim-super/death.
+| Clip | Action | Длина | Постановка и обязательные проверки |
+| --- | --- | ---: | --- |
+| `idle` | `idle` | 90 | Посох вертикален и упирается в землю в левой руке; правая на поясе; дыхание, перенос веса и мягкие повороты головы; кадры 0/30/60/90, root без подъёма. |
+| `run` | `run` | 20 | Посох прижат к левому плечу/корпусу левой рукой; правая работает в противофазе с ногами; torso остаётся upright, root in-place; кадры 0/6/12/18/20. |
+| `attack` | `Attack` | 16 | Замах и мощный горизонтальный удар левой рукой; правая отведена для баланса и возвращается к поясу; impact в районе 6–8; без правого хвата. |
+| `super` | `super` | 50 | Присед, подъём и удар посохом в землю левой рукой; правая только помогает оттолкнуться/балансирует; impact на 30, затем hold и возврат. |
+| `aim` | `Aim` | 60 | Низкая стойка, посох направлен вперёд одной левой рукой, правая на поясе; мягкое покачивание 0/30/60. |
+| `aim-super` | `AimSuper` | 60 | Глубокая низкая стойка, посох нижним концом в земле; правая свободно висит или балансирует, не касается посоха; цикл 0/30/60. |
+| `hit` | `hit` | 12 | Recoil назад; левая кисть уводит посох назад-вверх, правая делает короткий балансирующий взмах; быстрый возврат. |
+| `death` | `death` | 40 | Падение на колени; левая рука до конца держит посох и укладывает/упирает его в землю; правая безвольно падает; финал удерживается. |
+| `spawn` | `Spawn` | 45 | Материализация из низкой позы; левая рука вытягивается, посох становится видимым примерно на 18–20 кадре; правая плавно приходит на пояс; затем idle. |
+| `victory` | `Victory` | 60 | Вращение посоха 0→720° одной левой рукой, затем прыжок и удар о землю; правая остаётся на поясе/балансирует и не перехватывает посох; гордая финальная поза. |
+| `gadget` | `Gadget` | 16 | Резкий присед и фиксация Нерушимой стойки; посох вертикально/в земле в левой руке; правая упирается в колено или уходит назад, но не к посоху. |
+| `aim-gadget` | `AimGadget` | 60 | Низкая подготовительная стойка, посох горизонтально на уровне груди в левой руке; правая свободна; небольшое циклическое напряжение. |
+
+## Этапы выполнения
+
+### Stage 0 — диагностика рига и оружия, блокирующий gate
+
+1. Открыть master и, если он существует, `mandy_weapon.blend`. Записать
+   `artifacts/mandy-rig-axis-diagnostic.json`.
+2. Проверить armature object, parent hierarchy, rest pose, scale, bone-local
+   axes и реальный канал Loc Up через controlled displacement одного кадра.
+   Ожидаемый результат для текущего master: `Root_2_01` local Y — up, но
+   authoring script обязан пользоваться результатом отчёта.
+3. Найти все staff objects, сокеты, маркеры и их parent chains. Зафиксировать,
+   что и pivot, и marker, и `grip_bone` указывают на `L_wrist_s_047`.
+4. Если отдельного `.blend` нет, извлечь staff mesh из master в отдельный
+   detached-weapon source с сохранёнными transform, marker и
+   `attachment_role=held-weapon`; не создавать второй staff geometry в base
+   GLB.
+5. Gate: Stage 0 считается пройденным только если Blender-скрипт печатает
+   `weapon_hand=L_wrist_s_047`, `right_hand_contact=forbidden` и проверяет
+   `loc_up_channel` численным микротестом.
+
+### Stage 1 — чистая база и один проверочный Idle
+
+1. Не брать текущую позу master или legacy Action как готовую анимацию.
+   Сбросить pose offsets, зафиксировать нейтральный frame 0 и убедиться, что
+   сумма torso pitch близка к нулю.
+2. Переписать `author_mandy_animation_scenes.py` на semantic adapter реального
+   mapping; заменить ошибочный `hand_r` на `hand_l`, `root_z` на найденный
+   `Loc Up`, и добавить явную проверку правой кисти.
+3. Сгенерировать только `idle.blend`, открыть его в Blender и проверить
+   силуэт Mandy, левый хват, вертикальный staff, контакт с землёй и отсутствие
+   прохождения prop через тело.
+4. Не переходить к остальным клипам, пока Idle не проходит numeric gate и
+   screenshot gate в точном frontend harness.
+
+### Stage 2 — авторинг остальных 11 сцен
+
+1. Сгенерировать сцены из независимого master copy; в каждой сцене должен быть
+   один Action, полный Mandy mesh/rig и authoring staff representation.
+2. Использовать 30 fps, `BEZIER` и `AUTO_CLAMPED`, явные key poses,
+   anticipation, impact, follow-through и cycle closure.
+3. Для каждого клипа записать metadata: `hero_slug`, `clip_name`,
+   `clip_kind`, `frame_start`, `frame_end`, `fps`, `staff_hand`,
+   `loc_up_channel`, `right_hand_contact`, event frames и cycle contract.
+4. В конце Stage 2 получить ровно Actions
+   `idle`, `run`, `Attack`, `super`, `Aim`, `AimSuper`, `hit`, `death`,
+   `Spawn`, `Victory`, `Gadget`, `AimGadget`.
+
+### Stage 3 — numeric QA
+
+Обновить `validate_mandy_animation_scenes.py` так, чтобы он проверял:
+
+- 12 файлов, точные Action names, ranges и 30 fps;
+- finite transforms и отсутствие случайных Actions;
+- Root local X/Z drift = 0 и допустимый только отчётный Loc Up;
+- torso-pitch budget ≤ 20° в каждом sampled frame;
+- joint limits, no foot location offsets и допустимый FK foot slide только
+  там, где это действительно нужно;
+- staff pivot/marker/grip bone ancestry через `L_wrist_s_047`;
+- минимальную дистанцию правой кисти до staff geometry/marker — правый контакт
+  должен быть невозможен;
+- staff ground contact в `idle`, `super`, `aim-super`, `death`, `gadget` и
+  impact-фазах, где он указан;
+- отсутствие пересечения staff с torso по sampled bounds и preview frames;
+- cycle closure для `idle`, `run`, `aim`, `aim-super`, `aim-gadget`.
+
+### Stage 4 — export и runtime contract
+
+1. Экспортировать base GLB без staff geometry, но с левым weapon socket и
+   marker, чтобы detached weapon не дублировался.
+2. Экспортировать/проверить отдельный `mandy_weapon.glb` из Stage 0 с
+   `MandyStaff_Attachment`, `Grip.Primary.MandyStaff_Attachment`,
+   `attachment_role=held-weapon` и `grip_bone=L_wrist_s_047`.
+3. Обновить exporter, `docs/hero-catalog.json`, manifest, `HERO_ASSETS.Mandy`,
+   GLTFLoader attachment config и runtime tests: убрать старый
+   `right-hand staff`, указать левый socket/grip и оставить `AimGadget`
+   Mandy-specific extra.
+4. Проверить canonical path, размер/время файла и animation list после
+   завершения Blender. Если Windows оставил `.tmp.glb`, явно финализировать
+   его в canonical path и повторить audit.
+
+### Stage 5 — visual QA и release gate
+
+В exact frontend harness проверить минимум `idle`, `run`, `attack`, `super`,
+`aim`, `aim-super`, `death`, `spawn`, `victory`, `gadget`, `aim-gadget` на
+ключевых кадрах. Отдельно проверить переходы `idle → attack → idle`,
+`idle → super`, `spawn → idle` и `death`.
+
+Release разрешён только при одновременном выполнении numeric Blender audit,
+GLB structural audit, runtime contract tests и visual screenshot review.
 
 ## Acceptance criteria
 
-- Mandy имеет ровно двенадцать focused-сцен и двенадцать exported Actions:
-  `idle`, `run`, `Attack`, `super`, `Aim`, `AimSuper`, `hit`, `death`, `Spawn`,
-  `Victory`, `Gadget`, `AimGadget`.
-- Все сцены работают при 30 fps и соответствуют длительностям из таблицы;
-  loop-клипы замыкаются без скачка.
-- Root не имеет motion по X/Y ни в одном клипе. Любые изменения Z ограничены
-  явно описанными приседаниями, подскоками, ударом и оседанием.
-- Staff следует за левой hand/socket цепочкой, не проходит сквозь
-  Mandy, касается земли в `super`, `aim-super`, `death` и `victory` там, где
-  это требует бриф, а fingers сохраняют grip.
-- Выпады в `attack`, `super` и `hit` используют FK-движение бедра/голени и
-  допускают умеренный foot slide до 10–15 см. Дополнительные IK-цели не
-  добавляются; в `idle`, `run` и `aim` стопы не скользят, допускается только
-  переступание и отрыв носка.
-- `mandy_base.glb` содержит mesh, rig, staff attachment и все двенадцать
-  клипов; frontend загружает только этот canonical GLB.
-- `docs/hero-catalog.json`, animation manifest и runtime mapping согласованы;
-  `AimGadget` не становится обязательным клипом для других героев.
-- Существующие seven/eight-hero assets, общий десяти-event contract и
-  gameplay ability mappings остаются рабочими.
-- Проходят Blender/runtime audits, `python tools/validate_hero_catalog.py`,
-  frontend tests, lint и build; визуальные ограничения QA явно записаны в
-  отчёте.
+- В `scenes/` ровно 12 focused-сцен и в каждой ровно один канонический Action.
+- Во всех сценах staff socket/pivot/marker и detached weapon указывают на
+  `L_wrist_s_047`; ни один клип не использует `R_wrist_s_064` как weapon hand.
+- Правая рука не касается staff ни на одном sampled/key frame.
+- Корпус не заваливается: суммарный torso pitch ≤ 20°, Root horizontal motion
+  отсутствует, Loc Up использует подтверждённый локальный канал.
+- `mandy_base.glb` содержит Mandy mesh/rig и все 12 Actions, но не дублирует
+  detached staff geometry.
+- `mandy_weapon.glb` содержит staff, marker и canonical held-weapon metadata;
+  runtime прикрепляет его к левому сокету.
+- Spawn visibility и event markers согласованы с runtime, а `AimGadget` не
+  становится обязательным клипом для других героев.
+- Blender audit, GLB audit, Mandy runtime tests, catalog validation, frontend
+  tests, lint и build проходят; unrelated pre-existing failures записаны
+  отдельно.
 
 ## Риски и меры
 
-| Риск | Влияние | Мера |
-| --- | --- | --- |
-| Семантические углы брифа не совпадают с локальными осями FBX-рига | Высокое | Снять rest-pose calibration, применять pose mapping по реальным bone chains и проверять preview/limits. |
-| Новые 20/60/24 кадра расходятся с текущими skill profiles 28/55/58 | Высокое | Зафиксировать event markers отдельно от длительности клипа и синхронизировать их с gameplay/VFX до экспорта. |
-| `AimGadget` отсутствует в глобальном exporter contract | Среднее | Ввести per-hero extra clip в manifest/catalog/exporter и покрыть его отдельным тестом. |
-| Foot slide заметен при медленном просмотре | Среднее | Ограничить slide 10–15 см короткими быстрыми фазами attack/super/hit и запретить его в idle/run/aim. |
-| Headless Blender не доказывает силуэт и контакт посоха на каждом кадре | Среднее | Numeric sweep плюс набор preview renders и ручная проверка ключевых impact-кадров. |
+| Риск | Мера |
+| --- | --- |
+| В runtime останется старый right-hand contract | Сначала обновить mapping/validator/tests, затем экспортировать; добавить assert на `L_wrist_s_047`. |
+| Нет `mandy_weapon.blend` | Использовать embedded master staff как источник extraction и явно проверить конечный `.glb`; не блокировать весь pass догадкой о несуществующем файле. |
+| Локальные оси FBX дают неожиданный наклон | Stage 0 micro-test + calibrated semantic adapter; буквальные Euler из брифа не использовать. |
+| Старый baseline снова создаст постоянный lean | Нейтральный baseline авторить отдельно и визуально принять на Idle до генерации остальных клипов. |
+| Numeric pass скрывает плохой силуэт | Обязательный screenshot gate в exact harness на Idle/Attack/Super/Aim/Victory и переходах. |
+| Windows отдаёт старый GLB из-за блокировки | Проверять canonical file после export и финализировать `.tmp.glb` явно. |
 
-## Открытые вопросы
+## Результат планирования
 
-### v3 visual override
-
-The current Mandy v3 contract supersedes the earlier left-hand draft: the
-staff socket is `R_wrist_s_064`, idle arms are lowered alongside the body, and
-the detached staff is calibrated to a horizontal runtime pose.
-
-Блокирующих вопросов нет: staff остаётся в левой руке, кадры переводятся в
-Blender через `+1`, а выпады используют FK foot slide без IK.
+До начала Blender-авторинга нужно сначала выполнить Stage 0 и принять его
+отчёт. После этого единственным источником правды для нового Mandy pass будут
+обновлённый mapping, v4 authoring script и regenerated focused scenes; старые
+сцены/отчёты с `R_wrist_s_064` не переиспользуются.

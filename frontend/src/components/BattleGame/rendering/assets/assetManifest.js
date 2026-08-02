@@ -12,7 +12,10 @@ const clips = Object.freeze({
   defeat: "death",
 })
 const needleClips = Object.freeze({...clips, aimGadget: "AimGadget"})
+const fairyMinaClips = Object.freeze({...clips, aimGadget: "AimGadget"})
+const kazeClips = Object.freeze({...clips, aimGadget: "AimGadget"})
 const mandyClips = Object.freeze({...clips, aimGadget: "AimGadget"})
+const brockZeusClips = Object.freeze({...clips, aimGadget: "AimGadget"})
 
 const detachedWeapons = new Set(["damian", "kaze", "mandy", "persephone-lumi", "wukong-mico"])
 const weaponAttachments = Object.freeze({
@@ -29,13 +32,12 @@ const weaponAttachments = Object.freeze({
       name: "MandyStaff_Attachment",
       target: "GripPrimaryMandyStaff_Attachment",
       role: "held-weapon",
-      // The exported bone marker sits at the wrist-bone tail. This calibrated
-      // offset keeps the long staff visible in front of the torso while its
-      // grip end remains beside Mandy's right hand.
-      localRotation: [0, 0, 60 * Math.PI / 180],
-      // The detached staff root is authored at the grip origin. Keeping this
-      // zeroed is essential after moving Mandy's weapon socket to R_wrist.
-      localPosition: [-0.9, 0.3, -0.1],
+      // The detached source is authored at the left-palm grip origin. Do not
+      // add a runtime offset: the marker and the weapon root must coincide.
+      // The standalone GLB keeps the source pivot orientation from
+      // mandy.blend, so the runtime attachment needs no extra rotation.
+      localRotation: [0, 0, 0],
+      localPosition: [0, 0, 0],
     }),
   ]),
   "persephone-lumi": Object.freeze([
@@ -63,12 +65,13 @@ const hero = (id, scale = 0.92, rotationOffset = 0, assetId = id.toLowerCase(), 
 export const HERO_ASSETS = Object.freeze({
   Needle: hero("Needle", 0.94, 0, "needle", needleClips),
   Mandy: hero("Mandy", 0.92, 0, "mandy", mandyClips),
-  "Fairy Mina": hero("Fairy Mina", 0.92, 0, "fairy-mina"),
+  "Fairy Mina": hero("Fairy Mina", 0.92, 0, "fairy-mina", fairyMinaClips),
   "Brock Zeus": Object.freeze({
-    ...hero("Brock Zeus", 0.92, 0, "brock-zeus"),
+    ...hero("Brock Zeus", 0.92, 0, "brock-zeus", brockZeusClips),
+    companionUrl: "/assets/heroes/output_heroes/brock-zeus_cloud.glb",
     previewOffsetX: .68,
   }),
-  Kaze: hero("Kaze"),
+  Kaze: hero("Kaze", 0.92, 0, "kaze", kazeClips),
   "Wukong Mico": hero("Wukong Mico", 0.92, 0, "wukong-mico"),
   Damian: Object.freeze({...hero("Damian"), groundOffset: 0.25}),
   "Persephone Lumi": hero("Persephone Lumi", 0.92, 0, "persephone-lumi"),

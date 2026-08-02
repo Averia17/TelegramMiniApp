@@ -72,7 +72,19 @@ func RandomHero() Hero {
 
 func withHeroKits(heroes []Hero) []Hero {
 	for index := range heroes {
-		heroes[index].Kit = heroKits[heroes[index].Name]
+		kit := heroKits[heroes[index].Name]
+		switch heroes[index].Name {
+		case "Needle":
+			kit.Basic.Description = "Споровый шип сразу замедляет поражённых врагов на 2 секунды."
+		case "Kaze":
+			kit.Basic.Description = "Косые удары: усиленный удар доступен раз в 3 секунды."
+		case "Wukong Mico":
+			kit.Basic.Description = "Тяжёлый удар посохом наносит стабильный урон без накопления ярости."
+			kit.Super.Description = "Вихрь возмездия длится 5 секунд и наносит урон вокруг героя."
+		case "Damian":
+			kit.Basic.Description = "Сфера скверны ослабляет поражённого врага на 4 секунды."
+		}
+		heroes[index].Kit = kit
 	}
 	return heroes
 }
@@ -121,6 +133,7 @@ func (h Hero) CreatePlayer(id, name string, x, y float64) *player.Player {
 		RegenRate:        h.RegenRate,
 		DamageMultiplier: 1,
 		SlowMultiplier:   1,
+		SuperCharge:      100,
 		GadgetCharges:    3,
 	}
 	return p

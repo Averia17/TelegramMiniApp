@@ -19,21 +19,123 @@ func TestNewHeroCombatKitsAreRegistered(t *testing.T) {
 	}
 }
 
-func TestNeedleSporeStacksRootAndSlowOnThirdHit(t *testing.T) {
+func TestNeedleSporeSlowUsesItsDurationOnTheFirstHit(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("needle", "Needle", "Needle")
 	gs.PlayerAdd("enemy", "Enemy", "Shelly")
 	needle, enemy := gs.Players["needle"], gs.Players["enemy"]
 	needle.X, needle.Y, enemy.X, enemy.Y = 400, 400, 500, 400
-	for hit := 0; hit < 3; hit++ {
-		NeedleKit{}.Basic(gs, needle, int64(1000+hit*500), 0, 0)
-		shot := gs.Bullets[len(gs.Bullets)-1]
+	NeedleKit{}.Basic(gs, needle, time.Now().UnixMilli(), 0, 0)
+	shot := gs.Bullets[len(gs.Bullets)-1]
+	shot.X, shot.Y = enemy.X, enemy.Y
+	gs.updateBullets()
+
+	remaining := enemy.SlowUntil - time.Now().UnixMilli()
+	if remaining < 1800 || remaining > 2200 {
+		t.Fatalf("slow remaining=%dms, want about %dms", remaining, int(NeedleSporeSlowDuration/time.Millisecond))
+	}
+}
+
+func TestKazeEmpoweredSlashUsesTimeWindowInsteadOfHitCount(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("kaze", "Kaze", "Kaze")
+	gs.PlayerAdd("enemy", "Enemy", "Shelly")
+	p, enemy := gs.Players["kaze"], gs.Players["enemy"]
+	p.X, p.Y, enemy.X, enemy.Y = 500, 500, 570, 500
+	now := time.Now().UnixMilli()
+
+	KazeKit{}.Basic(gs, p, now, 0, 0)
+	firstDamage := enemy.MaxLives - enemy.Lives
+	if firstDamage != int(math.Round(float64(p.AttackDmg)*KazeEmpoweredDamageMultiplier))*2 {
+		t.Fatalf("first slash damage=%d, want empowered damage", firstDamage)
+	}
+	if p.KazeNextEmpoweredAt != now+KazeEmpowerInterval.Milliseconds() {
+		t.Fatalf("next empowered slash=%d, want %d", p.KazeNextEmpoweredAt, now+KazeEmpowerInterval.Milliseconds())
+	}
+
+	enemy.Lives = enemy.MaxLives
+	KazeKit{}.Basic(gs, p, now+KazeEmpowerInterval.Milliseconds()/2, 0, 0)
+	if got := enemy.MaxLives - enemy.Lives; got != p.AttackDmg*2 {
+		t.Fatalf("slash inside cooldown damage=%d, want normal damage=%d", got, p.AttackDmg*2)
+	}
+}
+
+func TestMicoVortexUsesFixedTimedDuration(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mico", "Mico", "Wukong Mico")
+	p := gs.Players["mico"]
+	now := time.Now().UnixMilli()
+
+	WukongMicoKit{}.Super(gs, p, now, 0, 0)
+	if p.VortexUntil != now+MicoVortexDuration.Milliseconds() {
+		t.Fatalf("vortex until=%d, want %d", p.VortexUntil, now+MicoVortexDuration.Milliseconds())
+	}
+	if len(gs.Effects) == 0 || gs.Effects[len(gs.Effects)-1].ExpiresAt-gs.Effects[len(gs.Effects)-1].CreatedAt != MicoVortexDuration.Milliseconds() {
+		t.Fatalf("vortex effect duration=%d, want %d", gs.Effects[len(gs.Effects)-1].ExpiresAt-gs.Effects[len(gs.Effects)-1].CreatedAt, MicoVortexDuration.Milliseconds())
+	}
+}
+
+func TestSkillDurationIsCappedAtFifteenSeconds(t *testing.T) {
+	if got := cappedSkillDuration(30 * time.Second); got != MaxHeroSkillDuration.Milliseconds() {
+		t.Fatalf("capped duration=%dms, want %dms", got, MaxHeroSkillDuration.Milliseconds())
+	}
+}
+
+func TestNeedleSuperRechargesByCooldownTimeWithoutHits(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("needle", "Needle", "Needle")
+	p := gs.Players["needle"]
+	now := time.Now().UnixMilli()
+	p.SuperCharge = 100
+
+	gs.playerAbility(p.PlayerId, now, "primary")
+	if len(gs.HeroZones) != 1 {
+		t.Fatalf("initial root cast zones=%d, want 1", len(gs.HeroZones))
+	}
+	if p.SuperCharge != 0 {
+		t.Fatalf("super charge after cast=%d, want 0", p.SuperCharge)
+	}
+
+	cooldown := AbilityCooldownMs(p.HeroName, "primary")
+	gs.playerAbility(p.PlayerId, now+cooldown-1, "primary")
+	if len(gs.HeroZones) != 1 {
+		t.Fatalf("root recast before cooldown zones=%d, want 1", len(gs.HeroZones))
+	}
+	gs.playerAbility(p.PlayerId, now+cooldown, "primary")
+	if len(gs.HeroZones) != 2 {
+		t.Fatalf("root recast after cooldown zones=%d, want 2", len(gs.HeroZones))
+	}
+}
+
+func TestActiveSuperCooldownsAreTimeBasedAndCapped(t *testing.T) {
+	for _, hero := range []string{"Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"} {
+		cooldown := AbilityCooldownMs(hero, "primary")
+		if cooldown <= 0 || cooldown > MaxHeroSkillDuration.Milliseconds() {
+			t.Fatalf("%s primary cooldown=%dms, want 1..%dms", hero, cooldown, MaxHeroSkillDuration.Milliseconds())
+		}
+	}
+}
+
+func TestDamianDebuffRefreshesByTimeInsteadOfStackingPerHit(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("damian", "Damian", "Damian")
+	gs.PlayerAdd("enemy", "Enemy", "Shelly")
+	damian, enemy := gs.Players["damian"], gs.Players["enemy"]
+	damian.X, damian.Y, enemy.X, enemy.Y = 400, 400, 500, 400
+	now := time.Now().UnixMilli()
+
+	for hit := 0; hit < 2; hit++ {
+		shot := gs.spawnAttackBullet(damian, 0, "damian_orb", damian.AttackDmg, damian.BulletSpd, damian.BulletSz, 640, 0, false, false)
 		shot.X, shot.Y = enemy.X, enemy.Y
 		gs.updateBullets()
 	}
-	if gs.SporeStacks[enemy.PlayerId] != 0 || enemy.SlowUntil <= 0 {
-		t.Fatalf("spore stacks=%d slowUntil=%d, want reset and slow", gs.SporeStacks[enemy.PlayerId], enemy.SlowUntil)
+	if got := gs.DamianDebuffUntil[enemy.PlayerId]; got < now+DamianDebuffDuration.Milliseconds()-200 || got > time.Now().UnixMilli()+DamianDebuffDuration.Milliseconds()+200 {
+		t.Fatalf("debuff until=%d, want a single refreshed %dms duration", got, DamianDebuffDuration.Milliseconds())
 	}
 }
 

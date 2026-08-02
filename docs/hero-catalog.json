@@ -12,7 +12,7 @@
   "sourceFingerprints": {
     "battle/model/game/heroes.go": "181EA1D540B108093E77C74EBAB70D4D019484A282E9106070BE9CB1D4D99219",
     "battle/model/game/attack_config.go": "F30A1243D685E90750241AB0513348F99AE0BC8D687106059F5CB51427F99880",
-    "tools/blender/hero_animation_scene_manifest.json": "9C7636DF99A3A0F9FB5801492BADDD3669D423FCFB3E7670665DFFA17F6EA263"
+    "tools/blender/hero_animation_scene_manifest.json": "4CD9C5E734272161EE401369A6C5BEC2022559E41EA057BAFAC6D97119371786"
   },
   "contracts": {
     "runtimeAnimationFps": 30,
@@ -88,7 +88,7 @@
         "super": {"id": "star_cocoon", "name": "Звёздный кокон", "description": "Щит создаёт лечащую ауру вокруг выбранного союзника.", "slot": "primary", "prediction": "server", "mechanics": ["щит 400", "длительность 4 секунды", "аура радиусом 160"]},
         "gadget": {"id": "repelling_wave", "name": "Отталкивающая волна", "description": "Отбрасывает врагов и оглушает уже отмеченные цели.", "slot": "secondary", "prediction": "server", "mechanics": ["радиус 135", "отбрасывание", "оглушение отмеченных целей"]}
       },
-      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
+      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
       "assets": {"sourceMaster": "frontend/assets-source/heroes/fairy-mina/fairy-mina.blend", "sceneDirectory": "frontend/assets-source/heroes/fairy-mina/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/fairy-mina_base.glb", "runtimeWeapon": null, "status": "runtime_hero_ready_weapon_missing"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
     },
@@ -106,8 +106,8 @@
         "super": {"id": "gods_hammer", "name": "Молот богов", "description": "Три удара молнии создают горящую зону.", "slot": "primary", "prediction": "server", "mechanics": ["3 удара", "задержка между ударами 400 мс", "последний удар создаёт огонь"]},
         "gadget": {"id": "discharge_cable", "name": "Разрядный кабель", "description": "Следующий выстрел становится пробивающим лучом.", "slot": "secondary", "prediction": "server", "mechanics": ["луч до 800", "пробивает цели", "разрушает стены по линии"]}
       },
-      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
-      "assets": {"sourceMaster": "frontend/assets-source/heroes/brock-zeus/brock-zeus.blend", "sceneDirectory": "frontend/assets-source/heroes/brock-zeus/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/brock-zeus_base.glb", "runtimeWeapon": null, "status": "runtime_hero_ready_weapon_missing"},
+      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/brock-zeus/brock-zeus.blend", "sceneDirectory": "frontend/assets-source/heroes/brock-zeus/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/brock-zeus_base.glb", "runtimeCompanion": "frontend/public/assets/heroes/output_heroes/brock-zeus_cloud.glb", "runtimeWeapon": null, "status": "runtime_ready_companion_cloud_weapon_missing"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
     },
     {
@@ -124,7 +124,7 @@
         "super": {"id": "piercing_dash", "name": "Пронизывающий рывок", "description": "Рывок поражает врагов на пути, помечает их и оглушает.", "slot": "primary", "prediction": "server", "mechanics": ["дистанция 320", "урон 160", "оглушение 500 мс"]},
         "gadget": {"id": "vanish", "name": "Исчезновение", "description": "Невидимость на короткое время гарантирует усиленный первый удар.", "slot": "secondary", "prediction": "server", "mechanics": ["невидимость 3 секунды", "усиленный первый удар"]}
       },
-      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
+      "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
       "assets": {"sourceMaster": "frontend/assets-source/heroes/kaze/kaze.blend", "sceneDirectory": "frontend/assets-source/heroes/kaze/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/kaze_base.glb", "runtimeWeapon": "frontend/public/assets/heroes/output_weapons/kaze_weapon.glb", "status": "runtime_ready"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
     },

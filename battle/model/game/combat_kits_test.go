@@ -191,7 +191,7 @@ func TestTapAutoAimSelectsNearestEnemyInsideAttackRange(t *testing.T) {
 	}
 }
 
-func TestCoreCombatSuperChargeIsProportionalToActualPvPDamage(t *testing.T) {
+func TestCoreCombatSuperChargeDoesNotUsePvPDamage(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("shelly", "Shelly", "Shelly")
@@ -200,13 +200,13 @@ func TestCoreCombatSuperChargeIsProportionalToActualPvPDamage(t *testing.T) {
 	source.X, source.Y = 1000, 1000
 	target.X, target.Y = 1025, 1000
 
+	source.SuperCharge = 0
+	source.LastPrimaryAt = time.Now().UnixMilli()
 	gs.playerShoot("shelly", 1_000, 0)
 	gs.updateBullets()
 
-	dealt := target.MaxLives - target.Lives
-	wantCharge := dealt / 40
-	if source.SuperCharge != wantCharge {
-		t.Fatalf("Super charge = %d after %d actual damage, want %d", source.SuperCharge, dealt, wantCharge)
+	if source.SuperCharge != 0 {
+		t.Fatalf("Super charge = %d after PvP damage, want it to remain time-based", source.SuperCharge)
 	}
 }
 
@@ -237,13 +237,15 @@ func TestMandyFocusExtendsMeleeConeAfterOneSecondStill(t *testing.T) {
 	}
 }
 
-func TestMandySuperChargesInExactlyFourSuccessfulSwings(t *testing.T) {
+func TestMandySuperChargeDoesNotUseSuccessfulSwings(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("mandy", "Mandy", "Mandy")
 	gs.PlayerAdd("target", "Target", "Viper")
 	source, target := gs.Players["mandy"], gs.Players["target"]
 	source.X, source.Y, target.X, target.Y = 500, 500, 570, 500
+	source.SuperCharge = 0
+	source.LastPrimaryAt = time.Now().UnixMilli()
 
 	for swing := 0; swing < 4; swing++ {
 		gs.playerShoot("mandy", int64(1000+swing*1000), 0)
@@ -251,8 +253,8 @@ func TestMandySuperChargesInExactlyFourSuccessfulSwings(t *testing.T) {
 		target.Lives = target.MaxLives
 	}
 
-	if source.SuperCharge != 100 {
-		t.Fatalf("Mandy Super charge = %d after four hits, want 100", source.SuperCharge)
+	if source.SuperCharge != 0 {
+		t.Fatalf("Mandy Super charge = %d after four hits, want it to remain time-based", source.SuperCharge)
 	}
 }
 

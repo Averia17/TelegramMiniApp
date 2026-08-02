@@ -3,6 +3,7 @@ import {createNeedleSporeVisual, createProjectileVisual} from "../combat/Project
 import {getAttackSwingYaw} from "./attackSwing.js"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+const CLOUD_STORM_TINT = new THREE.Color(0x07111e)
 export const LOCOMOTION_FADE = 0.16
 export const OVERLAY_FADE = 0.18
 const MANDY_SPAWN_STAFF_REVEAL_SECONDS = 20 / 30
@@ -176,6 +177,9 @@ export class GLBHeroController {
   constructor(root, clips = [], clipNames = {}, options = {}) {
     this.root = root
     this.mixer = new THREE.AnimationMixer(root)
+    this.cloudMixer = null
+    this.cloudActions = new Map()
+    this.cloudState = null
     this.actions = new Map()
     this.state = null
     this.overlay = null
@@ -225,6 +229,7 @@ export class GLBHeroController {
     }
     this.detachedAmmo = []
     this.cloud = null
+    this.cloudMaterialBases = []
     this.cloudCaster = null
     this.throwableWeapon = null
     this.meleeWeapon = null
@@ -263,6 +268,18 @@ export class GLBHeroController {
       }
     })
     if (this.cloud) {
+      this.cloud.traverse(node => {
+        if (!node.isMesh) return
+        const materials = Array.isArray(node.material) ? node.material : [node.material]
+        materials.filter(Boolean).forEach(material => {
+          this.cloudMaterialBases.push({
+            material,
+            color: material.color?.clone() || null,
+            emissive: material.emissive?.clone() || null,
+            emissiveIntensity: material.emissiveIntensity,
+          })
+        })
+      })
       if (this.previewLayout) {
         this.cloud.traverse(node => {
           if (!node.isMesh) return
@@ -310,6 +327,24 @@ export class GLBHeroController {
     if (this.cloud && this.heroName === "Brock Zeus") {
       this.cloudLightning = createCloudLightning()
       root.add(this.cloudLightning)
+    }
+    if (this.cloud && options.companionAnimations?.length) {
+      this.cloudMixer = new THREE.AnimationMixer(this.cloud)
+      for (const [semanticName, clipName] of Object.entries(clipNames)) {
+        const source = THREE.AnimationClip.findByName(options.companionAnimations, `Cloud_${clipName}`)
+          || THREE.AnimationClip.findByName(options.companionAnimations, clipName)
+        if (!source) continue
+        const action = this.cloudMixer.clipAction(source)
+        if (["attack", "super", "gadget", "spawn", "hit", "defeat"].includes(semanticName)) {
+          configureOneShot(action, semanticName === "spawn")
+        } else {
+          action.setLoop(THREE.LoopRepeat, Infinity)
+        }
+        action.enabled = true
+        action.setEffectiveWeight(0)
+        this.cloudActions.set(semanticName, action)
+      }
+      this.transitionCloud("idle", 0)
     }
     this.spawnScale = root.scale.clone()
     this.basePosition = root.position.clone()
@@ -416,7 +451,87 @@ export class GLBHeroController {
       next.setEffectiveWeight(1)
     }
     this.state = name
+    this.transitionCloud(name, fadeSeconds)
     return true
+  }
+
+  transitionCloud(name, fadeSeconds = LOCOMOTION_FADE) {
+    const next = this.cloudActions.get(name)
+    if (!next || this.cloudState === name) return Boolean(next)
+    this.cloud.visible = true
+    const previous = this.cloudActions.get(this.cloudState)
+    next.enabled = true
+    next.reset().setEffectiveWeight(1).play()
+    if (previous && previous !== next) previous.crossFadeTo(next, fadeSeconds, false)
+    else next.setEffectiveWeight(1)
+    this.cloudState = name
+    return true
+  }
+
+  updateAuthoredCloudEffects() {
+    if (!this.cloud || !this.cloudActions.size) return
+    const action = this.cloudActions.get(this.cloudState)
+    const duration = Math.max(.001, action?.getClip().duration || 1)
+    if (this.cloudState === "defeat" && action && !action.isRunning() && action.time >= duration - 1e-4) {
+      this.cloud.visible = false
+      if (this.cloudLightning) this.cloudLightning.visible = false
+      return
+    }
+    this.cloud.visible = true
+    const phase = ((action?.time || 0) % duration) / duration
+    const pulse = (center, width) => clamp(1 - Math.abs(phase - center) / width, 0, 1)
+    let strike = 0
+    let stormDarkness = 0
+    if (this.cloudState === "idle") {
+      strike = Math.pow(Math.max(0, Math.sin(this.elapsed * 4.2)), 14) * .7
+    } else if (this.cloudState === "attack") {
+      strike = pulse(6 / 16, .09)
+    } else if (this.cloudState === "super") {
+      strike = Math.max(pulse(.50, .055), pulse(.60, .055), pulse(.70, .055))
+      stormDarkness = Math.sin(Math.PI * clamp(phase, 0, 1)) * .68
+    } else if (this.cloudState === "hit") {
+      strike = pulse(3 / 12, .10)
+    } else if (this.cloudState === "victory") {
+      strike = Math.max(pulse(20 / 60, .07), pulse(28 / 60, .07))
+    } else if (this.cloudState === "gadget") {
+      strike = pulse(4 / 16, .10) * .55
+    } else if (["aim", "aimSuper", "aimGadget"].includes(this.cloudState)) {
+      strike = Math.pow(Math.max(0, Math.sin(this.elapsed * 5.5)), 18) * .35
+    }
+    this.cloud.userData.lightningCharge = Math.max(strike, stormDarkness * .25)
+    for (const base of this.cloudMaterialBases) {
+      if (base.color && base.material.color) {
+        base.material.color.copy(base.color).lerp(CLOUD_STORM_TINT, stormDarkness * .55)
+      }
+      if (base.emissive && base.material.emissive) {
+        base.material.emissive.copy(base.emissive).lerp(CLOUD_STORM_TINT, stormDarkness * .45)
+        if (base.emissiveIntensity !== undefined) {
+          base.material.emissiveIntensity = base.emissiveIntensity * (1 + stormDarkness * .2)
+        }
+      }
+    }
+    if (!this.cloudLightning) return
+    this.root.updateMatrixWorld(true)
+    const bounds = new THREE.Box3().setFromObject(this.cloud)
+    const cloudWorld = bounds.isEmpty()
+      ? this.cloud.getWorldPosition(new THREE.Vector3())
+      : bounds.getCenter(new THREE.Vector3())
+    this.cloudLightning.position.copy(this.root.worldToLocal(cloudWorld))
+    const rootWorldScale = this.root.getWorldScale(new THREE.Vector3())
+    this.cloudLightning.scale.set(
+      1 / Math.max(.001, rootWorldScale.x),
+      1 / Math.max(.001, rootWorldScale.y),
+      1 / Math.max(.001, rootWorldScale.z),
+    )
+    this.cloudLightning.visible = strike > .02
+    this.cloudLightning.rotation.z = Math.sin(this.elapsed * 93) * .035
+    this.cloudLightning.children.forEach(child => {
+      if (!child.material) return
+      const layer = child.userData.lightningLayer
+      child.material.opacity = layer === "core"
+        ? strike
+        : strike * (layer === "impact" ? .52 : .82)
+    })
   }
 
   playSafe(name, fallback = "idle", fadeSeconds = OVERLAY_FADE) {
@@ -438,6 +553,7 @@ export class GLBHeroController {
     next.enabled = true
     next.reset().setEffectiveWeight(1).fadeIn(fadeSeconds).play()
     this.overlay = name
+    this.transitionCloud(name, fadeSeconds)
     if (name === "attack" && this.heldProjectile) this.heldProjectile.visible = true
     return true
   }
@@ -447,6 +563,9 @@ export class GLBHeroController {
     const previous = this.actions.get(this.overlay)
     if (previous) previous.stop().setEffectiveWeight(0)
     this.overlay = null
+    if (previousName && this.cloudActions.size) {
+      this.transitionCloud(this.state === "run" ? "run" : "idle", OVERLAY_FADE)
+    }
     if (FULL_BODY_OVERLAYS.has(previousName)) this.restoreLocomotion()
   }
 
@@ -467,6 +586,7 @@ export class GLBHeroController {
     if (!action) return
     action.enabled = true
     action.reset().setEffectiveWeight(1).play()
+    this.transitionCloud(name, LOCOMOTION_FADE)
   }
 
   playOutcome(name, fadeSeconds = LOCOMOTION_FADE) {
@@ -481,7 +601,13 @@ export class GLBHeroController {
     const action = this.actions.get(name)
     action.setLoop(THREE.LoopRepeat, Infinity)
     action.clampWhenFinished = false
-    return this.transitionLocomotion(name, fadeSeconds)
+    const transitioned = this.transitionLocomotion(name, fadeSeconds)
+    // Results are locomotion actions for the character, but the companion
+    // still needs its matching one-shot/action track.  Keep this explicit so
+    // a repeated result pulse can recover the cloud even when the character
+    // is already in the same outcome state.
+    this.transitionCloud(name, fadeSeconds)
+    return transitioned
   }
 
   playSpawn() {
@@ -492,6 +618,7 @@ export class GLBHeroController {
     this.mandySpawnStaffElapsed = 0
     if (this.heroName === "Mandy" && this.meleeWeapon) this.meleeWeapon.visible = false
     const action = this.actions.get("spawn")
+    this.transitionCloud("spawn", 0)
     if (this.spawnCactus && !action) {
       this.spawnCactus.visible = true
       this.spawnCactus.scale.copy(this.spawnCactusScale)
@@ -535,6 +662,8 @@ export class GLBHeroController {
         this.state = "dead"
       }
       this.mixer.update(deltaSeconds)
+      this.cloudMixer?.update(deltaSeconds)
+      this.updateAuthoredCloudEffects()
       return
     }
     if (this.lastSpawnPulse !== input.spawnPulse && input.spawnPulse !== undefined) {
@@ -555,7 +684,7 @@ export class GLBHeroController {
     this.lastAttackPulse = input.attackPulse
     this.lastSuperPulse = input.superPulse
     this.lastGadgetPulse = input.gadgetPulse
-    if (this.cloud && this.cloudBasePosition) {
+    if (this.cloud && this.cloudBasePosition && !this.cloudActions.size) {
       this.attackVisualRemaining = Math.max(0, this.attackVisualRemaining - deltaSeconds)
       const attacking = this.overlay === "attack" || this.attackVisualRemaining > 0
       const attack = this.actions.get("attack")
@@ -653,10 +782,16 @@ export class GLBHeroController {
       this.root.scale.copy(this.spawnScale)
       this.root.position.copy(this.basePosition)
     }
+    const outcomeState = this.state === "victory" || this.state === "defeat"
     if (input.result) {
       this.playOutcome(input.result, LOCOMOTION_FADE)
-    } else if (this.state !== "spawn") {
+    } else if (this.state !== "spawn" && !outcomeState) {
       this.transitionLocomotion(input.moving ? "run" : "idle")
+    }
+    if (!this.overlay && this.state !== "spawn" && this.state !== "dead" && !outcomeState) {
+      this.transitionCloud(
+        input.superAiming ? "aimSuper" : input.aiming ? "aim" : input.moving ? "run" : "idle",
+      )
     }
 
     const run = this.actions.get("run")
@@ -701,6 +836,8 @@ export class GLBHeroController {
     }
     this.appliedLegGait.clear()
     this.mixer.update(deltaSeconds)
+    this.cloudMixer?.update(deltaSeconds)
+    this.updateAuthoredCloudEffects()
     const attackAction = this.actions.get("attack")
     const attackPhase = attackAction
       ? clamp(attackAction.time / Math.max(.001, attackAction.getClip().duration), 0, 1)
@@ -808,6 +945,9 @@ export class GLBHeroController {
   dispose() {
     this.mixer.stopAllAction()
     this.mixer.uncacheRoot(this.root)
+    this.cloudMixer?.stopAllAction()
+    if (this.cloud) this.cloudMixer?.uncacheRoot(this.cloud)
     this.actions.clear()
+    this.cloudActions.clear()
   }
 }

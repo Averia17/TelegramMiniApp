@@ -487,7 +487,7 @@ test("the hero manifest uses standardized base GLBs and optional detached weapon
     const asset = getHeroAsset(name)
     assert.equal(asset.id, name)
     assert.equal(asset.scale > 0, true)
-    const expectedClipKeys = ["Needle", "Mandy"].includes(name)
+    const expectedClipKeys = ["Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze"].includes(name)
       ? ["idle", "run", "hit", "aim", "aimSuper", "attack", "super", "gadget", "spawn", "victory", "defeat", "aimGadget"]
       : ["idle", "run", "hit", "aim", "aimSuper", "attack", "super", "gadget", "spawn", "victory", "defeat"]
     assert.deepEqual(Object.keys(asset.clips), expectedClipKeys)
@@ -528,6 +528,29 @@ test("entering battle never falls back to a blank screen while the arena loads",
   assert.match(landingSource, /setBattleStarting\(true\)/)
   assert.match(landingSource, /<BattleLoading/)
   assert.match(battleSource, /view === "connecting"[\s\S]*<BattleLoading/)
+})
+
+test("battle startup yields a browser paint before creating WebGL resources", async () => {
+  const battleSource = await readFile(projectFile("src/components/BattleGame/BattleGame.jsx"), "utf8")
+
+  assert.match(battleSource, /setTimeout\(startBattle, 0\)/)
+  assert.match(battleSource, /startBattle[\s\S]*releaseAllPreviewContexts\(\)[\s\S]*new Renderer\(/)
+})
+
+test("battle loop throttles expensive renderer state synchronization", async () => {
+  const battleSource = await readFile(projectFile("src/components/BattleGame/BattleGame.jsx"), "utf8")
+
+  assert.match(battleSource, /BATTLE_RENDER_STATE_INTERVAL\s*=\s*1\s*\/\s*30/)
+  assert.match(battleSource, /stateSyncElapsed\s*\+=\s*delta/)
+  assert.match(battleSource, /stateSyncElapsed\s*>=\s*BATTLE_RENDER_STATE_INTERVAL/)
+})
+
+test("battle loading stays visible until the first arena frame is rendered", async () => {
+  const source = await readFile(projectFile("src/components/BattleGame/BattleGame.jsx"), "utf8")
+
+  assert.match(source, /const \[sceneReady, setSceneReady\] = useState\(false\)/)
+  assert.match(source, /!sceneReady \|\| view === "connecting"/)
+  assert.match(source, /setSceneReady\(true\)/)
 })
 
 test("battle hero is not exposed or selected through query parameters", async () => {
@@ -623,6 +646,16 @@ test("battle reward message names the rewarded placement", () => {
   assert.equal(getBattleRewardMessage({won: false, place: 2}), "")
 })
 
+test("battle result stats keep their Cyrillic labels readable", async () => {
+  const source = await readFile(projectFile("src/components/BattleGame/BattleGameUI.jsx"), "utf8")
+  assert.match(source, /result\.won \? 1 : "—"/)
+  assert.match(source, /<\/b>место<\/span>/)
+  assert.match(source, /<\/b>бойцов<\/span>/)
+  assert.match(source, /<\/b>мобов<\/span>/)
+  assert.match(source, /<\/b>время<\/span>/)
+  assert.doesNotMatch(source, /РјРµСЃС‚Рѕ|Р±РѕР№С†РѕРІ|РјРѕР±РѕРІ|РІСЂРµРјСЏ/)
+})
+
 test("the result popup is committed before an optional renderer outcome animation", async () => {
   const source = await readFile(projectFile("src/components/BattleGame/BattleGame.jsx"), "utf8")
   const finishBattle = source.slice(source.indexOf("const finishBattle"), source.indexOf("const debugPlayerId"))
@@ -635,6 +668,15 @@ test("the battle scene provides PBR lighting and soft shadows for GLB heroes", a
   assert.match(source, /HemisphereLight/)
   assert.match(source, /DirectionalLight/)
   assert.match(source, /PCFSoftShadowMap/)
+})
+
+test("battle renderer drops expensive quality settings after sustained slow frames", async () => {
+  const source = await readFile(projectFile("src/components/BattleGame/rendering/three/ThreeBattleRenderer.js"), "utf8")
+
+  assert.match(source, /slowFrameCount/)
+  assert.match(source, /frameElapsed >= 22/)
+  assert.match(source, /slowFrameCount >= 10/)
+  assert.match(source, /this\.enableLowQuality\(\)/)
 })
 
 test("AssetRegistry loads each GLB once and returns independent clones", async () => {
@@ -828,6 +870,12 @@ test("AssetRegistry preloads only the canonical hero GLB through the shared cach
 test("the app does not preload every hero GLB before the first render", async () => {
   const source = await readFile(projectFile("src/main.jsx"), "utf8")
   assert.doesNotMatch(source, /assetRegistry\.preloadAll\(/)
+})
+
+test("battle hero GLB upgrades wait for idle time after the fallback is visible", async () => {
+  const source = await readFile(projectFile("src/components/BattleGame/rendering/heroes/HeroView.js"), "utf8")
+  assert.match(source, /requestIdleCallback/)
+  assert.match(source, /await waitForHeroUpgradeIdle\(\)/)
 })
 
 test("AssetRegistry applies a hero ground offset after height normalization", async () => {
@@ -1151,7 +1199,7 @@ test("the fighter selection warms only the selected GLB while idle", async () =>
 test("hero equipment profiles hide detached ammo and animate Brock's nearby cloud", () => {
   const mandyRoot = new THREE.Group()
   const mandyWrist = new THREE.Bone()
-  mandyWrist.name = "R_wrist_s_064"
+  mandyWrist.name = "L_wrist_s_047"
   const mandyStaff = new THREE.Group()
   mandyStaff.name = "MandyStaff_Attachment"
   mandyStaff.userData.attachment_role = "held-weapon"
@@ -1308,6 +1356,17 @@ test("map visuals are optional and never replace semantic collision types", () =
   assert.equal(resolveEnvironmentVisual({type: "crates"}), "crate_a")
   assert.equal(resolveEnvironmentVisual({type: "destructible", visual: "desert_wall_b"}), "desert_wall_b")
   assert.equal(resolveEnvironmentVisual({type: "unknown"}), null)
+})
+
+test("island decoration stays below impassable map surfaces", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+
+  mapRenderer.syncIslandTerrain(true, 2400, 2400)
+
+  const layerHeights = mapRenderer.islandTerrain.children.slice(0, 3).map(layer => layer.position.y)
+  assert.ok(Math.max(...layerHeights) < 0.015)
+  mapRenderer.dispose()
 })
 
 test("environment manifest defines an explicit placement contract", () => {

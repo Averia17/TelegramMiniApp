@@ -19,3 +19,18 @@ func TestHeroKitContractIsIncludedInHeroesPayloadModel(t *testing.T) {
 		t.Fatalf("unexpected Needle contract: %#v", needle)
 	}
 }
+
+func TestHitThresholdDescriptionsAreReplacedWithTimedRules(t *testing.T) {
+	checks := map[string]string{
+		"Needle":      "Споровый шип сразу замедляет поражённых врагов на 2 секунды.",
+		"Kaze":        "Косые удары: усиленный удар доступен раз в 3 секунды.",
+		"Wukong Mico": "Тяжёлый удар посохом наносит стабильный урон без накопления ярости.",
+		"Damian":      "Сфера скверны ослабляет поражённого врага на 4 секунды.",
+	}
+	for heroName, want := range checks {
+		hero := GetHeroByName(heroName)
+		if hero == nil || hero.Kit.Basic.Description != want {
+			t.Fatalf("%s basic description=%q, want %q", heroName, hero.Kit.Basic.Description, want)
+		}
+	}
+}

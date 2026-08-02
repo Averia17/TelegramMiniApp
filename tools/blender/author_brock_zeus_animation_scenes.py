@@ -96,7 +96,7 @@ def idle_poses():
         R_Shoulder=(-28, -8, 5),
         R_Elbow=(48, 0, -8),
         R_Wrist=(-18, 0, 10),
-        L_Shoulder=(18, 0, -14),
+        L_Shoulder=(-15, 0, -14),
         L_Elbow=(62, 0, 10),
         L_Wrist=(-26, 0, -8),
         Head=(0, 8, 0),
@@ -109,8 +109,8 @@ def idle_poses():
             R_Shoulder=(-24, -5, 8),
             R_Elbow=(44, 0, -5),
             R_Wrist=(-14, 0, 14),
-            L_Shoulder=(20, 0, -16),
-            L_Elbow=(58, 0, 12),
+            L_Shoulder=(-15, 0, -16),
+            L_Elbow=(62, 0, 12),
             L_Wrist=(-22, 0, -10),
             Spine=(2, 0, 1),
             Chest=(1, 0, 0),
@@ -122,8 +122,8 @@ def idle_poses():
             R_Shoulder=(-32, -10, 2),
             R_Elbow=(52, 0, -12),
             R_Wrist=(-22, 0, 6),
-            L_Shoulder=(14, 0, -12),
-            L_Elbow=(66, 0, 8),
+            L_Shoulder=(-15, 0, -12),
+            L_Elbow=(62, 0, 8),
             L_Wrist=(-30, 0, -6),
             Spine=(-2, 0, -1),
             Chest=(-1, 0, 0),
@@ -135,8 +135,8 @@ def idle_poses():
             R_Shoulder=(-24, -5, 8),
             R_Elbow=(44, 0, -5),
             R_Wrist=(-14, 0, 14),
-            L_Shoulder=(20, 0, -16),
-            L_Elbow=(58, 0, 12),
+            L_Shoulder=(-15, 0, -16),
+            L_Elbow=(62, 0, 12),
             L_Wrist=(-22, 0, -10),
             Spine=(2, 0, 1),
             Chest=(1, 0, 0),
@@ -163,7 +163,7 @@ def run_poses():
             R_UpperLeg=(-22, 8, 0),
             R_LowerLeg=(18, 0, 0),
         ),
-        5: pose(
+        6: pose(
             root_y=-0.015,
             Spine=(8, 0, 0),
             Chest=(3, 0, 0),
@@ -179,7 +179,7 @@ def run_poses():
             R_UpperLeg=(46, -8, 0),
             R_LowerLeg=(-30, 0, 0),
         ),
-        10: pose(
+        12: pose(
             Spine=(8, 0, 0),
             Chest=(3, 0, 0),
             Head=(-4, 0, 0),
@@ -194,7 +194,7 @@ def run_poses():
             R_UpperLeg=(48, -8, 0),
             R_LowerLeg=(-28, 0, 0),
         ),
-        15: pose(
+        18: pose(
             root_y=-0.015,
             Spine=(8, 0, 0),
             Chest=(3, 0, 0),
@@ -780,9 +780,9 @@ CLOUD_OFFSETS = {
     },
     "run": {
         0: (0.55, 0.35, 0),
-        5: (0.70, 0.20, 0),
-        10: (0.55, 0.35, 0),
-        15: (0.70, 0.20, 0),
+        6: (0.70, 0.15, 0),
+        12: (0.55, 0.35, 0),
+        18: (0.70, 0.15, 0),
         20: (0.55, 0.35, 0),
     },
     "attack": {
@@ -795,36 +795,40 @@ CLOUD_OFFSETS = {
     },
     "super": {
         0: (0, 0, 0),
-        10: (-0.55, -2.5, 0.08),
-        18: (-0.05, 1.2, 0),
-        25: (0.55, -3.8, 0.04),
-        30: (-0.45, -3.8, 0.04),
-        35: (0.55, -3.8, 0.04),
+        10: (-0.55, -2.1, 0.08),
+        18: (-0.05, 1.5, 0),
+        25: (0.55, -2.35, 0.04),
+        30: (-0.45, -2.35, 0.04),
+        35: (0.55, -2.35, 0.04),
         45: (0, 0, 0),
         50: (0, 0, 0),
     },
-    "aim": {0: (0.85, 0.65, 0), 30: (0.95, 0.78, 0), 60: (0.85, 0.65, 0)},
+    # The prose target is "over the hand".  On Brock's measured rig the
+    # shoulder-derived base is already above the hand, so the runtime-space
+    # correction is a short move down/left rather than adding another full
+    # meter of offset (which put the cloud above the head).
+    "aim": {0: (-0.15, -0.45, 0), 30: (-0.05, -0.35, 0), 60: (-0.15, -0.45, 0)},
     "aim-super": {0: (0.0, -0.25, 0), 30: (0.08, -0.15, 0), 60: (0.0, -0.25, 0)},
-    "hit": {0: (0, 0, 0), 3: (1.35, 1.05, 0), 7: (0.25, 0.20, 0), 12: (0, 0, 0)},
+    "hit": {0: (0, 0, 0), 3: (0.40, 0.65, 0), 7: (0.25, 0.20, 0), 12: (0, 0, 0)},
     "death": {
         0: (0, 0, 0),
-        8: (0.30, 0.65, 0),
-        15: (0.20, 1.4, 0),
-        25: (0.20, 1.9, 0),
-        40: (0.20, 1.9, 0),
+        8: (0.30, 0.90, 0),
+        15: (0.20, 2.80, 0),
+        25: (0.20, 3.20, 0),
+        40: (0.20, 3.20, 0),
     },
     "spawn": {
         0: (0, -1.1, 0),
         10: (0, 0, 0),
-        18: (1.0, 0.6, 0),
+        18: (1.8, 0.6, 0),
         30: (0, 0, 0),
         45: (0, 0, 0),
     },
     "victory": {
         0: (0, 0, 0),
         10: (0.0, 1.4, 0),
-        20: (-1.0, -0.8, 0),
-        28: (1.0, -0.8, 0),
+        20: (-1.0, -1.95, 0),
+        28: (1.0, -1.95, 0),
         35: (0, 0.15, 0),
         60: (0, 0, 0),
     },
@@ -834,25 +838,31 @@ CLOUD_OFFSETS = {
         10: (-0.12, -0.45, 0),
         16: (0, 0, 0),
     },
-    "aim-gadget": {0: (0.50, 0.55, 0), 30: (0.90, 1.05, 0), 60: (0.50, 0.55, 0)},
+    "aim-gadget": {
+        0: (0.0, -1.45, 0.0),
+        15: (0.8, -1.25, 0.25),
+        30: (1.0, -0.95, 0.0),
+        45: (0.6, -0.95, -0.25),
+        60: (0.0, -1.45, 0.0),
+    },
 }
 CLOUD_ROTATIONS = {
     "idle": {0: 0, 20: 90, 40: 180, 60: 270, 80: 360},
-    "run": {0: 0, 5: 180, 10: 360, 15: 540, 20: 720},
+    "run": {0: 0, 6: 216, 12: 432, 18: 648, 20: 720},
     "attack": {0: 0, 3: -20, 6: 45, 8: 180, 10: 300, 16: 360},
     "super": {0: 0, 10: -90, 18: 180, 25: 360, 30: 520, 35: 700, 45: 900, 50: 960},
     "aim": {0: 0, 30: 180, 60: 360},
     "aim-super": {0: 0, 30: -180, 60: -360},
     "hit": {0: 0, 3: 90, 7: 180, 12: 360},
-    "death": {0: 0, 15: 240, 40: 420},
+    "death": {0: 0, 8: 90, 15: 240, 25: 330, 40: 420},
     "spawn": {0: 0, 10: 90, 18: 250, 30: 360, 45: 360},
     "victory": {0: 0, 10: 270, 20: 540, 28: 820, 35: 1080, 60: 1080},
     "gadget": {0: 0, 4: 180, 10: 360, 16: 360},
-    "aim-gadget": {0: 0, 30: -270, 60: -540},
+    "aim-gadget": {0: 0, 15: -90, 30: -180, 45: -270, 60: -360},
 }
 CLOUD_SCALES = {
     "idle": {0: 1.0, 20: 1.08, 40: 0.96, 60: 1.08, 80: 1.0},
-    "run": {0: 1.0, 5: 1.06, 10: 1.0, 15: 1.06, 20: 1.0},
+    "run": {0: 1.0, 6: 1.06, 12: 1.0, 18: 1.06, 20: 1.0},
     "attack": {0: 1.0, 3: 0.90, 6: 0.72, 8: 1.15, 10: 1.03, 16: 1.0},
     "super": {
         0: 1.0,
@@ -864,14 +874,26 @@ CLOUD_SCALES = {
         45: 1.0,
         50: 1.0,
     },
-    "aim": {0: 1.0, 30: 1.08, 60: 1.0},
+    "aim": {0: (1.5, 1.0, 1.0), 30: (1.65, 1.0, 1.0), 60: (1.5, 1.0, 1.0)},
     "aim-super": {0: 0.55, 30: 0.72, 60: 0.55},
     "hit": {0: 1.0, 3: 1.20, 7: 1.03, 12: 1.0},
-    "death": {0: 1.0, 8: 0.72, 15: 0.30, 40: 0.0},
+    "death": {0: 1.0, 8: 0.72, 15: 0.30, 25: 0.0, 40: 0.0},
     "spawn": {0: 0.0, 10: 1.5, 18: 1.2, 30: 1.0, 45: 1.0},
     "victory": {0: 1.0, 10: 1.5, 20: 1.05, 28: 1.05, 35: 1.0, 60: 1.0},
-    "gadget": {0: 1.0, 4: 0.72, 10: 1.0, 16: 1.0},
-    "aim-gadget": {0: 0.85, 30: 1.15, 60: 0.85},
+    "gadget": {0: 1.0, 4: (2.5, 0.5, 0.5), 10: (2.5, 0.5, 0.5), 16: 1.0},
+    "aim-gadget": {0: 0.85, 15: 1.0, 30: 1.15, 45: 1.0, 60: 0.85},
+}
+CLOUD_DARKNESS = {
+    "super": {
+        0: 0.0,
+        10: 0.18,
+        18: 0.45,
+        25: 0.68,
+        30: 0.68,
+        35: 0.52,
+        45: 0.10,
+        50: 0.0,
+    },
 }
 
 
@@ -908,7 +930,22 @@ def reset_pose(armature):
 def apply_pose(armature, data):
     reset_pose(armature)
     for name, values in data["rotations"].items():
-        armature.pose.bones[name].rotation_euler = radians(values)
+        # Measured rig-space correction: Brock's shoulder rest axes are not
+        # anatomical X axes.  Without this adapter the prose poses that look
+        # reasonable numerically leave both hands hanging beside the torso.
+        adjusted = list(values)
+        if name == "R_Shoulder":
+            adjusted[0] += 35.0
+        elif name == "R_Elbow":
+            adjusted[0] += 8.0
+        elif name == "R_Wrist":
+            # The legacy wrist's local X axis is offset from the prose hand
+            # rotation by roughly 25 degrees.  Without this measured adapter
+            # the cuff island opens a visible seam from the forearm at idle.
+            adjusted[0] -= 25.0
+        elif name == "L_Shoulder":
+            adjusted[0] -= 30.0
+        armature.pose.bones[name].rotation_euler = radians(adjusted)
     # Measured Root matrix: local X -> world X, local Y -> world Z/up,
     # local Z -> world depth. Never author root-up on X/Z.
     armature.pose.bones["Root"].location.y = data["root_y"]
@@ -921,6 +958,137 @@ def key_pose(armature, action, frame, data):
         bone.keyframe_insert("location", frame=frame)
         bone.keyframe_insert("rotation_euler", frame=frame)
         bone.keyframe_insert("scale", frame=frame)
+
+
+def mesh_components(mesh):
+    adjacency = [set() for _ in mesh.data.vertices]
+    for polygon in mesh.data.polygons:
+        for index, vertex_index in enumerate(polygon.vertices):
+            adjacency[vertex_index].add(polygon.vertices[index - 1])
+            adjacency[vertex_index].add(
+                polygon.vertices[(index + 1) % len(polygon.vertices)]
+            )
+    seen = set()
+    result = []
+    for start in range(len(adjacency)):
+        if start in seen:
+            continue
+        stack = [start]
+        seen.add(start)
+        component = []
+        while stack:
+            vertex_index = stack.pop()
+            component.append(vertex_index)
+            for neighbor in adjacency[vertex_index]:
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    stack.append(neighbor)
+        result.append(component)
+    return result
+
+
+def right_arm_components(mesh):
+    components = mesh_components(mesh)
+    centroids = {
+        index: sum(
+            (mesh.matrix_world @ mesh.data.vertices[vertex].co for vertex in component),
+            Vector(),
+        )
+        / max(1, len(component))
+        for index, component in enumerate(components)
+    }
+    owners = {
+        index: max(
+            (
+                (mesh.vertex_groups[group.group].name, float(group.weight))
+                for group in mesh.data.vertices[component[0]].groups
+            ),
+            key=lambda item: item[1],
+        )[0]
+        for index, component in enumerate(components)
+        if component and mesh.data.vertices[component[0]].groups
+    }
+    return components, {
+        "forearm": next(
+            index
+            for index, component in enumerate(components)
+            if len(component) == 95 and centroids[index].x > 0
+        ),
+        "hand": next(
+            index
+            for index, component in enumerate(components)
+            if len(component) == 363 and centroids[index].x > 0
+        ),
+        "cuff": next(
+            index
+            for index, component in enumerate(components)
+            if len(component) == 28
+            and centroids[index].x > 0
+            and centroids[index].z < 1
+        ),
+        "wrist_islands": [
+            index
+            for index, component in enumerate(components)
+            if len(component) >= 20
+            and centroids[index].x > 0
+            and owners.get(index) == "R_Wrist"
+        ],
+    }
+
+
+def right_arm_gap(mesh, components, selected):
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = mesh.evaluated_get(depsgraph)
+    evaluated_mesh = evaluated.to_mesh()
+    try:
+        forearm_points = [
+            evaluated.matrix_world @ evaluated_mesh.vertices[index].co
+            for index in components[selected["forearm"]]
+        ]
+        return max(
+            min(
+                (forearm - other).length
+                for forearm in forearm_points
+                for other in [
+                    evaluated.matrix_world @ evaluated_mesh.vertices[index].co
+                    for index in components[component_index]
+                ]
+            )
+            for component_index in selected["wrist_islands"]
+        )
+    finally:
+        evaluated.to_mesh_clear()
+
+
+def calibrate_right_wrist(scene, armature, action, frame_end):
+    """Repair pose-dependent seam openings without changing other bone motion."""
+    mesh = bpy.data.objects.get("armor_GEO:PIV.001")
+    components, selected = right_arm_components(mesh)
+    wrist = armature.pose.bones["R_Wrist"]
+    repaired = 0
+    for _ in range(3):
+        failures = []
+        for frame in range(frame_end + 1):
+            scene.frame_set(frame)
+            if right_arm_gap(mesh, components, selected) <= 0.05:
+                continue
+            base = wrist.rotation_euler.x
+            candidates = []
+            for offset in range(-120, 121, 10):
+                wrist.rotation_euler.x = base + math.radians(offset)
+                candidates.append(
+                    (right_arm_gap(mesh, components, selected), wrist.rotation_euler.x)
+                )
+            best_gap, best_rotation = min(candidates, key=lambda item: item[0])
+            wrist.rotation_euler.x = best_rotation
+            wrist.keyframe_insert("rotation_euler", index=0, frame=frame)
+            failures.append((frame, best_gap))
+            repaired += 1
+        if not failures:
+            break
+    scene.frame_set(0)
+    action["right_wrist_seam_repairs"] = repaired
+    return repaired
 
 
 def smooth_action(action, *, linear_paths=()):
@@ -953,17 +1121,147 @@ def ensure_cloud_hierarchy(armature):
     locator.parent = armature
     locator.parent_type = "BONE"
     locator.parent_bone = "Root"
+    locator.matrix_parent_inverse = Matrix.Identity(4)
     locator.rotation_mode = "XYZ"
     locator.rotation_euler = (0, 0, 0)
     locator.scale = (1, 1, 1)
     cloud.parent = locator
     cloud.parent_type = "OBJECT"
+    cloud.matrix_parent_inverse = Matrix.Identity(4)
+    # The legacy mesh has its origin several Blender units away from its
+    # geometry.  Keeping that offset made the scene cloud appear under the
+    # character even though the locator itself was correctly placed.  Center
+    # the mesh around the locator and normalize it to the intended small
+    # companion size before any clip keys are authored.
+    local_corners = [Vector(corner) for corner in cloud.bound_box]
+    local_center = sum(local_corners, Vector()) / max(1, len(local_corners))
+    if not cloud.get("geometry_centered"):
+        for vertex in cloud.data.vertices:
+            vertex.co -= local_center
+        cloud["geometry_centered"] = True
+    local_corners = [Vector(corner) for corner in cloud.bound_box]
+    local_extent = max(
+        max(point[index] for point in local_corners)
+        - min(point[index] for point in local_corners)
+        for index in range(3)
+    )
+    cloud.scale = (0.64 / max(local_extent, 1e-6),) * 3
     cloud.location = (0, 0, 0)
     cloud.rotation_mode = "XYZ"
     cloud.rotation_euler = (0, 0, 0)
+    for slot in cloud.material_slots:
+        material = slot.material
+        if material is None or material.get("brock_cloud_material_ready"):
+            continue
+        material = material.copy()
+        slot.material = material
+        material["brock_cloud_material_ready"] = True
+        if not material.use_nodes:
+            continue
+        nodes = material.node_tree.nodes
+        links = material.node_tree.links
+        principled = nodes.get("Principled BSDF")
+        base_color = principled.inputs.get("Base Color") if principled else None
+        if base_color is None:
+            continue
+        tint = nodes.new("ShaderNodeMixRGB")
+        tint.name = "BrockCloud_StormDarkness"
+        tint.label = "Brock Cloud Storm Darkness"
+        tint.blend_type = "MULTIPLY"
+        tint.inputs[2].default_value = (0.0, 0.0, 0.0, 1.0)
+        if base_color.links:
+            source = base_color.links[0].from_socket
+            links.remove(base_color.links[0])
+            links.new(source, tint.inputs[1])
+        else:
+            tint.inputs[1].default_value = base_color.default_value
+        links.new(tint.outputs[0], base_color)
     cloud["attachment_role"] = "companion-cloud"
     locator["attachment_role"] = "cloud-locator"
     return locator, cloud
+
+
+def distance_to_segment(point, start, end):
+    segment = end - start
+    length_squared = segment.length_squared
+    if length_squared <= 1e-10:
+        return (point - start).length
+    factor = max(0.0, min(1.0, (point - start).dot(segment) / length_squared))
+    return (point - (start + factor * segment)).length
+
+
+def ensure_brock_skinning(armature):
+    """Repair the legacy one-mesh Brock body so bone Actions are visible.
+
+    The source has an Armature modifier and named groups, but every group is
+    empty.  This creates deterministic rigid weights from measured bone
+    segments.  It is intentionally conservative for the stylized hard-surface
+    mesh and idempotent when the authoring script is rerun.
+    """
+    mesh = bpy.data.objects.get("armor_GEO:PIV.001")
+    if mesh is None or mesh.type != "MESH":
+        raise RuntimeError("Brock master is missing armor_GEO:PIV.001")
+    if not any(
+        modifier.type == "ARMATURE" and modifier.object == armature
+        for modifier in mesh.modifiers
+    ):
+        modifier = mesh.modifiers.new("BrockZeus_Armature", "ARMATURE")
+        modifier.object = armature
+    mesh.vertex_groups.clear()
+    groups = {
+        bone.name: mesh.vertex_groups.new(name=bone.name)
+        for bone in armature.data.bones
+        if bone.use_deform
+    }
+    inverse_armature = armature.matrix_world.inverted()
+    segments = [
+        (bone.name, Vector(bone.head_local), Vector(bone.tail_local))
+        for bone in armature.data.bones
+        if bone.use_deform
+    ]
+    # The legacy mesh and armature origins differ by the measured armature
+    # object X offset.  Use that offset for classification only; the original
+    # bind transform remains untouched so frame-0 geometry does not jump.
+    classification_offset = Vector((armature.location.x, 0.0, 0.0))
+    points = [
+        classification_offset + inverse_armature @ (mesh.matrix_world @ vertex.co)
+        for vertex in mesh.data.vertices
+    ]
+    adjacency = [set() for _ in mesh.data.vertices]
+    for polygon in mesh.data.polygons:
+        for index, vertex_index in enumerate(polygon.vertices):
+            adjacency[vertex_index].add(polygon.vertices[index - 1])
+            adjacency[vertex_index].add(
+                polygon.vertices[(index + 1) % len(polygon.vertices)]
+            )
+    seen = set()
+    components = []
+    for start in range(len(adjacency)):
+        if start in seen:
+            continue
+        stack = [start]
+        seen.add(start)
+        component = []
+        while stack:
+            vertex_index = stack.pop()
+            component.append(vertex_index)
+            for neighbor in adjacency[vertex_index]:
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    stack.append(neighbor)
+        components.append(component)
+    for component in components:
+        centroid = sum((points[index] for index in component), Vector()) / max(
+            1, len(component)
+        )
+        bone_name = min(
+            segments, key=lambda item: distance_to_segment(centroid, item[1], item[2])
+        )[0]
+        groups[bone_name].add(component, 1.0, "REPLACE")
+    mesh["skinning_contract"] = (
+        "Rigid nearest-bone weights per disconnected mesh component from measured brock-zeus-rig; repaired because legacy groups were empty"
+    )
+    mesh["skinning_components"] = len(components)
 
 
 def measured_cloud_base(armature, locator):
@@ -981,17 +1279,39 @@ def key_cloud(
     locator, cloud, clip, frame, base_location, base_scale, action_locator, action_cloud
 ):
     dx, dy, dz = CLOUD_OFFSETS[clip][frame]
-    locator.location = base_location + Vector((dx, dy, dz))
+    # Keep the locator at the measured shoulder anchor and put the authored
+    # relative motion on Cloud itself.  This preserves the Blender hierarchy
+    # while making the separate Cloud GLB self-contained after its locator is
+    # intentionally excluded from the character export.
+    locator.location = base_location
     locator.rotation_euler = (0, 0, 0)
     locator.keyframe_insert("location", frame=frame)
     locator.keyframe_insert("rotation_euler", frame=frame)
     locator.keyframe_insert("scale", frame=frame)
+    cloud.location = Vector((dx, dy, dz))
     cloud.rotation_euler = (0, 0, math.radians(CLOUD_ROTATIONS[clip][frame]))
     scale = CLOUD_SCALES[clip][frame]
-    cloud.scale = base_scale * scale
+    if isinstance(scale, (tuple, list)):
+        cloud.scale = Vector(
+            (
+                base_scale.x * float(scale[0]),
+                base_scale.y * float(scale[1]),
+                base_scale.z * float(scale[2]),
+            )
+        )
+    else:
+        cloud.scale = base_scale * float(scale)
     cloud.keyframe_insert("location", frame=frame)
     cloud.keyframe_insert("rotation_euler", frame=frame)
     cloud.keyframe_insert("scale", frame=frame)
+    darkness = CLOUD_DARKNESS.get(clip, {}).get(frame, 0.0)
+    for material in cloud.data.materials:
+        if not material or not material.use_nodes:
+            continue
+        tint = material.node_tree.nodes.get("BrockCloud_StormDarkness")
+        if tint:
+            tint.inputs[0].default_value = float(darkness)
+            tint.inputs[0].keyframe_insert("default_value", frame=frame)
 
 
 def add_cycle(action):
@@ -1026,6 +1346,8 @@ def author_clip(clip):
         raise RuntimeError(f"{clip}: pose frames must cover 0..{FRAME_ENDS[clip]}")
     for frame in sorted(poses):
         key_pose(armature, action, frame, poses[frame])
+    smooth_action(action)
+    seam_repairs = calibrate_right_wrist(scene, armature, action, FRAME_ENDS[clip])
     smooth_action(action)
 
     locator_action = bpy.data.actions.new(f"CloudLocator_{ACTION_NAMES[clip]}")
@@ -1103,6 +1425,7 @@ def author_clip(clip):
         "fps": FPS,
         "curves": len(curves),
         "keyframes": sum(len(curve.keyframe_points) for curve in curves),
+        "right_wrist_seam_repairs": seam_repairs,
         "cloud_actions": [locator_action.name, cloud_action.name],
         "cycle": clip in CYCLE_CLIPS,
     }
@@ -1114,6 +1437,7 @@ def prepare_master():
     if armature is None:
         raise RuntimeError("Brock master is missing brock-zeus-rig")
     reset_pose(armature)
+    ensure_brock_skinning(armature)
     ensure_cloud_hierarchy(armature)
     clear_actions()
     bpy.context.scene.frame_set(0)

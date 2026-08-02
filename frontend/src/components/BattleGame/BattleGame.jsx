@@ -14,6 +14,8 @@ import {getAccessToken} from "../../utils/auth.js"
 import {BattleLoading} from "../BattleLoading/BattleLoading.jsx"
 import "./BattleGame.css"
 
+const BATTLE_RENDER_STATE_INTERVAL = 1 / 30
+
 const saveBattleResult = result => {
   try {
     const history = JSON.parse(window.localStorage.getItem("battle_history") || "[]")
@@ -47,6 +49,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const [view, setViewState] = useState("connecting")
   const [deathInfo, setDeathInfo] = useState(null)
   const [battleResult, setBattleResult] = useState(null)
+  const [sceneReady, setSceneReady] = useState(false)
 
   const setView = useCallback((v) => {
     viewRef.current = v
@@ -107,170 +110,194 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
     window.addEventListener("resize", resize)
     window.visualViewport?.addEventListener("resize", resize)
 
-    releaseAllPreviewContexts()
-    const renderer = new Renderer(canvas)
-    const simulation = new NetworkSimulation()
-    simulationRef.current = simulation
-    if (import.meta.env.DEV) window.__battleSimulation = simulation
-    rendererRef.current = renderer
-    if (import.meta.env.DEV) window.__battleRenderer = renderer
-    resize()
+    let renderer = null
+    let simulation = null
+    let client = null
+    let input = null
 
-    const client = new GameClient(
-      `${WS_URL}/ws`,
-      getAccessToken(),
-      (state) => {
-        latestStateRef.current = state
-        simulation.ingest(state)
-        const displayState = simulation.getDisplayState(undefined, {copyEntities: true}) || state
-        const now = performance.now()
-        if (!lastUiUpdateRef.current || now - lastUiUpdateRef.current >= 100) {
-          lastUiUpdateRef.current = now
-          setGameState(displayState)
-        }
-        const v = viewRef.current
-        const synchronizedView = getSynchronizedBattleView(state?.game?.state, v)
-        if (synchronizedView && synchronizedView !== v) setView(synchronizedView)
-        const stateResult = getStateBattleResult(state, clientRef.current?.playerId, v)
-        if (stateResult) finishBattle(stateResult)
-      },
-      (msg) => {
-        addMessage(msg)
-        if (msg.type === "island_voice") {
-          setIslandVoice({text: msg.params?.text || "Остров смотрит.", trigger: msg.params?.trigger || "unknown"})
-        }
-        if (msg.type === "room_joined") {
-          setRoomInfo(msg.params)
-          setView("lobby")
-          if (msg.params?.roomId) {
-            window.history.replaceState(null, "", `/battle/${msg.params.roomId}`)
+    const startBattle = () => {
+      releaseAllPreviewContexts()
+      renderer = new Renderer(canvas)
+      simulation = new NetworkSimulation()
+      simulationRef.current = simulation
+      if (import.meta.env.DEV) window.__battleSimulation = simulation
+      rendererRef.current = renderer
+      if (import.meta.env.DEV) window.__battleRenderer = renderer
+      resize()
+
+      client = new GameClient(
+        `${WS_URL}/ws`,
+        getAccessToken(),
+        (state) => {
+          latestStateRef.current = state
+          simulation.ingest(state)
+          const displayState = simulation.getDisplayState(undefined, {copyEntities: true}) || state
+          const now = performance.now()
+          if (!lastUiUpdateRef.current || now - lastUiUpdateRef.current >= 100) {
+            lastUiUpdateRef.current = now
+            setGameState(displayState)
           }
-        }
-        if (msg.type === "match_found") {
-          if (msg.params?.roomId && clientRef.current) {
-            clientRef.current.joinById(msg.params.roomId, playerName, heroName)
+          const v = viewRef.current
+          const synchronizedView = getSynchronizedBattleView(state?.game?.state, v)
+          if (synchronizedView && synchronizedView !== v) setView(synchronizedView)
+          const stateResult = getStateBattleResult(state, clientRef.current?.playerId, v)
+          if (stateResult) finishBattle(stateResult)
+        },
+        (msg) => {
+          addMessage(msg)
+          if (msg.type === "island_voice") {
+            setIslandVoice({text: msg.params?.text || "Остров смотрит.", trigger: msg.params?.trigger || "unknown"})
           }
-        }
-        if (msg.type === "start") {
-          setView("game")
-        }
-        if (msg.type === "stop") {
-          finishBattle({won:false,reason:"Бой завершён сервером"})
-        }
-        if (msg.type === "timeout") {
-          finishBattle({
-            won: msg.params?.name === playerName,
-            timedOut: true,
-            winner: msg.params?.name,
-            reason: "Время вышло",
-            duration: Math.round((msg.params?.duration || 0) / 1000),
+          if (msg.type === "room_joined") {
+            setRoomInfo(msg.params)
+            setView("lobby")
+            if (msg.params?.roomId) {
+              window.history.replaceState(null, "", `/battle/${msg.params.roomId}`)
+            }
+          }
+          if (msg.type === "match_found") {
+            if (msg.params?.roomId && clientRef.current) {
+              clientRef.current.joinById(msg.params.roomId, playerName, heroName)
+            }
+          }
+          if (msg.type === "start") {
+            setView("game")
+          }
+          if (msg.type === "stop") {
+            finishBattle({won:false,reason:"Бой завершён сервером"})
+          }
+          if (msg.type === "timeout") {
+            finishBattle({
+              won: msg.params?.name === playerName,
+              timedOut: true,
+              winner: msg.params?.name,
+              reason: "Время вышло",
+              duration: Math.round((msg.params?.duration || 0) / 1000),
+            })
+          }
+          if (msg.type === "won") {
+            finishBattle({won:msg.params?.name === playerName,winner:msg.params?.name,duration:Math.round((msg.params?.duration || 0) / 1000)})
+          }
+          if (msg.type === "you_died") {
+            setDeathInfo({killerName: msg.params?.killerName || "Unknown"})
+            finishBattle({won:false,killerName:msg.params?.killerName || "Unknown"})
+          }
+          if (msg.type === "killed" && msg.params?.killedName === playerName) {
+            setDeathInfo({killerName: msg.params?.killerName || "Unknown"})
+            finishBattle({won:false,killerName:msg.params?.killerName || "Unknown"})
+          }
+          if (msg.type === "error" && roomId && msg.params?.message === "Room not found") {
+            joinedRef.current = false
+            navigate("/battle", {replace: true, state: {heroName}})
+          }
+        },
+        () => {
+          setConnected(true)
+        },
+        () => setConnected(false)
+      )
+      client.setShootPrediction?.(details => simulation.predictLocalShoot(details))
+      clientRef.current = client
+      if (import.meta.env.DEV) window.__battleClient = client
+      client.connect()
+
+      input = new Input(canvas, client, setTouchControls, (x, y, ack) => simulation.setInput(x, y, ack))
+      inputRef.current = input
+
+      if (import.meta.env.DEV) {
+        window.render_game_to_text = () => {
+          const state = simulation.getDisplayState() || latestStateRef.current
+          const localId = client.playerId
+          const local = state?.players?.[localId]
+          return JSON.stringify({
+            coordinateSystem: "origin top-left; x right; y down",
+            mode: state?.game?.state || viewRef.current,
+            island: {
+              name: state?.game?.islandName || null,
+              phase: state?.game?.phase || null,
+              phaseEndsAt: state?.game?.phaseEndsAt || 0,
+              event: state?.game?.islandEvent || null,
+              stormRadius: state?.game?.stormRadius || 0,
+              beaconOpen: Boolean(state?.game?.beaconOpen),
+              beaconHolder: state?.game?.beaconHolder || null,
+              beaconProgress: state?.game?.beaconProgress || 0,
+              suddenDeathDamage: state?.game?.suddenDeathDamage || 0,
+            },
+            localPlayerId: localId || null,
+            player: local ? {
+              x: local.x,
+              y: local.y,
+              health: local.lives,
+              ammo: local.ammo,
+              hero: local.hero,
+              lunarSpeed: local.lunarSpeed || 0,
+              lunarDamage: local.lunarDamage || 0,
+              lunarShield: Boolean(local.lunarShield),
+            } : null,
+            visiblePlayers: Object.keys(state?.players || {}).length,
+            projectiles: (state?.bullets || []).length,
+            lunarCrates: (state?.props || []).filter(prop => prop.type === "lunar_crate").length,
+            lunarRewards: (state?.props || []).filter(prop => String(prop.type).startsWith("lunar_") && prop.type !== "lunar_crate").length,
+            mapWalls: state?.map?.walls?.length || 0,
+            mapObjects: renderer.impl?.mapRenderer?.objects?.size || 0,
           })
         }
-        if (msg.type === "won") {
-          finishBattle({won:msg.params?.name === playerName,winner:msg.params?.name,duration:Math.round((msg.params?.duration || 0) / 1000)})
+        window.advanceTime = milliseconds => {
+          const steps = Math.max(1, Math.round(milliseconds / (1000 / 60)))
+          for (let step = 0; step < steps; step++) simulation.update(1 / 60)
+          const state = simulation.getDisplayState()
+          if (state) renderer.setState(state)
+          renderer.render()
         }
-        if (msg.type === "you_died") {
-          setDeathInfo({killerName: msg.params?.killerName || "Unknown"})
-          finishBattle({won:false,killerName:msg.params?.killerName || "Unknown"})
-        }
-        if (msg.type === "killed" && msg.params?.killedName === playerName) {
-          setDeathInfo({killerName: msg.params?.killerName || "Unknown"})
-          finishBattle({won:false,killerName:msg.params?.killerName || "Unknown"})
-        }
-        if (msg.type === "error" && roomId && msg.params?.message === "Room not found") {
-          joinedRef.current = false
-          navigate("/battle", {replace: true, state: {heroName}})
-        }
-      },
-      () => {
-        setConnected(true)
-      },
-      () => setConnected(false)
-    )
-    client.setShootPrediction?.(details => simulation.predictLocalShoot(details))
-    clientRef.current = client
-    if (import.meta.env.DEV) window.__battleClient = client
-    client.connect()
-
-    const input = new Input(canvas, client, setTouchControls, (x, y, ack) => simulation.setInput(x, y, ack))
-    inputRef.current = input
-
-    if (import.meta.env.DEV) {
-      window.render_game_to_text = () => {
-        const state = simulation.getDisplayState() || latestStateRef.current
-        const localId = client.playerId
-        const local = state?.players?.[localId]
-        return JSON.stringify({
-          coordinateSystem: "origin top-left; x right; y down",
-          mode: state?.game?.state || viewRef.current,
-          island: {
-            name: state?.game?.islandName || null,
-            phase: state?.game?.phase || null,
-            phaseEndsAt: state?.game?.phaseEndsAt || 0,
-            event: state?.game?.islandEvent || null,
-            stormRadius: state?.game?.stormRadius || 0,
-            beaconOpen: Boolean(state?.game?.beaconOpen),
-            beaconHolder: state?.game?.beaconHolder || null,
-            beaconProgress: state?.game?.beaconProgress || 0,
-            suddenDeathDamage: state?.game?.suddenDeathDamage || 0,
-          },
-          localPlayerId: localId || null,
-          player: local ? {
-            x: local.x,
-            y: local.y,
-            health: local.lives,
-            ammo: local.ammo,
-            hero: local.hero,
-            lunarSpeed: local.lunarSpeed || 0,
-            lunarDamage: local.lunarDamage || 0,
-            lunarShield: Boolean(local.lunarShield),
-          } : null,
-          visiblePlayers: Object.keys(state?.players || {}).length,
-          projectiles: (state?.bullets || []).length,
-          lunarCrates: (state?.props || []).filter(prop => prop.type === "lunar_crate").length,
-          lunarRewards: (state?.props || []).filter(prop => String(prop.type).startsWith("lunar_") && prop.type !== "lunar_crate").length,
-          mapWalls: state?.map?.walls?.length || 0,
-          mapObjects: renderer.impl?.mapRenderer?.objects?.size || 0,
-        })
       }
-      window.advanceTime = milliseconds => {
-        const steps = Math.max(1, Math.round(milliseconds / (1000 / 60)))
-        for (let step = 0; step < steps; step++) simulation.update(1 / 60)
-        const state = simulation.getDisplayState()
-        if (state) renderer.setState(state)
-        renderer.render()
+
+      let rendererFailed = false
+      let stateSyncElapsed = BATTLE_RENDER_STATE_INTERVAL
+      let sceneFrameReady = false
+      let previousFrameAt = performance.now()
+      const gameLoop = () => {
+        const frameAt = performance.now()
+        const delta = Math.max(0, (frameAt - previousFrameAt) / 1000)
+        previousFrameAt = frameAt
+        input.update()
+        simulation.advance(delta)
+        stateSyncElapsed += delta
+        let renderedStateThisFrame = false
+        if (stateSyncElapsed >= BATTLE_RENDER_STATE_INTERVAL) {
+          stateSyncElapsed -= BATTLE_RENDER_STATE_INTERVAL
+          const displayState = simulation.getDisplayState()
+          if (displayState) {
+            renderer.setState(displayState)
+            renderedStateThisFrame = true
+          }
+        }
+        try {
+          renderer.render()
+          if (renderedStateThisFrame && !sceneFrameReady) {
+            sceneFrameReady = true
+            setSceneReady(true)
+          }
+          rendererFailed = false
+        } catch (error) {
+          if (!rendererFailed) {
+            console.error("Battle renderer error:", error)
+            rendererFailed = true
+          }
+        }
+        animFrameRef.current = requestAnimationFrame(gameLoop)
       }
+      gameLoop()
     }
 
-    let rendererFailed = false
-    let previousFrameAt = performance.now()
-    const gameLoop = () => {
-      const frameAt = performance.now()
-      const delta = Math.max(0, (frameAt - previousFrameAt) / 1000)
-      previousFrameAt = frameAt
-      input.update()
-      simulation.advance(delta)
-      const displayState = simulation.getDisplayState()
-      if (displayState) renderer.setState(displayState)
-      try {
-        renderer.render()
-        rendererFailed = false
-      } catch (error) {
-        if (!rendererFailed) {
-          console.error("Battle renderer error:", error)
-          rendererFailed = true
-        }
-      }
-      animFrameRef.current = requestAnimationFrame(gameLoop)
-    }
-    gameLoop()
+    const startupTimer = window.setTimeout(startBattle, 0)
 
     return () => {
       window.removeEventListener("resize", resize)
       window.visualViewport?.removeEventListener("resize", resize)
+      window.clearTimeout(startupTimer)
       cancelAnimationFrame(animFrameRef.current)
-      input.destroy()
-      client.disconnect()
+      input?.destroy()
+      client?.disconnect()
       if (import.meta.env.DEV && window.__battleClient === client) delete window.__battleClient
       if (import.meta.env.DEV && window.__battleRenderer === renderer) delete window.__battleRenderer
       if (import.meta.env.DEV && window.__battleSimulation === simulation) delete window.__battleSimulation
@@ -278,7 +305,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
         delete window.render_game_to_text
         delete window.advanceTime
       }
-      renderer.destroy()
+      renderer?.destroy()
       inputRef.current = null
       clientRef.current = null
       rendererRef.current = null
@@ -372,7 +399,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
       })}</output>}
       <canvas ref={canvasRef} className="battle-canvas"/>
 
-      {view === "connecting" && (
+      {(!sceneReady || view === "connecting") && (
         <BattleLoading
           progress={connected ? 62 : 42}
           status={connected ? "Получаем карту арены..." : "Подключаемся к арене..."}
