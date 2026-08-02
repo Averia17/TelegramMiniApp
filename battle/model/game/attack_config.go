@@ -38,7 +38,7 @@ type AttackConfig struct {
 }
 
 var heroAttackConfigs = map[string]AttackConfig{
-	"Shadow":          {Archetype: AttackProjectile, AimShape: "line", Range: 620, ProjectileKind: "spore", Modifier: "short_vault"},
+	"Needle":          {Archetype: AttackProjectile, AimShape: "line", Range: 620, ProjectileKind: "spore", Modifier: "short_vault"},
 	"Mandy":           {Archetype: AttackMeleeCone, AimShape: "cone", Range: 70, HalfArcDegrees: 42, Modifier: "mandy_focus"},
 	"Fairy Mina":      {Archetype: AttackShotgun, AimShape: "cone", Range: 510, ProjectileKind: "mina_star", ProjectileCount: 3, SpreadDegrees: 24, SplashRadius: 38},
 	"Brock Zeus":      {Archetype: AttackProjectile, AimShape: "line", Range: 760, ProjectileKind: "zeus_lightning", SplashRadius: 72},
@@ -74,8 +74,8 @@ type ConfiguredBasicKit struct {
 
 func BasicCombatKitFor(hero string) BasicCombatKit {
 	switch hero {
-	case "Shadow":
-		return ShadowKit{}
+	case "Needle":
+		return NeedleKit{}
 	case "Mandy":
 		return MandyKit{}
 	case "Fairy Mina":

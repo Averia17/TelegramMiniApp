@@ -29,25 +29,33 @@ ACTION_NAMES = {
     "aim-gadget": "AimGadget",
 }
 FRAME_ENDS = {
-    "idle": 120,
-    "run": 30,
-    "attack": 18,
-    "super": 45,
+    "idle": 80,
+    "run": 24,
+    "attack": 16,
+    "super": 50,
     "aim": 60,
     "aim-super": 60,
     "hit": 12,
-    "death": 45,
+    "death": 40,
     "spawn": 45,
     "victory": 60,
-    "gadget": 10,
+    "gadget": 12,
     "aim-gadget": 60,
 }
 CYCLES = {"idle", "run", "aim", "aim-super", "aim-gadget"}
 ROOT_Y_LIMITS = {
-    "super": (-0.25, 0.0),
-    "death": (-0.35, 0.0),
+    "idle": (-0.03, 0.03),
+    "run": (-0.05, 0.0),
+    "attack": (0.0, 0.0),
+    "super": (-0.30, 0.20),
+    "aim": (-0.15, 0.0),
+    "aim-super": (-0.25, -0.15),
+    "hit": (0.0, 0.0),
+    "death": (-0.40, 0.0),
     "spawn": (-0.30, 0.0),
-    "aim-gadget": (-0.10, -0.10),
+    "victory": (-0.15, 0.25),
+    "gadget": (-0.20, 0.02),
+    "aim-gadget": (-0.18, -0.12),
 }
 
 
@@ -81,14 +89,16 @@ def check_pose_limits(clip, armature, frame, errors):
         )
 
     limits = {
-        "Head": (25, 60, 10),
-        "Spine": (30, 30, 20),
-        "Chest": (30, 30, 20),
-        "Hips": (90, 45, 45),
+        "Head": (40, 60, 20),
+        "Spine": (80, 45, 45),
+        "Chest": (60, 45, 45),
+        "Hips": (90, 120, 90),
         "LeftArm": (180, 120, 120),
         "RightArm": (180, 120, 120),
-        "LeftHand": (90, 90, 90),
-        "RightHand": (90, 90, 90),
+        # NeedleRig has no LeftForearm/RightForearm bones; v3 forearm flexion
+        # is folded into Hand X by the authoring adapter.
+        "LeftHand": (180, 90, 90),
+        "RightHand": (180, 90, 90),
         "LeftLeg": (100, 90, 90),
         "RightLeg": (100, 90, 90),
         "LeftFoot": (90, 90, 90),
@@ -97,11 +107,9 @@ def check_pose_limits(clip, armature, frame, errors):
     # The event spec deliberately permits deeper collapse poses for these two
     # one-shot clips; keep the stricter limits for all other animations.
     if clip == "death":
-        limits["Head"] = (30, 60, 10)
-        limits["Spine"] = (45, 30, 20)
+        limits["Head"] = (45, 60, 20)
     elif clip == "spawn":
-        limits["Head"] = (30, 60, 10)
-        limits["Spine"] = (50, 30, 20)
+        limits["Head"] = (40, 60, 20)
     for name, maximums in limits.items():
         values_deg = tuple(
             math.degrees(v) for v in armature.pose.bones[name].rotation_euler

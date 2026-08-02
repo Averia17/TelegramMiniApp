@@ -151,7 +151,7 @@ before the next hero begins.
 
 ## Phase 4: Unarmed/projectile heroes
 
-Audit Brock Zeus, Fairy Mina, and Shadow/Needle separately. Their held
+Audit Brock Zeus, Fairy Mina, and Needle separately. Their held
 projectiles, clouds, spores, or generated combat visuals need explicit spawn
 markers and release transforms even when they do not use a persistent weapon.
 
@@ -185,4 +185,3 @@ markers and release transforms even when they do not use a persistent weapon.
 - Blender validation JSON.
 - Three.js validation JSON.
 - Front/side/palm contact sheet and short animated preview.
-

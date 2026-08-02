@@ -454,7 +454,7 @@ func TestMovementMatchesLocalEnginePixelsPerSecond(t *testing.T) {
 }
 
 func TestPlayerMovementUsesCompactSpeedAtRuntimeScale(t *testing.T) {
-	hero := GetHeroByName("Shadow")
+	hero := GetHeroByName("Needle")
 	player := hero.CreatePlayer("p1", "Alice", 0, 0)
 	if player.Speed != float64(hero.Speed)*RuntimeMovementSpeedScale {
 		t.Fatalf("player speed = %.2f, want %.2f", player.Speed, float64(hero.Speed)*RuntimeMovementSpeedScale)
@@ -480,7 +480,7 @@ func TestDirectionChangeKeepsMovementContinuous(t *testing.T) {
 }
 
 func TestGameplayTempoAppliesMovementAttackAndProjectilePacing(t *testing.T) {
-	hero := GetHeroByName("Shadow")
+	hero := GetHeroByName("Needle")
 	p := hero.CreatePlayer("p1", "Alice", 100, 100)
 	if p.Speed != float64(hero.Speed)*RuntimeMovementSpeedScale {
 		t.Fatalf("player speed = %.2f, want %.2f", p.Speed, float64(hero.Speed)*RuntimeMovementSpeedScale)
@@ -595,7 +595,7 @@ func TestHeroCombatProfiles(t *testing.T) {
 	}{
 		"Shelly": {250, 600, 250}, "Colt": {250, 420, 300}, "Barley": {250, 760, 350},
 		"Viper": {225, 1250, 520},
-		"Titan": {285, 650, 300}, "Shadow": {240, 750, 420}, "Spark": {285, 1050, 260},
+		"Titan": {285, 650, 300}, "Needle": {240, 750, 420}, "Spark": {285, 1050, 260},
 	}
 	for name, expected := range want {
 		hero := GetHeroByName(name)
@@ -639,13 +639,13 @@ func TestAmmoIsServerAuthoritativeAndReloadsSequentially(t *testing.T) {
 
 func TestShadowShortAimStillFiresSporeProjectile(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("shadow", "Shadow", "Shadow")
+	gs.PlayerAdd("needle", "Needle", "Needle")
 	gs.State = GameStateGame
-	p := gs.Players["shadow"]
+	p := gs.Players["needle"]
 	p.X, p.Y = 1200, 1200
-	gs.playerShoot("shadow", 1000, 0, 40)
+	gs.playerShoot("needle", 1000, 0, 40)
 	if p.X != 1200 || len(gs.Bullets) != 1 || gs.Bullets[0].Kind != "spore" {
-		t.Fatalf("Shadow short aim position=%.1f bullets=%#v", p.X, gs.Bullets)
+		t.Fatalf("Needle short aim position=%.1f bullets=%#v", p.X, gs.Bullets)
 	}
 }
 
@@ -1280,7 +1280,7 @@ func TestPoisonMatchesLocalEngineTotalDamage(t *testing.T) {
 func TestPoisonSpreadsToNearbyPlayer(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("source", "Source", "Shadow")
+	gs.PlayerAdd("source", "Source", "Needle")
 	gs.PlayerAdd("near", "Near", "Shelly")
 	gs.PlayerAdd("far", "Far", "Shelly")
 	source, near, far := gs.Players["source"], gs.Players["near"], gs.Players["far"]
@@ -1361,7 +1361,7 @@ func TestEveryMonsterDamagePathRemovesKilledMonsterAndDropsHealth(t *testing.T) 
 
 func TestChainDamageCanJumpFromPlayerToMonster(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("source", "Source", "Shadow")
+	gs.PlayerAdd("source", "Source", "Needle")
 	gs.PlayerAdd("first", "First", "Shelly")
 	gs.State = GameStateGame
 	first := gs.Players["first"]

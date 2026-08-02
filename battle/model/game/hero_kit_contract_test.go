@@ -14,8 +14,8 @@ func TestEveryHeroExposesCompleteKitContract(t *testing.T) {
 }
 
 func TestHeroKitContractIsIncludedInHeroesPayloadModel(t *testing.T) {
-	shadow := GetHeroByName("Shadow")
-	if shadow == nil || shadow.Kit.Super.ID != "hunter_root" || shadow.Kit.Gadget.Prediction != "server" {
-		t.Fatalf("unexpected Shadow contract: %#v", shadow)
+	needle := GetHeroByName("Needle")
+	if needle == nil || needle.Kit.Super.ID != "hunter_root" || needle.Kit.Gadget.Prediction != "server" {
+		t.Fatalf("unexpected Needle contract: %#v", needle)
 	}
 }

@@ -379,7 +379,7 @@ def retarget_pose(source_pose, source_rest, master_rest):
     """Transfer source motion deltas onto the master rig's rest pose.
 
     Some legacy source rigs have a different local rest orientation from the
-    runtime master (Shadow is the known case). Copying source Euler values
+    runtime master (Needle is the known case). Copying source Euler values
     directly makes the exported hero fold over. Retargeting the delta between
     source rest and source animation preserves the motion while keeping the
     master mesh upright and its sockets in their authored locations.
@@ -1304,7 +1304,7 @@ def rig_groups(armature):
             )
         )
     ]
-    # Shadow's compact rig uses semantic LeftArm/LeftHand names instead of
+    # Needle's compact rig uses semantic LeftArm/LeftHand names instead of
     # shoulder/elbow/wrist chains. Keep the choreography readable without
     # inventing bones that do not exist.
     if groups["L_shoulder"] is None:
@@ -1674,7 +1674,7 @@ def event_pose(hero, clip, frame, end, groups):
         for name in groups["fingers"][:12]:
             add_pose(pose, name, deg(5 * math.sin(t * math.tau)), 0, 0)
     # Secondary authored props follow through on the same frame-by-frame
-    # curves: Shadow's flower/spore, Mina's orb, Kaze's blades, Damian's mic
+    # curves: Needle's flower/spore, Mina's orb, Kaze's blades, Damian's mic
     # and Wukong's mic/cloud rig all receive a small event-specific swing.
     special_amount = {
         "idle": 3.0,
@@ -1806,7 +1806,7 @@ def author_scene(hero, clip, master, target):
     source_start, source_end = action_frame_range(base)
     source_rotation, source_location, source_scale = action_channel_bones(base)
     # A head scale track is never part of the attack language in the brief.
-    # Some legacy Shadow source Actions contain a neutral-looking head scale
+    # Some legacy Needle source Actions contain a neutral-looking head scale
     # channel; carrying it into glTF makes debugging suggest a head swell when
     # the intended beat is a hand/body gesture. Keep head and neck scale at
     # their authored rest values and animate them only through rotation.

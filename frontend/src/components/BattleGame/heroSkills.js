@@ -3,9 +3,9 @@ import {HERO_KITS} from "./heroesConfig.js"
 const skill = (name, description, effect) => Object.freeze({name, description, effect})
 
 export const HERO_SKILLS = Object.freeze({
-  Shadow: Object.freeze({
-    primary: skill("ЦВЕТЕНИЕ БЕЗДНЫ", "Поднимает вокруг героя живые лозы, замедляющие врагов.", "shadow_abyss_bloom"),
-    secondary: skill("СПОРОВЫЙ СКАЧОК", "Рывок вперёд с ядовитым взрывом в точке приземления.", "shadow_spore_leap"),
+  Needle: Object.freeze({
+    primary: skill("ЦВЕТЕНИЕ БЕЗДНЫ", "Поднимает вокруг героя живые лозы, замедляющие врагов.", "needle_abyss_bloom"),
+    secondary: skill("СПОРОВЫЙ СКАЧОК", "Рывок вперёд с ядовитым взрывом в точке приземления.", "needle_spore_leap"),
   }),
   Mandy: Object.freeze({
     primary: skill("САХАРНЫЙ РАЗЛОМ", "После подготовки выпускает пробивающую арену сахарную волну.", "mandy_sugar_rift"),

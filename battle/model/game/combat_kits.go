@@ -21,7 +21,7 @@ type ShellyKit struct{}
 type ColtKit struct{}
 type BarleyKit struct{}
 type MandyKit struct{}
-type ShadowKit struct{}
+type NeedleKit struct{}
 
 type ScheduledShot struct {
 	Owner        string
@@ -62,8 +62,8 @@ type PendingMandySuper struct {
 
 func CombatKitFor(hero string) CombatKit {
 	switch hero {
-	case "Shadow":
-		return ShadowKit{}
+	case "Needle":
+		return NeedleKit{}
 	case "Shelly":
 		return ShellyKit{}
 	case "Colt":

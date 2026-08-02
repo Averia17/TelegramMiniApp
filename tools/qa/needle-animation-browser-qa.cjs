@@ -32,7 +32,7 @@ fs.mkdirSync(OUT, {recursive: true});
   await page.route("**/api/battle/heroes", route => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify([{name: "Shadow"}]),
+    body: JSON.stringify([{name: "Needle"}]),
   }))
   await page.goto(`${HARNESS}?hero=needle`, {waitUntil: "domcontentloaded", timeout: 15000})
   await page.waitForFunction(() => window.qa && window.qa.clips?.length > 0, {timeout: 15000})

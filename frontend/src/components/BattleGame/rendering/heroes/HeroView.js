@@ -247,7 +247,7 @@ export class HeroView {
       this.model.rotation.y = visualAngle
       // The server's configured hero speed is authoritative for the gait. The
       // interpolated positional delta is noisy and must not erase per-hero
-      // differences (Kaze should visibly cycle faster than Shadow).
+      // differences (Kaze should visibly cycle faster than Needle).
       const effectiveSpeed = moving
         ? Math.max(configuredSpeed, Number(this.state.speed) || 0)
         : 0

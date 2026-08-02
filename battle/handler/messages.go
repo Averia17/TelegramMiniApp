@@ -222,8 +222,9 @@ func HandleJoin(c *mroom.Client, data []byte) {
 		req.PlayerName = shortID(c.Id)
 	}
 	req.PlayerName = boundedText(req.PlayerName, 32)
-	if game.GetHeroByName(req.HeroName) == nil {
-		req.HeroName = "Shadow"
+	req.HeroName = game.CanonicalHeroName(req.HeroName)
+	if req.HeroName == "" {
+		req.HeroName = "Needle"
 	}
 
 	r := mroom.GetOrCreateRoom(req.RoomName, req.RoomName, req.RoomMap, req.Mode, req.MaxPlayers)
@@ -256,8 +257,9 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 		req.PlayerName = shortID(c.Id)
 	}
 	req.PlayerName = boundedText(req.PlayerName, 32)
-	if game.GetHeroByName(req.HeroName) == nil {
-		req.HeroName = "Shadow"
+	req.HeroName = game.CanonicalHeroName(req.HeroName)
+	if req.HeroName == "" {
+		req.HeroName = "Needle"
 	}
 
 	r := mroom.FindRoom(req.RoomId)
@@ -290,8 +292,9 @@ func HandleFindMatch(c *mroom.Client, data []byte) {
 		req.PlayerName = shortID(c.Id)
 	}
 	req.PlayerName = boundedText(req.PlayerName, 32)
-	if game.GetHeroByName(req.HeroName) == nil {
-		req.HeroName = "Shadow"
+	req.HeroName = game.CanonicalHeroName(req.HeroName)
+	if req.HeroName == "" {
+		req.HeroName = "Needle"
 	}
 	c.Name = req.PlayerName
 	c.HeroName = req.HeroName

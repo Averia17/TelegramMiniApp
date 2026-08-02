@@ -8,7 +8,7 @@ import (
 
 func TestAutoAimFallsBackToTheNearestMonsterWhenNoEnemyHeroIsAvailable(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("source", "Source", "Shadow")
+	gs.PlayerAdd("source", "Source", "Needle")
 	source := gs.Players["source"]
 	source.X, source.Y, source.Rotation = 100, 100, 1.4
 	gs.Monsters["bat"] = monster.NewMonster(140, 100, 16, 1024, 768, monster.MonsterLives)
@@ -25,7 +25,7 @@ func TestAutoAimFallsBackToTheNearestMonsterWhenNoEnemyHeroIsAvailable(t *testin
 
 func TestAutoAimKeepsEnemyHeroesAheadOfNearbyMonsters(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("source", "Source", "Shadow")
+	gs.PlayerAdd("source", "Source", "Needle")
 	gs.PlayerAdd("enemy", "Enemy", "Colt")
 	source, enemy := gs.Players["source"], gs.Players["enemy"]
 	source.X, source.Y = 100, 100
@@ -41,7 +41,7 @@ func TestAutoAimKeepsEnemyHeroesAheadOfNearbyMonsters(t *testing.T) {
 
 func TestAutoAimUsesMovementDirectionOnlyWhenNoEnemyIsInReach(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("source", "Source", "Shadow")
+	gs.PlayerAdd("source", "Source", "Needle")
 	source := gs.Players["source"]
 	source.MoveX, source.MoveY, source.Rotation = 0, 1, 1.4
 

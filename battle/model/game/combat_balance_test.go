@@ -18,12 +18,12 @@ func TestHeroBurstBudgetLeavesCounterplay(t *testing.T) {
 	// Values describe the worst legitimate three-attack sequence plus one full
 	// ability, including multi-hit attacks and damage-over-time ticks.
 	scenarios := map[string]struct {
-		hitsPerAttack int
+		hitsPerAttack   int
 		basicMultiplier float64
-		abilityDamage int
-		damageOverTime int
- 	}{
-		"Shadow":          {1, 1, 0, 15},
+		abilityDamage   int
+		damageOverTime  int
+	}{
+		"Needle":          {1, 1, 0, 15},
 		"Mandy":           {1, 1.4, 224, 0},
 		"Fairy Mina":      {3, 1, 0, 0},
 		"Brock Zeus":      {1, 1, 180, 60},

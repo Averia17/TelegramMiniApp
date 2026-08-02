@@ -25,7 +25,18 @@ const weaponAttachments = Object.freeze({
     Object.freeze({name: "HeroAttachment_FanRight", target: "GripPrimaryHeroAttachment_FanRight", role: "held-weapon"}),
   ]),
   mandy: Object.freeze([
-    Object.freeze({name: "MandyStaff_Attachment", target: "GripPrimaryMandyStaff_Attachment", role: "held-weapon"}),
+    Object.freeze({
+      name: "MandyStaff_Attachment",
+      target: "GripPrimaryMandyStaff_Attachment",
+      role: "held-weapon",
+      // The exported bone marker sits at the wrist-bone tail. This calibrated
+      // offset keeps the long staff visible in front of the torso while its
+      // grip end remains beside Mandy's right hand.
+      localRotation: [0, 0, 60 * Math.PI / 180],
+      // The detached staff root is authored at the grip origin. Keeping this
+      // zeroed is essential after moving Mandy's weapon socket to R_wrist.
+      localPosition: [-0.9, 0.3, -0.1],
+    }),
   ]),
   "persephone-lumi": Object.freeze([
     Object.freeze({name: "HeroAttachment_WeaponHeld", target: "GripPrimaryHeroAttachment_WeaponHeld", role: "held-weapon"}),
@@ -50,7 +61,7 @@ const hero = (id, scale = 0.92, rotationOffset = 0, assetId = id.toLowerCase(), 
 })
 
 export const HERO_ASSETS = Object.freeze({
-  Shadow: hero("Shadow", 0.94, 0, "needle", needleClips),
+  Needle: hero("Needle", 0.94, 0, "needle", needleClips),
   Mandy: hero("Mandy", 0.92, 0, "mandy", mandyClips),
   "Fairy Mina": hero("Fairy Mina", 0.92, 0, "fairy-mina"),
   "Brock Zeus": Object.freeze({
@@ -84,8 +95,8 @@ export const ENVIRONMENT_ASSETS = Object.freeze({
 export const getHeroAsset = name => HERO_ASSETS[name] || null
 
 const HERO_QUERY_ALIASES = Object.freeze({
-  shadow: "Shadow",
-  needle: "Shadow",
+  shadow: "Needle",
+  needle: "Needle",
   mandy: "Mandy",
   "fairy-mina": "Fairy Mina",
   "brock-zeus": "Brock Zeus",

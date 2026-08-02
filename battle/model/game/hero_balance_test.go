@@ -4,7 +4,7 @@ import "testing"
 
 func TestRangedHeroesTradeSafetyForLowerBaseDamage(t *testing.T) {
 	wantDamage := map[string]int{
-		"Shadow":          65,
+		"Needle":          65,
 		"Fairy Mina":      40,
 		"Brock Zeus":      80,
 		"Damian":          75,
@@ -32,7 +32,7 @@ func TestHeroConfigsUseCompactCombatValues(t *testing.T) {
 		speed       int
 		bulletSpeed int
 	}{
-		"Shadow":          {620, 65, 12, 23},
+		"Needle":          {620, 65, 12, 23},
 		"Mandy":           {720, 60, 13, 0},
 		"Fairy Mina":      {600, 40, 14, 30},
 		"Brock Zeus":      {620, 80, 12, 36},
@@ -54,7 +54,7 @@ func TestHeroConfigsUseCompactCombatValues(t *testing.T) {
 }
 
 func TestCompactSpeedKeepsPreviousRuntimeTempo(t *testing.T) {
-	hero := GetHeroByName("Shadow")
+	hero := GetHeroByName("Needle")
 	p := hero.CreatePlayer("p1", "Alice", 100, 100)
 	if p.Speed != float64(hero.Speed)*RuntimeMovementSpeedScale {
 		t.Fatalf("runtime speed = %.2f, want %.2f", p.Speed, float64(hero.Speed)*RuntimeMovementSpeedScale)

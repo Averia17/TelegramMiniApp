@@ -14,7 +14,7 @@ export const RUNTIME_MOVEMENT_SPEED_SCALE = 12
 export const RUNTIME_ANIMATION_REFERENCE_SPEED = ANIMATION_REFERENCE_SPEED * RUNTIME_MOVEMENT_SPEED_SCALE
 
 export const HEROES_CONFIG = Object.freeze([
-  {name:"Shadow",color:"#75D947",maxLives:620,speed:12,attackDamage:65,bulletSpeed:23,attackType:"spore",role:"Controller",attack:{archetype:"projectile",aimShape:"line",range:620}},
+  {name:"Needle",color:"#75D947",maxLives:620,speed:12,attackDamage:65,bulletSpeed:23,attackType:"spore",role:"Controller",attack:{archetype:"projectile",aimShape:"line",range:620}},
   {name:"Mandy",color:"#F4C542",maxLives:720,speed:13,attackDamage:60,attackType:"mandy_staff",role:"Fighter",attack:{archetype:"melee_cone",aimShape:"cone",range:70,halfArcDegrees:42}},
   {name:"Fairy Mina",color:"#FF8FE8",maxLives:600,speed:14,attackDamage:40,bulletSpeed:30,attackType:"mina_star_fan",role:"Support",attack:{archetype:"shotgun",aimShape:"cone",range:510,projectileCount:3}},
   {name:"Brock Zeus",color:"#62C8FF",maxLives:620,speed:12,attackDamage:80,bulletSpeed:36,attackType:"zeus_lightning",role:"Sharpshooter",attack:{archetype:"projectile",aimShape:"line",range:760,splashRadius:72}},
@@ -27,7 +27,7 @@ export const HEROES_CONFIG = Object.freeze([
 // Fallback contract used before /heroes arrives. The server payload has the
 // same shape and replaces these values through normalizeHeroConfig.
 export const HERO_KITS = Object.freeze({
-  Shadow: {basic:{id:"spore_thorn",name:"Споровый шип",description:"Самонаводящийся шип накладывает Споры."},super:{id:"hunter_root",name:"Ловчий корень",description:"Корень подбрасывает врагов и оставляет замедляющую зону.",slot:"primary",prediction:"server"},gadget:{id:"spore_dash",name:"Споровый рывок",description:"Рывок оставляет облако спор.",slot:"secondary",prediction:"server"}},
+  Needle: {basic:{id:"spore_thorn",name:"Споровый шип",description:"Самонаводящийся шип накладывает Споры."},super:{id:"hunter_root",name:"Ловчий корень",description:"Корень подбрасывает врагов и оставляет замедляющую зону.",slot:"primary",prediction:"server"},gadget:{id:"spore_dash",name:"Споровый рывок",description:"Рывок оставляет облако спор.",slot:"secondary",prediction:"server"}},
   Mandy: {basic:{id:"staff_strike",name:"Удар посохом",description:"Неподвижность усиливает удар и оглушает."},super:{id:"devastation_wave",name:"Волна опустошения",description:"Дальняя волна разрушает стены.",slot:"primary",prediction:"server"},gadget:{id:"unyielding_stance",name:"Нерушимая стойка",description:"Стойка защищает от контроля и снижает урон.",slot:"secondary",prediction:"server"}},
   "Fairy Mina": {basic:{id:"star_fan",name:"Звёздный веер",description:"Звёзды лечат союзников и метят врагов."},super:{id:"star_cocoon",name:"Звёздный кокон",description:"Щит создаёт лечащую ауру.",slot:"primary",prediction:"server"},gadget:{id:"repelling_wave",name:"Отталкивающая волна",description:"Отбрасывает врагов и оглушает отмеченных.",slot:"secondary",prediction:"server"}},
   "Brock Zeus": {basic:{id:"thunder_projectile",name:"Грозовой снаряд",description:"Взрывной снаряд разрушает стены."},super:{id:"gods_hammer",name:"Молот богов",description:"Три удара молнии создают горящую зону.",slot:"primary",prediction:"server"},gadget:{id:"discharge_cable",name:"Разрядный кабель",description:"Следующий выстрел становится пробивающим лучом.",slot:"secondary",prediction:"server"}},

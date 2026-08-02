@@ -6,7 +6,7 @@ const ROOT = path.resolve(__dirname, "../..")
 const HARNESS = process.env.HARNESS_URL || "http://localhost/test/glb-hero-harness.html"
 const OUT = path.join(ROOT, "artifacts", "hero-browser-qa", "final")
 const heroes = [
-  ["Shadow", "needle"],
+  ["Needle", "needle"],
   ["Mandy", "mandy"],
   ["Fairy Mina", "fairy-mina"],
   ["Brock Zeus", "brock-zeus"],

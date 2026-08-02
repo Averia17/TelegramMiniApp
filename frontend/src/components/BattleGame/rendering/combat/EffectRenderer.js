@@ -10,7 +10,7 @@ const ORBITAL_KINDS = new Set([
   "mina_healing_aura", "zeus_storm_target", "kaze_veil_step",
   "mico_staff_spin", "mico_ruyi_bind", "damian_totem_spawn",
   "lumi_roots", "lumi_seedburst", "zeus_thunderbrand",
-  "shadow_root_cast", "shadow_spore_cloud", "zeus_burning_ground", "mico_suppressed_rage",
+  "needle_root_cast", "needle_spore_cloud", "zeus_burning_ground", "mico_suppressed_rage",
 ])
 const TRAIL_KINDS = new Set(["kaze_dash", "damian_swap"])
 

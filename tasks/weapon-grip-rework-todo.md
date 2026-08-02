@@ -35,7 +35,7 @@
 
 - [ ] Audit Brock Zeus cloud/spawn markers.
 - [ ] Audit Fairy Mina held/released projectile.
-- [ ] Audit Shadow/Needle held/released projectile.
+- [ ] Audit Needle held/released projectile.
 
 ## Phase 5 — Production
 

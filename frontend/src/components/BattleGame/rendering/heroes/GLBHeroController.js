@@ -196,7 +196,7 @@ export class GLBHeroController {
         || null
     }
     this.heldProjectile = null
-    const carriesSpore = !this.heroName || this.heroName === "Shadow"
+    const carriesSpore = !this.heroName || this.heroName === "Needle"
     const carriesFairyOrb = this.heroName === "Fairy Mina"
     if (this.rig.rightHand && (carriesSpore || carriesFairyOrb)) {
       this.heldProjectile = carriesFairyOrb

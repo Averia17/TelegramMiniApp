@@ -44,31 +44,31 @@ ACTION_NAMES = {
 
 FRAME_DURATIONS = {
     "idle": 90,
-    "run": 24,
-    "attack": 20,
-    "super": 60,
+    "run": 20,
+    "attack": 16,
+    "super": 50,
     "aim": 60,
     "aim-super": 60,
     "hit": 12,
-    "death": 45,
+    "death": 40,
     "spawn": 45,
     "victory": 60,
-    "gadget": 24,
+    "gadget": 16,
     "aim-gadget": 60,
 }
 
 CYCLE_CLIPS = {"idle", "run", "aim", "aim-super", "aim-gadget"}
 ABILITY_CLIPS = {"attack", "super", "gadget"}
 SKILL_EVENT_FRAMES = {
-    "attack": {"impact": 8, "shockwave_start": 8, "shockwave_end": 12},
+    "attack": {"impact": 6, "shockwave_start": 6, "shockwave_end": 10},
     "super": {
-        "charge_end": 30,
-        "contact": 35,
-        "hold_start": 35,
-        "hold_end": 45,
-        "wave_start": 35,
+        "charge_end": 20,
+        "contact": 30,
+        "hold_start": 30,
+        "hold_end": 40,
+        "wave_start": 30,
     },
-    "gadget": {"plant_start": 5, "stance_start": 12, "stance_end": 24},
+    "gadget": {"plant_start": 4, "stance_start": 10, "stance_end": 16},
 }
 
 BONES = {
@@ -97,25 +97,57 @@ BONES = {
     "toe_r": "R_toes_s_010",
 }
 
+# Mandy's rig exposes two phalanges per finger.  Keep them in the authored
+# clips instead of relying on the source file's incidental rest pose: every
+# clip therefore carries an explicit closed-fist/grip state.  The prompt does
+# not prescribe a separate finger axis, so the rig's local X bend is used.
+FINGER_BONES = {
+    "l": (
+        "L_index_01_s_050",
+        "L_index_02_s_051",
+        "L_middle_01_s_048",
+        "L_middle_02_s_049",
+        "L_ring_01_s_054",
+        "L_ring_02_s_055",
+        "L_pinky_01_s_056",
+        "L_pinky_02_s_057",
+        "L_thumb_01_s_052",
+        "L_thumb_02_s_053",
+    ),
+    "r": (
+        "R_index_01_s_067",
+        "R_index_02_s_068",
+        "R_middle_01_s_065",
+        "R_middle_02_s_066",
+        "R_ring_01_s_071",
+        "R_ring_02_s_072",
+        "R_pinky_01_s_073",
+        "R_pinky_02_s_074",
+        "R_thumb_01_s_069",
+        "R_thumb_02_s_070",
+    ),
+}
+
 
 def p(**changes):
     """Create one semantic pose from the rest/idle baseline."""
 
-    result = {"root_z": 0.0}
+    result = {"root_z": 0.0, "finger_grip": (0.0, 0.0)}
     result.update(changes)
     return result
 
 
 def idle_poses():
     idle = p(
-        spine=(0, 0, 0),
-        head=(-3, 0, 0),
-        upper_l=(10, 5, 0),
-        elbow_l=(160, 0, 0),
-        hand_l=(-15, 0, 10),
-        upper_r=(0, -15, 0),
-        elbow_r=(90, 0, 0),
-        hand_r=(-30, 0, 0),
+        # Right hand is the weapon hand; left hand stays naturally on the belt.
+        # Start from the source right-arm correction (which removes its
+        # behind-the-body rest pose), then add only a small forward reach.
+        upper_r=(47.5, -7.3, -32.5),
+        elbow_r=(76.5, -5.3, 0),
+        hand_r=(-11.3, 5.3, 8),
+        upper_l=(0, 0, 0),
+        elbow_l=(0, 0, 0),
+        hand_l=(0, 0, 0),
         thigh_l=(0, 0, 0),
         thigh_r=(0, 0, 0),
     )
@@ -123,19 +155,16 @@ def idle_poses():
         0: idle,
         30: {
             **idle,
-            "spine": (2, 0, 0),
-            "head": (-3, 8, 0),
-            "upper_l": (12, 5, 0),
-            "upper_r": (-5, -15, 0),
+            "spine": (2, 0, -3),
         },
         60: {
             **idle,
-            "spine": (-1, 0, 0),
-            "head": (-3, -8, 0),
-            "upper_l": (8, 5, 0),
-            "upper_r": (5, -15, 0),
+            "spine": (-1, 0, 3),
         },
-        90: idle,
+        90: {
+            **idle,
+            "spine": (0, 0, 0),
+        },
     }
 
 
@@ -144,74 +173,81 @@ def run_poses():
         0: p(
             spine=(15, 0, 0),
             head=(-5, 0, 0),
-            thigh_l=(30, 0, 0),
-            shin_l=(-15, 0, 0),
-            thigh_r=(-25, 0, 0),
-            shin_r=(10, 0, 0),
-            foot_r=(20, 0, 0),
-            upper_l=(45, 10, 0),
-            elbow_l=(120, 0, 0),
-            hand_l=(-30, 0, 0),
-            upper_r=(50, 0, 0),
-            elbow_r=(110, 0, 0),
-            hand_r=(-30, 0, 0),
-        ),
-        6: p(
-            spine=(15, 0, 0),
-            head=(-5, 0, 0),
-            thigh_l=(60, 0, 0),
-            shin_l=(-40, 0, 0),
-            thigh_r=(0, 0, 0),
-            shin_r=(-5, 0, 0),
-            upper_l=(-30, 0, 0),
-            elbow_l=(120, 0, 0),
-            hand_l=(-30, 0, 0),
-            upper_r=(80, 0, 0),
-            elbow_r=(110, 0, 0),
-            hand_r=(-30, 0, 0),
-        ),
-        12: p(
-            spine=(15, 0, 0),
-            head=(-5, 0, 0),
-            thigh_l=(-25, 0, 0),
-            shin_l=(10, 0, 0),
             thigh_r=(30, 0, 0),
             shin_r=(-15, 0, 0),
+            thigh_l=(-25, 0, 0),
+            shin_l=(10, 0, 0),
             foot_l=(20, 0, 0),
+            foot_r=(0, 0, 0),
             upper_l=(50, 0, 0),
-            elbow_l=(110, 0, 0),
+            elbow_l=(120, 0, 0),
             hand_l=(-30, 0, 0),
-            upper_r=(45, 10, 0),
+            upper_r=(45, 0, 0),
             elbow_r=(120, 0, 0),
             hand_r=(-30, 0, 0),
         ),
-        18: p(
+        5: p(
             spine=(15, 0, 0),
             head=(-5, 0, 0),
-            thigh_l=(0, 0, 0),
-            shin_l=(-5, 0, 0),
             thigh_r=(60, 0, 0),
             shin_r=(-40, 0, 0),
+            thigh_l=(0, 0, 0),
+            shin_l=(-5, 0, 0),
+            foot_l=(0, 0, 0),
+            foot_r=(0, 0, 0),
             upper_l=(80, 0, 0),
-            elbow_l=(110, 0, 0),
+            elbow_l=(120, 0, 0),
             hand_l=(-30, 0, 0),
             upper_r=(-30, 0, 0),
             elbow_r=(120, 0, 0),
             hand_r=(-30, 0, 0),
         ),
-        24: p(
+        10: p(
             spine=(15, 0, 0),
             head=(-5, 0, 0),
             thigh_l=(30, 0, 0),
             shin_l=(-15, 0, 0),
             thigh_r=(-25, 0, 0),
             shin_r=(10, 0, 0),
+            foot_l=(0, 0, 0),
             foot_r=(20, 0, 0),
-            upper_l=(45, 10, 0),
+            upper_l=(45, 0, 0),
             elbow_l=(120, 0, 0),
             hand_l=(-30, 0, 0),
             upper_r=(50, 0, 0),
-            elbow_r=(110, 0, 0),
+            elbow_r=(120, 0, 0),
+            hand_r=(-30, 0, 0),
+        ),
+        15: p(
+            spine=(15, 0, 0),
+            head=(-5, 0, 0),
+            thigh_l=(0, 0, 0),
+            shin_l=(-5, 0, 0),
+            thigh_r=(70, 0, 0),
+            shin_r=(-40, 0, 0),
+            foot_l=(0, 0, 0),
+            foot_r=(0, 0, 0),
+            upper_l=(80, 0, 0),
+            elbow_l=(120, 0, 0),
+            hand_l=(-30, 0, 0),
+            upper_r=(-30, 0, 0),
+            elbow_r=(120, 0, 0),
+            hand_r=(-30, 0, 0),
+        ),
+        20: p(
+            spine=(15, 0, 0),
+            head=(-5, 0, 0),
+            thigh_r=(30, 0, 0),
+            shin_r=(-15, 0, 0),
+            thigh_l=(-25, 0, 0),
+            shin_l=(10, 0, 0),
+            foot_l=(20, 0, 0),
+            foot_r=(0, 0, 0),
+            upper_l=(50, 0, 0),
+            elbow_l=(120, 0, 0),
+            hand_l=(-30, 0, 0),
+            upper_r=(45, 0, 0),
+            elbow_r=(120, 0, 0),
             hand_r=(-30, 0, 0),
         ),
     }
@@ -220,95 +256,72 @@ def run_poses():
 def attack_poses():
     return {
         0: idle_poses()[0],
-        4: p(
-            spine=(0, 30, 0),
+        3: p(
+            spine=(0, 50, 0),
             head=(-3, 30, 0),
-            upper_l=(120, 0, 0),
-            elbow_l=(80, 0, 0),
-            hand_l=(-15, 0, 0),
-            upper_r=(60, 0, 0),
-            elbow_r=(80, 0, 0),
-            hand_r=(-15, 0, 0),
+            upper_l=(90, 0, 0),
+            elbow_l=(70, 0, 0),
+            hand_l=(-10, 0, 0),
+            upper_r=(120, 0, 0),
+            elbow_r=(70, 0, 0),
+            hand_r=(-10, 0, 0),
         ),
         # Fast FK lunge: only thigh/shin add the foot slide; Foot location is untouched.
         6: p(
-            spine=(0, 30, 0),
-            head=(-3, 30, 0),
-            upper_l=(105, 0, 0),
-            elbow_l=(120, 0, 0),
-            hand_l=(-10, 0, -5),
+            spine=(0, -60, 0),
+            head=(-3, -20, 0),
+            upper_l=(40, 0, 0),
+            elbow_l=(150, 0, 0),
+            hand_l=(-5, 0, -5),
             upper_r=(70, 0, 0),
-            elbow_r=(105, 0, 0),
-            hand_r=(-10, 0, 0),
+            elbow_r=(170, 0, 0),
+            hand_r=(-5, 0, 0),
             thigh_l=(15, 0, 0),
             shin_l=(5, 0, 0),
         ),
-        7: p(
-            spine=(0, -30, 0),
-            head=(-3, 5, 0),
-            upper_l=(85, 0, 0),
-            elbow_l=(145, 0, 0),
-            hand_l=(-7, 0, -10),
-            upper_r=(75, 0, 0),
-            elbow_r=(125, 0, 0),
-            hand_r=(-7, 0, 0),
-            thigh_l=(13, 0, 0),
-            shin_l=(3, 0, 0),
-        ),
-        8: p(
-            spine=(0, -45, 0),
-            head=(-3, -20, 0),
-            upper_l=(70, 0, 0),
-            elbow_l=(160, 0, 0),
-            hand_l=(-5, 0, -15),
-            upper_r=(80, 0, 0),
-            elbow_r=(140, 0, 0),
-            hand_r=(-5, 0, 0),
-            thigh_l=(10, 0, 0),
-        ),
-        12: p(
+        10: p(
             spine=(0, 0, 0),
             head=(-3, 0, 0),
-            upper_l=(10, 0, 0),
-            elbow_l=(150, 0, 0),
-            hand_l=(-15, 0, 0),
-            upper_r=(10, 0, 0),
-            elbow_r=(150, 0, 0),
-            hand_r=(-30, 0, 0),
+            upper_l=(0, -15, 0),
+            elbow_l=(90, 0, 0),
+            hand_l=(-30, 0, 0),
+            upper_r=(10, 5, 0),
+            elbow_r=(160, 0, 0),
+            hand_r=(-15, 0, 10),
             thigh_l=(0, 0, 0),
         ),
-        20: idle_poses()[0],
+        16: idle_poses()[0],
     }
 
 
 def super_poses():
     return {
         0: idle_poses()[0],
-        15: p(
-            root_z=-0.10,
+        10: p(
+            root_z=-0.20,
             spine=(25, 0, 0),
             head=(15, 0, 0),
-            upper_l=(40, 0, 0),
-            elbow_l=(140, 0, 0),
+            upper_l=(30, 0, 0),
+            elbow_l=(150, 0, 0),
             hand_l=(-10, 0, 0),
-            upper_r=(50, 0, 0),
-            elbow_r=(120, 0, 0),
+            upper_r=(30, 0, 0),
+            elbow_r=(150, 0, 0),
             hand_r=(-10, 0, 0),
             thigh_l=(15, 0, 0),
             thigh_r=(15, 0, 0),
         ),
-        30: p(
-            root_z=0.05,
+        20: p(
+            root_z=0.20,
             spine=(-10, 0, 0),
             head=(-10, 0, 0),
             upper_l=(160, 0, 0),
             elbow_l=(70, 0, 0),
             hand_l=(-5, 0, 0),
-            upper_r=(145, 0, 0),
-            elbow_r=(75, 0, 0),
+            upper_r=(160, 0, 0),
+            elbow_r=(70, 0, 0),
             hand_r=(-5, 0, 0),
         ),
-        35: p(
+        30: p(
             root_z=0.0,
             spine=(35, 0, 0),
             head=(15, 0, 0),
@@ -316,12 +329,12 @@ def super_poses():
             elbow_l=(170, 0, 0),
             hand_l=(0, 0, -10),
             upper_r=(80, 0, 0),
-            elbow_r=(160, 0, 0),
+            elbow_r=(170, 0, 0),
             hand_r=(0, 0, 0),
             thigh_l=(15, 0, 0),
             thigh_r=(15, 0, 0),
         ),
-        45: p(
+        40: p(
             root_z=0.0,
             spine=(35, 0, 0),
             head=(15, 0, 0),
@@ -329,12 +342,12 @@ def super_poses():
             elbow_l=(170, 0, 0),
             hand_l=(0, 0, -10),
             upper_r=(80, 0, 0),
-            elbow_r=(160, 0, 0),
+            elbow_r=(170, 0, 0),
             hand_r=(0, 0, 0),
             thigh_l=(15, 0, 0),
             thigh_r=(15, 0, 0),
         ),
-        60: idle_poses()[0],
+        50: idle_poses()[0],
     }
 
 
@@ -344,33 +357,33 @@ def aim_poses():
             thigh_l=(-15, 0, 0),
             thigh_r=(-15, 0, 0),
             spine=(10, 0, 0),
-            upper_l=(70, 0, 0),
+            upper_l=(60, 0, 0),
             elbow_l=(90, 0, 0),
             hand_l=(-15, 0, 0),
-            upper_r=(60, 0, 0),
-            elbow_r=(100, 0, 0),
+            upper_r=(80, 0, 0),
+            elbow_r=(160, 0, 0),
             hand_r=(-15, 0, 0),
         ),
         30: p(
             thigh_l=(-15, 0, 0),
             thigh_r=(-15, 0, 0),
             spine=(12, 0, 0),
-            upper_l=(68, 0, 0),
+            upper_l=(58, 0, 0),
             elbow_l=(90, 0, 0),
             hand_l=(-13, 0, 0),
-            upper_r=(62, 0, 0),
-            elbow_r=(100, 0, 0),
+            upper_r=(78, 0, 0),
+            elbow_r=(160, 0, 0),
             hand_r=(-13, 0, 0),
         ),
         60: p(
             thigh_l=(-15, 0, 0),
             thigh_r=(-15, 0, 0),
             spine=(10, 0, 0),
-            upper_l=(70, 0, 0),
+            upper_l=(60, 0, 0),
             elbow_l=(90, 0, 0),
             hand_l=(-15, 0, 0),
-            upper_r=(60, 0, 0),
-            elbow_r=(100, 0, 0),
+            upper_r=(80, 0, 0),
+            elbow_r=(160, 0, 0),
             hand_r=(-15, 0, 0),
         ),
     }
@@ -387,8 +400,8 @@ def aim_super_poses():
             upper_l=(30, 0, 0),
             elbow_l=(160, 0, 0),
             hand_l=(-5, 0, 0),
-            upper_r=(40, 0, 0),
-            elbow_r=(140, 0, 0),
+            upper_r=(30, 0, 0),
+            elbow_r=(160, 0, 0),
             hand_r=(-5, 0, 0),
         ),
         30: p(
@@ -400,8 +413,8 @@ def aim_super_poses():
             upper_l=(32, 0, 0),
             elbow_l=(160, 0, 0),
             hand_l=(-3, 0, 2),
-            upper_r=(42, 0, 0),
-            elbow_r=(140, 0, 0),
+            upper_r=(32, 0, 0),
+            elbow_r=(160, 0, 0),
             hand_r=(-3, 0, -2),
         ),
         60: p(
@@ -413,8 +426,8 @@ def aim_super_poses():
             upper_l=(30, 0, 0),
             elbow_l=(160, 0, 0),
             hand_l=(-5, 0, 0),
-            upper_r=(40, 0, 0),
-            elbow_r=(140, 0, 0),
+            upper_r=(30, 0, 0),
+            elbow_r=(160, 0, 0),
             hand_r=(-5, 0, 0),
         ),
     }
@@ -426,21 +439,21 @@ def hit_poses():
         3: p(
             spine=(-20, 0, 0),
             head=(-15, 0, 0),
-            upper_l=(-30, 0, 0),
-            elbow_l=(100, 0, 0),
+            upper_l=(50, 0, 0),
+            elbow_l=(130, 0, 0),
             hand_l=(0, 0, 0),
-            upper_r=(40, 0, 0),
-            elbow_r=(130, 0, 0),
+            upper_r=(-40, 0, 0),
+            elbow_r=(100, 0, 0),
             hand_r=(0, 0, 0),
         ),
         7: p(
             spine=(-22, 0, 0),
             head=(-15, 0, 0),
-            upper_l=(-40, 0, 0),
-            elbow_l=(100, 0, 0),
+            upper_l=(50, 0, 0),
+            elbow_l=(130, 0, 0),
             hand_l=(0, 0, 0),
-            upper_r=(50, 0, 0),
-            elbow_r=(130, 0, 0),
+            upper_r=(-40, 0, 0),
+            elbow_r=(100, 0, 0),
             hand_r=(0, 0, 0),
         ),
         10: p(spine=(-5, 0, 0), head=(-5, 0, 0)),
@@ -451,7 +464,17 @@ def hit_poses():
 def death_poses():
     return {
         0: idle_poses()[0],
-        8: p(root_z=-0.15, thigh_l=(-40, 0, 0), thigh_r=(-40, 0, 0), spine=(15, 0, 0)),
+        8: p(
+            root_z=-0.20,
+            thigh_l=(-40, 0, 0),
+            thigh_r=(-40, 0, 0),
+            spine=(15, 0, 0),
+            upper_l=(0, 0, 0),
+            elbow_l=(0, 0, 0),
+            upper_r=(30, 0, 0),
+            elbow_r=(150, 0, 0),
+            hand_r=(-10, 0, 0),
+        ),
         15: p(
             root_z=-0.35,
             thigh_l=(-90, 0, 0),
@@ -460,12 +483,12 @@ def death_poses():
             shin_r=(90, 0, 0),
             spine=(40, 0, 0),
             head=(30, 0, 0),
-            upper_l=(20, 0, 0),
-            elbow_l=(140, 0, 0),
-            hand_l=(-10, 0, 0),
-            upper_r=(50, 0, 0),
-            elbow_r=(30, 0, 0),
-            hand_r=(20, 0, 0),
+            upper_l=(0, 0, 0),
+            elbow_l=(0, 0, 0),
+            hand_l=(0, 0, 0),
+            upper_r=(60, 0, 0),
+            elbow_r=(140, 0, 0),
+            hand_r=(0, 0, 0),
         ),
         25: p(
             root_z=-0.35,
@@ -475,14 +498,14 @@ def death_poses():
             shin_r=(90, 0, 0),
             spine=(40, 0, 0),
             head=(30, 0, 0),
-            upper_l=(20, 0, 0),
-            elbow_l=(140, 0, 0),
-            hand_l=(-10, 0, 0),
-            upper_r=(50, 0, 0),
-            elbow_r=(30, 0, 0),
-            hand_r=(20, 0, 0),
+            upper_l=(0, 0, 0),
+            elbow_l=(0, 0, 0),
+            hand_l=(0, 0, 0),
+            upper_r=(60, 0, 0),
+            elbow_r=(140, 0, 0),
+            hand_r=(0, 0, 0),
         ),
-        45: p(
+        40: p(
             root_z=-0.35,
             thigh_l=(-90, 0, 0),
             thigh_r=(-90, 0, 0),
@@ -490,12 +513,12 @@ def death_poses():
             shin_r=(90, 0, 0),
             spine=(40, 0, 0),
             head=(30, 0, 0),
-            upper_l=(20, 0, 0),
-            elbow_l=(140, 0, 0),
-            hand_l=(-10, 0, 0),
-            upper_r=(50, 0, 0),
-            elbow_r=(30, 0, 0),
-            hand_r=(20, 0, 0),
+            upper_l=(0, 0, 0),
+            elbow_l=(0, 0, 0),
+            hand_l=(0, 0, 0),
+            upper_r=(60, 0, 0),
+            elbow_r=(140, 0, 0),
+            hand_r=(0, 0, 0),
         ),
     }
 
@@ -526,12 +549,12 @@ def spawn_poses():
         20: p(
             root_z=0.0,
             spine=(10, 0, 0),
-            upper_l=(10, 5, 0),
-            elbow_l=(160, 0, 0),
-            hand_l=(-15, 0, 10),
-            upper_r=(0, -15, 0),
-            elbow_r=(90, 0, 0),
-            hand_r=(-30, 0, 0),
+            upper_r=(10, 5, 0),
+            elbow_r=(160, 0, 0),
+            hand_r=(-15, 0, 10),
+            upper_l=(0, -15, 0),
+            elbow_l=(90, 0, 0),
+            hand_l=(-30, 0, 0),
         ),
         45: idle_poses()[0],
     }
@@ -540,44 +563,80 @@ def spawn_poses():
 def victory_poses():
     return {
         0: idle_poses()[0],
+        8: p(
+            upper_r=(160, 0, 0),
+            elbow_r=(60, 0, 0),
+            forearm_r=(0, 0, 0),
+            hand_r=(0, 0, 0),
+        ),
         10: p(
-            upper_l=(150, 0, 0),
-            elbow_l=(60, 0, 0),
-            forearm_l=(0, 0, 90),
-            hand_l=(0, 0, 180),
+            upper_r=(150, 0, 0),
+            elbow_r=(60, 0, 0),
+            forearm_r=(0, 0, 0),
+            hand_r=(0, 0, 0),
+            spine=(0, 0, 0),
+        ),
+        15: p(
+            upper_r=(150, 0, 0),
+            elbow_r=(60, 0, 0),
+            forearm_r=(0, 0, 0),
+            hand_r=(0, 0, 540),
+            spine=(5, 0, 0),
         ),
         20: p(
-            upper_l=(150, 0, 0),
-            elbow_l=(60, 0, 0),
-            forearm_l=(0, 0, 180),
-            hand_l=(0, 0, 360),
+            upper_r=(150, 0, 0),
+            elbow_r=(60, 0, 0),
+            forearm_r=(0, 0, 0),
+            hand_r=(0, 0, 1080),
+            upper_l=(130, 0, 0),
+            elbow_l=(90, 0, 0),
+            spine=(-5, 0, 0),
+        ),
+        25: p(
+            upper_r=(150, 0, 0),
+            elbow_r=(60, 0, 0),
+            forearm_r=(0, 0, 0),
+            hand_r=(0, 0, 1080),
+            upper_l=(130, 0, 0),
+            elbow_l=(90, 0, 0),
+            spine=(0, 0, 0),
         ),
         30: p(
-            upper_l=(130, 0, 0),
-            elbow_l=(70, 0, 0),
-            upper_r=(130, 0, 0),
-            elbow_r=(70, 0, 0),
+            root_z=0.15,
+            spine=(0, 0, 0),
+            upper_l=(100, 0, 0),
+            elbow_l=(90, 0, 0),
+            upper_r=(100, 0, 0),
+            elbow_r=(90, 0, 0),
+            forearm_l=(0, 0, 0),
+            forearm_r=(0, 0, 0),
             hand_l=(0, 0, 0),
             hand_r=(0, 0, 0),
         ),
         35: p(
-            root_z=0.05,
-            spine=(30, 0, 0),
-            upper_l=(90, 0, 0),
+            root_z=0.0,
+            spine=(40, 0, 0),
+            upper_l=(80, 0, 0),
             elbow_l=(170, 0, 0),
             upper_r=(90, 0, 0),
             elbow_r=(170, 0, 0),
+            thigh_l=(20, 0, 0),
+            thigh_r=(20, 0, 0),
+            forearm_l=(0, 0, 0),
+            forearm_r=(0, 0, 0),
         ),
         40: p(
             root_z=0.0,
-            spine=(-5, 0, 0),
-            head=(-5, 0, 0),
-            upper_l=(15, 0, 0),
-            elbow_l=(160, 0, 0),
-            hand_l=(-15, 0, 10),
-            upper_r=(0, -15, 0),
-            elbow_r=(90, 0, 0),
-            hand_r=(-30, 0, 0),
+            spine=(0, 0, 0),
+            head=(-10, 0, 0),
+            upper_r=(10, 5, 0),
+            elbow_r=(160, 0, 0),
+            hand_r=(-15, 0, 10),
+            upper_l=(0, -15, 0),
+            elbow_l=(90, 0, 0),
+            hand_l=(-30, 0, 0),
+            forearm_l=(0, 0, 0),
+            forearm_r=(0, 0, 0),
         ),
         60: idle_poses()[0],
     }
@@ -586,35 +645,35 @@ def victory_poses():
 def gadget_poses():
     return {
         0: idle_poses()[0],
-        5: p(
-            root_z=-0.15,
-            thigh_l=(-30, 0, 0),
-            thigh_r=(-30, 0, 0),
+        4: p(
+            root_z=-0.20,
+            thigh_l=(-60, 0, 0),
+            thigh_r=(-60, 0, 0),
             spine=(15, 0, 0),
             upper_l=(40, 0, 0),
-            elbow_l=(110, 0, 0),
+            elbow_l=(150, 0, 0),
             upper_r=(50, 0, 0),
-            elbow_r=(100, 0, 0),
+            elbow_r=(150, 0, 0),
         ),
-        12: p(
-            root_z=-0.15,
-            thigh_l=(-30, 0, 0),
-            thigh_r=(-30, 0, 0),
+        10: p(
+            root_z=-0.20,
+            thigh_l=(-60, 0, 0),
+            thigh_r=(-60, 0, 0),
             spine=(15, 0, 0),
             upper_l=(40, 0, 0),
-            elbow_l=(110, 0, 0),
+            elbow_l=(150, 0, 0),
             upper_r=(50, 0, 0),
-            elbow_r=(100, 0, 0),
+            elbow_r=(150, 0, 0),
         ),
-        24: p(
-            root_z=-0.15,
-            thigh_l=(-30, 0, 0),
-            thigh_r=(-30, 0, 0),
+        16: p(
+            root_z=-0.20,
+            thigh_l=(-60, 0, 0),
+            thigh_r=(-60, 0, 0),
             spine=(15, 0, 0),
             upper_l=(40, 0, 0),
-            elbow_l=(110, 0, 0),
+            elbow_l=(150, 0, 0),
             upper_r=(50, 0, 0),
-            elbow_r=(100, 0, 0),
+            elbow_r=(150, 0, 0),
         ),
     }
 
@@ -629,8 +688,8 @@ def aim_gadget_poses():
             head=(5, 0, 0),
             upper_l=(60, 0, 0),
             elbow_l=(100, 0, 0),
-            upper_r=(55, 0, 0),
-            elbow_r=(95, 0, 0),
+            upper_r=(70, 0, 0),
+            elbow_r=(100, 0, 0),
         ),
         30: p(
             root_z=-0.10,
@@ -640,8 +699,8 @@ def aim_gadget_poses():
             head=(5, 0, 0),
             upper_l=(62, 0, 0),
             elbow_l=(100, 0, 0),
-            upper_r=(57, 0, 0),
-            elbow_r=(95, 0, 0),
+            upper_r=(72, 0, 0),
+            elbow_r=(100, 0, 0),
         ),
         60: p(
             root_z=-0.10,
@@ -651,8 +710,8 @@ def aim_gadget_poses():
             head=(5, 0, 0),
             upper_l=(60, 0, 0),
             elbow_l=(100, 0, 0),
-            upper_r=(55, 0, 0),
-            elbow_r=(95, 0, 0),
+            upper_r=(70, 0, 0),
+            elbow_r=(100, 0, 0),
         ),
     }
 
@@ -766,10 +825,25 @@ def apply_semantic_pose(armature, baseline, data):
     ):
         add_rotation(armature, baseline, semantic, data.get(semantic))
 
+    grip = data.get("finger_grip", (60.0, 60.0))
+    for side, degrees in zip(("l", "r"), grip):
+        for name in FINGER_BONES[side]:
+            baseline_rotation = baseline[name]["rotation"]
+            bend = radians((float(degrees), 0.0, 0.0))
+            armature.pose.bones[name].rotation_euler = Euler(
+                tuple(base + change for base, change in zip(baseline_rotation, bend)),
+                "XYZ",
+            )
+
 
 def key_pose(armature, action, frame, baseline, data):
     apply_semantic_pose(armature, baseline, data)
     for name in BONES.values():
+        bone = armature.pose.bones[name]
+        bone.keyframe_insert("location", frame=frame)
+        bone.keyframe_insert("rotation_euler", frame=frame)
+        bone.keyframe_insert("scale", frame=frame)
+    for name in FINGER_BONES["l"] + FINGER_BONES["r"]:
         bone = armature.pose.bones[name]
         bone.keyframe_insert("location", frame=frame)
         bone.keyframe_insert("rotation_euler", frame=frame)
@@ -789,18 +863,41 @@ def author_clip(clip):
     bpy.ops.wm.open_mainfile(filepath=os.fspath(MASTER))
     scene = bpy.context.scene
     scene.render.fps = FPS
+    # The source master keeps exported geometry in this collection hidden.
+    # Focused authoring scenes must be directly inspectable when opened in
+    # Blender, so reveal the collection in the scene copy only; the master is
+    # opened fresh for every clip and is never saved back over.
+    for collection in scene.collection.children:
+        if collection.name == "glTF_not_exported":
+            collection.hide_viewport = False
+            collection.hide_render = False
     duration = FRAME_DURATIONS[clip]
     scene.frame_start = 1
     scene.frame_end = duration
     armature = bpy.data.objects.get("MandyRig")
     if armature is None:
         raise RuntimeError(f"{clip}: expected MandyRig armature")
-    if any(name not in armature.data.bones for name in BONES.values()):
+    required_bones = tuple(BONES.values()) + FINGER_BONES["l"] + FINGER_BONES["r"]
+    if any(name not in armature.data.bones for name in required_bones):
         raise RuntimeError(f"{clip}: MandyRig bone mapping changed")
 
     staff_pivot = bpy.data.objects.get("MandyStaff_SourcePivot")
-    if staff_pivot is None or staff_pivot.parent_bone != "L_wrist_s_047":
-        raise RuntimeError(f"{clip}: staff must stay parented to L_wrist_s_047")
+    staff_marker = bpy.data.objects.get("Grip.Primary.MandyStaff_Attachment")
+    staff_mesh = bpy.data.objects.get("MandyStaff_Attachment")
+    if staff_pivot is None or staff_marker is None or staff_mesh is None:
+        raise RuntimeError(f"{clip}: Mandy staff pivot/marker is missing")
+    staff_mesh["grip_bone"] = BONES["hand_r"]
+    # The v3 contract makes the right wrist the canonical weapon socket. The
+    # source file is treated as a baseline, so normalize both authored sockets
+    # in every focused scene before capturing the pose baseline.
+    for staff_socket in (staff_pivot, staff_marker):
+        staff_socket.parent = armature
+        staff_socket.parent_type = "BONE"
+        staff_socket.parent_bone = BONES["hand_r"]
+        # The marker is a pure socket. Clear the former left-wrist offset so
+        # the detached authored-root staff starts at the actual right wrist.
+        staff_socket.location = (0.0, 0.0, 0.0)
+        staff_socket.rotation_euler = (0.0, 0.0, 0.0)
 
     source_action = bpy.data.actions.get("Idle")
     armature.animation_data_create()
@@ -817,8 +914,15 @@ def author_clip(clip):
     poses = copy.deepcopy(POSE_BUILDERS[clip]())
     if min(poses) != 0 or max(poses) != duration:
         raise RuntimeError(f"{clip}: pose frames must cover 0..{duration}")
+    # The brief says omitted values retain the previous frame's value. Resolve
+    # that carry-forward explicitly before applying each pose; resetting to the
+    # source baseline for every key would silently erase thigh/hand/head state.
+    previous_pose = {}
     for brief_frame in sorted(poses):
-        key_pose(armature, action, brief_frame + 1, baseline, poses[brief_frame])
+        resolved_pose = copy.deepcopy(previous_pose)
+        resolved_pose.update(poses[brief_frame])
+        key_pose(armature, action, brief_frame + 1, baseline, resolved_pose)
+        previous_pose = resolved_pose
     smooth_action(action)
     scene.frame_set(1)
 
@@ -841,7 +945,7 @@ def author_clip(clip):
     scene["fps"] = FPS
     scene["authoring_status"] = "READY_FOR_REVIEW"
     scene["source_of_truth"] = os.fspath(MASTER.relative_to(ROOT))
-    scene["staff_hand"] = "L_wrist_s_047"
+    scene["staff_hand"] = BONES["hand_r"]
     scene["root_motion_contract"] = (
         "Root X/Y locked; Root Z only on authored crouch/jump/death/spawn poses"
     )
@@ -876,7 +980,7 @@ def author_clip(clip):
         "curves": len(curves),
         "keyframes": sum(len(curve.keyframe_points) for curve in curves),
         "cycle": clip in CYCLE_CLIPS,
-        "staff_hand": "L_wrist_s_047",
+        "staff_hand": BONES["hand_r"],
     }
 
 

@@ -3,7 +3,7 @@ package game
 import "testing"
 
 func TestEveryHeroHasServerAuthoritativeAttackConfig(t *testing.T) {
-	expected := []string{"Shadow", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"}
+	expected := []string{"Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"}
 	if len(Heroes) != len(expected) {
 		t.Fatalf("heroes = %d, want %d", len(Heroes), len(expected))
 	}
@@ -31,7 +31,7 @@ func TestConfiguredHeroesExecuteExpectedBasicAttackArchetype(t *testing.T) {
 		hero        string
 		wantBullets int
 	}{
-		{"Shadow", 1},
+		{"Needle", 1},
 		{"Mandy", 0},
 	}
 	for _, tc := range cases {
@@ -77,9 +77,9 @@ func TestBasicMeleeAttacksNeverMoveTheAttacker(t *testing.T) {
 
 func TestEveryMeleeHeroHasItsOwnForwardAttackArea(t *testing.T) {
 	expected := map[string]AttackConfig{
-		"Mandy":        {Range: 70, HalfArcDegrees: 42},
-		"Kaze":         {Range: 105, HalfArcDegrees: 55},
-		"Wukong Mico":  {Range: 120, HalfArcDegrees: 50},
+		"Mandy":       {Range: 70, HalfArcDegrees: 42},
+		"Kaze":        {Range: 105, HalfArcDegrees: 55},
+		"Wukong Mico": {Range: 120, HalfArcDegrees: 50},
 	}
 	for heroName, want := range expected {
 		config := heroAttackConfigs[heroName]

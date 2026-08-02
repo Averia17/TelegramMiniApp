@@ -189,7 +189,7 @@
     if(!manualState) label.textContent=state
     const attackFlight=attackPreview||(cycle>=4.65&&cycle<6.35)
     const projectileX=attackPreview?23:-18+(cycle-4.65)*38
-    projectiles.sync(hero==="Shadow"&&attackFlight?[{id:"qa-spore",kind:"spore",color:"#75D947",radius:15,x:projectileX,y:0,z:attackPreview?12:Math.sin((cycle-4.65)/1.7*Math.PI)*22}]:[])
+    projectiles.sync(hero==="Needle"&&attackFlight?[{id:"qa-spore",kind:"spore",color:"#75D947",radius:15,x:projectileX,y:0,z:attackPreview?12:Math.sin((cycle-4.65)/1.7*Math.PI)*22}]:[])
     projectiles.update(dt,performance.now()/1000)
     monsterPreview.update(dt,performance.now()/1000)
     model.rotation.y=moving?-.45:0

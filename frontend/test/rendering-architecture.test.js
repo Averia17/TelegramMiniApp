@@ -81,19 +81,19 @@ test("world coordinates round-trip through the shared 2.5D transform", () => {
 })
 
 test("hero speed config produces distinct authored run-cycle rates", () => {
-  const shadow = HEROES_CONFIG.find(hero => hero.name === "Shadow")
+  const needle = HEROES_CONFIG.find(hero => hero.name === "Needle")
   const kaze = HEROES_CONFIG.find(hero => hero.name === "Kaze")
   assert.equal(ANIMATION_REFERENCE_SPEED, 12)
   assert.equal(RUNTIME_ANIMATION_REFERENCE_SPEED, 144)
-  assert.ok(kaze.speed > shadow.speed)
-  assert.equal(kaze.speed / ANIMATION_REFERENCE_SPEED > shadow.speed / ANIMATION_REFERENCE_SPEED, true)
+  assert.ok(kaze.speed > needle.speed)
+  assert.equal(kaze.speed / ANIMATION_REFERENCE_SPEED > needle.speed / ANIMATION_REFERENCE_SPEED, true)
 })
 
 test("hero fallback configs expose compact health, damage, and speed values", () => {
-  const shadow = HEROES_CONFIG.find(hero => hero.name === "Shadow")
+  const needle = HEROES_CONFIG.find(hero => hero.name === "Needle")
   const mico = HEROES_CONFIG.find(hero => hero.name === "Wukong Mico")
   assert.deepEqual(
-    {health: shadow.maxLives, damage: shadow.attackDamage, speed: shadow.speed},
+    {health: needle.maxLives, damage: needle.attackDamage, speed: needle.speed},
     {health: 620, damage: 65, speed: 12},
   )
   assert.deepEqual(
@@ -482,12 +482,12 @@ test("camera keeps the last hero position when the local hero dies", () => {
 })
 
 test("the hero manifest uses standardized base GLBs and optional detached weapons", () => {
-  assert.deepEqual(Object.keys(HERO_ASSETS), ["Shadow", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"])
+  assert.deepEqual(Object.keys(HERO_ASSETS), ["Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"])
   for (const name of Object.keys(HERO_ASSETS)) {
     const asset = getHeroAsset(name)
     assert.equal(asset.id, name)
     assert.equal(asset.scale > 0, true)
-    const expectedClipKeys = ["Shadow", "Mandy"].includes(name)
+    const expectedClipKeys = ["Needle", "Mandy"].includes(name)
       ? ["idle", "run", "hit", "aim", "aimSuper", "attack", "super", "gadget", "spawn", "victory", "defeat", "aimGadget"]
       : ["idle", "run", "hit", "aim", "aimSuper", "attack", "super", "gadget", "spawn", "victory", "defeat"]
     assert.deepEqual(Object.keys(asset.clips), expectedClipKeys)
@@ -498,7 +498,7 @@ test("the hero manifest uses standardized base GLBs and optional detached weapon
     }
   }
   for (const name of Object.keys(HERO_ASSETS)) assert.equal(HERO_ASSETS[name].available, true)
-  assert.equal(HERO_ASSETS.Shadow.url, "/assets/heroes/output_heroes/needle_base.glb")
+  assert.equal(HERO_ASSETS.Needle.url, "/assets/heroes/output_heroes/needle_base.glb")
   assert.equal(HERO_ASSETS.Mandy.weaponUrl, "/assets/heroes/output_weapons/mandy_weapon.glb")
   assert.equal(HERO_ASSETS.Damian.groundOffset, 0.25)
   assert.deepEqual(HEROES_CONFIG.map(hero => hero.name), Object.keys(HERO_ASSETS))
@@ -506,7 +506,7 @@ test("the hero manifest uses standardized base GLBs and optional detached weapon
 
 test("hero asset resolution keeps canonical names and handles unknown names safely", () => {
   assert.equal(resolveHeroName("Mandy"), "Mandy")
-  assert.equal(resolveHeroName("needle"), "Shadow")
+  assert.equal(resolveHeroName("needle"), "Needle")
   assert.equal(resolveHeroName("fairy-mina"), "Fairy Mina")
   assert.equal(resolveHeroName("brock-zeus"), "Brock Zeus")
   assert.equal(resolveHeroName("wukong-mico"), "Wukong Mico")
@@ -1013,7 +1013,7 @@ test("ranged heroes visibly carry their held projectile before attacking", () =>
     idle: "Idle",
     attack: "Attack",
   }, {
-    heroName: "Shadow",
+    heroName: "Needle",
     attackPulse: 0,
     spawnOnLoad: false,
   })
@@ -1151,7 +1151,7 @@ test("the fighter selection warms only the selected GLB while idle", async () =>
 test("hero equipment profiles hide detached ammo and animate Brock's nearby cloud", () => {
   const mandyRoot = new THREE.Group()
   const mandyWrist = new THREE.Bone()
-  mandyWrist.name = "L_wrist_s_047"
+  mandyWrist.name = "R_wrist_s_064"
   const mandyStaff = new THREE.Group()
   mandyStaff.name = "MandyStaff_Attachment"
   mandyStaff.userData.attachment_role = "held-weapon"
@@ -1295,7 +1295,7 @@ test("short-lived projectiles use emissive visuals without dynamic scene lights"
   }
 })
 
-test("Shadow spore attacks use a layered 3D projectile instead of a primitive ball", () => {
+test("Needle spore attacks use a layered 3D projectile instead of a primitive ball", () => {
   const visual = createProjectileVisual({kind: "spore", radius: 15, color: "#75D947"})
   assert.equal(visual.isGroup, true)
   assert.equal(visual.name, "NeedleSporeProjectile")

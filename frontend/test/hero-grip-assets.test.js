@@ -101,9 +101,9 @@ for (const [heroName, asset] of Object.entries(HERO_ASSETS)) {
       ["wrist", /(wrist|hand)/i],
       ["torso", /(spine|chest)/i],
     ]
-    // Shadow's legacy source rig has a two-bone arm named Arm -> Hand; Hand
+    // Needle's legacy source rig has a two-bone arm named Arm -> Hand; Hand
     // carries both the forearm bend and the projectile socket.
-    if (heroName === "Shadow") chainPatterns[1][1] = /hand/i
+    if (heroName === "Needle") chainPatterns[1][1] = /hand/i
     for (const [label, pattern] of chainPatterns) {
       assert.equal(
         [...animatedNames].some(name => pattern.test(name)),

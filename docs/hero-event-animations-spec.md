@@ -76,6 +76,6 @@ npm run build
 
 - Brock Zeus не имеет полноценного humanoid arm rig; его облако остаётся
   независимым `attack-cloud`.
-- Shadow и Fairy Mina пока создают удерживаемый projectile visual в runtime, но
+- Needle и Fairy Mina пока создают удерживаемый projectile visual в runtime, но
   он присоединяется к каноническому правому socket, когда socket доступен.
   Projectile после release остаётся отдельной gameplay-сущностью.

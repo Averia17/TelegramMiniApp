@@ -84,7 +84,7 @@ func TestIntegration_ReconnectByPlayerIdReplacesSessionAndPreservesState(t *test
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
 
 	first := dialAuthenticatedForIntegration(t, wsURL, 2001)
-	if err := first.WriteMessage(websocket.TextMessage, []byte(`{"type":"join","playerName":"Reconnectable","heroName":"Shadow","roomName":"room-reconnect","roomMap":"arena"}`)); err != nil {
+	if err := first.WriteMessage(websocket.TextMessage, []byte(`{"type":"join","playerName":"Reconnectable","heroName":"Needle","roomName":"room-reconnect","roomMap":"arena"}`)); err != nil {
 		t.Fatalf("first join: %v", err)
 	}
 	joined := waitForMsg(t, first, "room_joined")
@@ -92,7 +92,7 @@ func TestIntegration_ReconnectByPlayerIdReplacesSessionAndPreservesState(t *test
 	waitState(t, first, 5*time.Second, func(msg map[string]interface{}) bool {
 		players, _ := msg["players"].(map[string]interface{})
 		player, _ := players["2001"].(map[string]interface{})
-		return player != nil && player["hero"] == "Shadow"
+		return player != nil && player["hero"] == "Needle"
 	})
 	second := dialAuthenticatedForIntegration(t, wsURL, 2001)
 	if err := second.WriteMessage(websocket.TextMessage, []byte(`{"type":"join_by_id","roomId":"`+roomId+`","playerName":"ChangedName","heroName":"Mandy"}`)); err != nil {
@@ -110,7 +110,7 @@ func TestIntegration_ReconnectByPlayerIdReplacesSessionAndPreservesState(t *test
 	waitState(t, second, 5*time.Second, func(msg map[string]interface{}) bool {
 		players, _ := msg["players"].(map[string]interface{})
 		player, _ := players["2001"].(map[string]interface{})
-		return player != nil && player["name"] == "Reconnectable" && player["hero"] == "Shadow"
+		return player != nil && player["name"] == "Reconnectable" && player["hero"] == "Needle"
 	})
 
 	pollUntil(t, 5*time.Second, "one persisted player after reconnect", func() bool {
@@ -127,7 +127,7 @@ func TestIntegration_ReconnectByPlayerIdReplacesSessionAndPreservesState(t *test
 	waitState(t, third, 5*time.Second, func(msg map[string]interface{}) bool {
 		players, _ := msg["players"].(map[string]interface{})
 		player, _ := players["2001"].(map[string]interface{})
-		return player != nil && player["name"] == "Reconnectable" && player["hero"] == "Shadow"
+		return player != nil && player["name"] == "Reconnectable" && player["hero"] == "Needle"
 	})
 }
 

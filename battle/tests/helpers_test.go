@@ -71,7 +71,7 @@ func wsDial(t *testing.T, ts *httptest.Server) *websocket.Conn {
 
 func wsJoin(t *testing.T, conn *websocket.Conn, name, room, roomMap string) string {
 	t.Helper()
-	msg := fmt.Sprintf(`{"type":"join","playerName":%q,"heroName":"Shadow","roomName":%q,"roomMap":%q,"maxPlayers":4,"mode":"deathmatch"}`, name, room, roomMap)
+	msg := fmt.Sprintf(`{"type":"join","playerName":%q,"heroName":"Needle","roomName":%q,"roomMap":%q,"maxPlayers":4,"mode":"deathmatch"}`, name, room, roomMap)
 	if err := conn.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
 		t.Fatalf("write join: %v", err)
 	}

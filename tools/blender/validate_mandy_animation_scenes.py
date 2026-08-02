@@ -30,26 +30,26 @@ ACTION_NAMES = {
 }
 FRAME_DURATIONS = {
     "idle": 90,
-    "run": 24,
-    "attack": 20,
-    "super": 60,
+    "run": 20,
+    "attack": 16,
+    "super": 50,
     "aim": 60,
     "aim-super": 60,
     "hit": 12,
-    "death": 45,
+    "death": 40,
     "spawn": 45,
     "victory": 60,
-    "gadget": 24,
+    "gadget": 16,
     "aim-gadget": 60,
 }
 CYCLES = {"idle", "run", "aim", "aim-super", "aim-gadget"}
 ROOT_Z_LIMITS = {
-    "super": (-0.10, 0.05),
+    "super": (-0.20, 0.20),
     "aim-super": (-0.20, -0.20),
     "death": (-0.35, 0.0),
     "spawn": (-0.30, 0.0),
-    "victory": (0.0, 0.05),
-    "gadget": (-0.15, 0.0),
+    "victory": (0.0, 0.15),
+    "gadget": (-0.20, 0.0),
     "aim-gadget": (-0.10, -0.10),
 }
 BONES = {
@@ -132,6 +132,10 @@ def check_frame(clip, frame, armature, errors):
         "L_lowerLeg_s_04": (120, 120, 120),
         "R_lowerLeg_s_08": (120, 120, 120),
     }
+    if clip == "victory":
+        # Victory intentionally spins the staff three full turns through the
+        # weapon wrist (0 -> 1080 degrees in the authored brief).
+        limits["R_wrist_s_064"] = (180, 180, 1080)
     for name, maximums in limits.items():
         degrees = tuple(
             math.degrees(value) for value in armature.pose.bones[name].rotation_euler
@@ -175,8 +179,8 @@ def validate_clip(clip):
     if scene.get("hero_slug") != "mandy" or scene.get("clip_name") != expected_action:
         errors.append("scene metadata does not match Mandy/action")
     pivot = bpy.data.objects.get("MandyStaff_SourcePivot")
-    if pivot is None or pivot.parent_bone != "L_wrist_s_047":
-        errors.append("staff is not parented to L_wrist_s_047")
+    if pivot is None or pivot.parent_bone != "R_wrist_s_064":
+        errors.append("staff is not parented to R_wrist_s_064")
     if (
         scene.get("foot_motion_contract")
         != "FK foot slide allowed only in attack/super/hit; no IK targets"

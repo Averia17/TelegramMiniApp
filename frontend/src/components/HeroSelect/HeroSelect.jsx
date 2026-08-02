@@ -8,7 +8,7 @@ import "./HeroSelect.css"
 
 const RARITIES = ["rare", "super-rare", "epic", "mythic", "legendary"]
 const HERO_DISPLAY_NAMES = {
-  Shadow: "NEEDLE",
+  Needle: "NEEDLE",
   Mandy: "MANDY",
   "Fairy Mina": "FAIRY MINA",
   "Brock Zeus": "BROCK ZEUS",
@@ -20,7 +20,7 @@ const HERO_DISPLAY_NAMES = {
 const heroDisplay = hero => HERO_DISPLAY_NAMES[hero?.name] || hero?.name
 
 const HERO_DETAILS = {
-  Shadow:{title:"Био-стрелок",attack:"65 урона и 6 осколков при разрыве",super:"Q: замедляющая лиана · E: лечение 145",passive:"Контролирует проходы и кусты"},
+  Needle:{title:"Био-стрелок",attack:"65 урона и 6 осколков при разрыве",super:"Q: замедляющая лиана · E: лечение 145",passive:"Контролирует проходы и кусты"},
   Mandy:{title:"Сахарный боец ближнего боя",attack:"60 урона конусным ударом посоха",super:"Q: волна через всю карту · E: Карамелизация",passive:"Стоя 1 секунду, получает +35% к дальности"},
 }
 

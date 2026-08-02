@@ -5,7 +5,7 @@ const { chromium } = require(path.resolve(__dirname, "../../frontend/node_module
 const ROOT = path.resolve(__dirname, "../..")
 const OUT = path.join(ROOT, "artifacts", "hero-browser-qa", "quality-v5")
 const heroes = [
-  ["Shadow", "shadow"],
+  ["Needle", "needle"],
   ["Mandy", "mandy"],
   ["Fairy Mina", "fairy-mina"],
   ["Brock Zeus", "brock-zeus"],

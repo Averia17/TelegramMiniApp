@@ -11,7 +11,7 @@ import {GLBHeroController} from "../src/components/BattleGame/rendering/heroes/G
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
 test("Needle exposes AimGadget from GLB through the runtime map and harness", async () => {
-  assert.equal(HERO_ASSETS.Shadow.clips.aimGadget, "AimGadget")
+  assert.equal(HERO_ASSETS.Needle.clips.aimGadget, "AimGadget")
   const glb = await readFile(path.join(frontendRoot, "public/assets/heroes/output_heroes/needle_base.glb"))
   const jsonLength = glb.readUInt32LE(12)
   const document = JSON.parse(glb.toString("utf8", 20, 20 + jsonLength))
@@ -29,7 +29,7 @@ test("outcome interrupts an in-progress spawn and starts its authored action", (
     run: "run",
     spawn: "spawn",
     victory: "victory",
-  }, {heroName: "Shadow", spawnOnLoad: false})
+  }, {heroName: "Needle", spawnOnLoad: false})
 
   controller.playSpawn()
   assert.equal(controller.state, "spawn")

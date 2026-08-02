@@ -58,7 +58,7 @@ test("ranged heroes visibly carry their held projectile before attacking", () =>
     idle: "Idle",
     attack: "Attack",
   }, {
-    heroName: "Shadow",
+    heroName: "Needle",
     attackPulse: 0,
     spawnOnLoad: false,
   })
@@ -82,7 +82,7 @@ test("the held projectile returns to the hand after its attack release", () => {
     idle: "Idle",
     attack: "Attack",
   }, {
-    heroName: "Shadow",
+    heroName: "Needle",
     attackPulse: 0,
     spawnOnLoad: false,
   })

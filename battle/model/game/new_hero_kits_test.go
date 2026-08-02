@@ -19,15 +19,15 @@ func TestNewHeroCombatKitsAreRegistered(t *testing.T) {
 	}
 }
 
-func TestShadowSporeStacksRootAndSlowOnThirdHit(t *testing.T) {
+func TestNeedleSporeStacksRootAndSlowOnThirdHit(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("shadow", "Shadow", "Shadow")
+	gs.PlayerAdd("needle", "Needle", "Needle")
 	gs.PlayerAdd("enemy", "Enemy", "Shelly")
-	shadow, enemy := gs.Players["shadow"], gs.Players["enemy"]
-	shadow.X, shadow.Y, enemy.X, enemy.Y = 400, 400, 500, 400
+	needle, enemy := gs.Players["needle"], gs.Players["enemy"]
+	needle.X, needle.Y, enemy.X, enemy.Y = 400, 400, 500, 400
 	for hit := 0; hit < 3; hit++ {
-		ShadowKit{}.Basic(gs, shadow, int64(1000+hit*500), 0, 0)
+		NeedleKit{}.Basic(gs, needle, int64(1000+hit*500), 0, 0)
 		shot := gs.Bullets[len(gs.Bullets)-1]
 		shot.X, shot.Y = enemy.X, enemy.Y
 		gs.updateBullets()
@@ -37,19 +37,19 @@ func TestShadowSporeStacksRootAndSlowOnThirdHit(t *testing.T) {
 	}
 }
 
-func TestShadowSuperDelaysRootsAndGadgetLeavesSporeCloud(t *testing.T) {
+func TestNeedleSuperDelaysRootsAndGadgetLeavesSporeCloud(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("shadow", "Shadow", "Shadow")
-	shadow := gs.Players["shadow"]
-	shadow.X, shadow.Y, shadow.SuperCharge = 400, 400, 100
+	gs.PlayerAdd("needle", "Needle", "Needle")
+	needle := gs.Players["needle"]
+	needle.X, needle.Y, needle.SuperCharge = 400, 400, 100
 	now := int64(1000)
-	ShadowKit{}.Super(gs, shadow, now, 0, 100)
+	NeedleKit{}.Super(gs, needle, now, 0, 100)
 	if len(gs.HeroZones) != 1 || gs.HeroZones[0].TriggerAt != now+800 {
 		t.Fatalf("roots=%#v, want delayed cast", gs.HeroZones)
 	}
-	if !gs.useNewHeroGadget(shadow, now+1) || len(gs.HeroZones) != 2 || gs.HeroZones[1].Kind != "shadow_spore_cloud" {
-		t.Fatalf("shadow gadget zones=%#v, want spore cloud", gs.HeroZones)
+	if !gs.useNewHeroGadget(needle, now+1) || len(gs.HeroZones) != 2 || gs.HeroZones[1].Kind != "needle_spore_cloud" {
+		t.Fatalf("needle gadget zones=%#v, want spore cloud", gs.HeroZones)
 	}
 }
 

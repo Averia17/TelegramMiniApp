@@ -10,8 +10,8 @@
     "lastReviewedAt": "2026-08-02"
   },
   "sourceFingerprints": {
-    "battle/model/game/heroes.go": "A92F885B2F23A5FDE6051322D977C8F2A21020637F2536572E613664708E87A0",
-    "battle/model/game/attack_config.go": "57E615BEF15E05380FA2B57DEB284D22D510790D3EE47ACDA5D95781B69F9B90",
+    "battle/model/game/heroes.go": "181EA1D540B108093E77C74EBAB70D4D019484A282E9106070BE9CB1D4D99219",
+    "battle/model/game/attack_config.go": "F30A1243D685E90750241AB0513348F99AE0BC8D687106059F5CB51427F99880",
     "tools/blender/hero_animation_scene_manifest.json": "9C7636DF99A3A0F9FB5801492BADDD3669D423FCFB3E7670665DFFA17F6EA263"
   },
   "contracts": {
@@ -39,9 +39,9 @@
   },
   "heroes": [
     {
-      "id": "shadow",
-      "slug": "shadow",
-      "name": "Shadow",
+      "id": "needle",
+      "slug": "needle",
+      "name": "Needle",
       "status": "active",
       "identity": {"role": "Controller", "color": "#75D947", "radius": 14},
       "description": "Споровый контроллер: заражает врагов, замедляет их и создаёт опасные зоны.",

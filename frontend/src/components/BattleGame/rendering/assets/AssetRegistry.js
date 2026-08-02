@@ -61,7 +61,15 @@ export const normalizeHeroHeight = (root, targetHeight = 2.45) => {
   return root
 }
 
-const attachWeaponObject = (heroRoot, target, weaponObject, role, name) => {
+const attachWeaponObject = (
+  heroRoot,
+  target,
+  weaponObject,
+  role,
+  name,
+  localRotation = null,
+  localPosition = null,
+) => {
   heroRoot.updateMatrixWorld(true)
   target.updateWorldMatrix(true, false)
   const rootWorldRotation = heroRoot.getWorldQuaternion(new THREE.Quaternion())
@@ -89,7 +97,13 @@ const attachWeaponObject = (heroRoot, target, weaponObject, role, name) => {
       1 / Math.max(Math.abs(socketScaleInRoot.z), 1e-8),
     )
   }
-  weaponObject.position.set(0, 0, 0)
+  if (localRotation) attachment.rotation.set(...localRotation)
+  if (localPosition) attachment.position.set(...localPosition)
+  // Authored weapon roots already contain the local grip offset exported from
+  // Blender (for Mandy this is the staff's 1.86-unit handle offset). Resetting
+  // that transform moves the mesh away from the authored hand marker. Generic
+  // weapon scenes still need the old zeroed-root behavior below.
+  if (!authoredRoot) weaponObject.position.set(0, 0, 0)
   weaponObject.userData.attachmentRole = role
   attachment.add(weaponObject)
   target.add(attachment)
@@ -127,7 +141,15 @@ export const attachDetachedWeapon = (heroRoot, weaponScene, attachments = []) =>
       const target = heroRoot.getObjectByName(config.target || config.bone)
       const weaponObject = weaponScene.getObjectByName(config.name)
       if (!target || !weaponObject) return []
-      return [attachWeaponObject(heroRoot, target, weaponObject, config.role, config.name)]
+      return [attachWeaponObject(
+        heroRoot,
+        target,
+        weaponObject,
+        config.role,
+        config.name,
+        config.localRotation,
+        config.localPosition,
+      )]
     })
   }
   const socket = heroRoot.getObjectByName("weapon_socket_r")

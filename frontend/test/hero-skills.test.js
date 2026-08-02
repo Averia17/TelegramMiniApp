@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import {HERO_SKILLS, getHeroSkill} from "../src/components/BattleGame/heroSkills.js"
 
 const heroes = [
-  "Shadow", "Mandy", "Fairy Mina", "Brock Zeus",
+  "Needle", "Mandy", "Fairy Mina", "Brock Zeus",
   "Kaze", "Wukong Mico", "Damian", "Persephone Lumi",
 ]
 
@@ -25,7 +25,7 @@ test("unknown heroes receive safe localized fallback skills", () => {
 })
 
 test("known hero HUD skills use the authoritative kit contract", () => {
-  assert.equal(getHeroSkill("Shadow", "primary").name, "Ловчий корень")
-  assert.equal(getHeroSkill("Shadow", "secondary").name, "Споровый рывок")
+  assert.equal(getHeroSkill("Needle", "primary").name, "Ловчий корень")
+  assert.equal(getHeroSkill("Needle", "secondary").name, "Споровый рывок")
   assert.equal(getHeroSkill("Wukong Mico", "primary").name, "Вихрь возмездия")
 })

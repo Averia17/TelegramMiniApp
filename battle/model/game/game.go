@@ -688,7 +688,7 @@ func (gs *GameState) updateBullets() {
 					gs.SporeStacks[p.PlayerId] = 0
 					p.SlowUntil = time.Now().UnixMilli() + 2000
 					p.SlowMultiplier = .60
-					gs.addEffect("shadow_roots", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#75d947", 0, 2000)
+					gs.addEffect("needle_roots", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#75d947", 0, 2000)
 				}
 			}
 			if b.Kind == "spore" || b.Kind == "quantum" {
@@ -1119,7 +1119,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 	}
 	if !primary {
 		switch p.HeroName {
-		case "Shadow", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi":
+		case "Needle", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi":
 			p.LastAbilityOK = gs.useNewHeroGadget(p, ts)
 			if p.LastAbilityOK {
 				p.GadgetPulse++
@@ -1196,7 +1196,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 			}
 			gs.addEffect("prism", p.X, p.Y, 0, 0, 0, angle, 220, .32, "#8ffff1", 0, 420)
 		}
-	case "Shadow":
+	case "Needle":
 		if primary {
 			p.VineUntil = ts + 4000
 			gs.addEffect("vine", p.X, p.Y, 0, 0, 245, angle, 0, 0, "#75d947", 0, 650)
@@ -1228,7 +1228,7 @@ func AbilityCooldownMs(heroName, slot string) int64 {
 		return 5800
 	case "Titan":
 		return 6000
-	case "Shadow":
+	case "Needle":
 		return 5600
 	case "Spark":
 		return 5000

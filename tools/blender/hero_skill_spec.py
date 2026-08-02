@@ -13,7 +13,7 @@ import math
 
 FRAME_ENDS = {
     "needle": {"attack": 24, "super": 42, "gadget": 24},
-    "mandy": {"attack": 20, "super": 60, "gadget": 24},
+    "mandy": {"attack": 16, "super": 50, "gadget": 16},
     "fairy-mina": {"attack": 24, "super": 55, "gadget": 34},
     "brock-zeus": {"attack": 24, "super": 54, "gadget": 40},
     "kaze": {"attack": 38, "super": 34, "gadget": 48},
@@ -32,15 +32,15 @@ EVENT_FRAMES = {
         "gadget": {"dash_start": 4, "dash_end": 10, "spore_start": 10, "spore_end": 20},
     },
     "mandy": {
-        "attack": {"impact": 8, "shockwave_start": 8, "shockwave_end": 12},
+        "attack": {"impact": 6, "shockwave_start": 6, "shockwave_end": 10},
         "super": {
-            "charge_end": 30,
-            "contact": 35,
-            "hold_start": 35,
-            "hold_end": 45,
-            "wave_start": 35,
+            "charge_end": 20,
+            "contact": 30,
+            "hold_start": 30,
+            "hold_end": 40,
+            "wave_start": 30,
         },
-        "gadget": {"plant_start": 5, "stance_start": 12, "stance_end": 24},
+        "gadget": {"plant_start": 4, "stance_start": 10, "stance_end": 16},
     },
     "fairy-mina": {
         "attack": {"release": 12, "home_start": 12, "home_end": 20},

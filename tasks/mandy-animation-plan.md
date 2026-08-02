@@ -22,7 +22,7 @@ Three.js runtime.
 - Ноги: `L_upperLeg_s_03 -> L_lowerLeg_s_04 -> L_ankle_s_05 -> L_toes_s_06`
   и `R_upperLeg_s_07 -> R_lowerLeg_s_08 -> R_ankle_s_09 -> R_toes_s_010`.
 - Staff attachment в текущем master `.blend` привязан к левой руке:
-  `L_wrist_s_047` через `MandyStaff_SourcePivot` и
+  `R_wrist_s_064` через `MandyStaff_SourcePivot` и
   `Grip.Primary.MandyStaff_Attachment`. Это является каноническим решением для
   новой постановки; staff не переносить на правую руку.
 - Blender-авторинг должен использовать Z-up, 30 fps, явные pose keys и
@@ -45,16 +45,16 @@ Three.js runtime.
 | Scene clip | Action | Кадры | Длительность | Тип |
 | --- | --- | ---: | ---: | --- |
 | `idle` | `idle` | 90 | 3.0 s | loop |
-| `run` | `run` | 24 | 0.8 s | loop |
-| `attack` | `Attack` | 20 | 0.67 s | event |
-| `super` | `super` | 60 | 2.0 s | ability |
+| `run` | `run` | 20 | 0.67 s | loop |
+| `attack` | `Attack` | 16 | 0.53 s | event |
+| `super` | `super` | 50 | 1.67 s | ability |
 | `aim` | `Aim` | 60 | 2.0 s | loop |
 | `aim-super` | `AimSuper` | 60 | 2.0 s | loop |
 | `hit` | `hit` | 12 | 0.4 s | event |
-| `death` | `death` | 45 | 1.5 s | event |
+| `death` | `death` | 40 | 1.33 s | event |
 | `spawn` | `Spawn` | 45 | 1.5 s | event |
 | `victory` | `Victory` | 60 | 2.0 s | event |
-| `gadget` | `Gadget` | 24 | 0.8 s | ability |
+| `gadget` | `Gadget` | 16 | 0.53 s | ability |
 | `aim-gadget` | `AimGadget` | 60 | 2.0 s | loop |
 
 Каждая сцена должна содержать полный mesh/armature Mandy, ровно один
@@ -104,8 +104,9 @@ Three.js runtime.
    удерживается.
 9. `spawn`: кадры 0/10/20/45; скрюченная поза без staff, раскрытие корпуса,
    материализация staff в левой weapon-hand и переход в idle.
-10. `victory`: кадры 0/10/20/30/35/40/60; вращение staff только wrist/forearm,
-    подхват второй рукой, удар о землю, короткий подскок и гордая стойка.
+10. `victory`: кадры 0/8/10/15/20/25/30/35/40/60; три оборота staff
+    через левую wrist/forearm-цепь, пританцовывание, прыжок, подхват второй
+    рукой, удар о землю и гордая стойка.
 11. `gadget`: кадры 0/5/12/24; быстрый переход в широкую устойчивую
     оборонительную стойку, staff горизонтально перед грудью, затем hold.
 12. `aim-gadget`: кадры 0/30/60; низкая боевая стойка и подготовка к gadget,
@@ -176,6 +177,12 @@ Three.js runtime.
 | Headless Blender не доказывает силуэт и контакт посоха на каждом кадре | Среднее | Numeric sweep плюс набор preview renders и ручная проверка ключевых impact-кадров. |
 
 ## Открытые вопросы
+
+### v3 visual override
+
+The current Mandy v3 contract supersedes the earlier left-hand draft: the
+staff socket is `R_wrist_s_064`, idle arms are lowered alongside the body, and
+the detached staff is calibrated to a horizontal runtime pose.
 
 Блокирующих вопросов нет: staff остаётся в левой руке, кадры переводятся в
 Blender через `+1`, а выпады используют FK foot slide без IK.

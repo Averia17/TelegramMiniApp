@@ -67,7 +67,7 @@ const COLORS = {
   shelly: [0x8e55d9, 0x38245f, 0xffd44f], colt: [0xe94d56, 0x26335d, 0x5db7ff],
   barley: [0x47a7e8, 0x26364e, 0xffc93f],
   viper: [0x312c31, 0xff6b2d, 0xffdc55], titan: [0x236343, 0x55bd72, 0x58f6e9],
-  shadow: [0x418c46, 0x7a3d98, 0xf4de62], spark: [0x181320, 0x4f326e, 0x7dff63],
+  needle: [0x418c46, 0x7a3d98, 0xf4de62], spark: [0x181320, 0x4f326e, 0x7dff63],
 }
 
 const limb = (material, length = .72, radius = .15) => {
@@ -110,7 +110,7 @@ export const createHeroModel = (heroName, options = {}) => {
     const head=ball(.42,A,0,2.18,.03);root.add(head);addEyes(head,0xff9a36)
     for(const side of [-1,1]){const arm=limb(A,1.02,.35);arm.position.set(side*.88,1.72,0);arm.rotation.z=side*.56;root.add(arm);bones.arms.push(arm);const leg=limb(A,.7,.3);leg.position.set(side*.42,.67,0);root.add(leg);bones.legs.push(leg)}
     const belt=box(1.5,.26,.82,toon(0x6b482c),0,.82,0);belt.add(box(.45,.4,.12,toon(0xd49b37),0,0,.48));root.add(belt)
-  }else if(hero==="shadow"){
+  }else if(hero==="needle"){
     const body=ball(.78,A,0,1.15,0,1.18);root.add(body);body.add(ball(.11,toon(0xffffff),-.22,.12,.73,1.15),ball(.11,toon(0xffffff),.22,.12,.73,1.15),ball(.05,dark,-.2,.11,.82,1.2),ball(.05,dark,.24,.11,.82,1.2))
     const vest=box(1.35,.62,.85,B,0,1.08,.02);root.add(vest)
     for(let i=0;i<18;i+=1){const ang=i*Math.PI*2/18;const spike=cone(.07,.35,toon(0xe6efb5),Math.cos(ang)*.72,1.2+Math.sin(ang)*.85,Math.sin(ang)*.52);spike.rotation.z=-ang;root.add(spike)}

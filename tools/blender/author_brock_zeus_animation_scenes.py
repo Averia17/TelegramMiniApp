@@ -1,0 +1,1147 @@
+"""Author the Brock Zeus v2 animation pack with a separate cloud companion.
+
+The source master is opened afresh for every focused scene.  Brock's measured
+rig is a 15-bone armature with Root local Y mapped to Blender world-up.  The
+cloud is intentionally an object hierarchy (Cloud_Locator -> Cloud), not a
+deforming bone or part of the character export.
+
+Run from the repository root with Blender 5.2:
+  blender --background --python tools/blender/author_brock_zeus_animation_scenes.py
+  BROCK_CLIP_FILTER=idle blender --background --python tools/blender/author_brock_zeus_animation_scenes.py
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+import math
+import os
+from pathlib import Path
+
+import bpy
+from mathutils import Matrix, Vector
+
+ROOT = Path(__file__).resolve().parents[2]
+HERO = "brock-zeus"
+MASTER = ROOT / "frontend" / "assets-source" / "heroes" / HERO / "brock-zeus.blend"
+SCENES = MASTER.parent / "scenes"
+REPORT = ROOT / "artifacts" / "brock-zeus-animation-authoring.json"
+FPS = 30
+
+ACTION_NAMES = {
+    "idle": "idle",
+    "run": "run",
+    "attack": "Attack",
+    "super": "super",
+    "aim": "Aim",
+    "aim-super": "AimSuper",
+    "hit": "hit",
+    "death": "death",
+    "spawn": "Spawn",
+    "victory": "Victory",
+    "gadget": "Gadget",
+    "aim-gadget": "AimGadget",
+}
+FRAME_ENDS = {
+    "idle": 80,
+    "run": 20,
+    "attack": 16,
+    "super": 50,
+    "aim": 60,
+    "aim-super": 60,
+    "hit": 12,
+    "death": 40,
+    "spawn": 45,
+    "victory": 60,
+    "gadget": 16,
+    "aim-gadget": 60,
+}
+CYCLE_CLIPS = {"idle", "run", "aim", "aim-super", "aim-gadget"}
+ABILITY_CLIPS = {"attack", "super", "gadget"}
+BONES = (
+    "Root",
+    "Hips",
+    "Spine",
+    "Chest",
+    "Head",
+    "L_Shoulder",
+    "L_Elbow",
+    "L_Wrist",
+    "R_Shoulder",
+    "R_Elbow",
+    "R_Wrist",
+    "L_UpperLeg",
+    "L_LowerLeg",
+    "R_UpperLeg",
+    "R_LowerLeg",
+)
+
+# The legacy source had a non-neutral pose (Root Z -2, Hips X -16, Head X 18,
+# and wrist offsets).  Copying it into every Action caused the same permanent
+# lean that Needle had.  Brock's authored pack starts from measured bind pose.
+BASE_ROT = {name: (0.0, 0.0, 0.0) for name in BONES}
+
+
+def pose(*, root_y=0.0, **overrides):
+    rotations = dict(BASE_ROT)
+    for name, value in overrides.items():
+        if name not in rotations:
+            raise KeyError(f"unknown Brock bone {name}")
+        rotations[name] = tuple(float(axis) for axis in value)
+    return {"root_y": float(root_y), "rotations": rotations}
+
+
+def idle_poses():
+    neutral = pose(
+        R_Shoulder=(-28, -8, 5),
+        R_Elbow=(48, 0, -8),
+        R_Wrist=(-18, 0, 10),
+        L_Shoulder=(18, 0, -14),
+        L_Elbow=(62, 0, 10),
+        L_Wrist=(-26, 0, -8),
+        Head=(0, 8, 0),
+        L_UpperLeg=(4, -2, 0),
+        R_UpperLeg=(-4, 2, 0),
+    )
+    return {
+        0: neutral,
+        20: pose(
+            R_Shoulder=(-24, -5, 8),
+            R_Elbow=(44, 0, -5),
+            R_Wrist=(-14, 0, 14),
+            L_Shoulder=(20, 0, -16),
+            L_Elbow=(58, 0, 12),
+            L_Wrist=(-22, 0, -10),
+            Spine=(2, 0, 1),
+            Chest=(1, 0, 0),
+            Head=(0, -5, 0),
+            L_UpperLeg=(3, -3, 0),
+            R_UpperLeg=(-3, 3, 0),
+        ),
+        40: pose(
+            R_Shoulder=(-32, -10, 2),
+            R_Elbow=(52, 0, -12),
+            R_Wrist=(-22, 0, 6),
+            L_Shoulder=(14, 0, -12),
+            L_Elbow=(66, 0, 8),
+            L_Wrist=(-30, 0, -6),
+            Spine=(-2, 0, -1),
+            Chest=(-1, 0, 0),
+            Head=(0, 12, 0),
+            L_UpperLeg=(5, -1, 0),
+            R_UpperLeg=(-5, 1, 0),
+        ),
+        60: pose(
+            R_Shoulder=(-24, -5, 8),
+            R_Elbow=(44, 0, -5),
+            R_Wrist=(-14, 0, 14),
+            L_Shoulder=(20, 0, -16),
+            L_Elbow=(58, 0, 12),
+            L_Wrist=(-22, 0, -10),
+            Spine=(2, 0, 1),
+            Chest=(1, 0, 0),
+            Head=(0, -5, 0),
+        ),
+        80: neutral,
+    }
+
+
+def run_poses():
+    return {
+        0: pose(
+            Spine=(8, 0, 0),
+            Chest=(3, 0, 0),
+            Head=(-4, 0, 0),
+            R_Shoulder=(-12, -12, 12),
+            R_Elbow=(28, 0, -8),
+            R_Wrist=(-8, 0, 8),
+            L_Shoulder=(28, 0, -18),
+            L_Elbow=(32, 0, 10),
+            L_Wrist=(-10, 0, -8),
+            L_UpperLeg=(48, -8, 0),
+            L_LowerLeg=(-28, 0, 0),
+            R_UpperLeg=(-22, 8, 0),
+            R_LowerLeg=(18, 0, 0),
+        ),
+        5: pose(
+            root_y=-0.015,
+            Spine=(8, 0, 0),
+            Chest=(3, 0, 0),
+            Head=(-2, 0, 0),
+            R_Shoulder=(-24, -8, 10),
+            R_Elbow=(42, 0, -8),
+            R_Wrist=(-12, 0, 12),
+            L_Shoulder=(12, 0, -14),
+            L_Elbow=(48, 0, 8),
+            L_Wrist=(-14, 0, -6),
+            L_UpperLeg=(18, 8, 0),
+            L_LowerLeg=(24, 0, 0),
+            R_UpperLeg=(46, -8, 0),
+            R_LowerLeg=(-30, 0, 0),
+        ),
+        10: pose(
+            Spine=(8, 0, 0),
+            Chest=(3, 0, 0),
+            Head=(-4, 0, 0),
+            R_Shoulder=(-30, -10, 6),
+            R_Elbow=(48, 0, -6),
+            R_Wrist=(-16, 0, 8),
+            L_Shoulder=(34, 0, -20),
+            L_Elbow=(30, 0, 12),
+            L_Wrist=(-8, 0, -10),
+            L_UpperLeg=(-22, 8, 0),
+            L_LowerLeg=(18, 0, 0),
+            R_UpperLeg=(48, -8, 0),
+            R_LowerLeg=(-28, 0, 0),
+        ),
+        15: pose(
+            root_y=-0.015,
+            Spine=(8, 0, 0),
+            Chest=(3, 0, 0),
+            Head=(-2, 0, 0),
+            R_Shoulder=(-24, -8, 10),
+            R_Elbow=(42, 0, -8),
+            R_Wrist=(-12, 0, 12),
+            L_Shoulder=(12, 0, -14),
+            L_Elbow=(48, 0, 8),
+            L_Wrist=(-14, 0, -6),
+            L_UpperLeg=(18, 8, 0),
+            L_LowerLeg=(24, 0, 0),
+            R_UpperLeg=(46, -8, 0),
+            R_LowerLeg=(-30, 0, 0),
+        ),
+        20: pose(
+            Spine=(8, 0, 0),
+            Chest=(3, 0, 0),
+            Head=(-4, 0, 0),
+            R_Shoulder=(-12, -12, 12),
+            R_Elbow=(28, 0, -8),
+            R_Wrist=(-8, 0, 8),
+            L_Shoulder=(28, 0, -18),
+            L_Elbow=(32, 0, 10),
+            L_Wrist=(-10, 0, -8),
+            L_UpperLeg=(48, -8, 0),
+            L_LowerLeg=(-28, 0, 0),
+            R_UpperLeg=(-22, 8, 0),
+            R_LowerLeg=(18, 0, 0),
+        ),
+    }
+
+
+def attack_poses():
+    idle = idle_poses()[0]
+    return {
+        0: idle,
+        3: pose(
+            Spine=(8, 0, 0),
+            Chest=(4, 0, 0),
+            Head=(0, 12, 0),
+            R_Shoulder=(18, -24, 18),
+            R_Elbow=(-32, 0, -12),
+            R_Wrist=(18, 0, -8),
+            L_Shoulder=(-18, 0, 20),
+            L_Elbow=(35, 0, 14),
+            L_Wrist=(-8, 0, 10),
+        ),
+        6: pose(
+            Spine=(3, 0, 0),
+            Chest=(2, 0, 0),
+            Head=(0, 18, 0),
+            R_Shoulder=(-58, -18, 8),
+            R_Elbow=(92, 0, -8),
+            R_Wrist=(-34, 0, 18),
+            L_Shoulder=(-28, 0, 24),
+            L_Elbow=(42, 0, 18),
+            L_Wrist=(-12, 0, 16),
+        ),
+        10: pose(
+            Spine=(1, 0, 0),
+            Chest=(1, 0, 0),
+            Head=(0, 8, 0),
+            R_Shoulder=(-40, -12, 10),
+            R_Elbow=(62, 0, -4),
+            R_Wrist=(-24, 0, 12),
+            L_Shoulder=(8, 0, -10),
+            L_Elbow=(58, 0, 8),
+            L_Wrist=(-18, 0, -8),
+        ),
+        16: idle,
+    }
+
+
+def super_poses():
+    idle = idle_poses()[0]
+    return {
+        0: idle,
+        10: pose(
+            root_y=-0.20,
+            Hips=(-16, 0, 0),
+            Spine=(18, 0, 0),
+            Chest=(8, 0, 0),
+            Head=(10, 0, 0),
+            R_Shoulder=(16, -20, 24),
+            R_Elbow=(52, 0, -10),
+            R_Wrist=(-24, 0, 14),
+            L_Shoulder=(16, 0, -24),
+            L_Elbow=(52, 0, 10),
+            L_Wrist=(-24, 0, -14),
+            L_UpperLeg=(34, -4, 0),
+            L_LowerLeg=(-46, 0, 0),
+            R_UpperLeg=(34, 4, 0),
+            R_LowerLeg=(-46, 0, 0),
+        ),
+        18: pose(
+            root_y=0.20,
+            Hips=(8, 0, 0),
+            Spine=(-8, 0, 0),
+            Chest=(-4, 0, 0),
+            Head=(-12, 0, 0),
+            R_Shoulder=(-70, -18, 18),
+            R_Elbow=(102, 0, -8),
+            R_Wrist=(-38, 0, 18),
+            L_Shoulder=(-70, 0, -18),
+            L_Elbow=(102, 0, 8),
+            L_Wrist=(-38, 0, -18),
+            L_UpperLeg=(18, -4, 0),
+            R_UpperLeg=(18, 4, 0),
+        ),
+        25: pose(
+            Hips=(-8, 0, 0),
+            Spine=(18, 0, 0),
+            Chest=(7, 0, 0),
+            Head=(8, 0, 0),
+            R_Shoulder=(64, -12, 12),
+            R_Elbow=(76, 0, -8),
+            R_Wrist=(-30, 0, 12),
+            L_Shoulder=(64, 0, -12),
+            L_Elbow=(76, 0, 8),
+            L_Wrist=(-30, 0, -12),
+            L_UpperLeg=(40, -4, 0),
+            R_UpperLeg=(40, 4, 0),
+            L_LowerLeg=(-36, 0, 0),
+            R_LowerLeg=(-36, 0, 0),
+        ),
+        30: pose(
+            Hips=(-4, 0, 0),
+            Spine=(8, 0, 0),
+            Chest=(3, 0, 0),
+            Head=(4, 0, 0),
+            R_Shoulder=(48, -10, 10),
+            R_Elbow=(60, 0, -6),
+            R_Wrist=(-22, 0, 10),
+            L_Shoulder=(48, 0, -10),
+            L_Elbow=(60, 0, 6),
+            L_Wrist=(-22, 0, -10),
+        ),
+        35: pose(
+            Hips=(0, 0, 0),
+            Spine=(2, 0, 0),
+            Chest=(1, 0, 0),
+            R_Shoulder=(32, -8, 8),
+            R_Elbow=(48, 0, -4),
+            R_Wrist=(-18, 0, 8),
+            L_Shoulder=(32, 0, -8),
+            L_Elbow=(48, 0, 4),
+            L_Wrist=(-18, 0, -8),
+        ),
+        45: idle,
+        50: idle,
+    }
+
+
+def aim_poses():
+    return {
+        0: pose(
+            Spine=(5, 0, 0),
+            Chest=(2, 0, 0),
+            Head=(0, 16, 0),
+            R_Shoulder=(-48, -14, 8),
+            R_Elbow=(82, 0, -8),
+            R_Wrist=(-28, 0, 14),
+            L_Shoulder=(-16, 0, 18),
+            L_Elbow=(74, 0, 12),
+            L_Wrist=(-20, 0, 8),
+        ),
+        30: pose(
+            Spine=(6, 0, 0),
+            Chest=(2, 0, 0),
+            Head=(0, 10, 0),
+            R_Shoulder=(-44, -14, 10),
+            R_Elbow=(78, 0, -6),
+            R_Wrist=(-26, 0, 12),
+            L_Shoulder=(-12, 0, 16),
+            L_Elbow=(70, 0, 10),
+            L_Wrist=(-18, 0, 8),
+        ),
+        60: pose(
+            Spine=(5, 0, 0),
+            Chest=(2, 0, 0),
+            Head=(0, 16, 0),
+            R_Shoulder=(-48, -14, 8),
+            R_Elbow=(82, 0, -8),
+            R_Wrist=(-28, 0, 14),
+            L_Shoulder=(-16, 0, 18),
+            L_Elbow=(74, 0, 12),
+            L_Wrist=(-20, 0, 8),
+        ),
+    }
+
+
+def aim_super_poses():
+    return {
+        0: pose(
+            root_y=-0.16,
+            Hips=(-12, 0, 0),
+            Spine=(16, 0, 0),
+            Chest=(6, 0, 0),
+            Head=(12, 0, 0),
+            R_Shoulder=(-18, -14, 16),
+            R_Elbow=(74, 0, -10),
+            R_Wrist=(-26, 0, 12),
+            L_Shoulder=(-18, 0, -16),
+            L_Elbow=(74, 0, 10),
+            L_Wrist=(-26, 0, -12),
+            L_UpperLeg=(38, -3, 0),
+            R_UpperLeg=(38, 3, 0),
+            L_LowerLeg=(-34, 0, 0),
+            R_LowerLeg=(-34, 0, 0),
+        ),
+        30: pose(
+            root_y=-0.16,
+            Hips=(-10, 0, 0),
+            Spine=(14, 0, 0),
+            Chest=(5, 0, 0),
+            Head=(10, 0, 0),
+            R_Shoulder=(-14, -12, 14),
+            R_Elbow=(70, 0, -8),
+            R_Wrist=(-24, 0, 10),
+            L_Shoulder=(-14, 0, -14),
+            L_Elbow=(70, 0, 8),
+            L_Wrist=(-24, 0, -10),
+            L_UpperLeg=(36, -3, 0),
+            R_UpperLeg=(36, 3, 0),
+            L_LowerLeg=(-32, 0, 0),
+            R_LowerLeg=(-32, 0, 0),
+        ),
+        60: pose(
+            root_y=-0.16,
+            Hips=(-12, 0, 0),
+            Spine=(16, 0, 0),
+            Chest=(6, 0, 0),
+            Head=(12, 0, 0),
+            R_Shoulder=(-18, -14, 16),
+            R_Elbow=(74, 0, -10),
+            R_Wrist=(-26, 0, 12),
+            L_Shoulder=(-18, 0, -16),
+            L_Elbow=(74, 0, 10),
+            L_Wrist=(-26, 0, -12),
+            L_UpperLeg=(38, -3, 0),
+            R_UpperLeg=(38, 3, 0),
+            L_LowerLeg=(-34, 0, 0),
+            R_LowerLeg=(-34, 0, 0),
+        ),
+    }
+
+
+def hit_poses():
+    idle = idle_poses()[0]
+    return {
+        0: idle,
+        3: pose(
+            Hips=(-8, 0, 0),
+            Spine=(-12, 0, 0),
+            Chest=(-6, 0, 0),
+            Head=(-12, 0, 0),
+            R_Shoulder=(22, -8, 20),
+            R_Elbow=(26, 0, -10),
+            R_Wrist=(-10, 0, 10),
+            L_Shoulder=(46, 0, -22),
+            L_Elbow=(24, 0, 10),
+            L_Wrist=(-8, 0, -10),
+        ),
+        7: pose(
+            Hips=(-10, 0, 0),
+            Spine=(-16, 0, 0),
+            Chest=(-8, 0, 0),
+            Head=(-16, 0, 0),
+            R_Shoulder=(30, -8, 24),
+            R_Elbow=(20, 0, -12),
+            R_Wrist=(-6, 0, 12),
+            L_Shoulder=(58, 0, -26),
+            L_Elbow=(18, 0, 12),
+            L_Wrist=(-6, 0, -12),
+        ),
+        10: pose(
+            Hips=(-3, 0, 0),
+            Spine=(-3, 0, 0),
+            Chest=(-2, 0, 0),
+            Head=(-4, 0, 0),
+            R_Shoulder=(-10, -8, 8),
+            R_Elbow=(42, 0, -6),
+            R_Wrist=(-16, 0, 8),
+            L_Shoulder=(20, 0, -12),
+            L_Elbow=(58, 0, 8),
+            L_Wrist=(-18, 0, -8),
+        ),
+        12: idle,
+    }
+
+
+def death_poses():
+    idle = idle_poses()[0]
+    return {
+        0: idle,
+        8: pose(
+            root_y=-0.12,
+            Hips=(-12, 0, 0),
+            Spine=(18, 0, 0),
+            Chest=(8, 0, 0),
+            Head=(12, 0, 0),
+            R_Shoulder=(22, -8, 16),
+            R_Elbow=(36, 0, -10),
+            R_Wrist=(-16, 0, 10),
+            L_Shoulder=(30, 0, -16),
+            L_Elbow=(40, 0, 10),
+            L_Wrist=(-16, 0, -8),
+            L_UpperLeg=(54, 0, 0),
+            R_UpperLeg=(54, 0, 0),
+            L_LowerLeg=(-56, 0, 0),
+            R_LowerLeg=(-56, 0, 0),
+        ),
+        15: pose(
+            root_y=-0.30,
+            Hips=(-20, 0, 16),
+            Spine=(34, 0, 18),
+            Chest=(12, 0, 8),
+            Head=(26, 0, 10),
+            R_Shoulder=(36, -8, 20),
+            R_Elbow=(24, 0, -8),
+            R_Wrist=(-8, 0, 8),
+            L_Shoulder=(42, 0, -20),
+            L_Elbow=(28, 0, 8),
+            L_Wrist=(-10, 0, -8),
+            L_UpperLeg=(76, 0, 0),
+            R_UpperLeg=(76, 0, 0),
+            L_LowerLeg=(-78, 0, 0),
+            R_LowerLeg=(-78, 0, 0),
+        ),
+        25: pose(
+            root_y=-0.34,
+            Hips=(-24, 0, 26),
+            Spine=(38, 0, 22),
+            Chest=(14, 0, 10),
+            Head=(30, 0, 12),
+            R_Shoulder=(42, -8, 24),
+            R_Elbow=(20, 0, -8),
+            R_Wrist=(-6, 0, 8),
+            L_Shoulder=(46, 0, -24),
+            L_Elbow=(24, 0, 8),
+            L_Wrist=(-8, 0, -8),
+            L_UpperLeg=(82, 0, 0),
+            R_UpperLeg=(82, 0, 0),
+            L_LowerLeg=(-82, 0, 0),
+            R_LowerLeg=(-82, 0, 0),
+        ),
+        40: pose(
+            root_y=-0.34,
+            Hips=(-24, 0, 26),
+            Spine=(38, 0, 22),
+            Chest=(14, 0, 10),
+            Head=(30, 0, 12),
+            R_Shoulder=(42, -8, 24),
+            R_Elbow=(20, 0, -8),
+            R_Wrist=(-6, 0, 8),
+            L_Shoulder=(46, 0, -24),
+            L_Elbow=(24, 0, 8),
+            L_Wrist=(-8, 0, -8),
+            L_UpperLeg=(82, 0, 0),
+            R_UpperLeg=(82, 0, 0),
+            L_LowerLeg=(-82, 0, 0),
+            R_LowerLeg=(-82, 0, 0),
+        ),
+    }
+
+
+def spawn_poses():
+    idle = idle_poses()[0]
+    return {
+        0: pose(
+            root_y=-0.28,
+            Hips=(-24, 0, 0),
+            Spine=(34, 0, 0),
+            Chest=(14, 0, 0),
+            Head=(24, 0, 0),
+            R_Shoulder=(34, -8, 18),
+            R_Elbow=(30, 0, -8),
+            R_Wrist=(-12, 0, 8),
+            L_Shoulder=(34, 0, -18),
+            L_Elbow=(30, 0, 8),
+            L_Wrist=(-12, 0, -8),
+            L_UpperLeg=(76, 0, 0),
+            R_UpperLeg=(76, 0, 0),
+            L_LowerLeg=(-78, 0, 0),
+            R_LowerLeg=(-78, 0, 0),
+        ),
+        10: pose(
+            root_y=-0.12,
+            Hips=(-14, 0, 0),
+            Spine=(20, 0, 0),
+            Chest=(8, 0, 0),
+            Head=(14, 0, 0),
+            R_Shoulder=(20, -8, 12),
+            R_Elbow=(44, 0, -8),
+            R_Wrist=(-18, 0, 8),
+            L_Shoulder=(24, 0, -14),
+            L_Elbow=(44, 0, 8),
+            L_Wrist=(-18, 0, -8),
+            L_UpperLeg=(48, 0, 0),
+            R_UpperLeg=(48, 0, 0),
+            L_LowerLeg=(-50, 0, 0),
+            R_LowerLeg=(-50, 0, 0),
+        ),
+        18: pose(
+            R_Shoulder=(-30, -8, 70),
+            R_Elbow=(58, 0, -8),
+            R_Wrist=(-18, 0, 12),
+            L_Shoulder=(-30, 0, -70),
+            L_Elbow=(58, 0, 8),
+            L_Wrist=(-18, 0, -12),
+            L_UpperLeg=(22, -4, 0),
+            R_UpperLeg=(22, 4, 0),
+        ),
+        30: pose(
+            R_Shoulder=(-28, -8, 42),
+            R_Elbow=(48, 0, -6),
+            R_Wrist=(-16, 0, 10),
+            L_Shoulder=(18, 0, -14),
+            L_Elbow=(62, 0, 10),
+            L_Wrist=(-26, 0, -8),
+        ),
+        45: idle,
+    }
+
+
+def victory_poses():
+    idle = idle_poses()[0]
+    return {
+        0: idle,
+        10: pose(
+            root_y=0.15,
+            Hips=(6, 0, 0),
+            Spine=(-6, 0, 0),
+            Chest=(-3, 0, 0),
+            R_Shoulder=(-62, -12, 26),
+            R_Elbow=(88, 0, -8),
+            R_Wrist=(-30, 0, 14),
+            L_Shoulder=(-62, 0, -26),
+            L_Elbow=(88, 0, 8),
+            L_Wrist=(-30, 0, -14),
+            L_UpperLeg=(18, -3, 0),
+            R_UpperLeg=(18, 3, 0),
+        ),
+        20: pose(
+            Hips=(-4, 0, 0),
+            Spine=(16, 0, 0),
+            Chest=(6, 0, 0),
+            R_Shoulder=(54, -10, 14),
+            R_Elbow=(72, 0, -6),
+            R_Wrist=(-24, 0, 12),
+            L_Shoulder=(54, 0, -14),
+            L_Elbow=(72, 0, 6),
+            L_Wrist=(-24, 0, -12),
+        ),
+        35: pose(
+            Spine=(-4, 0, 0),
+            Chest=(-2, 0, 0),
+            Head=(-6, 0, 0),
+            R_Shoulder=(-36, -8, 16),
+            R_Elbow=(54, 0, -6),
+            R_Wrist=(-20, 0, 10),
+            L_Shoulder=(-36, 0, -16),
+            L_Elbow=(54, 0, 6),
+            L_Wrist=(-20, 0, -10),
+        ),
+        60: idle,
+    }
+
+
+def gadget_poses():
+    idle = idle_poses()[0]
+    return {
+        0: idle,
+        4: pose(
+            Spine=(8, 0, 0),
+            Chest=(3, 0, 0),
+            Head=(0, 12, 0),
+            R_Shoulder=(-52, -16, 10),
+            R_Elbow=(86, 0, -8),
+            R_Wrist=(-30, 0, 14),
+            L_Shoulder=(-18, 0, 18),
+            L_Elbow=(76, 0, 12),
+            L_Wrist=(-20, 0, 8),
+        ),
+        10: pose(
+            Spine=(6, 0, 0),
+            Chest=(2, 0, 0),
+            Head=(0, 12, 0),
+            R_Shoulder=(-50, -16, 10),
+            R_Elbow=(84, 0, -8),
+            R_Wrist=(-34, 0, 14),
+            L_Shoulder=(-16, 0, 16),
+            L_Elbow=(72, 0, 10),
+            L_Wrist=(-20, 0, 8),
+        ),
+        16: idle,
+    }
+
+
+def aim_gadget_poses():
+    return {
+        0: pose(
+            root_y=-0.10,
+            Hips=(-8, 0, 0),
+            Spine=(12, 0, 0),
+            Chest=(5, 0, 0),
+            Head=(8, 0, 0),
+            R_Shoulder=(-50, -16, 10),
+            R_Elbow=(84, 0, -8),
+            R_Wrist=(-32, 0, 14),
+            L_Shoulder=(-14, 0, 16),
+            L_Elbow=(72, 0, 10),
+            L_Wrist=(-20, 0, 8),
+            L_UpperLeg=(34, -3, 0),
+            R_UpperLeg=(34, 3, 0),
+            L_LowerLeg=(-30, 0, 0),
+            R_LowerLeg=(-30, 0, 0),
+        ),
+        30: pose(
+            root_y=-0.10,
+            Hips=(-8, 0, 0),
+            Spine=(14, 0, 0),
+            Chest=(5, 0, 0),
+            Head=(8, 0, 0),
+            R_Shoulder=(-50, -16, 10),
+            R_Elbow=(84, 0, -8),
+            R_Wrist=(-32, 0, 14),
+            L_Shoulder=(-14, 0, 16),
+            L_Elbow=(72, 0, 10),
+            L_Wrist=(-20, 0, 8),
+            L_UpperLeg=(34, -3, 0),
+            R_UpperLeg=(34, 3, 0),
+            L_LowerLeg=(-30, 0, 0),
+            R_LowerLeg=(-30, 0, 0),
+        ),
+        60: pose(
+            root_y=-0.10,
+            Hips=(-8, 0, 0),
+            Spine=(12, 0, 0),
+            Chest=(5, 0, 0),
+            Head=(8, 0, 0),
+            R_Shoulder=(-50, -16, 10),
+            R_Elbow=(84, 0, -8),
+            R_Wrist=(-32, 0, 14),
+            L_Shoulder=(-14, 0, 16),
+            L_Elbow=(72, 0, 10),
+            L_Wrist=(-20, 0, 8),
+            L_UpperLeg=(34, -3, 0),
+            R_UpperLeg=(34, 3, 0),
+            L_LowerLeg=(-30, 0, 0),
+            R_LowerLeg=(-30, 0, 0),
+        ),
+    }
+
+
+POSE_BUILDERS = {
+    "idle": idle_poses,
+    "run": run_poses,
+    "attack": attack_poses,
+    "super": super_poses,
+    "aim": aim_poses,
+    "aim-super": aim_super_poses,
+    "hit": hit_poses,
+    "death": death_poses,
+    "spawn": spawn_poses,
+    "victory": victory_poses,
+    "gadget": gadget_poses,
+    "aim-gadget": aim_gadget_poses,
+}
+
+
+# Cloud offsets are in the measured Root-bone local space: X horizontal,
+# Y Blender world-up, Z depth.  The base is computed from the real right
+# shoulder, so a future scale/bind-pose repair does not hard-code a world pose.
+CLOUD_OFFSETS = {
+    "idle": {
+        0: (0, 0, 0),
+        20: (0.10, 0.08, -0.04),
+        40: (-0.06, -0.04, 0.03),
+        60: (0.10, 0.08, -0.04),
+        80: (0, 0, 0),
+    },
+    "run": {
+        0: (0.55, 0.35, 0),
+        5: (0.70, 0.20, 0),
+        10: (0.55, 0.35, 0),
+        15: (0.70, 0.20, 0),
+        20: (0.55, 0.35, 0),
+    },
+    "attack": {
+        0: (0, 0, 0),
+        3: (-0.35, -0.25, 0.06),
+        6: (-0.05, -0.65, 0),
+        8: (0.72, 0.12, 0),
+        10: (0.30, 0.18, 0),
+        16: (0, 0, 0),
+    },
+    "super": {
+        0: (0, 0, 0),
+        10: (-0.55, -2.5, 0.08),
+        18: (-0.05, 1.2, 0),
+        25: (0.55, -3.8, 0.04),
+        30: (-0.45, -3.8, 0.04),
+        35: (0.55, -3.8, 0.04),
+        45: (0, 0, 0),
+        50: (0, 0, 0),
+    },
+    "aim": {0: (0.85, 0.65, 0), 30: (0.95, 0.78, 0), 60: (0.85, 0.65, 0)},
+    "aim-super": {0: (0.0, -0.25, 0), 30: (0.08, -0.15, 0), 60: (0.0, -0.25, 0)},
+    "hit": {0: (0, 0, 0), 3: (1.35, 1.05, 0), 7: (0.25, 0.20, 0), 12: (0, 0, 0)},
+    "death": {
+        0: (0, 0, 0),
+        8: (0.30, 0.65, 0),
+        15: (0.20, 1.4, 0),
+        25: (0.20, 1.9, 0),
+        40: (0.20, 1.9, 0),
+    },
+    "spawn": {
+        0: (0, -1.1, 0),
+        10: (0, 0, 0),
+        18: (1.0, 0.6, 0),
+        30: (0, 0, 0),
+        45: (0, 0, 0),
+    },
+    "victory": {
+        0: (0, 0, 0),
+        10: (0.0, 1.4, 0),
+        20: (-1.0, -0.8, 0),
+        28: (1.0, -0.8, 0),
+        35: (0, 0.15, 0),
+        60: (0, 0, 0),
+    },
+    "gadget": {
+        0: (0, 0, 0),
+        4: (-0.12, -0.45, 0),
+        10: (-0.12, -0.45, 0),
+        16: (0, 0, 0),
+    },
+    "aim-gadget": {0: (0.50, 0.55, 0), 30: (0.90, 1.05, 0), 60: (0.50, 0.55, 0)},
+}
+CLOUD_ROTATIONS = {
+    "idle": {0: 0, 20: 90, 40: 180, 60: 270, 80: 360},
+    "run": {0: 0, 5: 180, 10: 360, 15: 540, 20: 720},
+    "attack": {0: 0, 3: -20, 6: 45, 8: 180, 10: 300, 16: 360},
+    "super": {0: 0, 10: -90, 18: 180, 25: 360, 30: 520, 35: 700, 45: 900, 50: 960},
+    "aim": {0: 0, 30: 180, 60: 360},
+    "aim-super": {0: 0, 30: -180, 60: -360},
+    "hit": {0: 0, 3: 90, 7: 180, 12: 360},
+    "death": {0: 0, 15: 240, 40: 420},
+    "spawn": {0: 0, 10: 90, 18: 250, 30: 360, 45: 360},
+    "victory": {0: 0, 10: 270, 20: 540, 28: 820, 35: 1080, 60: 1080},
+    "gadget": {0: 0, 4: 180, 10: 360, 16: 360},
+    "aim-gadget": {0: 0, 30: -270, 60: -540},
+}
+CLOUD_SCALES = {
+    "idle": {0: 1.0, 20: 1.08, 40: 0.96, 60: 1.08, 80: 1.0},
+    "run": {0: 1.0, 5: 1.06, 10: 1.0, 15: 1.06, 20: 1.0},
+    "attack": {0: 1.0, 3: 0.90, 6: 0.72, 8: 1.15, 10: 1.03, 16: 1.0},
+    "super": {
+        0: 1.0,
+        10: 0.86,
+        18: 1.35,
+        25: 0.78,
+        30: 0.78,
+        35: 0.78,
+        45: 1.0,
+        50: 1.0,
+    },
+    "aim": {0: 1.0, 30: 1.08, 60: 1.0},
+    "aim-super": {0: 0.55, 30: 0.72, 60: 0.55},
+    "hit": {0: 1.0, 3: 1.20, 7: 1.03, 12: 1.0},
+    "death": {0: 1.0, 8: 0.72, 15: 0.30, 40: 0.0},
+    "spawn": {0: 0.0, 10: 1.5, 18: 1.2, 30: 1.0, 45: 1.0},
+    "victory": {0: 1.0, 10: 1.5, 20: 1.05, 28: 1.05, 35: 1.0, 60: 1.0},
+    "gadget": {0: 1.0, 4: 0.72, 10: 1.0, 16: 1.0},
+    "aim-gadget": {0: 0.85, 30: 1.15, 60: 0.85},
+}
+
+
+def action_fcurves(action):
+    if hasattr(action, "fcurves"):
+        return list(action.fcurves)
+    curves = []
+    for layer in action.layers:
+        for strip in layer.strips:
+            for channelbag in getattr(strip, "channelbags", []):
+                curves.extend(channelbag.fcurves)
+    return curves
+
+
+def radians(values):
+    return tuple(math.radians(value) for value in values)
+
+
+def clear_actions():
+    for action in list(bpy.data.actions):
+        action.user_clear()
+        bpy.data.actions.remove(action)
+
+
+def reset_pose(armature):
+    for name in BONES:
+        bone = armature.pose.bones[name]
+        bone.rotation_mode = "XYZ"
+        bone.location = (0, 0, 0)
+        bone.rotation_euler = (0, 0, 0)
+        bone.scale = (1, 1, 1)
+
+
+def apply_pose(armature, data):
+    reset_pose(armature)
+    for name, values in data["rotations"].items():
+        armature.pose.bones[name].rotation_euler = radians(values)
+    # Measured Root matrix: local X -> world X, local Y -> world Z/up,
+    # local Z -> world depth. Never author root-up on X/Z.
+    armature.pose.bones["Root"].location.y = data["root_y"]
+
+
+def key_pose(armature, action, frame, data):
+    apply_pose(armature, data)
+    for name in BONES:
+        bone = armature.pose.bones[name]
+        bone.keyframe_insert("location", frame=frame)
+        bone.keyframe_insert("rotation_euler", frame=frame)
+        bone.keyframe_insert("scale", frame=frame)
+
+
+def smooth_action(action, *, linear_paths=()):
+    linear_paths = set(linear_paths)
+    for curve in action_fcurves(action):
+        for point in curve.keyframe_points:
+            if curve.data_path in linear_paths:
+                point.interpolation = "LINEAR"
+            else:
+                point.interpolation = "BEZIER"
+                point.handle_left_type = "AUTO_CLAMPED"
+                point.handle_right_type = "AUTO_CLAMPED"
+        curve.update()
+
+
+def ensure_cloud_hierarchy(armature):
+    cloud = bpy.data.objects.get("HeroAttachment_Cloud") or bpy.data.objects.get(
+        "Cloud"
+    )
+    if cloud is None or cloud.type != "MESH":
+        raise RuntimeError("Brock master is missing HeroAttachment_Cloud mesh")
+    cloud.name = "Cloud"
+    locator = bpy.data.objects.get("Cloud_Locator")
+    if locator is None:
+        locator = bpy.data.objects.new("Cloud_Locator", None)
+        locator.empty_display_type = "PLAIN_AXES"
+        locator.empty_display_size = 0.35
+        for collection in cloud.users_collection or [bpy.context.scene.collection]:
+            collection.objects.link(locator)
+    locator.parent = armature
+    locator.parent_type = "BONE"
+    locator.parent_bone = "Root"
+    locator.rotation_mode = "XYZ"
+    locator.rotation_euler = (0, 0, 0)
+    locator.scale = (1, 1, 1)
+    cloud.parent = locator
+    cloud.parent_type = "OBJECT"
+    cloud.location = (0, 0, 0)
+    cloud.rotation_mode = "XYZ"
+    cloud.rotation_euler = (0, 0, 0)
+    cloud["attachment_role"] = "companion-cloud"
+    locator["attachment_role"] = "cloud-locator"
+    return locator, cloud
+
+
+def measured_cloud_base(armature, locator):
+    # Place the cloud above the measured right shoulder. Convert the world-like
+    # armature target to the Root-bone parent space once, then animate local
+    # offsets. This avoids the prompt's normalized values putting the cloud at
+    # Brock's knees after the real source scale is applied.
+    shoulder = armature.matrix_world @ Vector(armature.pose.bones["R_Shoulder"].tail)
+    target = shoulder + Vector((0.55, 0.0, 0.85))
+    locator.matrix_world = Matrix.Translation(target)
+    return locator.location.copy()
+
+
+def key_cloud(
+    locator, cloud, clip, frame, base_location, base_scale, action_locator, action_cloud
+):
+    dx, dy, dz = CLOUD_OFFSETS[clip][frame]
+    locator.location = base_location + Vector((dx, dy, dz))
+    locator.rotation_euler = (0, 0, 0)
+    locator.keyframe_insert("location", frame=frame)
+    locator.keyframe_insert("rotation_euler", frame=frame)
+    locator.keyframe_insert("scale", frame=frame)
+    cloud.rotation_euler = (0, 0, math.radians(CLOUD_ROTATIONS[clip][frame]))
+    scale = CLOUD_SCALES[clip][frame]
+    cloud.scale = base_scale * scale
+    cloud.keyframe_insert("location", frame=frame)
+    cloud.keyframe_insert("rotation_euler", frame=frame)
+    cloud.keyframe_insert("scale", frame=frame)
+
+
+def add_cycle(action):
+    for curve in action_fcurves(action):
+        curve.modifiers.new("CYCLES")
+
+
+def author_clip(clip):
+    bpy.ops.wm.open_mainfile(filepath=os.fspath(MASTER))
+    scene = bpy.context.scene
+    scene.render.fps = FPS
+    scene.frame_start = 0
+    scene.frame_end = FRAME_ENDS[clip]
+    armature = bpy.data.objects.get("brock-zeus-rig")
+    if armature is None or armature.type != "ARMATURE":
+        raise RuntimeError(f"{clip}: expected brock-zeus-rig armature")
+    if set(armature.data.bones.keys()) != set(BONES):
+        raise RuntimeError(f"{clip}: measured Brock bone set changed")
+    reset_pose(armature)
+    scene.frame_set(0)
+    locator, cloud = ensure_cloud_hierarchy(armature)
+    base_location = measured_cloud_base(armature, locator)
+    base_scale = cloud.scale.copy()
+    clear_actions()
+
+    action = bpy.data.actions.new(ACTION_NAMES[clip])
+    action.use_fake_user = True
+    armature.animation_data_create()
+    armature.animation_data.action = action
+    poses = copy.deepcopy(POSE_BUILDERS[clip]())
+    if min(poses) != 0 or max(poses) != FRAME_ENDS[clip]:
+        raise RuntimeError(f"{clip}: pose frames must cover 0..{FRAME_ENDS[clip]}")
+    for frame in sorted(poses):
+        key_pose(armature, action, frame, poses[frame])
+    smooth_action(action)
+
+    locator_action = bpy.data.actions.new(f"CloudLocator_{ACTION_NAMES[clip]}")
+    cloud_action = bpy.data.actions.new(f"Cloud_{ACTION_NAMES[clip]}")
+    locator_action.use_fake_user = True
+    cloud_action.use_fake_user = True
+    locator.animation_data_create()
+    cloud.animation_data_create()
+    locator.animation_data.action = locator_action
+    cloud.animation_data.action = cloud_action
+    for frame in sorted(CLOUD_OFFSETS[clip]):
+        key_cloud(
+            locator,
+            cloud,
+            clip,
+            frame,
+            base_location,
+            base_scale,
+            locator_action,
+            cloud_action,
+        )
+    smooth_action(locator_action)
+    smooth_action(cloud_action, linear_paths={"rotation_euler"})
+    if clip in CYCLE_CLIPS:
+        add_cycle(locator_action)
+        add_cycle(cloud_action)
+    scene.frame_set(0)
+
+    scene.name = f"brock-zeus_{clip}"
+    scene["hero_slug"] = HERO
+    scene["clip_name"] = ACTION_NAMES[clip]
+    scene["clip_slug"] = clip
+    scene["clip_kind"] = (
+        "ability"
+        if clip in ABILITY_CLIPS
+        else (
+            "aim"
+            if clip.startswith("aim")
+            else ("locomotion" if clip in {"idle", "run"} else "event")
+        )
+    )
+    scene["frame_start"] = 0
+    scene["frame_end"] = FRAME_ENDS[clip]
+    scene["fps"] = FPS
+    scene["authoring_status"] = "READY_FOR_REVIEW"
+    scene["source_of_truth"] = os.fspath(MASTER.relative_to(ROOT))
+    scene["rig_contract"] = (
+        "15-bone brock-zeus-rig; Root local X/Z locked; Root local Y is world-up"
+    )
+    scene["cloud_contract"] = (
+        "Cloud is a separate mesh child of Cloud_Locator; Cloud_Locator is Root-bone child and excluded from character GLB"
+    )
+    scene["cycle_contract"] = (
+        "frame 0 equals frame end for locator; cloud rotation may differ by full turns"
+        if clip in CYCLE_CLIPS
+        else "one-shot"
+    )
+    scene["cloud_locator_base"] = json.dumps(
+        [round(float(v), 6) for v in base_location]
+    )
+
+    target = SCENES / f"{clip}.blend"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    bpy.ops.wm.save_as_mainfile(
+        filepath=os.fspath(target), check_existing=False, copy=True
+    )
+    curves = action_fcurves(action)
+    frames = [point.co[0] for curve in curves for point in curve.keyframe_points]
+    return {
+        "clip": clip,
+        "action": action.name,
+        "file": os.fspath(target.relative_to(ROOT)),
+        "frame_start": int(min(frames)),
+        "frame_end": int(max(frames)),
+        "fps": FPS,
+        "curves": len(curves),
+        "keyframes": sum(len(curve.keyframe_points) for curve in curves),
+        "cloud_actions": [locator_action.name, cloud_action.name],
+        "cycle": clip in CYCLE_CLIPS,
+    }
+
+
+def prepare_master():
+    bpy.ops.wm.open_mainfile(filepath=os.fspath(MASTER))
+    armature = bpy.data.objects.get("brock-zeus-rig")
+    if armature is None:
+        raise RuntimeError("Brock master is missing brock-zeus-rig")
+    reset_pose(armature)
+    ensure_cloud_hierarchy(armature)
+    clear_actions()
+    bpy.context.scene.frame_set(0)
+    bpy.ops.wm.save_as_mainfile(filepath=os.fspath(MASTER), check_existing=False)
+
+
+def main():
+    if not MASTER.exists():
+        raise FileNotFoundError(MASTER)
+    prepare_master()
+    requested = os.environ.get("BROCK_CLIP_FILTER")
+    clips = [requested] if requested else list(ACTION_NAMES)
+    unknown = [clip for clip in clips if clip not in ACTION_NAMES]
+    if unknown:
+        raise RuntimeError(f"unknown Brock clip(s): {unknown}")
+    report = [author_clip(clip) for clip in clips]
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(
+        json.dumps({"hero": HERO, "clips": report}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(
+        json.dumps(
+            {"hero": HERO, "scenes": len(report), "report": os.fspath(REPORT)},
+            ensure_ascii=False,
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()
