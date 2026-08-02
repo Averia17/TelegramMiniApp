@@ -114,10 +114,13 @@ for (const [heroName, asset] of Object.entries(HERO_ASSETS)) {
   })
 }
 
-test("Kaze uses the standardized detached fan weapon", async () => {
+test("Kaze publishes both authored fans inside the canonical hero GLB", async () => {
   const document = await readGlbJson(HERO_ASSETS.Kaze.url)
   const nodes = document.nodes || []
   const socket = nodes.find(node => node.name === "weapon_socket_r")
   assert.ok(socket, "Kaze is missing weapon_socket_r")
-  assert.equal(HERO_ASSETS.Kaze.weaponUrl, "/assets/heroes/output_weapons/kaze_weapon.glb")
+  assert.equal("weaponUrl" in HERO_ASSETS.Kaze, false)
+  assert.equal("weaponAttachments" in HERO_ASSETS.Kaze, false)
+  assert.equal(nodes.some(node => node.name === "HeroAttachment_FanLeft"), true)
+  assert.equal(nodes.some(node => node.name === "HeroAttachment_FanRight"), true)
 })

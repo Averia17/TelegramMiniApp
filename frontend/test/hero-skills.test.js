@@ -4,7 +4,7 @@ import {HERO_SKILLS, getHeroSkill} from "../src/components/BattleGame/heroSkills
 
 const heroes = [
   "Needle", "Mandy", "Fairy Mina", "Brock Zeus",
-  "Kaze", "Wukong Mico", "Damian", "Persephone Lumi",
+  "Kaze", "Wukong Mico", "Persephone Lumi",
 ]
 
 test("every selectable hero has a named super and gadget", () => {

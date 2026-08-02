@@ -65,7 +65,7 @@ const validateHero = async (directory, slug) => {
 
 const heroesDirectory = path.resolve("public/assets/heroes")
 const entries = [
-  "brock-zeus", "damian", "fairy-mina", "kaze", "mandy", "needle",
+  "brock-zeus", "fairy-mina", "kaze", "mandy", "needle",
   "persephone-lumi", "wukong-mico",
 ]
 for (const slug of entries) {

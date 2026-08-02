@@ -208,13 +208,32 @@ def main():
             and item["source_centroid"][0] > 0
         )
         cuff_index = next(
-            index
-            for index, item in enumerate(report["components"])
-            if item["vertices"] == 28
-            and item["owner"] == "R_Wrist"
-            and item["source_centroid"][0] > 0
-            and item["source_centroid"][2] < 1
+            (
+                index
+                for index, item in enumerate(report["components"])
+                if item["vertices"] == 28
+                and item["owner"] == "R_Wrist"
+                and item["source_centroid"][0] > 0
+            ),
+            None,
         )
+        if cuff_index is None:
+            # The source FBX does not carry semantic object names; a
+            # transform repair may move this small island above the legacy
+            # z-window.  Keep the diagnostic useful by selecting the only
+            # remaining wrist island with the measured vertex signature.
+            cuff_index = next(
+                (
+                    index
+                    for index, item in enumerate(report["components"])
+                    if item["vertices"] == 28
+                    and item["owner"] == "R_Wrist"
+                    and item["source_centroid"][0] > 0
+                ),
+                None,
+            )
+        if cuff_index is None:
+            raise RuntimeError(f"right wrist cuff island missing at frame {frame_name}")
         gaps = {
             (item["left"], item["right"]): item["distance"]
             for item in report["joint_gaps"]

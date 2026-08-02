@@ -201,7 +201,10 @@ export class GLBHeroController {
     }
     this.heldProjectile = null
     const carriesSpore = !this.heroName || this.heroName === "Needle"
-    const carriesFairyOrb = this.heroName === "Fairy Mina"
+    // Fairy Mina has no authored weapon or carried orb. Her stars are
+    // detached frontend projectiles created by the attack renderer; keeping a
+    // permanent hand orb makes every idle/aim/super pose read as a held item.
+    const carriesFairyOrb = false
     if (this.rig.rightHand && (carriesSpore || carriesFairyOrb)) {
       this.heldProjectile = carriesFairyOrb
         ? createProjectileVisual({kind: "mina_star_fan", held: true})

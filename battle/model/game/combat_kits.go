@@ -80,8 +80,6 @@ func CombatKitFor(hero string) CombatKit {
 		return KazeKit{}
 	case "Wukong Mico":
 		return WukongMicoKit{}
-	case "Damian":
-		return DamianKit{}
 	case "Persephone Lumi":
 		return PersephoneLumiKit{}
 	default:

@@ -21,6 +21,7 @@ const (
 	OpeningCombatDuration = LandingDuration + HuntDuration
 	ChallengeDuration     = 90 * time.Second / BattlePhaseSpeed
 	CollapseDuration      = 90 * time.Second / BattlePhaseSpeed
+	FinalPhaseDuration    = 60 * time.Second
 	BeaconHoldDuration    = 10 * time.Second
 	IslandTick            = time.Second
 	BeaconRadius          = 135.0
@@ -248,7 +249,7 @@ func (gs *GameState) BeaconProgress(now int64) float64 {
 }
 
 func (gs *GameState) applySuddenDeath(now int64) {
-	if gs.IslandPhase != IslandPhaseBeacon || gs.countActivePlayers() != 2 {
+	if gs.IslandPhase != IslandPhaseBeacon || gs.countActivePlayers() < 2 {
 		gs.SuddenDeathStartedAt, gs.SuddenDeathNextTickAt, gs.SuddenDeathDamage = 0, 0, 0
 		return
 	}
@@ -266,10 +267,24 @@ func (gs *GameState) applySuddenDeath(now int64) {
 	seconds := int(math.Max(0, float64(now-gs.SuddenDeathStartedAt)/1000))
 	gs.SuddenDeathDamage = 8 + seconds*4
 	gs.SuddenDeathNextTickAt = now + IslandTick.Milliseconds()
+	var protected *player.Player
 	for _, candidate := range gs.Players {
-		if candidate != nil && candidate.IsAlive() {
-			gs.damageFromIsland(candidate, gs.SuddenDeathDamage, "Глас острова")
+		if candidate == nil || !candidate.IsAlive() {
+			continue
 		}
+		if protected == nil || candidate.Lives+candidate.ShieldHP > protected.Lives+protected.ShieldHP {
+			protected = candidate
+		}
+	}
+	for _, candidate := range gs.Players {
+		if candidate == nil || !candidate.IsAlive() {
+			continue
+		}
+		damage := gs.SuddenDeathDamage
+		if candidate == protected {
+			damage = int(math.Max(0, math.Min(float64(damage), float64(candidate.Lives+candidate.ShieldHP-1))))
+		}
+		gs.damageFromIsland(candidate, damage, "Глас острова")
 	}
 }
 

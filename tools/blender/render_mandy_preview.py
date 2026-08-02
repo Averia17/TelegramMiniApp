@@ -41,7 +41,11 @@ def main():
     scene.display.shading.curvature_valley_factor = 1.5
     scene.display.shading.color_type = "MATERIAL"
     staff = bpy.data.objects.get("MandyStaff_Attachment")
-    if staff and staff.type == "MESH":
+    if (
+        staff
+        and staff.type == "MESH"
+        and os.environ.get("MANDY_PREVIEW_STAFF_RED", "1") != "0"
+    ):
         material = bpy.data.materials.get(
             "MandyPreviewStaff"
         ) or bpy.data.materials.new("MandyPreviewStaff")

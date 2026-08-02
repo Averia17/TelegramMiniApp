@@ -97,7 +97,7 @@ def idle_poses():
         R_Elbow=(48, 0, -8),
         R_Wrist=(-18, 0, 10),
         L_Shoulder=(-15, 0, -14),
-        L_Elbow=(62, 0, 10),
+        L_Elbow=(45, 0, 10),
         L_Wrist=(-26, 0, -8),
         Head=(0, 8, 0),
         L_UpperLeg=(4, -2, 0),
@@ -936,15 +936,39 @@ def apply_pose(armature, data):
         adjusted = list(values)
         if name == "R_Shoulder":
             adjusted[0] += 35.0
+            adjusted[0] = max(-20.0, min(10.0, adjusted[0]))
+            adjusted[1] = max(-12.0, min(12.0, adjusted[1]))
+            adjusted[2] = max(-12.0, min(12.0, adjusted[2]))
         elif name == "R_Elbow":
             adjusted[0] += 8.0
+            adjusted[0] = max(45.0, min(60.0, adjusted[0]))
+            adjusted[1] = max(-8.0, min(8.0, adjusted[1]))
+            adjusted[2] = max(-8.0, min(8.0, adjusted[2]))
         elif name == "R_Wrist":
-            # The legacy wrist's local X axis is offset from the prose hand
-            # rotation by roughly 25 degrees.  Without this measured adapter
-            # the cuff island opens a visible seam from the forearm at idle.
-            adjusted[0] -= 25.0
+            # The legacy wrist's local X axis needs a measured positive
+            # correction.  The previous negative adapter sent the hand away
+            # from the forearm in super/attack poses.
+            adjusted[0] += 15.0
+            adjusted[0] = max(-10.0, min(10.0, adjusted[0]))
+            adjusted[1] = max(-8.0, min(8.0, adjusted[1]))
+            adjusted[2] = max(-8.0, min(8.0, adjusted[2]))
         elif name == "L_Shoulder":
             adjusted[0] -= 30.0
+            # Brock's imported left arm is the free hand.  Keep its authored
+            # silhouette in a measured human range across every clip; large
+            # skill-only swings open the disconnected source seam between
+            # shoulder and elbow on interpolated frames.
+            adjusted[0] = max(-40.0, min(-5.0, adjusted[0]))
+            adjusted[1] = max(-12.0, min(12.0, adjusted[1]))
+            adjusted[2] = max(-12.0, min(12.0, adjusted[2]))
+        elif name == "L_Elbow":
+            adjusted[0] = max(45.0, min(70.0, adjusted[0]))
+            adjusted[1] = max(-8.0, min(8.0, adjusted[1]))
+            adjusted[2] = max(-8.0, min(8.0, adjusted[2]))
+        elif name == "L_Wrist":
+            adjusted[0] = max(-26.0, min(-8.0, adjusted[0]))
+            adjusted[1] = max(-8.0, min(8.0, adjusted[1]))
+            adjusted[2] = max(-8.0, min(8.0, adjusted[2]))
         armature.pose.bones[name].rotation_euler = radians(adjusted)
     # Measured Root matrix: local X -> world X, local Y -> world Z/up,
     # local Z -> world depth. Never author root-up on X/Z.
@@ -1024,7 +1048,6 @@ def right_arm_components(mesh):
             for index, component in enumerate(components)
             if len(component) == 28
             and centroids[index].x > 0
-            and centroids[index].z < 1
         ),
         "wrist_islands": [
             index
@@ -1041,17 +1064,20 @@ def right_arm_gap(mesh, components, selected):
     evaluated = mesh.evaluated_get(depsgraph)
     evaluated_mesh = evaluated.to_mesh()
     try:
+        point_cache = {
+            index: evaluated.matrix_world @ evaluated_mesh.vertices[index].co
+            for component_index in [selected["forearm"], *selected["wrist_islands"]]
+            for index in components[component_index]
+        }
         forearm_points = [
-            evaluated.matrix_world @ evaluated_mesh.vertices[index].co
-            for index in components[selected["forearm"]]
+            point_cache[index] for index in components[selected["forearm"]]
         ]
         return max(
             min(
                 (forearm - other).length
                 for forearm in forearm_points
                 for other in [
-                    evaluated.matrix_world @ evaluated_mesh.vertices[index].co
-                    for index in components[component_index]
+                    point_cache[index] for index in components[component_index]
                 ]
             )
             for component_index in selected["wrist_islands"]
@@ -1064,6 +1090,9 @@ def calibrate_right_wrist(scene, armature, action, frame_end):
     """Repair pose-dependent seam openings without changing other bone motion."""
     mesh = bpy.data.objects.get("armor_GEO:PIV.001")
     components, selected = right_arm_components(mesh)
+    if not selected["wrist_islands"]:
+        action["right_wrist_seam_repairs"] = 0
+        return 0
     wrist = armature.pose.bones["R_Wrist"]
     repaired = 0
     for _ in range(3):
@@ -1250,14 +1279,153 @@ def ensure_brock_skinning(armature):
                     seen.add(neighbor)
                     stack.append(neighbor)
         components.append(component)
-    for component in components:
+    right_wrist_components = {
+        263,
+        267,
+        268,
+        269,
+        271,
+        272,
+        274,
+        276,
+        277,
+        278,
+        279,
+        280,
+        281,
+        282,
+        283,
+        284,
+        312,
+        313,
+    }
+    component_bones = {}
+    for component_index, component in enumerate(components):
         centroid = sum((points[index] for index in component), Vector()) / max(
             1, len(component)
         )
         bone_name = min(
             segments, key=lambda item: distance_to_segment(centroid, item[1], item[2])
         )[0]
+        if component_index in right_wrist_components:
+            bone_name = "R_Wrist"
+        component_bones[component_index] = bone_name
         groups[bone_name].add(component, 1.0, "REPLACE")
+    if not mesh.get("left_arm_rest_repaired"):
+        # The FBX has a disconnected hard-surface left-arm cluster.  Align
+        # the lower-arm cluster to the actual closest shoulder vertices in
+        # the imported source space, rather than guessing a world-space
+        # offset from a pose screenshot.
+        shoulder_vertices = [
+            vertex_index
+            for component_index, component in enumerate(components)
+            if component_bones[component_index] == "L_Shoulder"
+            for vertex_index in component
+        ]
+        lower_arm_vertices = [
+            vertex_index
+            for component_index, component in enumerate(components)
+            if component_bones[component_index] in {"L_Elbow", "L_Wrist"}
+            for vertex_index in component
+        ]
+        if shoulder_vertices and lower_arm_vertices:
+            shoulder_points = {
+                index: mesh.matrix_world @ mesh.data.vertices[index].co
+                for index in shoulder_vertices
+            }
+            lower_arm_points = {
+                index: mesh.matrix_world @ mesh.data.vertices[index].co
+                for index in lower_arm_vertices
+            }
+            closest = min(
+                (
+                    (shoulder_point - lower_arm_point).length,
+                    shoulder_point,
+                    lower_arm_point,
+                )
+                for shoulder_point in shoulder_points.values()
+                for lower_arm_point in lower_arm_points.values()
+            )
+            if closest[0] > 0.05:
+                delta_local = (
+                    mesh.matrix_world.inverted().to_3x3()
+                    @ (closest[1] - closest[2])
+                )
+                for vertex_index in lower_arm_vertices:
+                    mesh.data.vertices[vertex_index].co += delta_local
+                mesh["left_arm_rest_repair_distance"] = round(float(closest[0]), 6)
+            else:
+                mesh["left_arm_rest_repair_distance"] = 0.0
+        mesh["left_arm_rest_repaired"] = True
+    if not mesh.get("right_arm_rest_repaired"):
+        forearm = next(
+            component
+            for component in components
+            if len(component) == 95
+            and (
+                sum(
+                    (
+                        mesh.matrix_world @ mesh.data.vertices[index].co
+                        for index in component
+                    ),
+                    Vector(),
+                )
+                / len(component)
+            ).x
+            > 0
+        )
+        forearm_points = [
+            mesh.matrix_world @ mesh.data.vertices[index].co for index in forearm
+        ]
+        repaired = 0
+        for component in components:
+            if component is forearm or len(component) < 20:
+                continue
+            centroid_world = sum(
+                (
+                    mesh.matrix_world @ mesh.data.vertices[index].co
+                    for index in component
+                ),
+                Vector(),
+            ) / len(component)
+            if not (0.2 < centroid_world.x < 0.8 and 0.5 < centroid_world.z < 1.15):
+                continue
+            component_points = [
+                mesh.matrix_world @ mesh.data.vertices[index].co for index in component
+            ]
+            pair = min(
+                (
+                    (forearm_point - component_point, component_point)
+                    for forearm_point in forearm_points
+                    for component_point in component_points
+                ),
+                key=lambda item: item[0].length,
+            )
+            if pair[0].length <= 0.05:
+                continue
+            delta_local = mesh.matrix_world.inverted().to_3x3() @ pair[0]
+            for index in component:
+                mesh.data.vertices[index].co += delta_local
+            repaired += 1
+        mesh["right_arm_rest_repairs"] = repaired
+        mesh["right_arm_rest_repaired"] = True
+    if not mesh.get("right_arm_rest_aligned"):
+        # The source mesh and the authored shoulder action use different bind
+        # origins.  Align the complete elbow/wrist cluster to the shoulder in
+        # the measured idle pose.  The correction is bone-specific because
+        # R_Elbow and R_Wrist have different rest matrices.
+        arm_deltas = {
+            "R_Elbow": Vector((-0.62844, 1.29772, 2.92438)),
+            "R_Wrist": Vector((-0.89767, 1.54360, 2.72809)),
+        }
+        for component_index, bone_name in component_bones.items():
+            delta = arm_deltas.get(bone_name)
+            if delta is None:
+                continue
+            for index in components[component_index]:
+                mesh.data.vertices[index].co += delta
+        mesh["right_arm_rest_alignment"] = "shoulder_cluster_v1"
+        mesh["right_arm_rest_aligned"] = True
     mesh["skinning_contract"] = (
         "Rigid nearest-bone weights per disconnected mesh component from measured brock-zeus-rig; repaired because legacy groups were empty"
     )
@@ -1347,7 +1515,15 @@ def author_clip(clip):
     for frame in sorted(poses):
         key_pose(armature, action, frame, poses[frame])
     smooth_action(action)
-    seam_repairs = calibrate_right_wrist(scene, armature, action, FRAME_ENDS[clip])
+    # The attack wrist has a short, high-energy contact phase.  Solve only
+    # that measured seam per frame; the remaining clips stay on the stable
+    # authored wrist limits above and avoid unnecessary baked corrections.
+    seam_repairs = (
+        calibrate_right_wrist(scene, armature, action, FRAME_ENDS[clip])
+        if clip == "attack"
+        else 0
+    )
+    action["right_wrist_seam_repairs"] = seam_repairs
     smooth_action(action)
 
     locator_action = bpy.data.actions.new(f"CloudLocator_{ACTION_NAMES[clip]}")

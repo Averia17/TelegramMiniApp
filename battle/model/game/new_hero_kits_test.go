@@ -9,7 +9,7 @@ import (
 func TestNewHeroCombatKitsAreRegistered(t *testing.T) {
 	want := map[string]string{
 		"Fairy Mina": "cone", "Brock Zeus": "line", "Kaze": "cone",
-		"Wukong Mico": "cone", "Damian": "line", "Persephone Lumi": "line",
+		"Wukong Mico": "cone", "Persephone Lumi": "line",
 	}
 	for name, shape := range want {
 		kit := CombatKitFor(name)
@@ -112,30 +112,11 @@ func TestNeedleSuperRechargesByCooldownTimeWithoutHits(t *testing.T) {
 }
 
 func TestActiveSuperCooldownsAreTimeBasedAndCapped(t *testing.T) {
-	for _, hero := range []string{"Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"} {
+	for _, hero := range []string{"Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi"} {
 		cooldown := AbilityCooldownMs(hero, "primary")
 		if cooldown <= 0 || cooldown > MaxHeroSkillDuration.Milliseconds() {
 			t.Fatalf("%s primary cooldown=%dms, want 1..%dms", hero, cooldown, MaxHeroSkillDuration.Milliseconds())
 		}
-	}
-}
-
-func TestDamianDebuffRefreshesByTimeInsteadOfStackingPerHit(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("damian", "Damian", "Damian")
-	gs.PlayerAdd("enemy", "Enemy", "Shelly")
-	damian, enemy := gs.Players["damian"], gs.Players["enemy"]
-	damian.X, damian.Y, enemy.X, enemy.Y = 400, 400, 500, 400
-	now := time.Now().UnixMilli()
-
-	for hit := 0; hit < 2; hit++ {
-		shot := gs.spawnAttackBullet(damian, 0, "damian_orb", damian.AttackDmg, damian.BulletSpd, damian.BulletSz, 640, 0, false, false)
-		shot.X, shot.Y = enemy.X, enemy.Y
-		gs.updateBullets()
-	}
-	if got := gs.DamianDebuffUntil[enemy.PlayerId]; got < now+DamianDebuffDuration.Milliseconds()-200 || got > time.Now().UnixMilli()+DamianDebuffDuration.Milliseconds()+200 {
-		t.Fatalf("debuff until=%d, want a single refreshed %dms duration", got, DamianDebuffDuration.Milliseconds())
 	}
 }
 
@@ -212,26 +193,6 @@ func TestMicoStaffAttackDamagesInFrontWithoutMovingOrGrantingInvulnerability(t *
 	WukongMicoKit{}.Basic(gs, p, now, 0, 0)
 	if p.X != startX || p.Y != startY || p.InvulnerableUntil != 0 || enemy.Lives >= enemy.MaxLives {
 		t.Fatalf("position=(%.1f,%.1f) invulnerable=%d damage=%d", p.X, p.Y, p.InvulnerableUntil, enemy.MaxLives-enemy.Lives)
-	}
-}
-
-func TestDamianTotemTargetsNearestEnemyAndGadgetSwaps(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("damian", "Damian", "Damian")
-	gs.PlayerAdd("enemy", "Enemy", "Shelly")
-	p := gs.Players["damian"]
-	p.X, p.Y = 400, 400
-	now := time.Now().UnixMilli()
-	DamianKit{}.Super(gs, p, now, 0, 120)
-	totem := gs.Totems[p.PlayerId]
-	if totem == nil || math.Abs(totem.X-520) > 1 {
-		t.Fatalf("totem=%#v", totem)
-	}
-	p.GadgetCharges = 1
-	oldX := p.X
-	if !gs.useNewHeroGadget(p, now+1) || math.Abs(p.X-520) > 1 || math.Abs(totem.X-oldX) > 1 {
-		t.Fatalf("swap player=%.1f totem=%.1f", p.X, totem.X)
 	}
 }
 

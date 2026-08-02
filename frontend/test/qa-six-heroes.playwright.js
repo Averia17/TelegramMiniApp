@@ -1,5 +1,5 @@
 async page => {
-  const heroes = ["Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"]
+  const heroes = ["Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi"]
   const results = []
   for (const hero of heroes) {
     await page.goto(`http://localhost/test/glb-hero-harness.html?hero=${encodeURIComponent(hero)}&state=attack`)

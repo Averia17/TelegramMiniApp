@@ -16,3 +16,12 @@ func TestNeedleIsTheCanonicalHeroName(t *testing.T) {
 		t.Fatal("Needle should have both combat kits")
 	}
 }
+
+func TestDamianIsNotAvailable(t *testing.T) {
+	if got := CanonicalHeroName("Damian"); got != "" {
+		t.Fatalf("CanonicalHeroName(Damian) = %q, want empty", got)
+	}
+	if got := GetHeroByName("Damian"); got != nil {
+		t.Fatalf("GetHeroByName(Damian) = %#v, want nil", got)
+	}
+}

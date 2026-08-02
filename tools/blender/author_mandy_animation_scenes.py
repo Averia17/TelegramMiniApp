@@ -4,9 +4,10 @@ The brief uses 0-based frames. Blender keys are written at ``brief + 1``;
 cycle closing keys therefore live at ``duration + 1`` while the timeline end
 stays at ``duration``.
 
-The source master pose at frame 20 is the neutral baseline. Animation keys are
-small local deltas around that authored pose, so Mandy keeps the natural hand
-shape and stance already present in ``mandy.blend``. The staff contract is strict:
+The source master pose at frame 20 is the neutral baseline. This pass is designed
+to preserve the exact source transforms and applies only small local deltas around
+that authored pose, so Mandy keeps the natural hand shape and stance already
+present in ``mandy.blend``. The staff contract is strict:
 ``L_wrist_s_047`` is the only weapon hand and the right hand never grips it.
 """
 
@@ -123,6 +124,24 @@ FINGER_BONES = {
     ),
 }
 
+RIGHT_ARM_POSE_FIELDS = (
+    "upper_r",
+    "elbow_r",
+    "forearm_r",
+    "hand_r",
+)
+RIGHT_ARM_NATURAL_DELTAS = {
+    # Calibrated against mandy.blend frame 20: the arm comes in front of the
+    # torso at waist height, while the wrist and fingers retain their authored
+    # relaxed orientation.
+    "upper_r": (0.0, -24.0, -38.0),
+    "elbow_r": (24.0, 0.0, 0.0),
+    "forearm_r": (0.0, 0.0, 0.0),
+    # Local Y 180 turns the authored fist inward so the fingers point toward
+    # Mandy's torso instead of away from it.
+    "hand_r": (0.0, 180.0, 0.0),
+}
+
 
 def p(**changes):
     """Return a complete semantic pose in real bone-local Euler deltas."""
@@ -152,6 +171,22 @@ def p(**changes):
     }
     pose.update(changes)
     return pose
+
+
+def apply_natural_right_arm_pose(poses):
+    """Keep the free right arm visible in a natural front-facing pose.
+
+    ``mandy.blend`` supplies the baseline and the authored relaxed wrist/finger
+    shape. A small, measured shoulder/elbow correction brings the arm out from
+    behind the torso without lifting it; the wrist and fingers stay at their
+    exact source rotations on every animation frame.
+    """
+
+    for pose in poses.values():
+        for field in RIGHT_ARM_POSE_FIELDS:
+            pose[field] = RIGHT_ARM_NATURAL_DELTAS[field]
+        left_grip, _right_grip = pose["finger_grip"]
+        pose["finger_grip"] = (left_grip, 0.0)
 
 
 def idle_base():
@@ -287,7 +322,10 @@ def attack_poses():
             hips=(0, -12, 0),
             torso=(4, -8, 0),
             head=(-2, -4, 0),
-            upper_l=(30, 0, 72),
+            # Local Z +30 keeps the full-size source staff horizontal in front
+            # of the torso at impact; the old near-straight pose left it behind.
+            # forward metric even though the wrist was correctly attached.
+            upper_l=(30, 0, 30),
             elbow_l=(112, 0, 0),
             hand_l=(-8, 0, -4),
             upper_r=(28, 0, 20),
@@ -322,9 +360,11 @@ def super_poses():
             shin_l=(54, 0, 0),
             thigh_r=(-34, 0, 0),
             shin_r=(54, 0, 0),
-            upper_l=(22, 0, -10),
-            elbow_l=(145, 0, 0),
-            hand_l=(-8, 0, 0),
+            # The charge keeps the staff planted instead of lifting it into
+            # the face; the source hand/socket pose already points it down.
+            upper_l=(0, 0, 0),
+            elbow_l=(0, 0, 0),
+            hand_l=(-4, 0, 0),
             upper_r=(-18, 0, 30),
             elbow_r=(28, 0, 0),
             hand_r=(8, 0, 0),
@@ -338,7 +378,9 @@ def super_poses():
             shin_l=(-18, 0, 0),
             thigh_r=(28, 0, 0),
             shin_r=(-18, 0, 0),
-            upper_l=(148, 0, -18),
+            # Local Z +42 is the measured forward-facing overhead variant;
+            # the old -18 value put the full-size staff behind the head.
+            upper_l=(148, 0, 42),
             elbow_l=(58, 0, 0),
             hand_l=(-4, 0, 0),
             upper_r=(18, 0, 34),
@@ -384,9 +426,11 @@ def aim_poses():
         hips=(-3, 0, 0),
         torso=(8, 0, 0),
         head=(-2, 0, 0),
-        upper_l=(74, 0, -20),
-        elbow_l=(150, 0, 0),
-        hand_l=(-16, 0, 0),
+        # Aim uses the same calibrated forward horizontal grip as Attack's
+        # impact/recovery, not the old near-straight pose that pointed down.
+        upper_l=(22, 0, -10),
+        elbow_l=(110, 0, 0),
+        hand_l=(-14, 0, 0),
         upper_r=(-92, 0, 72),
         elbow_r=(30, 0, 0),
         hand_r=(24, 0, 0),
@@ -463,9 +507,10 @@ def death_poses():
             shin_l=(58, 0, 0),
             thigh_r=(-42, 0, 0),
             shin_r=(58, 0, 0),
-            upper_l=(0, 0, 0),
+            # Lay the staff forward on the ground while the body settles.
+            upper_l=(-60, 0, 0),
             elbow_l=(0, 0, 0),
-            hand_l=(0, 0, 0),
+            hand_l=(-4, 0, 0),
             upper_r=(28, 0, 18),
             elbow_r=(118, 0, 0),
             hand_r=(12, 0, 0),
@@ -480,9 +525,9 @@ def death_poses():
             shin_l=(96, 0, 0),
             thigh_r=(-72, 0, 0),
             shin_r=(96, 0, 0),
-            upper_l=(0, 0, 0),
+            upper_l=(-60, 0, 0),
             elbow_l=(0, 0, 0),
-            hand_l=(0, 0, 0),
+            hand_l=(-4, 0, 0),
             upper_r=(42, 0, 18),
             elbow_r=(80, 0, 0),
             hand_r=(22, 0, 0),
@@ -497,9 +542,9 @@ def death_poses():
             shin_l=(96, 0, 0),
             thigh_r=(-72, 0, 0),
             shin_r=(96, 0, 0),
-            upper_l=(0, 0, 0),
+            upper_l=(-60, 0, 0),
             elbow_l=(0, 0, 0),
-            hand_l=(0, 0, 0),
+            hand_l=(-4, 0, 0),
             upper_r=(12, 0, 18),
             elbow_r=(20, 0, 0),
             hand_r=(30, 0, 0),
@@ -576,7 +621,7 @@ def victory_poses():
     return {
         0: base,
         10: p(
-            upper_l=(136, 0, -18),
+            upper_l=(148, 0, 42),
             elbow_l=(62, 0, 0),
             hand_l=(-8, 0, 0),
             upper_r=(0, -140, 0),
@@ -584,7 +629,7 @@ def victory_poses():
             hand_r=(0, 0, 0),
         ),
         15: p(
-            upper_l=(136, 0, -18),
+            upper_l=(148, 0, 42),
             elbow_l=(62, 0, 0),
             hand_l=(-8, 0, 360),
             upper_r=(0, -140, 0),
@@ -592,7 +637,7 @@ def victory_poses():
             hand_r=(0, 0, 0),
         ),
         20: p(
-            upper_l=(136, 0, -18),
+            upper_l=(148, 0, 42),
             elbow_l=(62, 0, 0),
             hand_l=(-8, 0, 720),
             upper_r=(0, -140, 0),
@@ -604,8 +649,11 @@ def victory_poses():
             hips=(3, 0, 0),
             torso=(6, 0, 0),
             head=(-4, 0, 0),
-            upper_l=(76, 0, 12),
-            elbow_l=(150, 0, 0),
+            # Rotate around the authored left-hand junction so the full
+            # staff points down to the strike point without moving the
+            # fingers off the white/orange grip seam.
+            upper_l=(-60, 0, 120),
+            elbow_l=(0, 0, 0),
             hand_l=(-4, 0, 0),
             upper_r=(0, -140, 0),
             elbow_r=(0, 0, 0),
@@ -619,9 +667,9 @@ def victory_poses():
             shin_l=(36, 0, 0),
             thigh_r=(-18, 0, 0),
             shin_r=(36, 0, 0),
-            upper_l=(48, 0, 6),
-            elbow_l=(165, 0, 0),
-            hand_l=(0, 0, -8),
+            upper_l=(-60, 0, 120),
+            elbow_l=(0, 0, 0),
+            hand_l=(-4, 0, 0),
             upper_r=(0, -140, 0),
             elbow_r=(0, 0, 0),
             hand_r=(0, 0, 0),
@@ -702,9 +750,11 @@ def aim_gadget_poses():
         shin_l=(44, 0, 0),
         thigh_r=(-30, 0, 0),
         shin_r=(44, 0, 0),
-        upper_l=(66, 0, -14),
-        elbow_l=(106, 0, 0),
-        hand_l=(-8, 0, 0),
+        # AimGadget is low, but the staff must still be horizontal and
+        # readable in front of Mandy rather than vertical at her side.
+        upper_l=(22, 0, -10),
+        elbow_l=(110, 0, 0),
+        hand_l=(-14, 0, 0),
         upper_r=(8, 0, 30),
         elbow_r=(32, 0, 0),
         hand_r=(10, 0, 0),
@@ -852,54 +902,29 @@ def canonicalize_staff(armature):
     staff = bpy.data.objects.get("MandyStaff_Attachment")
     if not pivot or not marker or not staff:
         raise RuntimeError("Mandy staff pivot/marker/mesh is missing")
+    # mandy.blend already contains the authored hand-to-weapon relationship:
+    # the source pivot sits at the junction between the white ball/shaft and
+    # the orange handle. Keep that pivot fixed and rotate only around it; the
+    # former canonicalization moved the mesh along its long axis to meet the
+    # floor, which put the fingers on the blue shaft instead of at the
+    # authored grip junction.
     for socket in (pivot, marker):
+        world_matrix = socket.matrix_world.copy()
         socket.parent = armature
         socket.parent_type = "BONE"
         socket.parent_bone = BONES["hand_l"]
-    bpy.context.view_layer.update()
-    # Keep the authored mesh scale from mandy.blend. Only rotate the existing
-    # source pivot around the authored grip so the long section points down;
-    # the pivot remains on L_wrist_s_047 and no visual translation is applied.
-    box = staff.bound_box
-    x = (min(value[0] for value in box) + max(value[0] for value in box)) * 0.5
-    y = (min(value[1] for value in box) + max(value[1] for value in box)) * 0.5
-    z_low = min(value[2] for value in box)
-    z_high = max(value[2] for value in box)
-    endpoints = [
-        staff.matrix_world @ Vector((x, y, z_low)),
-        staff.matrix_world @ Vector((x, y, z_high)),
-    ]
-    pivot_position = pivot.matrix_world.translation.copy()
-    long_end = max(endpoints, key=lambda point: (point - pivot_position).length)
-    long_direction = (long_end - pivot_position).normalized()
-    pivot.rotation_mode = "QUATERNION"
-    current_world_rotation = pivot.matrix_world.to_quaternion()
-    current_local_rotation = pivot.rotation_quaternion.copy()
-    parent_rotation = current_world_rotation @ current_local_rotation.inverted()
-    desired_world_rotation = (
-        long_direction.rotation_difference(Vector((0.0, 0.0, -1.0)))
-        @ current_world_rotation
-    )
-    pivot.rotation_quaternion = parent_rotation.inverted() @ desired_world_rotation
-    bpy.context.view_layer.update()
-    # The authored mesh keeps its original scale, but its source pivot is
-    # centered high enough that the down-facing tip would pass below Mandy's
-    # feet. Translate only the child mesh along its own long axis until the
-    # authored tip meets the source foot plane. The pivot/marker stay on the
-    # wrist, so the grip contract is unchanged.
-    foot_points = []
-    for semantic in ("foot_l", "toe_l", "foot_r", "toe_r"):
-        bone = armature.pose.bones[BONES[semantic]]
-        foot_points.extend(
-            (armature.matrix_world @ bone.head, armature.matrix_world @ bone.tail)
-        )
-    foot_low = min(point.z for point in foot_points)
-    staff_low = min(
-        (staff.matrix_world @ Vector(corner)).z for corner in staff.bound_box
-    )
-    local_axis_world = staff.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))
-    if abs(local_axis_world.z) > 1e-6:
-        staff.location.z += (staff_low - foot_low) / abs(local_axis_world.z)
+        socket.matrix_world = world_matrix
+    # The source staff's positive local Z points almost horizontally. Match
+    # Mandy's authored silhouette: the long body leaves the white/orange seam
+    # diagonally down and forward while the hand/socket position is unchanged.
+    current_axis = (
+        staff.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))
+    ).normalized()
+    target_axis = Vector((-0.24, -0.83, -0.50)).normalized()
+    world_delta = current_axis.rotation_difference(target_axis)
+    parent_rotation = pivot.matrix_world.to_quaternion()
+    local_delta = parent_rotation.inverted() @ world_delta @ parent_rotation
+    staff.matrix_local = local_delta.to_matrix().to_4x4() @ staff.matrix_local
     bpy.context.view_layer.update()
     staff["attachment_role"] = "held-weapon"
     staff["grip_bone"] = BONES["hand_l"]
@@ -1067,6 +1092,21 @@ def author_clip(clip):
             "elbow_r": (0, -80, 0),
             "hand_r": (0, 0, 0),
         }
+        # Route the staff around the visible right hand before the ground
+        # strike; without this short intermediate arc the tassel clips the
+        # free fist at Victory frame 24.
+        for frame in (22, 23, 24):
+            poses[frame] = {
+                **poses[25],
+                "upper_l": (-20, 0, 70),
+                "elbow_l": (35, 0, 0),
+                "hand_l": (-4, 0, 0),
+            }
+    # The free right arm is intentionally not an animation driver. Restore the
+    # calibrated natural front pose after any legacy avoidance keys above; this
+    # prevents Spawn/Victory and every in-between from putting the wrist
+    # behind Mandy's back.
+    apply_natural_right_arm_pose(poses)
     duration_keys = set(poses)
     if min(duration_keys) != 0 or max(duration_keys) != duration:
         raise RuntimeError(f"{clip}: pose frames must cover 0..{duration}")

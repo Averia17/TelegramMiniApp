@@ -27,10 +27,6 @@ export const HERO_SKILLS = Object.freeze({
     primary: skill("ЗОЛОТОЙ ЦИКЛОН", "Круговой удар посохом сокрушает всех врагов вокруг.", "mico_golden_cyclone"),
     secondary: skill("ПЕЧАТЬ ЖУИ", "Следующий удар посохом сковывает и замедляет задетых врагов.", "mico_ruyi_bind"),
   }),
-  Damian: Object.freeze({
-    primary: skill("МАЯК ДУШ", "Призывает автономный тотем, который охотится на ближайшего врага.", "damian_soul_beacon"),
-    secondary: skill("ТЕНЕВОЙ ОБМЕН", "Мгновенно меняет Дамиана и его тотем местами.", "damian_shadow_exchange"),
-  }),
   "Persephone Lumi": Object.freeze({
     primary: skill("САД ЭРЕБА", "Выращивает сад, который один раз опутывает каждого вошедшего врага.", "lumi_erebus_garden"),
     secondary: skill("РАЗРЫВ СЕМЯН", "Взрывает все активные сады и ранит врагов внутри.", "lumi_seedburst"),

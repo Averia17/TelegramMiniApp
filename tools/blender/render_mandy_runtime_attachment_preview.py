@@ -1,4 +1,8 @@
-"""Render the actual runtime base+weapon attachment path for Mandy QA."""
+"""Render Mandy's actual single-GLB runtime path for QA.
+
+Mandy's staff is embedded in ``mandy_base.glb`` and follows the authored left
+wrist. This intentionally does not load ``mandy_weapon.glb`` a second time.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +12,7 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = (
@@ -19,15 +23,6 @@ BASE = (
     / "heroes"
     / "output_heroes"
     / "mandy_base.glb"
-)
-WEAPON = (
-    ROOT
-    / "frontend"
-    / "public"
-    / "assets"
-    / "heroes"
-    / "output_weapons"
-    / "mandy_weapon.glb"
 )
 
 
@@ -88,42 +83,12 @@ def main():
     armature.animation_data.action = action
     for track in armature.animation_data.nla_tracks:
         track.mute = True
-    target = bpy.data.objects.get("Grip.Primary.MandyStaff_Attachment")
-    if target is None:
-        raise RuntimeError("runtime base has no Mandy grip marker")
-
-    # Match AssetRegistry.removeEmbeddedDetachedWeapons before attaching the
-    # separately loaded weapon GLB.
     embedded = bpy.data.objects.get("MandyStaff_Attachment")
-    if embedded is not None:
-        bpy.data.objects.remove(embedded, do_unlink=True)
-
-    bpy.ops.import_scene.gltf(filepath=os.fspath(WEAPON))
-    weapon = next(
-        (
-            obj
-            for obj in bpy.context.scene.objects
-            if obj.get("grip_bone") == "L_wrist_s_047"
-        ),
-        None,
-    )
-    if weapon is None:
-        raise RuntimeError("runtime weapon has no L_wrist_s_047 grip root")
-    local = weapon.matrix_basis.copy()
-    # Match AssetRegistry: an authored weapon keeps its exported root transform
-    # and receives only the explicit attachment rotation on a wrapper group.
-    attachment = bpy.data.objects.new("DetachedHeroWeapon.MandyStaff_Attachment", None)
-    bpy.context.collection.objects.link(attachment)
-    attachment.parent = target
-    attachment.matrix_parent_inverse = Matrix.Identity(4)
-    attachment.matrix_basis = Matrix.Identity(4)
-    attachment.rotation_mode = "XYZ"
-    # The weapon GLB preserves the source pivot orientation from mandy.blend;
-    # applying another correction would rotate it away from the left hand.
-    attachment.rotation_euler = (0.0, 0.0, 0.0)
-    weapon.parent = attachment
-    weapon.matrix_parent_inverse = Matrix.Identity(4)
-    weapon.matrix_basis = local
+    marker = bpy.data.objects.get("Grip.Primary.MandyStaff_Attachment")
+    if embedded is None or marker is None:
+        raise RuntimeError(
+            "runtime base must contain Mandy's embedded staff and grip marker"
+        )
 
     for obj in bpy.context.scene.objects:
         if obj.type == "ARMATURE":
@@ -146,7 +111,7 @@ def main():
         "MandyRuntimePreviewStaff"
     ) or bpy.data.materials.new("MandyRuntimePreviewStaff")
     material.diffuse_color = (0.85, 0.05, 0.04, 1.0)
-    for child in weapon.children_recursive:
+    for child in (embedded, *embedded.children_recursive):
         if child.type == "MESH":
             child.data.materials.clear()
             child.data.materials.append(material)

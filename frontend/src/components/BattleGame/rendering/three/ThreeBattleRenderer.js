@@ -89,11 +89,7 @@ export class ThreeBattleRenderer {
     this.projectiles.sync(state.bullets || [])
     this.monsters.sync(state.monsters || {})
     this.pickups.sync(state.props || [])
-    const totemEffects = (state.totems || []).map(totem => ({
-      id:`totem:${totem.owner}`,kind:"damian_totem",x:totem.x,y:totem.y,radius:24,
-      color:"#8D52D9",life:1,maxLife:1,hp:totem.hp,maxHp:totem.maxHp,
-    }))
-    this.effects.sync([...(state.effects || []), ...totemEffects])
+    this.effects.sync(state.effects || [])
     endBattlePerformance(perfToken)
   }
 

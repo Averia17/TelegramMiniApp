@@ -17,7 +17,6 @@ SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 OUTPUT = ROOT / "frontend" / "public" / "assets" / "heroes" / "output_heroes"
 HEROES = (
     "brock-zeus",
-    "damian",
     "fairy-mina",
     "kaze",
     "mandy",
@@ -198,14 +197,11 @@ def export(hero: str) -> None:
     armature.animation_data.action = idle_action
     if hero == "brock-zeus":
         select_character_objects(armature)
+    # Persistent weapons are authored under the hero rig and belong in the
+    # canonical base GLB. Only Brock's companion cloud remains a separate
+    # runtime asset.
     elif hero == "kaze":
-        select_character_objects(
-            armature,
-            excluded_names={
-                "HeroAttachment_FanLeft",
-                "HeroAttachment_FanRight",
-            },
-        )
+        select_character_objects(armature)
     OUTPUT.mkdir(parents=True, exist_ok=True)
     out = OUTPUT / f"{hero}_base.glb"
     temp_out = OUTPUT / f"{hero}_base.tmp.glb"
@@ -231,6 +227,16 @@ def export(hero: str) -> None:
 
 
 def main() -> None:
+    requested_hero = os.environ.get("HERO_FILTER")
+    if requested_hero:
+        if requested_hero not in HEROES:
+            raise RuntimeError(
+                f"HERO_FILTER={requested_hero!r} is not in the runtime hero list"
+            )
+        if requested_hero == "brock-zeus":
+            export_brock_cloud(SOURCE / requested_hero, SCENE_ACTIONS | BROCK_EXTRA_ACTIONS)
+        export(requested_hero)
+        return
     manifest = json.loads(
         (Path(__file__).with_name("hero_animation_scene_manifest.json")).read_text(
             encoding="utf-8"
@@ -238,13 +244,7 @@ def main() -> None:
     )
     if tuple(manifest["heroes"]) != HEROES:
         raise RuntimeError("manifest hero order does not match exporter hero order")
-    requested_hero = os.environ.get("HERO_FILTER")
-    heroes = [hero for hero in HEROES if not requested_hero or hero == requested_hero]
-    if requested_hero and not heroes:
-        raise RuntimeError(
-            f"HERO_FILTER={requested_hero!r} is not in the runtime hero list"
-        )
-    for hero in heroes:
+    for hero in HEROES:
         if hero == "brock-zeus":
             export_brock_cloud(SOURCE / hero, SCENE_ACTIONS | BROCK_EXTRA_ACTIONS)
         export(hero)

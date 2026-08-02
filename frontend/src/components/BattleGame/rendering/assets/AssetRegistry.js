@@ -61,100 +61,50 @@ export const normalizeHeroHeight = (root, targetHeight = 2.45) => {
   return root
 }
 
-const attachWeaponObject = (
-  heroRoot,
-  target,
-  weaponObject,
-  role,
-  name,
-  localRotation = null,
-  localPosition = null,
-) => {
-  heroRoot.updateMatrixWorld(true)
-  target.updateWorldMatrix(true, false)
-  const rootWorldRotation = heroRoot.getWorldQuaternion(new THREE.Quaternion())
-  const socketWorldRotation = target.getWorldQuaternion(new THREE.Quaternion())
-  const socketRotationInRoot = rootWorldRotation.invert().multiply(socketWorldRotation)
-  const rootWorldScale = heroRoot.getWorldScale(new THREE.Vector3())
-  const socketWorldScale = target.getWorldScale(new THREE.Vector3())
-  const socketScaleInRoot = socketWorldScale.divide(rootWorldScale)
-
-  const attachment = new THREE.Group()
-  attachment.name = `DetachedHeroWeapon.${name}`
-  attachment.userData.attachmentRole = role
-  attachment.position.set(0, 0, 0)
-  const authoredRoot = Boolean(weaponObject.userData.grip_authored_root)
-  if (authoredRoot) {
-    // The exporter baked the weapon into target-local coordinates. Let the
-    // socket carry its normal rotation and scale exactly once.
-    attachment.quaternion.identity()
-    attachment.scale.setScalar(1)
-  } else {
-    attachment.quaternion.copy(socketRotationInRoot).invert()
-    attachment.scale.set(
-      1 / Math.max(Math.abs(socketScaleInRoot.x), 1e-8),
-      1 / Math.max(Math.abs(socketScaleInRoot.y), 1e-8),
-      1 / Math.max(Math.abs(socketScaleInRoot.z), 1e-8),
-    )
+export const normalizeEnvironmentRoot = (root, targetHeight = null) => {
+  root.updateMatrixWorld(true)
+  const bounds = new THREE.Box3().setFromObject(root, true)
+  if (bounds.isEmpty()) return root
+  const size = bounds.getSize(new THREE.Vector3())
+  if (targetHeight && Number.isFinite(targetHeight) && size.y > 0.0001) {
+    root.scale.multiplyScalar(targetHeight / size.y)
+    root.updateMatrixWorld(true)
   }
-  if (localRotation) attachment.rotation.set(...localRotation)
-  if (localPosition) attachment.position.set(...localPosition)
-  // Authored weapon roots already contain the local grip offset exported from
-  // Blender (for Mandy this is the staff's 1.86-unit handle offset). Resetting
-  // that transform moves the mesh away from the authored hand marker. Generic
-  // weapon scenes still need the old zeroed-root behavior below.
-  if (!authoredRoot) weaponObject.position.set(0, 0, 0)
-  weaponObject.userData.attachmentRole = role
-  attachment.add(weaponObject)
-  target.add(attachment)
-  heroRoot.updateMatrixWorld(true)
-  // Authored detached weapon GLBs have their mesh pivot baked at the hand
-  // grip. Do not move them toward the nearest bounding-box point: for a fan,
-  // staff, or speaker that point is often a blade/edge rather than the handle.
-  if (!weaponObject.userData.grip_authored_root) {
-    const gripWorld = target.getWorldPosition(new THREE.Vector3())
-    const weaponBounds = new THREE.Box3().setFromObject(weaponObject, true)
-    if (!weaponBounds.isEmpty() && weaponBounds.distanceToPoint(gripWorld) > .05) {
-      const nearestWorld = weaponBounds.clampPoint(gripWorld, new THREE.Vector3())
-      const gripLocal = attachment.worldToLocal(gripWorld.clone())
-      const nearestLocal = attachment.worldToLocal(nearestWorld)
-      weaponObject.position.add(gripLocal.sub(nearestLocal))
-      heroRoot.updateMatrixWorld(true)
-    }
-  }
-  return attachment
+  const normalized = new THREE.Box3().setFromObject(root, true)
+  const center = normalized.getCenter(new THREE.Vector3())
+  root.position.x -= center.x
+  root.position.y -= normalized.min.y
+  root.position.z -= center.z
+  root.updateMatrixWorld(true)
+  return root
 }
 
-const removeEmbeddedDetachedWeapons = (heroRoot, attachments = []) => {
-  const names = new Set(attachments.map(({name}) => name).filter(Boolean))
-  if (!names.size) return
-  heroRoot.traverse(node => {
-    if (!names.has(node.name)) return
-    node.parent?.remove(node)
-  })
-}
-
-export const attachDetachedWeapon = (heroRoot, weaponScene, attachments = []) => {
-  if (!weaponScene) return []
-  if (attachments.length) {
-    return attachments.flatMap(config => {
-      const target = heroRoot.getObjectByName(config.target || config.bone)
-      const weaponObject = weaponScene.getObjectByName(config.name)
-      if (!target || !weaponObject) return []
-      return [attachWeaponObject(
-        heroRoot,
-        target,
-        weaponObject,
-        config.role,
-        config.name,
-        config.localRotation,
-        config.localPosition,
-      )]
+const applyEnvironmentMaterial = (root, asset) => {
+  if (!asset.unlit && asset.materialColor == null) return
+  root.traverse(node => {
+    if (!node.isMesh || !node.material) return
+    const wasArray = Array.isArray(node.material)
+    const materials = wasArray ? node.material : [node.material]
+    const nextMaterials = materials.map(material => {
+      if (!asset.unlit) {
+        const cloned = material.clone()
+        if (asset.materialColor != null && cloned.color) cloned.color.set(asset.materialColor)
+        return cloned
+      }
+      return new THREE.MeshBasicMaterial({
+        alphaTest: material.alphaTest,
+        color: asset.materialColor ?? material.color,
+        depthTest: material.depthTest,
+        depthWrite: material.depthWrite,
+        map: material.map,
+        opacity: material.opacity,
+        side: THREE.DoubleSide,
+        transparent: material.transparent,
+        vertexColors: material.vertexColors,
+      })
     })
-  }
-  const socket = heroRoot.getObjectByName("weapon_socket_r")
-  if (!socket) return []
-  return [attachWeaponObject(heroRoot, socket, weaponScene, "held-weapon", "Primary")]
+    node.material = wasArray ? nextMaterials : nextMaterials[0]
+  })
 }
 
 export const attachCompanionCloud = (heroRoot, cloudScene) => {
@@ -190,7 +140,6 @@ export class AssetRegistry {
     this.environmentManifest = environmentManifest
     this.load = load || loadWith(new GLTFLoader())
     this.heroLoads = new Map()
-    this.weaponLoads = new Map()
     this.companionLoads = new Map()
     this.readyHeroes = new Set()
     this.environmentLoads = new Map()
@@ -222,20 +171,6 @@ export class AssetRegistry {
       this.heroLoads.set(asset.id, pending)
     }
     return this.heroLoads.get(asset.id)
-  }
-
-  loadHeroWeapon(name) {
-    const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
-    const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
-    if (!asset?.weaponUrl) return Promise.resolve(null)
-    if (!this.weaponLoads.has(asset.id)) {
-      const pending = this.load(asset.weaponUrl).catch(error => {
-        this.weaponLoads.delete(asset.id)
-        throw error
-      })
-      this.weaponLoads.set(asset.id, pending)
-    }
-    return this.weaponLoads.get(asset.id)
   }
 
   loadHeroCompanion(name) {
@@ -284,9 +219,8 @@ export class AssetRegistry {
   async instantiateHero(name) {
     const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
     const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
-    const [gltf, weaponGltf, companionGltf] = await Promise.all([
+    const [gltf, companionGltf] = await Promise.all([
       this.loadHero(resolvedName),
-      this.loadHeroWeapon(resolvedName),
       this.loadHeroCompanion(resolvedName),
     ])
     if (!gltf) return null
@@ -300,19 +234,6 @@ export class AssetRegistry {
         child.receiveShadow = true
       }
     })
-    removeEmbeddedDetachedWeapons(root, asset.weaponAttachments)
-    if (weaponGltf?.scene) {
-      const weaponRoot = clone(weaponGltf.scene)
-      weaponRoot.traverse(child => {
-        if (Array.isArray(child.material)) child.material = child.material.map(material => material.clone())
-        else if (child.material) child.material = child.material.clone()
-        if (child.isMesh) {
-          child.castShadow = true
-          child.receiveShadow = true
-        }
-      })
-      attachDetachedWeapon(root, weaponRoot, asset.weaponAttachments)
-    }
     if (companionGltf?.scene) {
       const cloudRoot = clone(companionGltf.scene)
       cloudRoot.traverse(child => {
@@ -343,15 +264,39 @@ export class AssetRegistry {
       this.environmentLoads.set(visual, pending)
     }
     const gltf = await this.environmentLoads.get(visual)
-    const root = clone(gltf.scene)
+    const sourceRoot = clone(gltf.scene)
+    const root = asset.includeNodes?.length
+      ? this.extractEnvironmentNodes(sourceRoot, asset.includeNodes)
+      : sourceRoot
     root.scale.setScalar(asset.scale)
     root.rotation.y = asset.rotationOffset
+    normalizeEnvironmentRoot(root, asset.targetHeight)
+    applyEnvironmentMaterial(root, asset)
     return {root, animations: gltf.animations || [], asset}
+  }
+
+  extractEnvironmentNodes(root, names) {
+    root.updateMatrixWorld(true)
+    const selected = new THREE.Group()
+    selected.name = `${root.name}:selected`
+    names.forEach(name => {
+      const node = root.getObjectByName(name)
+      if (!node) return
+      const nodeClone = clone(node)
+      const position = new THREE.Vector3()
+      const quaternion = new THREE.Quaternion()
+      const scale = new THREE.Vector3()
+      node.matrixWorld.decompose(position, quaternion, scale)
+      nodeClone.position.copy(position)
+      nodeClone.quaternion.copy(quaternion)
+      nodeClone.scale.copy(scale)
+      selected.add(nodeClone)
+    })
+    return selected
   }
 
   clear() {
     this.heroLoads.clear()
-    this.weaponLoads.clear()
     this.companionLoads.clear()
     this.readyHeroes.clear()
     this.environmentLoads.clear()

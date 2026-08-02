@@ -76,7 +76,6 @@ allowed tolerances.
 **Acceptance criteria**
 
 - No attachment is inferred from a name at runtime.
-- Damian’s microphone and speaker are separate entries.
 - Mandy and Wukong explicitly use their authored left-hand grips.
 
 ### Task 1.2 — Build Blender grip validation
@@ -139,7 +138,6 @@ Process one hero at a time using the approved Wukong pipeline:
 1. Mandy — left-hand staff and closed-hand pose.
 2. Kaze — fan grip and correct wrist/fan plane.
 3. Persephone Lumi — right-hand weapon.
-4. Damian — left microphone plus right throwable speaker and release frame.
 
 Each hero must independently pass all nine Actions and round-trip validation
 before the next hero begins.

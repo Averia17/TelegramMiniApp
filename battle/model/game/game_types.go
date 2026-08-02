@@ -18,7 +18,9 @@ const (
 
 	BattlePhaseSpeed = 2
 	LobbyDuration    = 10 * time.Second / BattlePhaseSpeed
-	GameDuration     = 5 * time.Minute / BattlePhaseSpeed
+	// The beacon is a real final combat phase. Keep the match alive long
+	// enough for sudden death to reduce the field to one survivor.
+	GameDuration = OpeningCombatDuration + ChallengeDuration + CollapseDuration + FinalPhaseDuration
 
 	FlasksCount      = 8
 	LunarCratesCount = 12
@@ -96,11 +98,9 @@ type GameState struct {
 	PendingMandySupers      []*PendingMandySuper
 	HeroZones               []*HeroZone
 	DoomedUntil             map[string]int64
-	DamianDebuffUntil       map[string]int64
 	LightMarkedUntil        map[string]int64
 	AbilityTargets          map[string]string
 	LightningStrikes        []*LightningStrike
-	Totems                  map[string]*Totem
 	Skyfalls                []*Skyfall
 	TemporaryWalls          map[*geometry.WallTile]int64
 	BotMemory               map[string]*BotPerception

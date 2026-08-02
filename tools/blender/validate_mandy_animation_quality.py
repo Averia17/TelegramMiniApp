@@ -56,6 +56,8 @@ B = {
     "upper_l": "L_shoulder_s_044",
     "hand_l": "L_wrist_s_047",
     "upper_r": "R_shoulder_s_061",
+    "elbow_r": "R_elbow_s_062",
+    "forearm_r": "R_forearm_twist_s_063",
     "hand_r": "R_wrist_s_064",
     "thigh_l": "L_upperLeg_s_03",
     "thigh_r": "R_upperLeg_s_07",
@@ -150,6 +152,13 @@ def validate_clip(clip):
         max_pose_step = max(max_pose_step, step)
         max_pose_acceleration = max(max_pose_acceleration, abs(step - previous_step))
         previous_step = step
+    for frame_index, frame in enumerate(frames[1:], start=2):
+        for right_bone in ("upper_r", "elbow_r", "forearm_r", "hand_r"):
+            if vector_delta(frame["pose"][B[right_bone]], frames[0]["pose"][B[right_bone]]) > 0.5:
+                errors.append(
+                    f"right arm leaves the calibrated natural front pose at frame {frame_index}"
+                )
+                break
     if max_pose_step > 115.0:
         errors.append(f"motion step spike {max_pose_step:.1f} degrees/frame")
     if max_pose_acceleration > 120.0:
@@ -184,18 +193,17 @@ def validate_clip(clip):
     elif clip == "run":
         if frames[0]["pose"][B["thigh_l"]][0] * frames[6]["pose"][B["thigh_l"]][0] >= 0:
             errors.append("run does not alternate the left leg")
-        if pose_change(1, 7, "upper_r") < 10.0:
-            errors.append("run right arm is not counter-swinging")
     elif clip == "attack":
         if pose_change(1, 7, "upper_l") < 30.0 or pose_change(7, 17, "upper_l") < 20.0:
             errors.append("attack lacks left-hand windup/return")
         neutral_forward = frames[0]["staff_forward"]
         impact_forward = frames[6]["staff_forward"]
         follow_through_forward = frames[7]["staff_forward"]
-        if (
-            impact_forward < neutral_forward + 0.05
-            or follow_through_forward < neutral_forward + 0.05
-        ):
+        # The source staff is deliberately horizontal at neutral, so compare
+        # against Mandy's body plane rather than requiring a larger centre
+        # distance than neutral. A positive value means the staff centre is in
+        # front of the hips; a negative value is the actual behind-the-body bug.
+        if impact_forward < 0.35 or follow_through_forward < 0.35:
             errors.append("attack staff stays behind Mandy at impact")
     elif clip == "super":
         roots = [frame["root_up"] for frame in frames]

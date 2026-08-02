@@ -17,13 +17,21 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SCENES = ROOT / "frontend" / "assets-source" / "heroes" / "mandy" / "scenes"
 DURATIONS = {
-    "idle": 90, "run": 20, "attack": 16, "super": 50, "aim": 60,
-    "aim-super": 60, "hit": 12, "death": 40, "spawn": 45, "victory": 60,
-    "gadget": 16, "aim-gadget": 60,
+    "idle": 90,
+    "run": 20,
+    "attack": 16,
+    "super": 50,
+    "aim": 60,
+    "aim-super": 60,
+    "hit": 12,
+    "death": 40,
+    "spawn": 45,
+    "victory": 60,
+    "gadget": 16,
+    "aim-gadget": 60,
 }
 
 
@@ -51,7 +59,9 @@ def setup_scene():
     scene.display.shading.color_type = "MATERIAL"
     staff = bpy.data.objects.get("MandyStaff_Attachment")
     if staff and staff.type == "MESH":
-        material = bpy.data.materials.get("MandyFullQAStaff") or bpy.data.materials.new("MandyFullQAStaff")
+        material = bpy.data.materials.get("MandyFullQAStaff") or bpy.data.materials.new(
+            "MandyFullQAStaff"
+        )
         material.diffuse_color = (0.85, 0.05, 0.04, 1.0)
         staff.data.materials.clear()
         staff.data.materials.append(material)
@@ -63,8 +73,20 @@ def setup_scene():
         points.extend(obj.matrix_world @ Vector(corner) for corner in obj.bound_box)
     if not points:
         raise RuntimeError("no visible meshes")
-    low = Vector((min(point.x for point in points), min(point.y for point in points), min(point.z for point in points)))
-    high = Vector((max(point.x for point in points), max(point.y for point in points), max(point.z for point in points)))
+    low = Vector(
+        (
+            min(point.x for point in points),
+            min(point.y for point in points),
+            min(point.z for point in points),
+        )
+    )
+    high = Vector(
+        (
+            max(point.x for point in points),
+            max(point.y for point in points),
+            max(point.z for point in points),
+        )
+    )
     center = (low + high) * 0.5
     radius = max((high - low).length * 0.5, 1.0)
     floor_mesh = bpy.data.meshes.new("MandyFullQAFloorMesh")
@@ -72,14 +94,22 @@ def setup_scene():
     bpy.context.collection.objects.link(floor)
     z = low.z - 0.02
     floor_mesh.from_pydata(
-        [(-radius * 2, -radius * 2, z), (radius * 2, -radius * 2, z),
-         (radius * 2, radius * 2, z), (-radius * 2, radius * 2, z)], [], [(0, 1, 2, 3)]
+        [
+            (-radius * 2, -radius * 2, z),
+            (radius * 2, -radius * 2, z),
+            (radius * 2, radius * 2, z),
+            (-radius * 2, radius * 2, z),
+        ],
+        [],
+        [(0, 1, 2, 3)],
     )
     camera_data = bpy.data.cameras.new("MandyFullQACamera")
     camera = bpy.data.objects.new("MandyFullQACamera", camera_data)
     bpy.context.collection.objects.link(camera)
     camera.location = center + Vector((radius * 1.65, -radius * 2.35, radius * 0.72))
-    camera.rotation_euler = (center - camera.location).to_track_quat("-Z", "Y").to_euler()
+    camera.rotation_euler = (
+        (center - camera.location).to_track_quat("-Z", "Y").to_euler()
+    )
     camera.data.lens = 58
     scene.camera = camera
     return scene

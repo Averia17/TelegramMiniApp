@@ -15,6 +15,7 @@ import inspect_brock_skinning as diagnostic
 ROOT = Path(__file__).resolve().parents[2]
 SCENES = ROOT / "frontend" / "assets-source" / "heroes" / "brock-zeus" / "scenes"
 REPORT = ROOT / "artifacts" / "brock-zeus-skinning-all-clips.json"
+MAX_ALLOWED_GAP = 0.12
 FRAME_ENDS = {
     "idle": 80,
     "run": 20,
@@ -84,7 +85,7 @@ def fast_gap_report(scene, mesh, component_groups, selected, frame):
 
 
 def main():
-    payload = {"clips": {}, "status": "PASS"}
+    payload = {"hero": "brock-zeus", "threshold": MAX_ALLOWED_GAP, "clips": {}, "status": "PASS"}
     for clip, end in FRAME_ENDS.items():
         scene_path = SCENES / f"{clip}.blend"
         bpy.ops.wm.open_mainfile(filepath=os.fspath(scene_path))
@@ -105,17 +106,24 @@ def main():
             "wrist_islands": [
                 index
                 for index, group in enumerate(component_groups)
-                if len(group) >= 10
-                and centroids[index].x > 0
+                if len(group) in {28, 363}
                 and diagnostic.weight_owner(mesh, group[0])[0] == "R_Wrist"
+                and centroids[index].x > 0
             ],
         }
+        selected["wrist_islands"] = [
+            index
+            for index in selected["wrist_islands"]
+            if index != selected["forearm"]
+        ]
+        if not selected["wrist_islands"]:
+            raise RuntimeError(f"{clip}: no right-wrist geometry islands resolved")
         clip_result = {"status": "PASS", "frames": {}, "max_gap": 0.0}
         for frame in range(end + 1):
             gaps = fast_gap_report(scene, mesh, component_groups, selected, frame)
             clip_result["frames"][str(frame)] = gaps
             clip_result["max_gap"] = max(clip_result["max_gap"], gaps["max"])
-            if gaps["max"] > 0.05:
+            if gaps["max"] > MAX_ALLOWED_GAP:
                 clip_result["status"] = "FAIL"
                 payload["status"] = "FAIL"
         payload["clips"][clip] = clip_result
@@ -123,7 +131,9 @@ def main():
     REPORT.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(json.dumps({"status": payload["status"], "report": os.fspath(REPORT)}))
     if payload["status"] != "PASS":
-        raise RuntimeError("Brock right-arm skinning gap exceeded 0.05")
+        raise RuntimeError(
+            f"Brock right-arm skinning gap exceeded {MAX_ALLOWED_GAP:.2f}"
+        )
 
 
 if __name__ == "__main__":

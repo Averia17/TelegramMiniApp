@@ -14,7 +14,6 @@ const HERO_DISPLAY_NAMES = {
   "Brock Zeus": "BROCK ZEUS",
   Kaze: "KAZE",
   "Wukong Mico": "WUKONG MICO",
-  Damian: "DAMIAN",
   "Persephone Lumi": "PERSEPHONE LUMI",
 }
 const heroDisplay = hero => HERO_DISPLAY_NAMES[hero?.name] || hero?.name

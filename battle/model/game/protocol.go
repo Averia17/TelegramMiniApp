@@ -50,7 +50,6 @@ type StateUpdate struct {
 	Bullets      []BulletJSON           `json:"bullets"`
 	Props        []PropJSON             `json:"props"`
 	Effects      []EffectJSON           `json:"effects,omitempty"`
-	Totems       []TotemJSON            `json:"totems,omitempty"`
 	CombatEvents []CombatEventJSON      `json:"combatEvents,omitempty"`
 }
 
@@ -66,14 +65,6 @@ type CombatEventJSON struct {
 	Damage       int    `json:"damage,omitempty"`
 	Accepted     bool   `json:"accepted,omitempty"`
 	Resolved     bool   `json:"resolved,omitempty"`
-}
-
-type TotemJSON struct {
-	Owner string  `json:"owner"`
-	X     float64 `json:"x"`
-	Y     float64 `json:"y"`
-	HP    int     `json:"hp"`
-	MaxHP int     `json:"maxHp"`
 }
 
 type EffectJSON struct {

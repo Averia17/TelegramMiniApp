@@ -51,7 +51,6 @@ var heroKits = map[string]HeroKit{
 	"Brock Zeus":      {Basic: AbilityDefinition{"thunder_projectile", "Грозовой снаряд", "Взрывной снаряд разрушает стены.", "basic", "projectile"}, Super: AbilityDefinition{"gods_hammer", "Молот богов", "Три удара молнии создают горящую зону.", "primary", "server"}, Gadget: AbilityDefinition{"discharge_cable", "Разрядный кабель", "Следующий выстрел становится пробивающим лучом.", "secondary", "server"}},
 	"Kaze":            {Basic: AbilityDefinition{"cross_slash", "Косые удары", "Два попадания открывают усиленный третий удар.", "basic", "melee"}, Super: AbilityDefinition{"piercing_dash", "Пронзающий рывок", "Рывок помечает врагов и усиливает получаемый ими урон.", "primary", "server"}, Gadget: AbilityDefinition{"vanish", "Исчезновение", "Невидимость гарантирует критический первый удар.", "secondary", "server"}},
 	"Wukong Mico":     {Basic: AbilityDefinition{"heavy_staff", "Тяжёлый посох", "Попадания накапливают Ярость.", "basic", "melee"}, Super: AbilityDefinition{"vengeance_vortex", "Вихрь возмездия", "Вихрь расходует Ярость и наносит урон вокруг.", "primary", "server"}, Gadget: AbilityDefinition{"stone_armor", "Каменная броня", "Щит накапливает урон и взрывается после окончания.", "secondary", "server"}},
-	"Damian":          {Basic: AbilityDefinition{"blight_orb", "Сфера скверны", "Попадания снижают исходящий урон врага.", "basic", "projectile"}, Super: AbilityDefinition{"soul_totem", "Тотем душ", "Тотем автономно атакует ближайшего врага.", "primary", "server"}, Gadget: AbilityDefinition{"exchange", "Обмен", "Меняет место с тотемом и взрывает его.", "secondary", "server"}},
 	"Persephone Lumi": {Basic: AbilityDefinition{"luminous_trail", "Световой след", "След замедляет и раскрывает врагов.", "basic", "projectile"}, Super: AbilityDefinition{"root_garden", "Сад корней", "Поле корней обездвиживает вошедших врагов.", "primary", "server"}, Gadget: AbilityDefinition{"flower_burst", "Цветочный взрыв", "Взрывает активный след или сад.", "secondary", "server"}},
 }
 
@@ -62,7 +61,6 @@ var Heroes = withHeroKits(withAttackConfigs([]Hero{
 	{Name: "Brock Zeus", Color: "#62C8FF", Radius: 14, MaxLives: 620, Speed: 12, AttackDamage: 80, AttackRate: 520, ReloadTime: 1800, MaxAmmo: 3, BulletSpeed: 36, BulletSize: 8, AttackType: "zeus_lightning", Role: "Sharpshooter", RegenRate: .009, Desc: "Explosive lightning and a wall-breaking storm"},
 	{Name: "Kaze", Color: "#B88CFF", Radius: 12, MaxLives: 650, Speed: 16, AttackDamage: 40, AttackRate: 220, ReloadTime: 850, MaxAmmo: 3, AttackType: "kaze_cross_slash", Role: "Assassin", RegenRate: .011, Desc: "Rapid twin slash and an eight-tile piercing dash"},
 	{Name: "Wukong Mico", Color: "#FFB33E", Radius: 15, MaxLives: 900, Speed: 13, AttackDamage: 85, AttackRate: 650, ReloadTime: 1750, MaxAmmo: 3, AttackType: "mico_staff", Role: "Tank", RegenRate: .010, Desc: "Heavy close-range staff swings without forced movement"},
-	{Name: "Damian", Color: "#8D52D9", Radius: 13, MaxLives: 640, Speed: 13, AttackDamage: 75, AttackRate: 430, ReloadTime: 1550, MaxAmmo: 3, BulletSpeed: 31, BulletSize: 9, AttackType: "damian_dark_orb", Role: "Summoner", RegenRate: .010, Desc: "Dark projectiles and an autonomous soul totem"},
 	{Name: "Persephone Lumi", Color: "#D954A8", Radius: 13, MaxLives: 680, Speed: 13, AttackDamage: 70, AttackRate: 470, ReloadTime: 1600, MaxAmmo: 3, BulletSpeed: 28, BulletSize: 10, AttackType: "lumi_trail_orb", Role: "Controller", RegenRate: .010, Desc: "Slow trails and a rooting garden"},
 }))
 
@@ -81,8 +79,6 @@ func withHeroKits(heroes []Hero) []Hero {
 		case "Wukong Mico":
 			kit.Basic.Description = "Тяжёлый удар посохом наносит стабильный урон без накопления ярости."
 			kit.Super.Description = "Вихрь возмездия длится 5 секунд и наносит урон вокруг героя."
-		case "Damian":
-			kit.Basic.Description = "Сфера скверны ослабляет поражённого врага на 4 секунды."
 		}
 		heroes[index].Kit = kit
 	}

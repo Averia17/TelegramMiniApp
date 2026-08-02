@@ -247,7 +247,6 @@ def validate() -> list[str]:
             "sourceMaster",
             "sceneDirectory",
             "runtimeHero",
-            "runtimeWeapon",
         ):
             asset_path = hero.get("assets", {}).get(asset_key)
             if asset_path and not (ROOT / asset_path).exists():

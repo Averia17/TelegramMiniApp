@@ -12,7 +12,6 @@ type MinaKit struct{}
 type BrockZeusKit struct{}
 type KazeKit struct{}
 type WukongMicoKit struct{}
-type DamianKit struct{}
 type PersephoneLumiKit struct{}
 
 const (
@@ -24,7 +23,6 @@ const (
 	KazeEmpowerInterval           = 3 * time.Second
 	KazeEmpoweredDamageMultiplier = 1.75
 	MicoVortexDuration            = 5 * time.Second
-	DamianDebuffDuration          = 4 * time.Second
 )
 
 func cappedSkillDuration(duration time.Duration) int64 {
@@ -51,13 +49,6 @@ type LightningStrike struct {
 	Impact    int
 }
 
-type Totem struct {
-	Owner                 string
-	X, Y                  float64
-	HP                    int
-	ExpiresAt, NextShotAt int64
-}
-
 type Skyfall struct {
 	Owner   string
 	X, Y    float64
@@ -72,8 +63,6 @@ func (KazeKit) AimShape() string               { return "cone" }
 func (KazeKit) AttackRange() float64           { return 105 }
 func (WukongMicoKit) AimShape() string         { return "cone" }
 func (WukongMicoKit) AttackRange() float64     { return 120 }
-func (DamianKit) AimShape() string             { return "line" }
-func (DamianKit) AttackRange() float64         { return 640 }
 func (PersephoneLumiKit) AimShape() string     { return "line" }
 func (PersephoneLumiKit) AttackRange() float64 { return 600 }
 
@@ -175,18 +164,6 @@ func (WukongMicoKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ f
 	return true
 }
 
-func (DamianKit) Basic(gs *GameState, p *player.Player, _ int64, angle, _ float64) {
-	gs.spawnAttackBullet(p, angle, "damian_orb", p.AttackDmg, p.BulletSpd, p.BulletSz, 640, 0, false, false)
-}
-func (DamianKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
-	distance = math.Max(55, math.Min(280, distance))
-	x, y := p.X+math.Cos(angle)*distance, p.Y+math.Sin(angle)*distance
-	body := gs.Map.ClampCircle(&geometry.CircleBody{X: x, Y: y, Radius: 20})
-	gs.Totems[p.PlayerId] = &Totem{Owner: p.PlayerId, X: body.X, Y: body.Y, HP: 300, ExpiresAt: ts + cappedSkillDuration(MaxHeroSkillDuration), NextShotAt: ts + 500}
-	gs.addEffect("damian_totem_spawn", body.X, body.Y, 0, 0, 28, 0, 0, 0, p.Color, 0, 700)
-	return true
-}
-
 func (PersephoneLumiKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64) {
 	shot := gs.spawnAttackBullet(p, angle, "lumi_orb", p.AttackDmg, p.BulletSpd, p.BulletSz, 600, 0, false, false)
 	shot.SpawnedAt = ts
@@ -263,21 +240,6 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 	case "Kaze":
 		p.StealthUntil = ts + cappedSkillDuration(3*time.Second)
 		gs.addEffect("kaze_veil_step", p.X, p.Y, 0, 0, 74, p.Rotation, 0, 0, "#d7b8ff", 0, 700)
-	case "Damian":
-		totem := gs.Totems[p.PlayerId]
-		if totem == nil {
-			return false
-		}
-		p.X, totem.X = totem.X, p.X
-		p.Y, totem.Y = totem.Y, p.Y
-		for _, target := range gs.Players {
-			if target.CanBulletHurt(p.PlayerId, p.Team) && math.Hypot(target.X-p.X, target.Y-p.Y) <= 105+target.Radius {
-				missing := math.Max(0, float64(target.MaxLives-target.Lives))
-				gs.dealPlayerDamage(p, target, 8+int(math.Round(missing*.12)))
-			}
-		}
-		p.HasteUntil = ts + 2000
-		gs.addEffect("damian_swap", p.X, p.Y, totem.X, totem.Y, 45, 0, 0, 0, p.Color, 0, 500)
 	case "Persephone Lumi":
 		detonated := false
 		keptZones := gs.HeroZones[:0]
@@ -426,35 +388,6 @@ func (gs *GameState) updateNewHeroSystems() {
 		}
 	}
 	gs.Skyfalls = falls
-	for owner, t := range gs.Totems {
-		if t == nil || t.HP <= 0 || now >= t.ExpiresAt {
-			delete(gs.Totems, owner)
-			continue
-		}
-		if now < t.NextShotAt {
-			continue
-		}
-		source := gs.Players[owner]
-		if source == nil {
-			delete(gs.Totems, owner)
-			continue
-		}
-		var best *player.Player
-		bestD := 420.0
-		for _, candidate := range gs.Players {
-			if candidate.CanBulletHurt(source.PlayerId, source.Team) {
-				if d := math.Hypot(candidate.X-t.X, candidate.Y-t.Y); d < bestD {
-					best, bestD = candidate, d
-				}
-			}
-		}
-		if best != nil {
-			ghost := *source
-			ghost.X, ghost.Y = t.X, t.Y
-			gs.spawnAttackBullet(&ghost, math.Atan2(best.Y-t.Y, best.X-t.X), "damian_totem_orb", 40, 16*RuntimeProjectileSpeedScale, 7, 430, 0, false, false)
-		}
-		t.NextShotAt = now + 850
-	}
 }
 
 func (gs *GameState) finishNewHeroProjectile(b *bullet.Bullet) {

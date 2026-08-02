@@ -14,10 +14,11 @@ const readGlbJson = async url => {
   return JSON.parse(buffer.toString("utf8", 20, 20 + jsonLength))
 }
 
-test("Kaze publishes twelve authored actions and a detached left/right weapon pair", async () => {
+test("Kaze publishes twelve authored actions and an embedded left/right weapon pair", async () => {
   const asset = HERO_ASSETS.Kaze
   assert.equal(asset.clips.aimGadget, "AimGadget")
-  assert.equal(asset.weaponUrl, "/assets/heroes/output_weapons/kaze_weapon.glb")
+  assert.equal("weaponUrl" in asset, false)
+  assert.equal("weaponAttachments" in asset, false)
 
   const character = await readGlbJson(asset.url)
   assert.deepEqual(
@@ -26,14 +27,8 @@ test("Kaze publishes twelve authored actions and a detached left/right weapon pa
   )
 
   const characterNodes = new Set((character.nodes || []).map(node => node.name).filter(Boolean))
-  assert.equal(characterNodes.has("HeroAttachment_FanLeft"), false)
-  assert.equal(characterNodes.has("HeroAttachment_FanRight"), false)
+  assert.equal(characterNodes.has("HeroAttachment_FanLeft"), true)
+  assert.equal(characterNodes.has("HeroAttachment_FanRight"), true)
   assert.equal(characterNodes.has("Grip.Primary.HeroAttachment_FanLeft"), true)
   assert.equal(characterNodes.has("Grip.Primary.HeroAttachment_FanRight"), true)
-
-  const weapons = await readGlbJson(asset.weaponUrl)
-  assert.deepEqual(
-    [...new Set((weapons.nodes || []).map(node => node.name))].sort(),
-    ["HeroAttachment_FanLeft", "HeroAttachment_FanRight"].sort(),
-  )
 })

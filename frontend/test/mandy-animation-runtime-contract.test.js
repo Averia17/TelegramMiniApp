@@ -13,7 +13,6 @@ const manifestPath = path.join(repoRoot, "tools/blender/hero_animation_scene_man
 const catalogPath = path.join(repoRoot, "docs/hero-catalog.json")
 const sceneRoot = path.join(frontendRoot, "assets-source/heroes/mandy/scenes")
 const runtimePath = path.join(frontendRoot, "public/assets/heroes/output_heroes/mandy_base.glb")
-const weaponPath = path.join(frontendRoot, "public/assets/heroes/output_weapons/mandy_weapon.glb")
 
 const expectedScenes = [
   "idle", "run", "attack", "super", "aim", "aim-super", "hit", "death",
@@ -35,11 +34,8 @@ test("Mandy exposes the left-hand staff and AimGadget runtime clip", async () =>
     "idle", "run", "attack", "super", "aim", "aim-super", "hit", "death",
     "spawn", "victory", "aim-gadget",
   ])
-  assert.equal(HERO_ASSETS.Mandy.weaponAttachments[0].target, "GripPrimaryMandyStaff_Attachment")
-  assert.deepEqual(HERO_ASSETS.Mandy.weaponAttachments[0].localRotation, [
-    0, 0, 0,
-  ])
-  assert.deepEqual(HERO_ASSETS.Mandy.weaponAttachments[0].localPosition, [0, 0, 0])
+  assert.equal("weaponUrl" in HERO_ASSETS.Mandy, false)
+  assert.equal("weaponAttachments" in HERO_ASSETS.Mandy, false)
   assert.equal(HERO_ASSETS.Mandy.clips.aimGadget, "AimGadget")
 })
 
@@ -85,7 +81,9 @@ test("Mandy authoring contract uses +1 Blender frames and FK foot slide", async 
   assert.match(authoring, /staff_hand.*L_wrist_s_047|hand_l.*L_wrist_s_047/)
   assert.match(authoring, /FINGER_BONES\s*=\s*\{[\s\S]*L_index_01_s_050[\s\S]*R_index_01_s_067/)
   assert.match(authoring, /scene\.frame_set\(20\)/)
-  assert.match(authoring, /staff\.location\.z \+=/)
+  assert.match(authoring, /preserve the exact source transforms/i)
+  assert.match(authoring, /apply_natural_right_arm_pose/)
+  assert.match(authoring, /authored relaxed wrist\/finger\s+shape/i)
   assert.doesNotMatch(authoring, /pivot\.scale = \(0\.52, 0\.52, 0\.52\)/)
   assert.match(authoring, /right_hand_contact.*forbidden/)
   assert.doesNotMatch(authoring, /root_z=/)
@@ -103,19 +101,14 @@ test("Mandy GLB contains all twelve canonical Actions", async () => {
 
 test("Mandy staff marker survives GLTFLoader name normalization", async () => {
   const document = glbJson(await readFile(runtimePath))
-  const weaponDocument = glbJson(await readFile(weaponPath))
   const nodes = document.nodes || []
-  const weaponRoot = (weaponDocument.nodes || []).find(node => node.name === "MandyStaff_Attachment")
   const staff = nodes.find(node => node.name === "MandyStaff_Attachment" && node.extras?.attachment_role === "held-weapon")
   const marker = nodes.find(node => node.name === "Grip.Primary.MandyStaff_Attachment")
   const gripBoneIndex = nodes.findIndex(node => node.name === staff?.extras?.grip_bone)
   const markerParentIndex = nodes.findIndex(node => node.children?.includes(nodes.indexOf(marker)))
   assert.ok(staff?.mesh !== undefined)
-  assert.equal(weaponRoot?.extras?.grip_authored_root, true)
   assert.ok(marker)
   assert.equal(markerParentIndex, gripBoneIndex)
-  assert.equal(marker.name.replaceAll(".", ""), HERO_ASSETS.Mandy.weaponAttachments[0].target)
-
-  assert.ok(weaponRoot)
-  assert.equal(weaponRoot?.extras?.grip_bone, "L_wrist_s_047")
+  assert.equal(marker.name.replaceAll(".", ""), "GripPrimaryMandyStaff_Attachment")
+  assert.equal(staff?.extras?.grip_bone, "L_wrist_s_047")
 })

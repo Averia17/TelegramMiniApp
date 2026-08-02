@@ -1,8 +1,7 @@
 import * as THREE from "three"
-import {clone} from "three/addons/utils/SkeletonUtils.js"
 import {WORLD_SCALE} from "../shared/coordinates.js"
 import {createColoredBox, createContactShadow, flatMaterial} from "../shared/materials.js"
-import {getEnvironmentPlacements} from "./environmentPlacement.js"
+import {createEnvironmentModel} from "./environmentPlacement.js"
 
 const propColors = {
   fence: 0x8b5436,
@@ -47,13 +46,4 @@ export const createProp = (wall, index, waterTexture) => {
   return group
 }
 
-export const createEnvironmentModel = (instance, wall) => {
-  const group = new THREE.Group()
-  getEnvironmentPlacements(wall, instance.asset, WORLD_SCALE).forEach((position, index) => {
-    const model = index === 0 ? instance.root : clone(instance.root)
-    model.position.x += position.x
-    model.position.z += position.z
-    group.add(model)
-  })
-  return {root: group, asset: instance.asset}
-}
+export {createEnvironmentModel}

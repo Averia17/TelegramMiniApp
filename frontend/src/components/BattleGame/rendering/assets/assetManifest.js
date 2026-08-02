@@ -17,44 +17,9 @@ const kazeClips = Object.freeze({...clips, aimGadget: "AimGadget"})
 const mandyClips = Object.freeze({...clips, aimGadget: "AimGadget"})
 const brockZeusClips = Object.freeze({...clips, aimGadget: "AimGadget"})
 
-const detachedWeapons = new Set(["damian", "kaze", "mandy", "persephone-lumi", "wukong-mico"])
-const weaponAttachments = Object.freeze({
-  damian: Object.freeze([
-    Object.freeze({name: "HeroAttachment_Microphone", target: "GripPrimaryHeroAttachment_Microphone", role: "held-weapon"}),
-    Object.freeze({name: "HeroAttachment_Speaker", target: "GripPrimaryHeroAttachment_Speaker", role: "throwable-weapon"}),
-  ]),
-  kaze: Object.freeze([
-    Object.freeze({name: "HeroAttachment_FanLeft", target: "GripPrimaryHeroAttachment_FanLeft", role: "held-weapon"}),
-    Object.freeze({name: "HeroAttachment_FanRight", target: "GripPrimaryHeroAttachment_FanRight", role: "held-weapon"}),
-  ]),
-  mandy: Object.freeze([
-    Object.freeze({
-      name: "MandyStaff_Attachment",
-      target: "GripPrimaryMandyStaff_Attachment",
-      role: "held-weapon",
-      // The detached source is authored at the left-palm grip origin. Do not
-      // add a runtime offset: the marker and the weapon root must coincide.
-      // The standalone GLB keeps the source pivot orientation from
-      // mandy.blend, so the runtime attachment needs no extra rotation.
-      localRotation: [0, 0, 0],
-      localPosition: [0, 0, 0],
-    }),
-  ]),
-  "persephone-lumi": Object.freeze([
-    Object.freeze({name: "HeroAttachment_WeaponHeld", target: "GripPrimaryHeroAttachment_WeaponHeld", role: "held-weapon"}),
-  ]),
-  "wukong-mico": Object.freeze([
-    Object.freeze({name: "HeroAttachment_Staff", target: "GripPrimaryHeroAttachment_Staff", role: "held-weapon"}),
-  ]),
-})
-
 const hero = (id, scale = 0.92, rotationOffset = 0, assetId = id.toLowerCase(), clipSet = clips) => Object.freeze({
   id,
   url: `/assets/heroes/output_heroes/${assetId}_base.glb`,
-  weaponUrl: detachedWeapons.has(assetId)
-    ? `/assets/heroes/output_weapons/${assetId}_weapon.glb`
-    : null,
-  weaponAttachments: weaponAttachments[assetId] || Object.freeze([]),
   available: true,
   scale,
   targetHeight: 2.45,
@@ -73,26 +38,29 @@ export const HERO_ASSETS = Object.freeze({
   }),
   Kaze: hero("Kaze", 0.92, 0, "kaze", kazeClips),
   "Wukong Mico": hero("Wukong Mico", 0.92, 0, "wukong-mico"),
-  Damian: Object.freeze({...hero("Damian"), groundOffset: 0.25}),
   "Persephone Lumi": hero("Persephone Lumi", 0.92, 0, "persephone-lumi"),
 })
 
-const environment = (id, placement, footprint = 40, scale = 1, rotationOffset = 0) => Object.freeze({
+const environment = (id, placement, footprint = 40, scale = 1, rotationOffset = 0, targetHeight = null, available = false, extras = {}) => Object.freeze({
   id,
   url: `/assets/environment/${id}.glb`,
-  available: false,
+  available,
   placement,
   footprint,
   scale,
   rotationOffset,
+  targetHeight,
+  ...extras,
 })
 
 export const ENVIRONMENT_ASSETS = Object.freeze({
-  desert_wall_a: environment("desert_wall_a", "repeat"),
-  crate_a: environment("crate_a", "repeat"),
+  desert_wall_a: environment("stylized_low_poly_stone_block", "repeat", 40, 1, 0, 1.55, true, {fitToCell: true}),
+  bush_a: environment("stylized_bush", "repeat", 40, 1, 0, 1.35, true, {fitToCell: true, unlit: true}),
   barrel_a: environment("barrel_a", "single"),
   cactus_a: environment("cactus_a", "single"),
-  bush_a: environment("bush_a", "repeat"),
+  altar_three_moons: environment("elf_lord_temple", "single", 40, 1, 0, 2.6, true, {includeNodes: ["StatueDeity2", "Circularbase", "Cubicplatform"]}),
+  sacrificial_stone: environment("stylized_stones_props", "single", 40, 1, 0, 1.45, true),
+  menhir: environment("stylized_stones_props", "single", 40, 1, 0, 1.55, true),
 })
 
 export const getHeroAsset = name => HERO_ASSETS[name] || null
@@ -105,7 +73,6 @@ const HERO_QUERY_ALIASES = Object.freeze({
   "brock-zeus": "Brock Zeus",
   kaze: "Kaze",
   "wukong-mico": "Wukong Mico",
-  damian: "Damian",
   "persephone-lumi": "Persephone Lumi",
 })
 
@@ -117,12 +84,22 @@ export const resolveHeroName = name => {
 const visualsByType = Object.freeze({
   wall: "desert_wall_a",
   destructible: "desert_wall_a",
-  crates: "crate_a",
-  barrels: "barrel_a",
-  cactus: "cactus_a",
+  tree: "desert_wall_a",
+  dead_tree: "desert_wall_a",
+  shipwreck: "desert_wall_a",
+  crates: "desert_wall_a",
+  barrels: "desert_wall_a",
   bush: "bush_a",
   half: "bush_a",
+  altar_three_moons: "altar_three_moons",
+  sacrificial_stone: "sacrificial_stone",
+  menhir: "menhir",
+  cactus: "cactus_a",
 })
 
-export const resolveEnvironmentVisual = object =>
-  object.visual || visualsByType[object.type] || null
+export const resolveEnvironmentVisual = object => {
+  // Old map payloads may still carry the retired chest visual. Keep the
+  // gameplay type intact, but normalize that stale visual to the stone block.
+  if (object.visual === "crate_a") return visualsByType[object.type] || null
+  return object.visual || visualsByType[object.type] || null
+}

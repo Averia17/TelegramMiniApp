@@ -20,7 +20,6 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 HEROES = (
     "brock-zeus",
-    "damian",
     "fairy-mina",
     "kaze",
     "mandy",

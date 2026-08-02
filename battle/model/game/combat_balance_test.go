@@ -29,7 +29,6 @@ func TestHeroBurstBudgetLeavesCounterplay(t *testing.T) {
 		"Brock Zeus":      {1, 1, 180, 60},
 		"Kaze":            {2, 1, 240, 0},
 		"Wukong Mico":     {1, 1, 140, 72},
-		"Damian":          {1, 1, 120, 0},
 		"Persephone Lumi": {1, 1, 35, 0},
 	}
 

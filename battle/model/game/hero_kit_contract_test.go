@@ -25,7 +25,6 @@ func TestHitThresholdDescriptionsAreReplacedWithTimedRules(t *testing.T) {
 		"Needle":      "Споровый шип сразу замедляет поражённых врагов на 2 секунды.",
 		"Kaze":        "Косые удары: усиленный удар доступен раз в 3 секунды.",
 		"Wukong Mico": "Тяжёлый удар посохом наносит стабильный урон без накопления ярости.",
-		"Damian":      "Сфера скверны ослабляет поражённого врага на 4 секунды.",
 	}
 	for heroName, want := range checks {
 		hero := GetHeroByName(heroName)

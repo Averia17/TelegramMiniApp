@@ -3,7 +3,7 @@ package game
 import "testing"
 
 func TestEveryHeroHasServerAuthoritativeAttackConfig(t *testing.T) {
-	expected := []string{"Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"}
+	expected := []string{"Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi"}
 	if len(Heroes) != len(expected) {
 		t.Fatalf("heroes = %d, want %d", len(Heroes), len(expected))
 	}

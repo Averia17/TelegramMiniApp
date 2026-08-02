@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
+  <title>Environment GLB QA Harness</title>
+  <style>
+    html, body { margin: 0; min-height: 100%; background: #d6a35e; }
+    body { overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; }
+    #state { position: fixed; left: 18px; top: 16px; z-index: 1; padding: 9px 13px; border-radius: 10px; background: #17213bcc; color: #fff; font: 800 14px system-ui; }
+    #legend { position: fixed; left: 18px; bottom: 16px; z-index: 1; display: flex; gap: 8px; flex-wrap: wrap; max-width: calc(100vw - 36px); color: #fff; font: 700 12px system-ui; }
+    #legend span { padding: 7px 9px; border-radius: 8px; background: #17213bcc; }
+  </style>
+</head>
+<body>
+  <div id="state">Loading environment GLBs…</div>
+  <div id="legend"></div>
+  <canvas id="scene"></canvas>
+  <script type="module">
+    import * as THREE from "three"
+    import {clone} from "three/addons/utils/SkeletonUtils.js"
+    import {assetRegistry} from "/src/components/BattleGame/rendering/assets/AssetRegistry.js"
+
+    const entries = [
+      ["desert_wall_a", "Walls / destructible"],
+      ["altar_three_moons", "Three moons altar"],
+      ["sacrificial_stone", "Sacrificial stone"],
+      ["menhir", "Menhir"],
+    ]
+    const canvas = document.querySelector("#scene")
+    const state = document.querySelector("#state")
+    const legend = document.querySelector("#legend")
+    const renderer = new THREE.WebGLRenderer({canvas, antialias: true})
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+    renderer.outputColorSpace = THREE.SRGBColorSpace
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap
+
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color(0x78a95c)
+    scene.fog = new THREE.Fog(0x78a95c, 10, 28)
+    const camera = new THREE.PerspectiveCamera(34, 1, .1, 50)
+    camera.position.set(0, 4.2, 11)
+    camera.lookAt(0, 1.1, 0)
+    scene.add(new THREE.HemisphereLight(0xdaf1ff, 0x4c3528, 2.1))
+    const sun = new THREE.DirectionalLight(0xfff3df, 3.2)
+    sun.position.set(-5, 9, 7)
+    sun.castShadow = true
+    sun.shadow.mapSize.set(1024, 1024)
+    scene.add(sun)
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(24, 8),
+      new THREE.MeshStandardMaterial({color: 0x4e874b, roughness: 1}),
+    )
+    ground.rotation.x = -Math.PI / 2
+    ground.receiveShadow = true
+    scene.add(ground)
+
+    const resize = () => {
+      renderer.setSize(innerWidth, innerHeight, false)
+      camera.aspect = innerWidth / innerHeight
+      camera.updateProjectionMatrix()
+    }
+    addEventListener("resize", resize)
+    resize()
+
+    try {
+      const loaded = await Promise.all(entries.map(async ([visual, label], index) => {
+        const instance = await assetRegistry.instantiateEnvironment(visual)
+        if (!instance) throw new Error(`Missing ${visual}`)
+        const model = index === 0 ? instance.root : clone(instance.root)
+        model.position.x = (index - (entries.length - 1) / 2) * 2.25
+        model.castShadow = true
+        model.receiveShadow = true
+        model.traverse(node => {
+          if (!node.isMesh) return
+          node.castShadow = true
+          node.receiveShadow = true
+        })
+        scene.add(model)
+        const chip = document.createElement("span")
+        chip.textContent = label
+        legend.append(chip)
+        return {visual, label, model}
+      }))
+      state.textContent = `${loaded.length}/${entries.length} GLBs loaded — normalized and grounded`
+      window.qa = {entries: loaded.map(({visual, label, model}) => ({visual, label, model}))}
+    } catch (error) {
+      state.textContent = `Environment load failed: ${error.message}`
+      console.error(error)
+    }
+
+    const clock = new THREE.Clock()
+    renderer.setAnimationLoop(() => {
+      const delta = clock.getDelta()
+      scene.traverse(node => {
+        if (node.userData?.qaSpin) node.rotation.y += delta * .3
+      })
+      renderer.render(scene, camera)
+    })
+  </script>
+</body>
+</html>

@@ -109,25 +109,6 @@ export const createProjectileVisual = projectile => {
     }
     return bolt
   }
-  if (kind.includes("damian")) {
-    const speaker = new THREE.Group()
-    const cabinet = new THREE.Mesh(
-      new THREE.BoxGeometry(.42,.46,.34,2,2,2),
-      standardMaterial(0x4c2476,{emissive:0x25083f,emissiveIntensity:.8}),
-    )
-    for (const y of [-.12,.13]) {
-      const cone = new THREE.Mesh(
-        new THREE.CylinderGeometry(.1,.15,.035,16),
-        standardMaterial(0xc35cff,{emissive:0x7b1db0,emissiveIntensity:1.25}),
-      )
-      cone.rotation.x=Math.PI/2
-      cone.position.set(0,y,.18)
-      speaker.add(cone)
-    }
-    speaker.add(cabinet)
-    speaker.userData.vfxType = "thrown-speaker"
-    return speaker
-  }
   if (kind.includes("lumi")) {
     const orb = new THREE.Mesh(new THREE.SphereGeometry(.3,12,8), standardMaterial(0xe14fae,{emissive:0x7b164f,emissiveIntensity:1.35}))
     orb.userData.vfxType = "lumi-orb"

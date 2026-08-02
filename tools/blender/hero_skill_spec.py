@@ -18,7 +18,6 @@ FRAME_ENDS = {
     "brock-zeus": {"attack": 24, "super": 54, "gadget": 40},
     "kaze": {"attack": 38, "super": 34, "gadget": 48},
     "wukong-mico": {"attack": 40, "super": 110, "gadget": 68},
-    "damian": {"attack": 28, "super": 40, "gadget": 35},
     "persephone-lumi": {"attack": 35, "super": 40, "gadget": 30},
 }
 
@@ -71,16 +70,6 @@ EVENT_FRAMES = {
         "attack": {"impact": 19},
         "super": {"spin_start": 12, "spin_end": 90},
         "gadget": {"armor_start": 10, "armor_end": 16, "burst": 55},
-    },
-    "damian": {
-        "attack": {"cast_start": 12, "release": 18},
-        "super": {"totem_start": 18, "totem_end": 28},
-        "gadget": {
-            "swap_start": 14,
-            "swap_end": 18,
-            "burst_start": 18,
-            "burst_end": 26,
-        },
     },
     "persephone-lumi": {
         "attack": {"release": 16, "trail_start": 16},
@@ -228,7 +217,6 @@ def _profile(hero: str, clip: str):
         "brock-zeus": {"attack": 3.0, "super": 2.0, "gadget": 1.9},
         "kaze": {"attack": 2.6, "super": 2.0, "gadget": 1.9},
         "wukong-mico": {"attack": 3.0, "super": 2.0, "gadget": 1.9},
-        "damian": {"attack": 2.4, "super": 1.9, "gadget": 1.9},
         "persephone-lumi": {"attack": 2.8, "super": 1.9, "gadget": 1.9},
     }
     if hero in skill_arm_scale and clip in skill_arm_scale[hero]:
@@ -1047,7 +1035,7 @@ def _profile(hero: str, clip: str):
                 },
                 fingers=[(1, 0), (10, 0), (16, 1), (50, 0), (58, 1), (68, 0)],
             )
-    elif hero == "damian":
+    elif hero == "legacy-removed-hero":
         if clip == "attack":
             p.update(
                 body={

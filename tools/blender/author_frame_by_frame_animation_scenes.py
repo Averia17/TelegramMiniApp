@@ -139,18 +139,6 @@ HERO_FRAMES = {
         "spawn": 30,
         "victory": 90,
     },
-    "damian": {
-        "idle": 110,
-        "run": 12,
-        "attack": 28,
-        "super": 45,
-        "aim": 24,
-        "aim-super": 24,
-        "hit": 12,
-        "death": 40,
-        "spawn": 30,
-        "victory": 90,
-    },
     "persephone-lumi": {
         "idle": 100,
         "run": 10,
@@ -182,7 +170,6 @@ GADGET_FRAMES = {
     "brock-zeus": 40,
     "kaze": 48,
     "wukong-mico": 68,
-    "damian": 35,
     "persephone-lumi": 30,
 }
 
@@ -616,7 +603,7 @@ def apply_choreography(hero, clip, t, groups, captured):
                 0,
                 4.0 * delayed_sine(t, 0.05, 0.8),
             )
-        if hero in {"fairy-mina", "kaze", "damian", "persephone-lumi"}:
+        if hero in {"fairy-mina", "kaze", "persephone-lumi"}:
             add_hand_wave(pose, groups, "R", t, 0.12, 0.5, 6.0)
             add_hand_wave(pose, groups, "L", t, 0.24, 0.62, 5.0)
 
@@ -888,31 +875,6 @@ def apply_choreography(hero, clip, t, groups, captured):
                     18.0 * math.sin(t * math.tau * 2.0 + index),
                 )
 
-        elif hero == "damian":
-            form = frame_phase(1, 12)
-            push = frame_phase(12, 18)
-            return_phase = frame_phase(18, 28)
-            add_delta(
-                pose,
-                hips,
-                8.0 * form - 12.0 * push + 4.0 * return_phase,
-                -10.0 * form,
-                0,
-            )
-            add_delta(pose, spine, -8.0 * form + 12.0 * push, -8.0 * form, 0)
-            arm(
-                "L",
-                -42.0 * form + 64.0 * push - 18.0 * return_phase,
-                24.0 * frame_phase(5, 13) - 32.0 * frame_phase(13, 20),
-                -16.0 * frame_phase(8, 15) + 14.0 * return_phase,
-                -1,
-            )
-            arm("R", 14.0 * form - 8.0 * push, -10.0 * form, 6.0 * return_phase, 1)
-            add_delta(pose, head, 0, -8.0 * frame_phase(1, 8) + 4.0 * return_phase, 0)
-            add_hand_wave(
-                pose, groups, "L", t, 10.0 / attack_frames, 22.0 / attack_frames, 8.0
-            )
-
         elif hero == "persephone-lumi":
             form = frame_phase(1, 10)
             release = frame_phase(10, 16)
@@ -1150,9 +1112,6 @@ def apply_choreography(hero, clip, t, groups, captured):
         )
     elif hero == "wukong-mico":
         add_delta(pose, groups.get("tail"), 8.0 * delayed_sine(t, 0.10, 0.8), 0, 0)
-    elif hero == "damian":
-        add_hand_wave(pose, groups, "L", t, 0.20, 0.50, 8.0)
-        add_hand_wave(pose, groups, "R", t, 0.28, 0.58, 6.0)
     elif hero == "persephone-lumi":
         for index, name in enumerate(groups.get("ribbons", [])):
             add_delta(
@@ -1299,7 +1258,6 @@ def rig_groups(armature):
                 "pendulum",
                 "mic",
                 "speaker",
-                "totem",
                 "orb",
             )
         )
@@ -1670,12 +1628,9 @@ def event_pose(hero, clip, frame, end, groups):
                 deg(3 * math.sin(t * math.tau + index)),
                 deg(4 * math.cos(t * math.tau + index)),
             )
-    if hero == "damian":
-        for name in groups["fingers"][:12]:
-            add_pose(pose, name, deg(5 * math.sin(t * math.tau)), 0, 0)
     # Secondary authored props follow through on the same frame-by-frame
-    # curves: Needle's flower/spore, Mina's orb, Kaze's blades, Damian's mic
-    # and Wukong's mic/cloud rig all receive a small event-specific swing.
+    # curves: Needle's flower/spore, Mina's orb, Kaze's blades, and Wukong's
+    # mic/cloud rig all receive a small event-specific swing.
     special_amount = {
         "idle": 3.0,
         "run": 8.0,

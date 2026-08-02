@@ -10,7 +10,7 @@ import {
   resolveHeroName,
   resolveEnvironmentVisual,
 } from "../src/components/BattleGame/rendering/assets/assetManifest.js"
-import {AssetRegistry, normalizeHeroHeight} from "../src/components/BattleGame/rendering/assets/AssetRegistry.js"
+import {AssetRegistry, normalizeEnvironmentRoot, normalizeHeroHeight} from "../src/components/BattleGame/rendering/assets/AssetRegistry.js"
 import {GLBHeroController} from "../src/components/BattleGame/rendering/heroes/GLBHeroController.js"
 import {turnTowardsAngle} from "../src/components/BattleGame/rendering/heroes/turning.js"
 import {
@@ -36,6 +36,7 @@ import {CameraRig, fitVerticalSpanToMap} from "../src/components/BattleGame/rend
 import {AimRenderer} from "../src/components/BattleGame/rendering/combat/AimRenderer.js"
 import {createMapSignature} from "../src/components/BattleGame/rendering/map/mapSignature.js"
 import {MapRenderer} from "../src/components/BattleGame/rendering/map/MapRenderer.js"
+import {GroundRenderer} from "../src/components/BattleGame/rendering/map/GroundRenderer.js"
 import {PickupRenderer} from "../src/components/BattleGame/rendering/map/PickupRenderer.js"
 import {EffectRenderer} from "../src/components/BattleGame/rendering/combat/EffectRenderer.js"
 import {
@@ -48,6 +49,7 @@ import {
 import {isAlivePlayerState} from "../src/components/BattleGame/rendering/heroes/playerVisibility.js"
 import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG, RUNTIME_ANIMATION_REFERENCE_SPEED} from "../src/components/BattleGame/heroesConfig.js"
 import {
+  createEnvironmentModel,
   getEnvironmentPlacements,
   replaceFallbackWithEnvironment,
 } from "../src/components/BattleGame/rendering/map/environmentPlacement.js"
@@ -348,7 +350,6 @@ test("network interpolation uses the server clock domain and smooths every movin
     players: {enemy: {x: 0, y: 10, rotation: 0}},
     monsters: {bat: {x: 20, y: 30, rotation: 0}},
     bullets: [{id: 7, x: 40, y: 50, z: 0, rotation: 0}],
-    totems: [{owner: "damian", x: 60, y: 70}],
   }
   const second = {
     type: "state",
@@ -356,7 +357,6 @@ test("network interpolation uses the server clock domain and smooths every movin
     players: {enemy: {x: 99, y: 10, rotation: .3}},
     monsters: {bat: {x: 119, y: 30, rotation: .3}},
     bullets: [{id: 7, x: 139, y: 50, z: 33, rotation: .3}],
-    totems: [{owner: "damian", x: 159, y: 70}],
   }
   simulation.snapshots = [first, second]
   simulation.latestState = second
@@ -367,7 +367,6 @@ test("network interpolation uses the server clock domain and smooths every movin
   assert.equal(Math.abs(display.monsters.bat.x - 69.5) < .001, true)
   assert.equal(Math.abs(display.bullets[0].x - 89.5) < .001, true)
   assert.equal(Math.abs(display.bullets[0].z - 16.5) < .001, true)
-  assert.equal(Math.abs(display.totems[0].x - 109.5) < .001, true)
 })
 
 test("the first battle snapshot renders its map when optional entity lists are null", () => {
@@ -383,14 +382,12 @@ test("the first battle snapshot renders its map when optional entity lists are n
     players: {},
     monsters: null,
     bullets: null,
-    totems: null,
   })
 
   const display = simulation.getDisplayState(1000)
   assert.equal(display.map.walls, walls)
   assert.deepEqual(display.monsters, {})
   assert.deepEqual(display.bullets, [])
-  assert.deepEqual(display.totems, [])
 })
 
 test("the battle map stays populated across full and compact server snapshots", () => {
@@ -481,8 +478,8 @@ test("camera keeps the last hero position when the local hero dies", () => {
   assert.equal(camera.target.z, 260 * WORLD_SCALE)
 })
 
-test("the hero manifest uses standardized base GLBs and optional detached weapons", () => {
-  assert.deepEqual(Object.keys(HERO_ASSETS), ["Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"])
+test("the hero manifest uses self-contained base GLBs", () => {
+  assert.deepEqual(Object.keys(HERO_ASSETS), ["Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi"])
   for (const name of Object.keys(HERO_ASSETS)) {
     const asset = getHeroAsset(name)
     assert.equal(asset.id, name)
@@ -492,15 +489,12 @@ test("the hero manifest uses standardized base GLBs and optional detached weapon
       : ["idle", "run", "hit", "aim", "aimSuper", "attack", "super", "gadget", "spawn", "victory", "defeat"]
     assert.deepEqual(Object.keys(asset.clips), expectedClipKeys)
     assert.equal("eventAnimations" in asset, false)
+    assert.equal("weaponUrl" in asset, false)
+    assert.equal("weaponAttachments" in asset, false)
     assert.match(asset.url, /\/assets\/heroes\/output_heroes\/[^/]+_base\.glb$/)
-    if (asset.weaponUrl) {
-      assert.match(asset.weaponUrl, /\/assets\/heroes\/output_weapons\/[^/]+_weapon\.glb$/)
-    }
   }
   for (const name of Object.keys(HERO_ASSETS)) assert.equal(HERO_ASSETS[name].available, true)
   assert.equal(HERO_ASSETS.Needle.url, "/assets/heroes/output_heroes/needle_base.glb")
-  assert.equal(HERO_ASSETS.Mandy.weaponUrl, "/assets/heroes/output_weapons/mandy_weapon.glb")
-  assert.equal(HERO_ASSETS.Damian.groundOffset, 0.25)
   assert.deepEqual(HEROES_CONFIG.map(hero => hero.name), Object.keys(HERO_ASSETS))
 })
 
@@ -512,6 +506,11 @@ test("hero asset resolution keeps canonical names and handles unknown names safe
   assert.equal(resolveHeroName("wukong-mico"), "Wukong Mico")
   assert.equal(resolveHeroName("persephone-lumi"), "Persephone Lumi")
   assert.equal(resolveHeroName("missing-hero"), "Mandy")
+})
+
+test("removed heroes have no client asset or canonical alias", () => {
+  assert.equal(getHeroAsset("Damian"), null)
+  assert.equal(resolveHeroName("damian"), "Mandy")
 })
 
 test("the runtime renderer has no Canvas2D engine switch or fallback", async () => {
@@ -711,32 +710,18 @@ test("AssetRegistry loads each GLB once and returns independent clones", async (
   assert.equal(second.animations[0].name, "Idle")
 })
 
-test("AssetRegistry attaches detached weapon geometry to its authored grip marker", async () => {
+test("AssetRegistry keeps embedded weapon geometry and loads only the hero GLB", async () => {
   const heroScene = new THREE.Group()
   const hand = new THREE.Bone()
   hand.name = "L_wrist_s"
-  hand.position.set(.4, 1.2, -.2)
-  hand.rotation.set(.2, -.35, .1)
-  hand.scale.setScalar(1.8)
   const socket = new THREE.Bone()
   socket.name = "weapon_socket_l"
   hand.add(socket)
-  const grip = new THREE.Group()
-  grip.name = "GripPrimaryHeroAttachment_TestWeapon"
-  grip.position.set(0, .4, .1)
-  socket.add(grip)
+  const weapon = new THREE.Group()
+  weapon.name = "HeroAttachment_TestWeapon"
+  weapon.userData.attachmentRole = "held-weapon"
+  socket.add(weapon)
   heroScene.add(hand)
-
-  const weaponScene = new THREE.Group()
-  const weaponObject = new THREE.Group()
-  weaponObject.name = "HeroAttachment_TestWeapon"
-  const weaponMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(.1, 1, .1),
-    new THREE.MeshBasicMaterial(),
-  )
-  weaponMesh.position.set(1, 0, 0)
-  weaponObject.add(weaponMesh)
-  weaponScene.add(weaponObject)
 
   const loads = []
   const registry = new AssetRegistry({
@@ -744,10 +729,11 @@ test("AssetRegistry attaches detached weapon geometry to its authored grip marke
       TestHero: {
         id: "TestHero",
         url: "/test_base.glb",
+        // Stale fields must not re-enable the detached runtime path.
         weaponUrl: "/test_weapon.glb",
         weaponAttachments: [{
           name: "HeroAttachment_TestWeapon",
-          target: "GripPrimaryHeroAttachment_TestWeapon",
+          target: "weapon_socket_l",
           role: "held-weapon",
         }],
         available: true,
@@ -758,24 +744,15 @@ test("AssetRegistry attaches detached weapon geometry to its authored grip marke
     },
     load: async url => {
       loads.push(url)
-      return url.includes("weapon")
-        ? {scene: weaponScene, animations: []}
-        : {scene: heroScene, animations: []}
+      return {scene: heroScene, animations: []}
     },
   })
 
   const instance = await registry.instantiateHero("TestHero")
-  const attachedSocket = instance.root.getObjectByName("GripPrimaryHeroAttachment_TestWeapon")
-  const attachedWeapon = instance.root.getObjectByName("DetachedHeroWeapon.HeroAttachment_TestWeapon")
-  assert.deepEqual(loads, ["/test_base.glb", "/test_weapon.glb"])
-  assert.equal(attachedWeapon.parent, attachedSocket)
-  assert.equal(attachedWeapon.position.length() < 1e-8, true)
-  attachedSocket.updateWorldMatrix(true, true)
-  const socketPosition = attachedSocket.getWorldPosition(new THREE.Vector3())
-  const weaponPosition = attachedWeapon.getWorldPosition(new THREE.Vector3())
-  assert.equal(socketPosition.distanceTo(weaponPosition) < 1e-8, true)
-  const weaponBounds = new THREE.Box3().setFromObject(attachedWeapon, true)
-  assert.equal(weaponBounds.distanceToPoint(socketPosition) < 1e-8, true)
+  const embeddedWeapon = instance.root.getObjectByName("HeroAttachment_TestWeapon")
+  assert.deepEqual(loads, ["/test_base.glb"])
+  assert.equal(embeddedWeapon.parent.name, "weapon_socket_l")
+  assert.equal(instance.root.getObjectByName("DetachedHeroWeapon.HeroAttachment_TestWeapon") ?? null, null)
 })
 
 test("AssetRegistry uses every embedded clip from the canonical hero GLB", async () => {
@@ -876,31 +853,6 @@ test("battle hero GLB upgrades wait for idle time after the fallback is visible"
   const source = await readFile(projectFile("src/components/BattleGame/rendering/heroes/HeroView.js"), "utf8")
   assert.match(source, /requestIdleCallback/)
   assert.match(source, /await waitForHeroUpgradeIdle\(\)/)
-})
-
-test("AssetRegistry applies a hero ground offset after height normalization", async () => {
-  const template = new THREE.Group()
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), new THREE.MeshBasicMaterial())
-  body.position.y = 1
-  template.add(body)
-  const registry = new AssetRegistry({
-    manifest: {
-      Damian: {
-        id: "Damian",
-        url: "/damian.glb",
-        available: true,
-        scale: 1,
-        targetHeight: 2,
-        groundOffset: .25,
-        rotationOffset: 0,
-        clips: {},
-      },
-    },
-    load: async () => ({scene: template, animations: []}),
-  })
-
-  const instance = await registry.instantiateHero("Damian")
-  assert.equal(instance.root.position.y, .25)
 })
 
 test("hero GLBs are normalized to one visual height instead of relying on authoring units", () => {
@@ -1196,7 +1148,7 @@ test("the fighter selection warms only the selected GLB while idle", async () =>
   assert.doesNotMatch(source, /\.\.\.heroes\.map\(hero => hero\.name\)/)
 })
 
-test("hero equipment profiles hide detached ammo and animate Brock's nearby cloud", () => {
+test("hero equipment profiles hide detached ammo, keep Mina unarmed, and animate Brock's nearby cloud", () => {
   const mandyRoot = new THREE.Group()
   const mandyWrist = new THREE.Bone()
   mandyWrist.name = "L_wrist_s_047"
@@ -1220,7 +1172,7 @@ test("hero equipment profiles hide detached ammo and animate Brock's nearby clou
   minaRoot.add(waterball, minaWrist)
   const mina = new GLBHeroController(minaRoot, [], {}, {heroName: "Fairy Mina", spawnOnLoad: false})
   assert.equal(waterball.visible, false)
-  assert.equal(mina.heldProjectile.parent, minaWrist)
+  assert.equal(mina.heldProjectile, null)
   mina.dispose()
 
   const brockRoot = new THREE.Group()
@@ -1307,37 +1259,13 @@ test("Wukong ignores cloud-like meshes because the companion was removed", () =>
   controller.dispose()
 })
 
-test("Damian releases the carried speaker only during the throw window", () => {
-  const root = new THREE.Group()
-  const speaker = new THREE.Group()
-  speaker.name = "HeroAttachment_Speaker"
-  speaker.userData.attachment_role = "throwable-weapon"
-  root.add(speaker)
-  const attack = new THREE.AnimationClip("Attack", .6, [])
-  const controller = new GLBHeroController(root, [attack], {attack: "Attack"}, {
-    heroName: "Damian",
-    attackPulse: 0,
-    spawnOnLoad: false,
-  })
-
-  controller.update(.016, {alive: true, attackPulse: 1})
-  assert.equal(speaker.visible, true)
-  controller.update(.32, {alive: true, attackPulse: 1})
-  assert.equal(speaker.visible, false)
-  controller.update(.34, {alive: true, attackPulse: 1})
-  assert.equal(speaker.visible, true)
-  controller.dispose()
-})
-
 test("new hero projectiles match the detached object used by the attack", () => {
   const mina = createProjectileVisual({kind: "mina_star_fan"})
   assert.equal(mina.userData.vfxType, "fairy-orb")
-  const damian = createProjectileVisual({kind: "damian_dark_orb"})
-  assert.equal(damian.userData.vfxType, "thrown-speaker")
 })
 
 test("short-lived projectiles use emissive visuals without dynamic scene lights", () => {
-  for (const kind of ["spore", "zeus_lightning", "mina_star_fan", "damian_dark_orb"]) {
+  for (const kind of ["spore", "zeus_lightning", "mina_star_fan"]) {
     const visual = createProjectileVisual({kind, radius: 15})
     assert.equal(visual.getObjectByProperty("isLight", true), undefined, `${kind} adds a dynamic light`)
   }
@@ -1353,9 +1281,93 @@ test("Needle spore attacks use a layered 3D projectile instead of a primitive ba
 })
 
 test("map visuals are optional and never replace semantic collision types", () => {
-  assert.equal(resolveEnvironmentVisual({type: "crates"}), "crate_a")
+  assert.equal(resolveEnvironmentVisual({type: "crates"}), "desert_wall_a")
+  assert.equal(resolveEnvironmentVisual({type: "crates", visual: "crate_a"}), "desert_wall_a")
   assert.equal(resolveEnvironmentVisual({type: "destructible", visual: "desert_wall_b"}), "desert_wall_b")
+  assert.equal(resolveEnvironmentVisual({type: "altar_three_moons"}), "altar_three_moons")
+  assert.equal(resolveEnvironmentVisual({type: "sacrificial_stone"}), "sacrificial_stone")
+  assert.equal(resolveEnvironmentVisual({type: "menhir"}), "menhir")
+  assert.equal(resolveEnvironmentVisual({type: "bush"}), "bush_a")
+  assert.equal(resolveEnvironmentVisual({type: "half"}), "bush_a")
   assert.equal(resolveEnvironmentVisual({type: "unknown"}), null)
+})
+
+test("all solid map blocks use the authored stone GLB instead of primitive cubes", () => {
+  for (const type of ["wall", "destructible", "tree", "dead_tree", "shipwreck", "crates", "barrels"]) {
+    assert.equal(resolveEnvironmentVisual({type}), "desert_wall_a", type)
+  }
+})
+
+test("concealment bushes keep one compact fallback field while their GLB loads", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+
+  mapRenderer.sync({
+    width: 240,
+    height: 180,
+    walls: [
+      {minX: 20, minY: 20, maxX: 100, maxY: 60, type: "bush"},
+      {minX: 120, minY: 80, maxX: 200, maxY: 120, type: "half"},
+    ],
+  })
+
+  assert.equal(mapRenderer.objects.size, 2)
+  for (const fallback of mapRenderer.objects.values()) {
+    assert.equal(fallback.children[0].isInstancedMesh, true)
+    assert.equal(fallback.children[0].count, 3)
+  }
+  mapRenderer.dispose()
+})
+
+test("selected environment GLBs are published and normalized to their authored height", async () => {
+  for (const [visual, filename] of [
+    ["desert_wall_a", "stylized_low_poly_stone_block.glb"],
+    ["bush_a", "stylized_bush.glb"],
+    ["altar_three_moons", "elf_lord_temple.glb"],
+  ]) {
+    assert.equal(ENVIRONMENT_ASSETS[visual].available, true)
+    assert.equal(await readFile(projectFile(`public/assets/environment/${filename}`)).then(() => true), true)
+  }
+  assert.equal(Object.hasOwn(ENVIRONMENT_ASSETS, "grass_a"), false)
+  assert.equal(Object.hasOwn(ENVIRONMENT_ASSETS, "bush_a"), true)
+  assert.equal(ENVIRONMENT_ASSETS.bush_a.unlit, true)
+
+  const root = new THREE.Group()
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(4, 8, 2), new THREE.MeshBasicMaterial())
+  mesh.position.set(3, 4, -2)
+  root.add(mesh)
+  normalizeEnvironmentRoot(root, 2)
+  const bounds = new THREE.Box3().setFromObject(root, true)
+  assert.ok(Math.abs(bounds.max.y - bounds.min.y - 2) < 0.001)
+  assert.ok(Math.abs((bounds.min.x + bounds.max.x) / 2) < 0.001)
+  assert.ok(Math.abs((bounds.min.z + bounds.max.z) / 2) < 0.001)
+  assert.ok(Math.abs(bounds.min.y) < 0.001)
+})
+
+test("bush GLBs can use an unlit green material without changing ordinary ground rendering", async () => {
+  const source = new THREE.Group()
+  source.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({color: 0x18d8b8, metalness: 1})))
+  const registry = new AssetRegistry({
+    environmentManifest: {
+      bush_a: {
+        url: "/bush.glb",
+        available: true,
+        scale: 1,
+        rotationOffset: 0,
+        placement: "repeat",
+        footprint: 32,
+        targetHeight: 1.55,
+        unlit: true,
+        materialColor: 0x3d9949,
+      },
+    },
+    load: async () => ({scene: source, animations: []}),
+  })
+
+  const instance = await registry.instantiateEnvironment("bush_a")
+  const mesh = instance.root.children[0]
+  assert.equal(mesh.material.isMeshBasicMaterial, true)
+  assert.equal(mesh.material.color.getHex(), 0x3d9949)
 })
 
 test("island decoration stays below impassable map surfaces", () => {
@@ -1367,6 +1379,18 @@ test("island decoration stays below impassable map surfaces", () => {
   const layerHeights = mapRenderer.islandTerrain.children.slice(0, 3).map(layer => layer.position.y)
   assert.ok(Math.max(...layerHeights) < 0.015)
   mapRenderer.dispose()
+})
+
+test("ordinary grass is a single flat green ground without dense black-prone instances", () => {
+  const root = new THREE.Group()
+  const ground = new GroundRenderer(root)
+
+  ground.sync(1024, 768)
+
+  assert.equal(root.children.length, 1)
+  assert.equal(root.children[0], ground.mesh)
+  assert.equal(ground.mesh.userData.role, "grass-ground")
+  assert.equal(ground.mesh.material.color.getHex(), 0x4f9b50)
 })
 
 test("environment manifest defines an explicit placement contract", () => {
@@ -1409,8 +1433,60 @@ test("AssetRegistry caches environment loads and returns transformed independent
   assert.equal(first.root.rotation.y, Math.PI / 2)
 })
 
+test("environment wall modules fill each authored collider cell", () => {
+  const source = new THREE.Group()
+  source.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial()))
+  const wall = {minX: 0, minY: 0, maxX: 80, maxY: 40}
+  const environment = createEnvironmentModel(
+    {root: source, asset: {placement: "repeat", footprint: 40, fitToCell: true}},
+    wall,
+  )
+
+  assert.equal(environment.root.children.length, 2)
+  const bounds = new THREE.Box3().setFromObject(environment.root.children[0], true)
+  const size = bounds.getSize(new THREE.Vector3())
+  assert.ok(Math.abs(size.x - 40 * WORLD_SCALE) < .001)
+  assert.ok(Math.abs(size.z - 40 * WORLD_SCALE) < .001)
+  environment.root.traverse(child => {
+    child.geometry?.dispose?.()
+    child.material?.dispose?.()
+  })
+})
+
+test("environment altar extraction keeps only the authored centerpiece nodes", async () => {
+  const template = new THREE.Group()
+  const altar = new THREE.Group()
+  altar.name = "StatueDeity2"
+  const base = new THREE.Group()
+  base.name = "Circularbase"
+  const pillars = new THREE.Group()
+  pillars.name = "Pillars"
+  template.add(altar, base, pillars)
+  const registry = new AssetRegistry({
+    environmentManifest: {
+      altar: {
+        id: "altar",
+        url: "/altar.glb",
+        available: true,
+        placement: "single",
+        footprint: 40,
+        scale: 1,
+        rotationOffset: 0,
+        targetHeight: 2.6,
+        includeNodes: ["StatueDeity2", "Circularbase"],
+      },
+    },
+    load: async () => ({scene: template, animations: []}),
+  })
+
+  const instance = await registry.instantiateEnvironment("altar")
+  assert.ok(instance.root.getObjectByName("StatueDeity2"))
+  assert.ok(instance.root.getObjectByName("Circularbase"))
+  assert.equal(instance.root.getObjectByName("Pillars"), undefined)
+})
+
 test("map signature changes when only a wall visual changes", () => {
-  const first = {width: 100, height: 100, walls: [{minX: 0, minY: 0, maxX: 40, maxY: 40, type: "crates", visual: "crate_a"}]}
+  const first = {width: 100, height: 100, walls: [{minX: 0, minY: 0, maxX: 40, maxY: 40, type: "crates", visual: "desert_wall_a"}]}
   const second = {width: 100, height: 100, walls: [{...first.walls[0], visual: "barrel_a"}]}
   assert.notEqual(createMapSignature(first), createMapSignature(second))
 })

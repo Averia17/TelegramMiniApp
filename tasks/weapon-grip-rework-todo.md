@@ -28,8 +28,6 @@
 - [ ] Rework Mandy.
 - [ ] Rework Kaze.
 - [ ] Rework Persephone Lumi.
-- [ ] Rework Damian microphone.
-- [ ] Rework Damian throwable speaker and release transform.
 
 ## Phase 4 — Other held combat visuals
 

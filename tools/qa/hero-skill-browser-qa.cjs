@@ -11,7 +11,6 @@ const heroes = [
   ["Brock Zeus", "brock-zeus"],
   ["Kaze", "kaze"],
   ["Wukong Mico", "wukong-mico"],
-  ["Damian", "damian"],
   ["Persephone Lumi", "persephone-lumi"],
 ]
 const skills = [

@@ -39,12 +39,17 @@ fs.mkdirSync(OUT, {recursive: true});
   const clips = await page.evaluate(() => window.qa.clips.slice())
   const results = []
   for (const [name, selector, expectedClip, predicate] of cases) {
+    // Every case gets a fresh controller.  Outcome states retain internal
+    // state even after clicking the visible idle button, so a button-only
+    // reset would make later hit/gadget checks depend on case ordering.
+    await page.reload({waitUntil: "domcontentloaded", timeout: 15000})
+    await page.waitForFunction(() => window.qa && window.qa.clips?.length > 0, {timeout: 15000})
     await page.locator(selector).click()
     await page.waitForTimeout(name === "hit" ? 45 : name === "spawn" ? 120 : 180)
     const state = JSON.parse(await page.evaluate(() => window.render_game_to_text()))
     const valid = clips.includes(expectedClip) && predicate(state) && state.fallbackEvents.length === 0
     results.push({name, expectedClip, valid, animation: state.animation, overlay: state.overlay, actionWeights: state.actionWeights, fallbackEvents: state.fallbackEvents})
-    if (name === "attack" || name === "aim-gadget") await page.screenshot({path: path.join(OUT, `${name}.png`), fullPage: true})
+    if (["idle", "attack", "aim-gadget"].includes(name)) await page.screenshot({path: path.join(OUT, `${name}.png`), fullPage: true})
   }
   const report = {hero: "Kaze", clips, cases: results, consoleErrors, pageErrors, status: results.every(item => item.valid) && !consoleErrors.length && !pageErrors.length ? "PASS" : "FAIL"}
   fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify(report, null, 2))

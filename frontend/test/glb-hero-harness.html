@@ -169,6 +169,7 @@
     bat_qa:{x:24,y:12,radius:24,rotation:-.35,lives:2700,maxLives:3600,tier:2},
   })
   let hit=0
+  let qaFreeze=false
   const clock=new THREE.Clock()
   function resize(){
     const w=innerWidth,h=innerHeight
@@ -195,7 +196,7 @@
     monsterPreview.update(dt,performance.now()/1000)
     model.rotation.y=moving?-.45:0
     const manualMoving=manualState==="run"
-    controller.update(dt,{alive:true,moving:manualState?manualMoving:moving,aiming:manualState?manualState==="aim":aiming,superAiming:manualState?manualState==="aimSuper":forcedState==="aimSuper",result:manualState?(["victory","defeat"].includes(manualState)?manualState:null):["victory","defeat"].includes(forcedState)?forcedState:null,speed:(manualState?manualMoving:moving)?300:0,referenceSpeed:285,aimYaw:(manualState?manualState==="aim":aiming)?.95:0,attackPulse,superPulse,gadgetPulse})
+    if(!qaFreeze)controller.update(dt,{alive:true,moving:manualState?manualMoving:moving,aiming:manualState?manualState==="aim":aiming,superAiming:manualState?manualState==="aimSuper":forcedState==="aimSuper",result:manualState?(["victory","defeat"].includes(manualState)?manualState:null):["victory","defeat"].includes(forcedState)?forcedState:null,speed:(manualState?manualMoving:moving)?300:0,referenceSpeed:285,aimYaw:(manualState?manualState==="aim":aiming)?.95:0,attackPulse,superPulse,gadgetPulse})
     controller.setHitFlash(hit)
     hit*=Math.exp(-10*dt)
     renderer.render(scene,camera)
@@ -203,6 +204,12 @@
   window.qa={
     controller,
     model,
+    camera,
+    renderer,
+    getBounds:()=>{
+      const box=new THREE.Box3().setFromObject(model)
+      return box.isEmpty()?null:box.getSize(new THREE.Vector3()).toArray()
+    },
     clips:instance.animations.map(clip=>clip.name),
     triggerAttack:()=>{attackPulse+=1},
     triggerSuper:()=>{superPulse+=1},
@@ -214,6 +221,48 @@
       if(skill==="super")superPulse+=1
       if(skill==="gadget")gadgetPulse+=1
     },
+    freezeAt:(semanticName,seconds)=>{
+      qaFreeze=true
+      manualState=semanticName
+      hit=0
+      label.textContent=`QA / ${semanticName}`
+      for(const [name,action] of controller.actions.entries()){
+        action.stop()
+        action.enabled=true
+        action.setEffectiveWeight(0)
+        if(name==="idle")action.play()
+      }
+      const target=controller.actions.get(semanticName)
+      if(!target)throw new Error(`missing QA action ${semanticName}`)
+      const idle=controller.actions.get("idle")
+      if(semanticName.startsWith("aim"))idle?.setEffectiveWeight(semanticName==="aim" ? .18 : 0)
+      target.reset()
+      target.enabled=true
+      target.setEffectiveWeight(1)
+      target.play()
+      target.time=Math.min(Number(seconds)||0,target.getClip().duration)
+      // Freeze the companion on the same semantic clip as the character.
+      // Without this, QA frames silently kept Cloud_idle while the character
+      // was inspected in attack/super/etc., masking cloud animation defects.
+      controller.transitionCloud(semanticName, 0)
+      const cloudTarget=controller.cloudActions.get(semanticName)
+      if(cloudTarget){
+        for(const action of controller.cloudActions.values()){
+          action.stop()
+          action.enabled=true
+          action.setEffectiveWeight(0)
+        }
+        cloudTarget.reset()
+        cloudTarget.enabled=true
+        cloudTarget.setEffectiveWeight(1)
+        cloudTarget.play()
+        cloudTarget.time=Math.min(Number(seconds)||0,cloudTarget.getClip().duration)
+      }
+      controller.mixer.update(0)
+      controller.cloudMixer?.update(0)
+      controller.updateAuthoredCloudEffects()
+      renderer.render(scene,camera)
+    },
   }
   window.render_game_to_text=()=>JSON.stringify({
     hero,
@@ -221,6 +270,7 @@
     state:label.textContent,
     animation:controller.state,
     overlay:controller.overlay,
+    heldProjectile:Boolean(controller.heldProjectile),
     skillPulses:{attack:attackPulse,super:superPulse,gadget:gadgetPulse},
     aimWeight:Number(controller.aimWeight.toFixed(3)),
     actionWeights:Object.fromEntries([...controller.actions.entries()].map(([name,action])=>[name,Number(action.getEffectiveWeight().toFixed(3))])),

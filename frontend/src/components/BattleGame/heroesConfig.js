@@ -20,7 +20,6 @@ export const HEROES_CONFIG = Object.freeze([
   {name:"Brock Zeus",color:"#62C8FF",maxLives:620,speed:12,attackDamage:80,bulletSpeed:36,attackType:"zeus_lightning",role:"Sharpshooter",attack:{archetype:"projectile",aimShape:"line",range:760,splashRadius:72}},
   {name:"Kaze",color:"#B88CFF",maxLives:650,speed:16,attackDamage:40,attackType:"kaze_cross_slash",role:"Assassin",attack:{archetype:"melee_cone",aimShape:"cone",range:105,halfArcDegrees:55}},
   {name:"Wukong Mico",color:"#FFB33E",maxLives:900,speed:13,attackDamage:85,attackType:"mico_staff",role:"Tank",attack:{archetype:"melee_cone",aimShape:"cone",range:120,halfArcDegrees:50}},
-  {name:"Damian",color:"#8D52D9",maxLives:640,speed:13,attackDamage:75,bulletSpeed:31,attackType:"damian_dark_orb",role:"Summoner",attack:{archetype:"projectile",aimShape:"line",range:640}},
   {name:"Persephone Lumi",color:"#D954A8",maxLives:680,speed:13,attackDamage:70,bulletSpeed:28,attackType:"lumi_trail_orb",role:"Controller",attack:{archetype:"projectile",aimShape:"line",range:600}},
 ])
 
@@ -33,7 +32,6 @@ export const HERO_KITS = Object.freeze({
   "Brock Zeus": {basic:{id:"thunder_projectile",name:"Грозовой снаряд",description:"Взрывной снаряд разрушает стены."},super:{id:"gods_hammer",name:"Молот богов",description:"Три удара молнии создают горящую зону.",slot:"primary",prediction:"server"},gadget:{id:"discharge_cable",name:"Разрядный кабель",description:"Следующий выстрел становится пробивающим лучом.",slot:"secondary",prediction:"server"}},
   Kaze: {basic:{id:"cross_slash",name:"Косые удары",description:"Два попадания открывают усиленный третий удар."},super:{id:"piercing_dash",name:"Пронзающий рывок",description:"Рывок помечает врагов и усиливает получаемый ими урон.",slot:"primary",prediction:"server"},gadget:{id:"vanish",name:"Исчезновение",description:"Невидимость гарантирует критический первый удар.",slot:"secondary",prediction:"server"}},
   "Wukong Mico": {basic:{id:"heavy_staff",name:"Тяжёлый посох",description:"Попадания накапливают Ярость."},super:{id:"vengeance_vortex",name:"Вихрь возмездия",description:"Вихрь расходует Ярость и наносит урон вокруг.",slot:"primary",prediction:"server"},gadget:{id:"stone_armor",name:"Каменная броня",description:"Щит накапливает урон и взрывается после окончания.",slot:"secondary",prediction:"server"}},
-  Damian: {basic:{id:"blight_orb",name:"Сфера скверны",description:"Попадания снижают исходящий урон врага."},super:{id:"soul_totem",name:"Тотем душ",description:"Тотем автономно атакует ближайшего врага.",slot:"primary",prediction:"server"},gadget:{id:"exchange",name:"Обмен",description:"Меняет место с тотемом и взрывает его.",slot:"secondary",prediction:"server"}},
   "Persephone Lumi": {basic:{id:"luminous_trail",name:"Световой след",description:"След замедляет и раскрывает врагов."},super:{id:"root_garden",name:"Сад корней",description:"Поле корней обездвиживает вошедших врагов.",slot:"primary",prediction:"server"},gadget:{id:"flower_burst",name:"Цветочный взрыв",description:"Взрывает активный след или сад.",slot:"secondary",prediction:"server"}},
 })
 
@@ -44,7 +42,6 @@ export const TIMED_KIT_DESCRIPTIONS = Object.freeze({
     basic: "Тяжёлый удар посохом наносит стабильный урон без накопления ярости.",
     super: "Вихрь возмездия длится 5 секунд и наносит урон вокруг героя.",
   },
-  Damian: {basic: "Сфера скверны ослабляет поражённого врага на 4 секунды."},
 })
 
 export const HERO_AIM_DEFAULTS = Object.freeze({

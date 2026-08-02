@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 
 import bpy
+from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[2]
 SCENES = ROOT / "frontend" / "assets-source" / "heroes" / "kaze" / "scenes"
@@ -64,6 +65,12 @@ ROOT_UP_LIMITS = {
 }
 ROOT_BONE = "hips_s"
 TORSO_BONES = ("hips_s", "spine_lower_s1", "spine_middle_s", "spine_upper_s", "chest_s")
+WEAPON_GRIP_LOCAL = {
+    "HeroAttachment_FanLeft": (-0.10, 1.70, 1.65),
+    "HeroAttachment_FanRight": (-0.10, 1.70, 1.65),
+}
+WEAPON_GRIP_MAX_DISTANCE = 0.01
+FRONT_DEPTH_MAX = 0.23
 REQUIRED_CURVE_BONES = (
     "hips_s",
     "spine_lower_s1",
@@ -148,6 +155,32 @@ def validate_pose(clip, armature, frame, errors):
         errors.append(
             f"{clip}@{frame}: summed torso pitch={torso_pitch:.2f} exceeds 25 degree budget"
         )
+
+    chest_world = armature.matrix_world @ armature.pose.bones["chest_s"].head
+    if clip in {"idle", "aim", "aim-super", "gadget", "aim-gadget"} or frame in {
+        0,
+        FRAME_ENDS[clip],
+    }:
+        for wrist_name in ("L_wrist_s", "R_wrist_s"):
+            wrist_world = armature.matrix_world @ armature.pose.bones[wrist_name].head
+            if wrist_world.y > chest_world.y + FRONT_DEPTH_MAX:
+                errors.append(
+                    f"{clip}@{frame}: {wrist_name} is behind torso depth "
+                    f"({wrist_world.y:.3f} > {chest_world.y + FRONT_DEPTH_MAX:.3f})"
+                )
+
+    for mesh_name, local_grip in WEAPON_GRIP_LOCAL.items():
+        mesh = bpy.data.objects.get(mesh_name)
+        marker = bpy.data.objects.get(f"Grip.Primary.{mesh_name}")
+        if mesh is None or marker is None:
+            continue
+        grip_world = mesh.matrix_world @ Vector(local_grip)
+        marker_world = marker.matrix_world.translation
+        distance = (grip_world - marker_world).length
+        if distance > WEAPON_GRIP_MAX_DISTANCE:
+            errors.append(
+                f"{clip}@{frame}: {mesh_name} grip is {distance:.3f} from marker"
+            )
 
 
 def validate_clip(clip):

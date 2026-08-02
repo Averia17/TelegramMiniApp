@@ -187,11 +187,14 @@ def mina_idle_poses(baseline):
                 **{name: radians((0.0, sway * 0.35, 0.0)) for name in SPINE_BONES},
                 "chest_s": radians((1.0, sway * 0.2, 0.0)),
                 "head_s": radians((-2.0, head_yaw, -3.0)),
-                "R_shoulder_s": radians((-70.0 - arm_lift, 10.0 + sway, 30.0)),
-                "R_elbow_s": radians((-52.0, 0.0, 0.0)),
+                "R_shoulder_s": radians((70.0 + arm_lift, 10.0 + sway, 30.0)),
+                # Fairy Mina's elbow X axis is inverted relative to the
+                # generic pose brief: negative X folds the arm across the
+                # torso, while positive X keeps the wrist on its own side.
+                "R_elbow_s": radians((52.0, 0.0, 0.0)),
                 "R_wrist_s": radians((12.0, 8.0, 8.0)),
-                "L_shoulder_s": radians((-62.0 + arm_lift * 0.5, -10.0 + sway, -30.0)),
-                "L_elbow_s": radians((-52.0, 0.0, 0.0)),
+                "L_shoulder_s": radians((62.0 - arm_lift * 0.5, -10.0 + sway, -30.0)),
+                "L_elbow_s": radians((52.0, 0.0, 0.0)),
                 "L_wrist_s": radians((12.0, -8.0, -8.0)),
                 "R_upperLeg_s": radians((leg_sway, 0.0, 0.0)),
                 "L_upperLeg_s": radians((-leg_sway * 0.6, 0.0, 0.0)),
@@ -202,6 +205,10 @@ def mina_idle_poses(baseline):
             },
         )
 
+    # On this rig the elbow's local X axis is mirrored from the generic
+    # authoring convention used by the pose tables.  Keep the public pose
+    # values readable (negative means a compact bend) but invert the value
+    # at the rig boundary so neither hand crosses the torso.
     return {
         0: frame(0.0, 0.0, 0.0, 0.0, 3.0),
         25: frame(0.02, 5.0, 4.0, 10.0, 2.0),
@@ -230,6 +237,64 @@ def copy_pose(source, *, root_up=None, rotations=None, scale=None):
     return data
 
 
+def blend_pose(left, right, amount):
+    """Interpolate a rig-space pose without letting a long segment snap."""
+
+    amount = max(0.0, min(1.0, float(amount)))
+    return {
+        "root_up": left["root_up"] + (right["root_up"] - left["root_up"]) * amount,
+        "rotations": {
+            name: tuple(
+                left["rotations"][name][axis]
+                + (right["rotations"][name][axis] - left["rotations"][name][axis])
+                * amount
+                for axis in range(3)
+            )
+            for name in left["rotations"]
+        },
+        "locations": {
+            name: tuple(
+                left["locations"][name][axis]
+                + (right["locations"][name][axis] - left["locations"][name][axis])
+                * amount
+                for axis in range(3)
+            )
+            for name in left["locations"]
+        },
+        "scales": {
+            name: tuple(
+                left["scales"][name][axis]
+                + (right["scales"][name][axis] - left["scales"][name][axis]) * amount
+                for axis in range(3)
+            )
+            for name in left["scales"]
+        },
+    }
+
+
+def resample_poses(poses, end_frame):
+    """Add a controlled pose sample at every frame between story keys.
+
+    The source rig has long, compound Euler rotations.  Leaving a 4–10 frame
+    gap to Blender's Bezier solver creates shoulder and root-speed spikes even
+    with AUTO_CLAMPED handles.  Per-frame samples preserve the intended story
+    keys while making the actual motion rate explicit and testable.
+    """
+
+    keys = sorted(poses)
+    result = {}
+    for frame in range(0, end_frame + 1):
+        if frame in poses:
+            result[frame] = poses[frame]
+            continue
+        right_index = next(index for index, key in enumerate(keys) if key > frame)
+        left_key = keys[right_index - 1]
+        right_key = keys[right_index]
+        amount = (frame - left_key) / (right_key - left_key)
+        result[frame] = blend_pose(poses[left_key], poses[right_key], amount)
+    return result
+
+
 def side_arm(
     right=True, *, shoulder=(-82.0, 12.0, 32.0), elbow=-58.0, wrist=(12.0, 8.0, 8.0)
 ):
@@ -237,9 +302,9 @@ def side_arm(
     side = "R" if right else "L"
     return {
         f"{side}_shoulder_s": radians(
-            (shoulder[0], shoulder[1] * sign, shoulder[2] * sign)
+            (-shoulder[0], shoulder[1] * sign, shoulder[2] * sign)
         ),
-        f"{side}_elbow_s": radians((elbow, 0.0, 0.0)),
+        f"{side}_elbow_s": radians((-elbow, 0.0, 0.0)),
         f"{side}_wrist_s": radians((wrist[0], wrist[1] * sign, wrist[2] * sign)),
     }
 
@@ -328,15 +393,15 @@ def attack_poses(baseline):
                 **body(hips=2.0, spine=4.0, chest=2.0, head=-2.0),
                 **side_arm(
                     True,
-                    shoulder=(-140.0, -45.0, -78.0),
-                    elbow=-135.0,
-                    wrist=(-55.0, -40.0, -60.0),
+                    shoulder=(-98.0, 0.0, 10.0),
+                    elbow=-95.0,
+                    wrist=(-15.0, 0.0, -10.0),
                 ),
                 **side_arm(
                     False,
-                    shoulder=(-110.0, 32.0, 58.0),
-                    elbow=-78.0,
-                    wrist=(18.0, -12.0, -16.0),
+                    shoulder=(-90.0, 10.0, 30.0),
+                    elbow=-70.0,
+                    wrist=(10.0, -8.0, -10.0),
                 ),
                 **wing_pose(lift=14.0),
                 **finger_pose(-8.0),
@@ -559,7 +624,7 @@ def death_poses(baseline):
         ),
         20: copy_pose(
             idle,
-            root_up=-0.15,
+            root_up=-0.30,
             rotations={
                 **fall,
                 "R_upperLeg_s": radians((60.0, 0.0, 0.0)),
@@ -571,7 +636,7 @@ def death_poses(baseline):
         ),
         30: copy_pose(
             idle,
-            root_up=-0.15,
+            root_up=-0.36,
             rotations={
                 **fall,
                 "hips_s": radians((-5.0, 6.0, 25.0)),
@@ -584,7 +649,7 @@ def death_poses(baseline):
         ),
         40: copy_pose(
             idle,
-            root_up=-0.15,
+            root_up=-0.36,
             rotations={
                 **fall,
                 "hips_s": radians((-5.0, 6.0, 25.0)),
@@ -627,7 +692,7 @@ def spawn_poses(baseline):
         **finger_pose(-10.0),
     }
     return {
-        0: copy_pose(idle, root_up=-0.12, rotations=compact),
+        0: copy_pose(idle, root_up=-0.22, rotations=compact),
         12: copy_pose(
             idle,
             root_up=-0.05,
@@ -652,6 +717,7 @@ def spawn_poses(baseline):
 
 def victory_poses(baseline):
     idle = mina_idle_poses(baseline)[0]
+    final_idle = copy_pose(idle, rotations={"hips_s": radians((0.0, 360.0, 0.0))})
     return {
         0: idle,
         10: copy_pose(
@@ -706,10 +772,32 @@ def victory_poses(baseline):
                 **wing_pose(lift=22.0),
             },
         ),
+        30: copy_pose(
+            idle,
+            root_up=0.05,
+            rotations={
+                **body(hips=0.0, spine=0.0, chest=0.0, head=-1.0),
+                "hips_s": radians((0.0, 270.0, 0.0)),
+                **side_arm(
+                    True,
+                    shoulder=(-138.0, 20.0, 58.0),
+                    elbow=-30.0,
+                    wrist=(32.0, 20.0, 26.0),
+                ),
+                **side_arm(
+                    False,
+                    shoulder=(-124.0, -24.0, -62.0),
+                    elbow=-46.0,
+                    wrist=(26.0, -18.0, -24.0),
+                ),
+                **wing_pose(lift=25.0),
+            },
+        ),
         50: copy_pose(
             idle,
             rotations={
                 **body(hips=0.0, spine=0.0, chest=0.0, head=-2.0),
+                "hips_s": radians((0.0, 360.0, 0.0)),
                 **side_arm(
                     True,
                     shoulder=(-100.0, 12.0, 38.0),
@@ -725,7 +813,7 @@ def victory_poses(baseline):
                 **wing_pose(lift=10.0),
             },
         ),
-        60: idle,
+        60: final_idle,
     }
 
 
@@ -760,15 +848,15 @@ def gadget_poses(baseline):
                 **body(hips=2.0, spine=-2.0, chest=-1.0, head=-2.0),
                 **side_arm(
                     True,
-                    shoulder=(-136.0, 20.0, 62.0),
-                    elbow=-42.0,
-                    wrist=(30.0, 20.0, 26.0),
+                    shoulder=(-116.0, 18.0, 44.0),
+                    elbow=-58.0,
+                    wrist=(26.0, 16.0, 20.0),
                 ),
                 **side_arm(
                     False,
-                    shoulder=(-136.0, -20.0, -62.0),
-                    elbow=-42.0,
-                    wrist=(30.0, -20.0, -26.0),
+                    shoulder=(-116.0, -18.0, -44.0),
+                    elbow=-58.0,
+                    wrist=(26.0, -16.0, -20.0),
                 ),
                 **wing_pose(lift=30.0),
                 **finger_pose(-12.0),
@@ -867,8 +955,8 @@ def author_clip(clip):
     action.use_fake_user = True
     armature.animation_data_create()
     armature.animation_data.action = action
-    poses = POSE_BUILDERS[clip](baseline)
     expected_end = FRAME_ENDS[clip]
+    poses = resample_poses(POSE_BUILDERS[clip](baseline), expected_end)
     if min(poses) != 0 or max(poses) != expected_end:
         raise RuntimeError(f"{clip}: pose frames do not cover 0..{expected_end}")
     for frame in sorted(poses):

@@ -24,7 +24,7 @@ export const IslandPhaseHud = ({state}) => {
   return (
     <section className={`island-phase-hud island-phase-hud--${phase.tone}`} aria-label={`Фаза матча: ${phase.label}`}>
       <div className="island-phase-hud__title"><span>{phase.icon}</span><strong>{phase.label}</strong></div>
-  <div className="island-phase-hud__meta"><b>{state.islandName || "Остров Первого Испытания"}</b><span>{timer}</span></div>
+      <div className="island-phase-hud__meta"><b>{state.islandName || "Остров Первого Испытания"}</b><span>{timer}</span></div>
       <p>{challengeEvent || suddenDeath || phase.hint}</p>
       {state.phase === "collapse" && state.stormDamage > 0 && <small>Шторм: −{state.stormDamage} HP</small>}
       {state.phase === "beacon" && state.beaconHolder && state.beaconProgress > 0 && (

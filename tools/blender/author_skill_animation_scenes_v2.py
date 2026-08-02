@@ -127,7 +127,7 @@ def rig_groups(armature):
         for name in names
         if any(
             token in authoring.token(name)
-            for token in ("weapon", "blade", "staff", "mic", "cloud", "orb", "totem")
+            for token in ("weapon", "blade", "staff", "mic", "cloud", "orb")
         )
     ]
     return groups
@@ -165,8 +165,6 @@ PRIMARY_HANDS = {
     "brock-zeus": "R",
     "kaze": "BOTH",
     "wukong-mico": "L",
-    # Damian's authored attack and the attached microphone are left-handed.
-    "damian": "L",
     "persephone-lumi": "BOTH",
 }
 
@@ -279,8 +277,6 @@ def idle_pose(hero: str, frame: int, end: int, groups: dict) -> dict:
         add_pose(pose, groups.get("R_shoulder"), deg(3.0 * scratch), 0, 0)
         add_pose(pose, groups.get("R_elbow"), deg(-2.5 * scratch), 0, 0)
         add_pose(pose, groups.get("R_wrist"), deg(1.5 * scratch), 0, 0)
-    elif hero == "damian":
-        add_pose(pose, groups.get("head"), 0, deg(5.0 * gaze), 0)
     elif hero == "persephone-lumi":
         add_pose(pose, groups.get("head"), 0, 0, deg(4.0 * gaze))
         reach = max(0.0, math.sin(t * math.tau - math.pi / 2.0))
@@ -313,7 +309,6 @@ def brief_clip_pose(hero: str, clip: str, frame: int, end: int, groups: dict) ->
             "brock-zeus": (-8.0, 2.0, 3.0),
             "kaze": (-12.0, 3.5, 3.5),
             "wukong-mico": (-14.0, 4.0, 4.0),
-            "damian": (-5.0, 2.0, 2.0),
             "persephone-lumi": (-4.0, 1.5, 1.5),
         }[hero]
         add_pose(pose, spine, deg(run_body[0]), deg(run_body[1] * stride), 0)
@@ -430,24 +425,6 @@ def brief_clip_pose(hero: str, clip: str, frame: int, end: int, groups: dict) ->
                         "shoulder": [(1, 12), (end, -18)],
                         "elbow": [(1, -8), (end, 16)],
                         "wrist": [(1, -3), (end, 3)],
-                    },
-                },
-            )
-        elif hero == "damian":
-            _arms(
-                pose,
-                groups,
-                frame,
-                {
-                    "L": {
-                        "shoulder": [(1, -12), (end, 12)],
-                        "elbow": [(1, 8), (end, -8)],
-                        "wrist": [(1, 0), (end, 0)],
-                    },
-                    "R": {
-                        "shoulder": [(1, 8), (end, -8)],
-                        "elbow": [(1, -6), (end, 6)],
-                        "wrist": [(1, 0), (end, 0)],
                     },
                 },
             )
@@ -581,25 +558,6 @@ def brief_clip_pose(hero: str, clip: str, frame: int, end: int, groups: dict) ->
                     "wrist": [(1, 0), (end, 0)],
                 },
             }
-        elif hero == "damian":
-            arms = {
-                "L": {
-                    "shoulder": [
-                        (1, -18 if not super_aim else -22),
-                        (end, -18 if not super_aim else -22),
-                    ],
-                    "elbow": [(1, 14), (end, 14)],
-                    "wrist": [(1, -4), (end, -4)],
-                },
-                "R": {
-                    "shoulder": [
-                        (1, -14 if not super_aim else -22),
-                        (end, -14 if not super_aim else -22),
-                    ],
-                    "elbow": [(1, 12), (end, 12)],
-                    "wrist": [(1, 0), (end, 0)],
-                },
-            }
         else:
             arms = {
                 "R": {
@@ -665,7 +623,6 @@ def brief_clip_pose(hero: str, clip: str, frame: int, end: int, groups: dict) ->
             "brock-zeus": (-24, 8, -18, -24),
             "kaze": (26, -12, 20, 24),
             "wukong-mico": (28, -8, 22, 24),
-            "damian": (26, -6, 22, 26),
             "persephone-lumi": (22, -8, 24, 28),
         }[hero]
         add_pose(pose, hips, deg(fall_body[0] * fall), deg(fall_body[1] * fall), 0)
@@ -1246,9 +1203,7 @@ def author_scene(hero: str, clip: str, target: Path):
     armature = next(obj for obj in scene.objects if obj.type == "ARMATURE")
     armature.animation_data_create()
     idle_path = SOURCE / hero / "animations" / "idle.blend"
-    idle_action = (
-        None if hero == "damian" else authoring.import_source_action(idle_path, "Idle")
-    )
+    idle_action = authoring.import_source_action(idle_path, "Idle")
     armature.animation_data.action = idle_action
     idle_start, _idle_end = (
         authoring.action_frame_range(idle_action) if idle_action else (1, 1)

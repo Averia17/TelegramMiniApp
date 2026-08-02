@@ -52,8 +52,8 @@ ROOT_Y_LIMITS = {
     "aim": (-0.04, 0.04),
     "aim-super": (-0.15, 0.04),
     "hit": (-0.04, 0.04),
-    "death": (-0.15, 0.04),
-    "spawn": (-0.15, 0.04),
+    "death": (-0.38, 0.04),
+    "spawn": (-0.24, 0.04),
     "victory": (-0.04, 0.15),
     "gadget": (-0.15, 0.15),
     "aim-gadget": (-0.15, 0.04),
@@ -69,6 +69,10 @@ def vector_values(vector):
     return tuple(float(value) for value in vector)
 
 
+def world_point(armature, pose_bone):
+    return armature.matrix_world @ pose_bone.head
+
+
 def snapshot(armature):
     return {
         bone.name: {
@@ -78,6 +82,39 @@ def snapshot(armature):
         }
         for bone in armature.pose.bones
     }
+
+
+def check_hand_side(clip, frame, armature, errors):
+    """Keep each wrist on its own side of the torso in rig-relative space."""
+
+    right_shoulder = armature.pose.bones.get("R_shoulder_s")
+    left_shoulder = armature.pose.bones.get("L_shoulder_s")
+    right_wrist = armature.pose.bones.get("R_wrist_s")
+    left_wrist = armature.pose.bones.get("L_wrist_s")
+    if not all((right_shoulder, left_shoulder, right_wrist, left_wrist)):
+        errors.append(f"{clip}@{frame}: hand-side semantic bones are missing")
+        return
+
+    shoulder_span = world_point(armature, left_shoulder) - world_point(
+        armature, right_shoulder
+    )
+    if shoulder_span.length < 1e-4:
+        errors.append(f"{clip}@{frame}: shoulder span collapsed")
+        return
+    lateral = shoulder_span.normalized()
+    torso_center = (
+        world_point(armature, right_shoulder) + world_point(armature, left_shoulder)
+    ) * 0.5
+    right_offset = (world_point(armature, right_wrist) - torso_center).dot(lateral)
+    left_offset = (world_point(armature, left_wrist) - torso_center).dot(lateral)
+    if right_offset >= -0.005:
+        errors.append(
+            f"{clip}@{frame}: right wrist crossed torso center ({right_offset:.4f})"
+        )
+    if left_offset <= 0.005:
+        errors.append(
+            f"{clip}@{frame}: left wrist crossed torso center ({left_offset:.4f})"
+        )
 
 
 def action_fcurves(action):
@@ -140,6 +177,7 @@ def check_finite_and_limits(clip, armature, frame, errors):
             errors.append(
                 f"{clip}@{frame}: {name} rotation {values} exceeds safe body limit"
             )
+    check_hand_side(clip, frame, armature, errors)
 
 
 def validate_clip(clip, expected_bones):

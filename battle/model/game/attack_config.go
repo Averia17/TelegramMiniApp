@@ -44,7 +44,6 @@ var heroAttackConfigs = map[string]AttackConfig{
 	"Brock Zeus":      {Archetype: AttackProjectile, AimShape: "line", Range: 760, ProjectileKind: "zeus_lightning", SplashRadius: 72},
 	"Kaze":            {Archetype: AttackMeleeCone, AimShape: "cone", Range: 105, HalfArcDegrees: 55, Modifier: "kaze_double"},
 	"Wukong Mico":     {Archetype: AttackMeleeCone, AimShape: "cone", Range: 120, HalfArcDegrees: 50, Modifier: "mico_staff"},
-	"Damian":          {Archetype: AttackProjectile, AimShape: "line", Range: 640, ProjectileKind: "damian_orb"},
 	"Persephone Lumi": {Archetype: AttackProjectile, AimShape: "line", Range: 600, ProjectileKind: "lumi_orb", Modifier: "slow_trail"},
 }
 
@@ -86,8 +85,6 @@ func BasicCombatKitFor(hero string) BasicCombatKit {
 		return KazeKit{}
 	case "Wukong Mico":
 		return WukongMicoKit{}
-	case "Damian":
-		return DamianKit{}
 	case "Persephone Lumi":
 		return PersephoneLumiKit{}
 	}

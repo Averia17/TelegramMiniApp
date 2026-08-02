@@ -3,13 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GLB export audit</title>
+  <link rel="icon" href="data:,">
+  <title>Canonical hero GLB audit</title>
   <style>
     body { margin: 0; padding: 24px; color: #e8edf7; background: #10141d; font: 14px/1.45 system-ui, sans-serif; }
     h1 { margin: 0 0 16px; font-size: 22px; }
     #summary { margin-bottom: 16px; font-weight: 700; }
     table { width: 100%; border-collapse: collapse; background: #181e2a; }
-    th, td { padding: 9px 12px; border-bottom: 1px solid #2b3445; text-align: left; }
+    th, td { padding: 9px 12px; border-bottom: 1px solid #2b3445; text-align: left; vertical-align: top; }
     .ok { color: #6ee7a5; }
     .fail { color: #ff7d8d; }
     #renders { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 16px; }
@@ -18,16 +19,16 @@
   </style>
 </head>
 <body>
-  <h1>GLB export audit</h1>
+  <h1>Canonical hero GLB audit</h1>
   <div id="summary">Загрузка…</div>
   <table>
     <thead><tr><th>Файл</th><th>Статус</th><th>Меши</th><th>Кости</th><th>Socket</th><th>Анимации</th></tr></thead>
     <tbody id="results"></tbody>
   </table>
   <div id="renders"></div>
-  <h1 style="margin-top:24px">Runtime weapon attachment</h1>
+  <h1 style="margin-top:24px">Embedded equipment</h1>
   <table>
-    <thead><tr><th>Герой</th><th>Статус</th><th>Socket → grip</th><th>Socket → geometry</th></tr></thead>
+    <thead><tr><th>Герой</th><th>Статус</th><th>Equipment nodes</th><th>Diagnostic nodes</th></tr></thead>
     <tbody id="runtime-results"></tbody>
   </table>
   <script type="module">
@@ -37,18 +38,12 @@
 
     const urls = [
       "/assets/heroes/output_heroes/brock-zeus_base.glb",
-      "/assets/heroes/output_heroes/damian_base.glb",
       "/assets/heroes/output_heroes/fairy-mina_base.glb",
       "/assets/heroes/output_heroes/kaze_base.glb",
       "/assets/heroes/output_heroes/mandy_base.glb",
       "/assets/heroes/output_heroes/needle_base.glb",
       "/assets/heroes/output_heroes/persephone-lumi_base.glb",
       "/assets/heroes/output_heroes/wukong-mico_base.glb",
-      "/assets/heroes/output_weapons/damian_weapon.glb",
-      "/assets/heroes/output_weapons/kaze_weapon.glb",
-      "/assets/heroes/output_weapons/mandy_weapon.glb",
-      "/assets/heroes/output_weapons/persephone-lumi_weapon.glb",
-      "/assets/heroes/output_weapons/wukong-mico_weapon.glb",
     ]
     const loader = new GLTFLoader()
     const results = []
@@ -61,8 +56,7 @@
           if (object.isBone) counts.bones += 1
           if (object.name === "weapon_socket_r") counts.sockets += 1
         })
-        const isBase = url.includes("/output_heroes/")
-        const ok = counts.meshes > 0 && (!isBase || counts.sockets === 1)
+        const ok = counts.meshes > 0 && gltf.animations.length > 0
         results.push({...counts, url, ok, animations: gltf.animations.length})
       } catch (error) {
         results.push({url, ok: false, error: String(error), meshes: 0, bones: 0, sockets: 0, animations: 0})
@@ -77,46 +71,40 @@
         <td>${result.meshes}</td><td>${result.bones}</td><td>${result.sockets}</td><td>${result.animations}</td>`
       body.append(row)
     }
-    const passed = results.filter(result => result.ok).length
     const summary = document.querySelector("#summary")
-    summary.textContent = `${passed}/${results.length} GLB успешно загружены через Three.js`
+    summary.textContent = `${results.filter(result => result.ok).length}/${results.length} canonical GLB успешно загружены через Three.js`
     summary.dataset.complete = "true"
-    summary.dataset.passed = String(passed)
+    summary.dataset.passed = String(results.filter(result => result.ok).length)
     summary.dataset.total = String(results.length)
     window.__GLB_AUDIT__ = results
 
-    const runtimeHeroes = ["Mandy", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi"]
+    const runtimeHeroes = ["Mandy", "Kaze", "Wukong Mico", "Persephone Lumi"]
     const runtimeResults = []
+    const canonicalNodeName = name => String(name || "").replace(/[.]/g, "")
     for (const hero of runtimeHeroes) {
       try {
         const instance = await assetRegistry.instantiateHero(hero)
         instance.root.updateMatrixWorld(true)
-        const distances = instance.asset.weaponAttachments.map(config => {
-          const socket = instance.root.getObjectByName(config.target || config.bone)
-          const weapon = instance.root.getObjectByName(`DetachedHeroWeapon.${config.name}`)
-          const socketPosition = socket?.getWorldPosition(new THREE.Vector3())
-          const gripPosition = weapon?.getWorldPosition(new THREE.Vector3())
-          return {
-            grip: socketPosition && gripPosition ? socketPosition.distanceTo(gripPosition) : Infinity,
-            geometry: weapon && socketPosition
-              ? new THREE.Box3().setFromObject(weapon, true).distanceToPoint(socketPosition)
-              : Infinity,
-          }
-        })
-        const gripDistance = Math.max(...distances.map(distance => distance.grip))
-        const geometryDistance = Math.max(...distances.map(distance => distance.geometry))
+        const embedded = []
         const diagnosticNames = []
         instance.root.traverse(object => {
-          if (/Grip\.Primary|DetachedHeroWeapon|HeroAttachment/i.test(object.name)) diagnosticNames.push(object.name)
+          const role = object.userData.attachment_role || object.userData.attachmentRole
+          if (["held-weapon", "throwable-weapon"].includes(role)) {
+            let hasMesh = false
+            object.traverse(child => {
+              if (child.isMesh || child.isSkinnedMesh) hasMesh = true
+            })
+            const markerName = canonicalNodeName(`Grip.Primary.${object.name}`)
+            let marker = null
+            instance.root.traverse(candidate => {
+              if (canonicalNodeName(candidate.name) === markerName) marker = candidate
+            })
+            embedded.push({name: object.name, role, hasMesh, hasGripMarker: Boolean(marker || object.userData.grip_bone)})
+          }
+          if (/Grip\.Primary|HeroAttachment/i.test(object.name)) diagnosticNames.push(object.name)
         })
-        runtimeResults.push({
-          hero,
-          ok: gripDistance < 1e-5 && geometryDistance < .12,
-          gripDistance,
-          geometryDistance,
-          diagnosticNames,
-          targets: instance.asset.weaponAttachments,
-        })
+        const ok = embedded.length > 0 && embedded.every(item => item.hasMesh && item.hasGripMarker)
+        runtimeResults.push({hero, ok, embedded, diagnosticNames})
 
         const card = document.createElement("div")
         card.className = "render-card"
@@ -141,7 +129,7 @@
         scene.add(instance.root)
         renderer.render(scene, camera)
       } catch (error) {
-        runtimeResults.push({hero, ok: false, error: String(error), gripDistance: Infinity, geometryDistance: Infinity})
+        runtimeResults.push({hero, ok: false, error: String(error), embedded: [], diagnosticNames: []})
       }
     }
     const runtimeBody = document.querySelector("#runtime-results")
@@ -149,15 +137,15 @@
       const row = document.createElement("tr")
       row.innerHTML = `
         <td>${result.hero}</td>
-        <td class="${result.ok ? "ok" : "fail"}">${result.ok ? "ATTACHED" : result.error || "INVALID"}</td>
-        <td>${Number.isFinite(result.gripDistance) ? result.gripDistance.toFixed(6) : "—"}</td>
-        <td>${Number.isFinite(result.geometryDistance) ? result.geometryDistance.toFixed(6) : "—"}</td>`
+        <td class="${result.ok ? "ok" : "fail"}">${result.ok ? "EMBEDDED" : result.error || "INVALID"}</td>
+        <td>${result.embedded?.map(item => `${item.name} (${item.role})`).join(", ") || "—"}</td>
+        <td>${result.diagnosticNames?.join(", ") || "—"}</td>`
       runtimeBody.append(row)
     }
     summary.dataset.runtimeComplete = "true"
     summary.dataset.runtimePassed = String(runtimeResults.filter(result => result.ok).length)
     summary.dataset.runtimeDiagnostics = JSON.stringify(runtimeResults)
-    window.__WEAPON_ATTACHMENT_AUDIT__ = runtimeResults
+    window.__EMBEDDED_EQUIPMENT_AUDIT__ = runtimeResults
   </script>
 </body>
 </html>

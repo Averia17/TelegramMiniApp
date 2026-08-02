@@ -26,11 +26,9 @@ func InitGameState(gs *GameState) {
 	gs.PendingMandySupers = make([]*PendingMandySuper, 0)
 	gs.HeroZones = make([]*HeroZone, 0)
 	gs.DoomedUntil = make(map[string]int64)
-	gs.DamianDebuffUntil = make(map[string]int64)
 	gs.LightMarkedUntil = make(map[string]int64)
 	gs.AbilityTargets = make(map[string]string)
 	gs.LightningStrikes = make([]*LightningStrike, 0)
-	gs.Totems = make(map[string]*Totem)
 	gs.Skyfalls = make([]*Skyfall, 0)
 	gs.TemporaryWalls = make(map[*geometry.WallTile]int64)
 	gs.BotMemory = make(map[string]*BotPerception)
@@ -248,21 +246,31 @@ func (gs *GameState) updateMonsters() {
 			continue
 		}
 		var target *player.Player
-		closest := math.MaxFloat64
-		for _, candidate := range gs.Players {
-			if candidate.IsAlive() {
-				if distance := math.Hypot(candidate.X-m.X, candidate.Y-m.Y); distance < closest {
-					closest, target = distance, candidate
-				}
+		if m.TargetPlayerId != "" {
+			target = gs.Players[m.TargetPlayerId]
+			chaseDistance := math.Hypot(m.X-m.ChaseOriginX, m.Y-m.ChaseOriginY)
+			if target == nil || !gs.monsterCanSeePlayer(m, target) || chaseDistance > monster.MonsterChaseLeash {
+				m.State = monster.MonsterIdle
+				m.TargetPlayerId = ""
+				m.IgnorePlayersUntil = now + monster.MonsterLostTargetDelay
+				continue
+			}
+		} else if now >= m.IgnorePlayersUntil {
+			target = gs.closestVisibleMonsterPlayer(m)
+			if target != nil {
+				m.State = monster.MonsterChase
+				m.TargetPlayerId = target.PlayerId
+				m.ChaseOriginX, m.ChaseOriginY = m.X, m.Y
 			}
 		}
 		if target == nil {
 			continue
 		}
+		closest := math.Hypot(target.X-m.X, target.Y-m.Y)
 		angle := math.Atan2(target.Y-m.Y, target.X-m.X)
 		m.Rotation = angle
-		if closest < 430 && closest >= 50 {
-			pace := 105 + float64(m.Tier)*15 + float64(index)*2
+		if closest < monster.MonsterSight && closest >= 50 {
+			pace := 90 + float64(m.Tier)*12 + float64(index)
 			dx, dy := gs.navigatedDirection(&m.CircleBody, math.Cos(angle), math.Sin(angle), monsterID)
 			m.X += dx * pace / 60
 			m.Y += dy * pace / 60
@@ -288,6 +296,38 @@ func (gs *GameState) updateMonsters() {
 		}
 		index++
 	}
+}
+
+func (gs *GameState) closestVisibleMonsterPlayer(m *monster.Monster) *player.Player {
+	var target *player.Player
+	closest := monster.MonsterSight
+	for _, candidate := range gs.Players {
+		if !candidate.IsAlive() || !gs.monsterCanSeePlayer(m, candidate) {
+			continue
+		}
+		if distance := math.Hypot(candidate.X-m.X, candidate.Y-m.Y); distance <= closest {
+			closest, target = distance, candidate
+		}
+	}
+	return target
+}
+
+func (gs *GameState) monsterCanSeePlayer(m *monster.Monster, target *player.Player) bool {
+	if m == nil || target == nil || !target.IsAlive() {
+		return false
+	}
+	if math.Hypot(target.X-m.X, target.Y-m.Y) > monster.MonsterSight {
+		return false
+	}
+	if gs.Walls != nil && segmentHitsBlockingWall(m.X, m.Y, target.X, target.Y, 2, gs.Walls) {
+		return false
+	}
+	targetGroup, targetInBush := gs.bushGroupAt(target.X, target.Y)
+	if !targetInBush {
+		return true
+	}
+	observerGroup, observerInBush := gs.bushGroupAt(m.X, m.Y)
+	return observerInBush && targetGroup != 0 && observerGroup == targetGroup
 }
 
 func (gs *GameState) updateStatuses() {
@@ -386,9 +426,6 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 }
 
 func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int) int {
-	if source != nil && gs.DamianDebuffUntil[source.PlayerId] > time.Now().UnixMilli() {
-		amount = int(math.Round(float64(amount) * .80))
-	}
 	if target != nil && gs.DoomedUntil[target.PlayerId] > time.Now().UnixMilli() {
 		amount = int(math.Round(float64(amount) * 1.3))
 	}
@@ -660,9 +697,6 @@ func (gs *GameState) updateBullets() {
 				p.Marks = 1
 				gs.LightMarkedUntil[p.PlayerId] = time.Now().UnixMilli() + 4000
 			}
-			if b.Kind == "damian_orb" || b.Kind == "damian_totem_orb" {
-				gs.DamianDebuffUntil[p.PlayerId] = time.Now().UnixMilli() + cappedSkillDuration(DamianDebuffDuration)
-			}
 			if b.Kind == "spore" {
 				slowUntil := time.Now().UnixMilli() + cappedSkillDuration(NeedleSporeSlowDuration)
 				p.SlowUntil = slowUntil
@@ -700,19 +734,6 @@ func (gs *GameState) updateBullets() {
 			gs.damageLunarCrate(gs.Players[b.PlayerId], pr, b.Damage)
 			b.Active = false
 			break
-		}
-
-		for owner, totem := range gs.Totems {
-			source := gs.Players[owner]
-			if totem == nil || source == nil || source.PlayerId == b.PlayerId || (source.Team != "" && source.Team == b.Team) {
-				continue
-			}
-			if segmentHitsCircle(previousX, previousY, b.X, b.Y, totem.X, totem.Y, 20+b.Radius) {
-				totem.HP -= int(math.Max(1, float64(b.Damage)))
-				b.Active = false
-				gs.addEffect("damian_totem_hit", totem.X, totem.Y, 0, 0, 28, 0, 0, 0, source.Color, b.Damage, 320)
-				break
-			}
 		}
 
 		if segmentHitsBlockingWall(previousX, previousY, b.X, b.Y, b.Radius, gs.Walls) {
@@ -1097,7 +1118,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 	}
 	if !primary {
 		switch p.HeroName {
-		case "Needle", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Damian", "Persephone Lumi":
+		case "Needle", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi":
 			p.LastAbilityOK = gs.useNewHeroGadget(p, ts)
 			if p.LastAbilityOK {
 				p.GadgetPulse++
@@ -1214,8 +1235,6 @@ func AbilityCooldownMs(heroName, slot string) int64 {
 		return 10000
 	case "Wukong Mico":
 		return 11000
-	case "Damian":
-		return 15000
 	case "Persephone Lumi":
 		return 13000
 	case "Viper":

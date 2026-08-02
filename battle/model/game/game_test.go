@@ -27,9 +27,10 @@ func newTestGameState() *GameState {
 	return gs
 }
 
-func TestBattleDurationIsTwoAndHalfMinutes(t *testing.T) {
-	if GameDuration != 150*time.Second {
-		t.Fatalf("game duration = %s, want 2m30s", GameDuration)
+func TestBattleDurationIncludesFinalPhase(t *testing.T) {
+	want := OpeningCombatDuration + ChallengeDuration + CollapseDuration + FinalPhaseDuration
+	if GameDuration != want {
+		t.Fatalf("game duration = %s, want %s", GameDuration, want)
 	}
 }
 
@@ -37,8 +38,8 @@ func TestBattlePhasesRunAtDoubleSpeed(t *testing.T) {
 	if LobbyDuration != 5*time.Second {
 		t.Fatalf("lobby duration = %s, want 5s", LobbyDuration)
 	}
-	if GameDuration != 150*time.Second {
-		t.Fatalf("game duration = %s, want 2m30s", GameDuration)
+	if GameDuration != 210*time.Second {
+		t.Fatalf("game duration = %s, want 3m30s", GameDuration)
 	}
 	if OpeningCombatDuration != 60*time.Second {
 		t.Fatalf("opening combat duration = %s, want 1m", OpeningCombatDuration)
@@ -51,6 +52,9 @@ func TestBattlePhasesRunAtDoubleSpeed(t *testing.T) {
 	}
 	if BeaconHoldDuration != 10*time.Second {
 		t.Fatalf("beacon hold duration = %s, want 10s", BeaconHoldDuration)
+	}
+	if FinalPhaseDuration != 60*time.Second {
+		t.Fatalf("final phase duration = %s, want 60s", FinalPhaseDuration)
 	}
 }
 
@@ -220,6 +224,56 @@ func TestSuddenDeathDamageGrowsForTwoRemainingPlayers(t *testing.T) {
 	secondTickDamage := firstAfterFirstTick - first.Lives
 	if secondTickDamage <= firstTickDamage {
 		t.Fatalf("sudden death damage did not grow: first=%d second=%d", firstTickDamage, secondTickDamage)
+	}
+}
+
+func TestSuddenDeathDamageAppliesToThreeRemainingPlayers(t *testing.T) {
+	gs := newTestGameState()
+	gs.MaxPlayers = 3
+	gs.State = GameStateGame
+	gs.IslandPhase = IslandPhaseBeacon
+	gs.PlayerAdd("one", "One", "Shelly")
+	gs.PlayerAdd("two", "Two", "Colt")
+	gs.PlayerAdd("three", "Three", "Mandy")
+	now := time.Now().UnixMilli()
+	gs.SuddenDeathStartedAt = now - 1000
+	gs.SuddenDeathNextTickAt = now
+
+	before := make(map[string]int, len(gs.Players))
+	for id, candidate := range gs.Players {
+		before[id] = candidate.Lives
+	}
+	gs.applySuddenDeath(now)
+
+	if gs.SuddenDeathDamage <= 0 {
+		t.Fatal("sudden death damage should be active with three remaining players")
+	}
+	for id, candidate := range gs.Players {
+		if candidate.Lives >= before[id] {
+			t.Fatalf("player %q did not lose health during final phase", id)
+		}
+	}
+}
+
+func TestSuddenDeathLeavesOneSurvivorWhenATickWouldKillEveryone(t *testing.T) {
+	gs := newTestGameState()
+	gs.MaxPlayers = 3
+	gs.State = GameStateGame
+	gs.IslandPhase = IslandPhaseBeacon
+	gs.PlayerAdd("one", "One", "Shelly")
+	gs.PlayerAdd("two", "Two", "Colt")
+	gs.PlayerAdd("three", "Three", "Mandy")
+	for _, candidate := range gs.Players {
+		candidate.Lives = 20
+	}
+	now := time.Now().UnixMilli()
+	gs.SuddenDeathStartedAt = now - 10*1000
+	gs.SuddenDeathNextTickAt = now
+
+	gs.applySuddenDeath(now)
+
+	if got := gs.countActivePlayers(); got != 1 {
+		t.Fatalf("active players after lethal final-phase tick = %d, want 1", got)
 	}
 }
 

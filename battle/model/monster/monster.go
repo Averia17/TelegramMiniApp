@@ -17,9 +17,9 @@ const (
 
 const (
 	MonsterSpeedPatrol       = 0.75
-	MonsterSpeedChase        = 1.25
-	MonsterSight             = 192.0
-	MonsterChaseLeash        = 320.0
+	MonsterSpeedChase        = 1.0
+	MonsterSight             = 176.0
+	MonsterChaseLeash        = 260.0
 	MonsterLostTargetDelay   = 2500
 	MonsterLives             = 260
 	EliteMonsterLives        = 380

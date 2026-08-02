@@ -3,6 +3,8 @@ import {WORLD_SCALE} from "../shared/coordinates.js"
 import {disposeObjectTree} from "../shared/disposal.js"
 import {flatMaterial} from "../shared/materials.js"
 
+const GROUND_COLORS = Object.freeze({default: 0x4f9b50, island: 0x3d8a4d})
+
 export const createWaterTexture = () => {
   const canvas = document.createElement("canvas")
   canvas.width = 64
@@ -33,26 +35,28 @@ export class GroundRenderer {
     this.theme = "default"
   }
 
-  sync(width, height, theme = this.theme) {
+  sync(width, height, theme = this.theme, excludedAreas = []) {
     const sceneWidth = width * WORLD_SCALE
     const sceneHeight = height * WORLD_SCALE
-    const size = `${sceneWidth}:${sceneHeight}:${theme}`
+    const exclusions = excludedAreas.map(area => `${area.minX}:${area.minY}:${area.maxX}:${area.maxY}`).join("|")
+    const size = `${sceneWidth}:${sceneHeight}:${theme}:${exclusions}`
     if (this.mesh?.userData.size === size) return
     if (this.mesh) {
       this.root.remove(this.mesh)
       disposeObjectTree(this.mesh)
     }
     this.theme = theme
-    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(sceneWidth, sceneHeight), flatMaterial(theme === "island" ? 0x1ca8bd : 0xe89a61))
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(sceneWidth, sceneHeight), flatMaterial(GROUND_COLORS[theme] || GROUND_COLORS.default))
     this.mesh.rotation.x = -Math.PI / 2
     this.mesh.position.set(sceneWidth / 2, 0, sceneHeight / 2)
     this.mesh.userData.size = size
+    this.mesh.userData.role = "grass-ground"
     this.root.add(this.mesh)
   }
 
   setTheme(theme) {
     if (!this.mesh || this.theme === theme) return
     this.theme = theme
-    this.mesh.material.color.setHex(theme === "island" ? 0x1ca8bd : 0xe89a61)
+    this.mesh.material.color.setHex(GROUND_COLORS[theme] || GROUND_COLORS.default)
   }
 }

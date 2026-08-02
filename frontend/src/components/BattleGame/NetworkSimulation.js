@@ -150,7 +150,6 @@ export class NetworkSimulation {
     this.displayPlayers = {}
     this.displayMonsters = {}
     this.displayBullets = new Map()
-    this.displayTotems = new Map()
   }
 
   setLocalPlayerId(id) {
@@ -340,9 +339,8 @@ export class NetworkSimulation {
       (bullet, index) => bullet.id ?? `${bullet.playerId || ""}:${bullet.kind || ""}:${index}`,
       t,
     )
-    const totems = syncInterpolatedList(this.displayTotems, older.totems, newer.totems, (totem, index) => totem.owner ?? index, t)
     return this.damagePrediction.applyToState(
-      {...this.latestState, players, monsters, bullets, totems, networkSmoothed: true},
+      {...this.latestState, players, monsters, bullets, networkSmoothed: true},
       now,
       {mutateEntities: !copyEntities},
     )

@@ -170,13 +170,6 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 		maxLife := float64(effect.ExpiresAt-effect.CreatedAt) / 1000
 		effects = append(effects, game.EffectJSON{Id: fmt.Sprintf("%d:%s:%.0f:%.0f", effect.CreatedAt, effect.Kind, effect.X, effect.Y), Kind: effect.Kind, X: effect.X, Y: effect.Y, ToX: effect.ToX, ToY: effect.ToY, Radius: effect.Radius, Angle: effect.Angle, Range: effect.Range, Arc: effect.Arc, Color: effect.Color, Damage: effect.Damage, Life: float64(effect.ExpiresAt-now) / 1000, MaxLife: maxLife})
 	}
-	totems := make([]game.TotemJSON, 0, len(r.State.Totems))
-	for _, totem := range r.State.Totems {
-		if totem != nil {
-			totems = append(totems, game.TotemJSON{Owner: totem.Owner, X: totem.X, Y: totem.Y, HP: totem.HP, MaxHP: 300})
-		}
-	}
-
 	gameState := game.GameStateJSON{
 		State:             r.State.State,
 		RoomName:          r.State.RoomName,
@@ -239,7 +232,6 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 		visiblePlayers := visiblePlayersForClient(r.State, client.Id, players, now)
 		combatEvents := combatEventsForClient(r.State.CombatEvents, client.Id, now)
 		clientState := game.NewStateUpdate(&gameState, &mapJSON, visiblePlayers, monsters, bullets, props, effects, combatEvents)
-		clientState.Totems = totems
 		updates = append(updates, preparedStateUpdate{client: client, state: clientState, mapRevision: r.State.MapRevision, sendingMap: sendingMap})
 	}
 	return updates

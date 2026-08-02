@@ -7,7 +7,6 @@ func TestRangedHeroesTradeSafetyForLowerBaseDamage(t *testing.T) {
 		"Needle":          65,
 		"Fairy Mina":      40,
 		"Brock Zeus":      80,
-		"Damian":          75,
 		"Persephone Lumi": 70,
 	}
 
@@ -38,7 +37,6 @@ func TestHeroConfigsUseCompactCombatValues(t *testing.T) {
 		"Brock Zeus":      {620, 80, 12, 36},
 		"Kaze":            {650, 40, 16, 0},
 		"Wukong Mico":     {900, 85, 13, 0},
-		"Damian":          {640, 75, 13, 31},
 		"Persephone Lumi": {680, 70, 13, 28},
 	}
 

@@ -10,7 +10,7 @@ const chestStyle = productId => ({
   1003: {icon: "✦", kind: "МЕГА", tone: "gold"},
 })[productId] || {icon: "▣", kind: "СУНДУК", tone: "blue"}
 
-export const StoreTab = ({userId, economy, onEconomyChange}) => {
+export const StoreTab = ({economy, onEconomyChange}) => {
   const [products, setProducts] = useState([])
   const [status, setStatus] = useState("loading")
   const [opening, setOpening] = useState(null)

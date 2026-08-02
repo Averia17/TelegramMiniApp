@@ -8,11 +8,11 @@ const clamp = value => Math.max(0, Math.min(1, value))
 const MELEE_SWING_KINDS = new Set(["mandy_staff_swing", "mico_staff_swing"])
 const ORBITAL_KINDS = new Set([
   "mina_healing_aura", "zeus_storm_target", "kaze_veil_step",
-  "mico_staff_spin", "mico_ruyi_bind", "damian_totem_spawn",
+  "mico_staff_spin", "mico_ruyi_bind",
   "lumi_roots", "lumi_seedburst", "zeus_thunderbrand",
   "needle_root_cast", "needle_spore_cloud", "zeus_burning_ground", "mico_suppressed_rage",
 ])
-const TRAIL_KINDS = new Set(["kaze_dash", "damian_swap"])
+const TRAIL_KINDS = new Set(["kaze_dash"])
 
 const createSwingArc = (radius, arc, material, innerRadius = .62) => {
   const mesh = new THREE.Mesh(
@@ -65,15 +65,7 @@ export class EffectRenderer {
           side: THREE.DoubleSide,
           depthWrite: false,
         })
-        if (effect.kind === "damian_totem") {
-          mesh = new THREE.Group()
-          const base = new THREE.Mesh(new THREE.CylinderGeometry(radius*.55,radius*.75,radius*1.8,8), material)
-          base.position.y=radius*.9
-          const eye = new THREE.Mesh(new THREE.IcosahedronGeometry(radius*.42,1), flatMaterial(0xb45cff))
-          eye.position.y=radius*2
-          mesh.add(base,eye)
-          mesh.userData.kind=effect.kind
-        } else if (effect.kind === "heal") {
+        if (effect.kind === "heal") {
           mesh = new THREE.Group()
           mesh.userData.kind = "heal"
           const ring = new THREE.Mesh(
@@ -126,17 +118,14 @@ export class EffectRenderer {
           mesh = new THREE.Mesh(new THREE.RingGeometry(radius * 0.78, radius, 32), material)
           mesh.userData.kind = effect.kind
         }
-        if (!["damian_totem", "heal", "kaze_cross_slash"].includes(effect.kind) &&
+        if (!["heal", "kaze_cross_slash"].includes(effect.kind) &&
             !ORBITAL_KINDS.has(effect.kind) && !TRAIL_KINDS.has(effect.kind)) {
           mesh.rotation.x = -Math.PI / 2
         }
         this.meshes.set(id, mesh)
         this.root.add(mesh)
       }
-      if (mesh.userData.kind === "damian_totem") {
-        mesh.position.copy(worldToScene(effect.x,effect.y,0))
-        mesh.rotation.y += .03
-      } else if (mesh.userData.kind === "mandy_super_wave") {
+      if (mesh.userData.kind === "mandy_super_wave") {
         const range = Math.max(1, effect.range || Math.hypot((effect.toX || effect.x) - effect.x, (effect.toY || effect.y) - effect.y))
         mesh.position.copy(worldToScene(
           effect.x + Math.cos(effect.angle || 0) * range / 2,

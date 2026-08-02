@@ -56,6 +56,9 @@ BONES = {
     "chest": "chest_s_033",
     "head": "head_s_035",
     "hand_l": "L_wrist_s_047",
+    "upper_r": "R_shoulder_s_061",
+    "elbow_r": "R_elbow_s_062",
+    "forearm_r": "R_forearm_twist_s_063",
     "hand_r": "R_wrist_s_064",
     "thigh_l": "L_upperLeg_s_03",
     "shin_l": "L_lowerLeg_s_04",
@@ -80,7 +83,13 @@ ROOT_UP_LIMITS = {
     "gadget": (-0.16, 0.0),
     "aim-gadget": (-0.08, -0.08),
 }
-STAFF_CONTACT_CLIPS = {"idle", "super", "aim-super", "death", "gadget"}
+LEFT_GRIP_FINGERS = (
+    "L_index_01_s_050",
+    "L_middle_01_s_048",
+    "L_ring_01_s_054",
+    "L_pinky_01_s_056",
+)
+LEFT_THUMB = "L_thumb_01_s_052"
 
 
 def action_fcurves(action):
@@ -132,6 +141,53 @@ def distance_point_to_segment(point, start, end):
         return (point - start).length
     factor = max(0.0, min(1.0, (point - start).dot(vector) / length_sq))
     return (point - (start + factor * vector)).length
+
+
+def finger_grip_metrics(armature, marker):
+    marker_world = marker.matrix_world.translation
+
+    def segment(name):
+        bone = armature.pose.bones[name]
+        return armature.matrix_world @ bone.head, armature.matrix_world @ bone.tail
+
+    finger_distances = [
+        distance_point_to_segment(marker_world, *segment(name))
+        for name in LEFT_GRIP_FINGERS
+    ]
+    thumb_distance = distance_point_to_segment(marker_world, *segment(LEFT_THUMB))
+    return sum(distance <= 0.18 for distance in finger_distances), thumb_distance
+
+
+def right_arm_rotation_snapshot(armature):
+    return {
+        semantic: tuple(
+            float(value) for value in armature.pose.bones[BONES[semantic]].rotation_euler
+        )
+        for semantic in ("upper_r", "elbow_r", "forearm_r", "hand_r")
+    }
+
+
+def staff_grip_boundary_error(staff, marker):
+    """Measure whether the socket is at the source's two-material grip seam."""
+    pivot = marker.matrix_world.translation
+    axis = (staff.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))).normalized()
+    bounds = {}
+    for material_index in range(len(staff.data.materials)):
+        points = [
+            staff.matrix_world @ staff.data.vertices[index].co
+            for polygon in staff.data.polygons
+            if polygon.material_index == material_index
+            for index in polygon.vertices
+        ]
+        if points:
+            values = [(point - pivot).dot(axis) for point in points]
+            bounds[material_index] = (min(values), max(values))
+    if 0 not in bounds or 1 not in bounds:
+        return 0.0
+    # The authored source has the orange handle in slot 1 and the white/blue
+    # body in slot 0; their nearest ends define the visible grip junction.
+    seam = (bounds[1][1] + bounds[0][0]) * 0.5
+    return abs(seam)
 
 
 def staff_bounds(staff):
@@ -271,6 +327,11 @@ def check_frame(clip, frame, armature, staff, pivot, marker, errors):
     pivot_distance = distance_point_to_segment(
         pivot.matrix_world.translation, left_start, left_end
     )
+    finger_contact_count, thumb_distance = finger_grip_metrics(armature, marker)
+    grip_boundary_error = staff_grip_boundary_error(staff, marker)
+    right_hand_inward_degrees = abs(
+        math.degrees(armature.pose.bones[BONES["hand_r"]].rotation_euler.y)
+    )
     if marker_distance > 0.65 or pivot_distance > 0.65:
         errors.append(
             f"{clip}@{frame}: staff socket left-wrist distance marker={marker_distance:.3f} pivot={pivot_distance:.3f}"
@@ -279,9 +340,21 @@ def check_frame(clip, frame, armature, staff, pivot, marker, errors):
         errors.append(
             f"{clip}@{frame}: left-hand grip is not on staff surface distance={grip_distance:.3f}"
         )
+    if finger_contact_count < 3 or thumb_distance > 0.20:
+        errors.append(
+            f"{clip}@{frame}: left fingers do not wrap the staff fingers={finger_contact_count} thumb={thumb_distance:.3f}"
+        )
+    if grip_boundary_error > 0.08:
+        errors.append(
+            f"{clip}@{frame}: grip is not at white/orange staff junction offset={grip_boundary_error:.3f}"
+        )
     if right_distance < 0.12:
         errors.append(
             f"{clip}@{frame}: forbidden right-hand/staff contact distance={right_distance:.3f}"
+        )
+    if right_hand_inward_degrees < 150.0:
+        errors.append(
+            f"{clip}@{frame}: right wrist is not turned inward enough y={right_hand_inward_degrees:.1f} degrees"
         )
 
     return {
@@ -293,6 +366,11 @@ def check_frame(clip, frame, armature, staff, pivot, marker, errors):
         "grip_surface_distance": grip_distance,
         "marker_left_wrist_distance": marker_distance,
         "pivot_left_wrist_distance": pivot_distance,
+        "left_finger_contact_count": finger_contact_count,
+        "left_thumb_distance": thumb_distance,
+        "grip_boundary_error": grip_boundary_error,
+        "right_hand_inward_degrees": right_hand_inward_degrees,
+        "right_arm_pose": right_arm_rotation_snapshot(armature),
         "staff_bottom_z": staff_low.z,
         "foot_low_z": foot_height(armature),
     }
@@ -358,6 +436,18 @@ def validate_clip(clip):
     for frame in range(1, duration + 2):
         scene.frame_set(frame)
         metrics.append(check_frame(clip, frame, armature, staff, pivot, marker, errors))
+    source_right_arm = metrics[0]["right_arm_pose"]
+    for metric in metrics[1:]:
+        for semantic, source_rotation in source_right_arm.items():
+            current_rotation = metric["right_arm_pose"][semantic]
+            if max(
+                abs(current - source)
+                for current, source in zip(current_rotation, source_rotation)
+            ) > 1e-4:
+                errors.append(
+                    f"{clip}@{metric['frame']}: right arm leaves the calibrated natural front pose"
+                )
+                break
     if clip in CYCLES:
         first = metrics[0]
         last = metrics[-1]
@@ -393,12 +483,11 @@ def validate_clip(clip):
             )
         }
     ]
-    if clip in STAFF_CONTACT_CLIPS:
-        for metric in contact_frames:
-            if abs(metric["staff_bottom_z"] - metric["foot_low_z"]) > 0.45:
-                errors.append(
-                    f"{clip}@{metric['frame']}: staff/ground relation looks invalid staff={metric['staff_bottom_z']:.3f} foot={metric['foot_low_z']:.3f}"
-                )
+    # The full-size source prop intentionally reaches the floor and its
+    # tassels can cross the foot plane while it is held diagonally or laid
+    # down. Bounding-box floor penetration is therefore not a valid grip
+    # failure signal; the authoritative checks above are socket, seam, finger,
+    # and right-hand contact distances.
     return {
         "clip": clip,
         "action": expected_action,

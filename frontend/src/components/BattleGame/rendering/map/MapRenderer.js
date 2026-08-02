@@ -105,8 +105,8 @@ export class MapRenderer {
     }
     if (!this.islandTerrain) {
       const group = new THREE.Group()
-      const waterRing = new THREE.Mesh(new THREE.CircleGeometry(width * .5 * WORLD_SCALE * .9, 96), new THREE.MeshBasicMaterial({color: 0xe6c27a}))
-      const forest = new THREE.Mesh(new THREE.CircleGeometry(width * .5 * WORLD_SCALE * .68, 96), new THREE.MeshBasicMaterial({color: 0x397b4b}))
+      const waterRing = new THREE.Mesh(new THREE.CircleGeometry(width * .5 * WORLD_SCALE * .9, 96), new THREE.MeshBasicMaterial({color: 0x4f9b50}))
+      const forest = new THREE.Mesh(new THREE.CircleGeometry(width * .5 * WORLD_SCALE * .68, 96), new THREE.MeshBasicMaterial({color: 0x438e48}))
       const plaza = new THREE.Mesh(new THREE.CircleGeometry(205 * WORLD_SCALE, 64), new THREE.MeshBasicMaterial({color: 0x57616a}))
       ;[waterRing, forest, plaza].forEach((mesh, index) => {
         mesh.rotation.x = -Math.PI / 2
@@ -132,7 +132,7 @@ export class MapRenderer {
     const signature = createMapSignature(map)
     if (signature === this.signature) return
     this.signature = signature
-    this.ground.sync(map.width, map.height)
+    this.ground.sync(map.width, map.height, this.ground.theme, walls.filter(wall => wall.type === "water"))
 
     const active = new Set()
     const bushWalls = walls.filter(wall => wall.type === "bush" || wall.type === "half" || wall.type === "moon_mist")
@@ -205,7 +205,7 @@ export class MapRenderer {
         object => disposeObjectTree(object),
       )
     } catch (error) {
-      console.warn(`Could not load environment GLB: ${visual}`, error)
+      if (typeof window !== "undefined") console.warn(`Could not load environment GLB: ${visual}`, error)
     }
   }
 
