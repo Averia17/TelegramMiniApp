@@ -1,4 +1,4 @@
-"""Re-export runtime hero GLBs from existing Blender masters and authored scenes.
+"""Export one canonical runtime GLB from the focused hero scenes.
 
 This is intentionally export-only: it never saves or modifies source .blend
 files and never creates animation keys.
@@ -25,7 +25,7 @@ HEROES = (
     "persephone-lumi",
     "wukong-mico",
 )
-EVENT_ACTIONS = {
+SCENE_ACTIONS = {
     "idle": "idle",
     "run": "run",
     "attack": "Attack",
@@ -38,13 +38,6 @@ EVENT_ACTIONS = {
     "victory": "Victory",
     "gadget": "Gadget",
 }
-
-
-def remove_actions(names: set[str]) -> None:
-    for name in names:
-        existing = bpy.data.actions.get(name)
-        if existing is not None:
-            bpy.data.actions.remove(existing)
 
 
 def action_from_scene(path: Path, canonical_name: str) -> None:
@@ -70,24 +63,39 @@ def action_from_scene(path: Path, canonical_name: str) -> None:
 
 def export(hero: str) -> None:
     hero_dir = SOURCE / hero
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(hero_dir / f"{hero}.blend"))
+    focused_scenes = {
+        clip: hero_dir / "scenes" / f"{clip}.blend" for clip in SCENE_ACTIONS
+    }
+    missing = [path for path in focused_scenes.values() if not path.exists()]
+    if missing:
+        raise RuntimeError(f"{hero}: missing focused scene(s): {missing}")
+
+    # The idle focused scene is the complete geometry/rig source. All other
+    # runtime Actions are imported from their matching focused scenes; the
+    # legacy master sources are never consulted.
+    bpy.ops.wm.open_mainfile(filepath=os.fspath(focused_scenes["idle"]))
     armature = next(
         (obj for obj in bpy.context.scene.objects if obj.type == "ARMATURE"), None
     )
     if armature is None:
-        raise RuntimeError(f"{hero}: no armature in master")
-    # Every runtime event is sourced from its focused Blender scene. The
-    # exporter only assembles and serializes authored Actions; it never makes
-    # choreography or inserts animation keys.
-    for clip, canonical_name in EVENT_ACTIONS.items():
-        source = hero_dir / "scenes" / f"{clip}.blend"
-        if not source.exists():
-            raise RuntimeError(f"{hero}: missing focused event scene {source}")
-        remove_actions({canonical_name})
-        action_from_scene(source, canonical_name)
+        raise RuntimeError(f"{hero}: no armature in focused idle scene")
+
+    # Keep the active idle Action from the base scene, but discard every other
+    # incidental Action before importing the remaining scene-owned Actions.
+    idle_action = armature.animation_data.action if armature.animation_data else None
+    if idle_action is None or idle_action.name.casefold() != "idle":
+        raise RuntimeError(f"{hero}: focused idle scene has no canonical idle Action")
+    for action in list(bpy.data.actions):
+        if action != idle_action:
+            bpy.data.actions.remove(action)
+
+    for clip, canonical_name in SCENE_ACTIONS.items():
+        if clip == "idle":
+            continue
+        action_from_scene(focused_scenes[clip], canonical_name)
+
     armature.animation_data_create()
-    if bpy.data.actions.get("idle"):
-        armature.animation_data.action = bpy.data.actions["idle"]
+    armature.animation_data.action = idle_action
     OUTPUT.mkdir(parents=True, exist_ok=True)
     out = OUTPUT / f"{hero}_base.glb"
     temp_out = OUTPUT / f".{hero}_base.tmp.glb"
