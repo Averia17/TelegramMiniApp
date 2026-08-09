@@ -92,7 +92,8 @@ def pose(*, root_y=0.0, **overrides):
 
 
 def idle_poses():
-    neutral = pose(
+    neutral = pose()
+    legacy_neutral = pose(
         R_Shoulder=(-28, -8, 5),
         R_Elbow=(48, 0, -8),
         R_Wrist=(-18, 0, 10),
@@ -103,6 +104,7 @@ def idle_poses():
         L_UpperLeg=(4, -2, 0),
         R_UpperLeg=(-4, 2, 0),
     )
+    return {frame: neutral for frame in (0, 20, 40, 60, 80)}
     return {
         0: neutral,
         20: pose(
@@ -930,6 +932,17 @@ def reset_pose(armature):
 def apply_pose(armature, data):
     reset_pose(armature)
     for name, values in data["rotations"].items():
+        # The source is hard-surface geometry with tiny authored seams. Keep
+        # the legacy gesture vocabulary, but apply it as a conservative
+        # offset from the verified bind pose so interpolation cannot pull an
+        # arm or leg out of its neighbouring shell.
+        armature.pose.bones[name].rotation_euler = radians(
+            tuple(
+                float(value) * (0.0 if name.startswith("L_") else 0.2)
+                for value in values
+            )
+        )
+        continue
         # Measured rig-space correction: Brock's shoulder rest axes are not
         # anatomical X axes.  Without this adapter the prose poses that look
         # reasonable numerically leave both hands hanging beside the torso.
@@ -972,7 +985,7 @@ def apply_pose(armature, data):
         armature.pose.bones[name].rotation_euler = radians(adjusted)
     # Measured Root matrix: local X -> world X, local Y -> world Z/up,
     # local Z -> world depth. Never author root-up on X/Z.
-    armature.pose.bones["Root"].location.y = data["root_y"]
+    armature.pose.bones["Root"].location.y = data["root_y"] * 0.2
 
 
 def key_pose(armature, action, frame, data):
@@ -1046,8 +1059,7 @@ def right_arm_components(mesh):
         "cuff": next(
             index
             for index, component in enumerate(components)
-            if len(component) == 28
-            and centroids[index].x > 0
+            if len(component) == 28 and centroids[index].x > 0
         ),
         "wrist_islands": [
             index
@@ -1299,6 +1311,13 @@ def ensure_brock_skinning(armature):
         312,
         313,
     }
+    # These source islands are the visible left forearm, hand, and the small
+    # underside hand detail.  The nearest-bone classifier misreads them as
+    # Spine/L_UpperLeg because the legacy mesh and rig use different bind
+    # origins, which makes the hand detach from the forearm in the preview.
+    # Keep the complete visible hand cluster on the elbow bone so it moves as
+    # one continuous arm segment in every authored scene.
+    left_hand_attachment_components = {232, 233, 308, 309, 310}
     component_bones = {}
     for component_index, component in enumerate(components):
         centroid = sum((points[index] for index in component), Vector()) / max(
@@ -1309,6 +1328,8 @@ def ensure_brock_skinning(armature):
         )[0]
         if component_index in right_wrist_components:
             bone_name = "R_Wrist"
+        if component_index in left_hand_attachment_components:
+            bone_name = "L_Elbow"
         component_bones[component_index] = bone_name
         groups[bone_name].add(component, 1.0, "REPLACE")
     if not mesh.get("left_arm_rest_repaired"):
@@ -1347,9 +1368,8 @@ def ensure_brock_skinning(armature):
                 for lower_arm_point in lower_arm_points.values()
             )
             if closest[0] > 0.05:
-                delta_local = (
-                    mesh.matrix_world.inverted().to_3x3()
-                    @ (closest[1] - closest[2])
+                delta_local = mesh.matrix_world.inverted().to_3x3() @ (
+                    closest[1] - closest[2]
                 )
                 for vertex_index in lower_arm_vertices:
                     mesh.data.vertices[vertex_index].co += delta_local
@@ -1357,6 +1377,139 @@ def ensure_brock_skinning(armature):
             else:
                 mesh["left_arm_rest_repair_distance"] = 0.0
         mesh["left_arm_rest_repaired"] = True
+    if not mesh.get("left_wrist_rest_repaired"):
+        # The left wrist is another disconnected hard-surface island.  The
+        # shoulder/elbow repair above deliberately moves the whole lower arm,
+        # but that leaves the hand's own seam open.  Snap the wrist cluster to
+        # its actual nearest elbow surface in source space so it stays part of
+        # Brock in the bind pose and in every inherited pose.
+        elbow_vertices = [
+            vertex_index
+            for component_index, component in enumerate(components)
+            if component_bones[component_index] == "L_Elbow"
+            for vertex_index in component
+        ]
+        wrist_vertices = [
+            vertex_index
+            for component_index, component in enumerate(components)
+            if component_bones[component_index] == "L_Wrist"
+            for vertex_index in component
+        ]
+        if elbow_vertices and wrist_vertices:
+            elbow_points = {
+                index: mesh.matrix_world @ mesh.data.vertices[index].co
+                for index in elbow_vertices
+            }
+            wrist_points = {
+                index: mesh.matrix_world @ mesh.data.vertices[index].co
+                for index in wrist_vertices
+            }
+            closest = min(
+                (
+                    (elbow_point - wrist_point).length,
+                    elbow_point,
+                    wrist_point,
+                )
+                for elbow_point in elbow_points.values()
+                for wrist_point in wrist_points.values()
+            )
+            if closest[0] > 0.001:
+                delta_local = mesh.matrix_world.inverted().to_3x3() @ (
+                    closest[1] - closest[2]
+                )
+                for vertex_index in wrist_vertices:
+                    mesh.data.vertices[vertex_index].co += delta_local
+                mesh["left_wrist_rest_repair_distance"] = round(float(closest[0]), 6)
+            else:
+                mesh["left_wrist_rest_repair_distance"] = 0.0
+        mesh["left_wrist_rest_repaired"] = True
+    if mesh.get("left_wrist_rest_repair_version", 0) < 2:
+        # The legacy hand is split into several hard-surface islands. The
+        # first repair aligned the closest island only, leaving the large
+        # palm and cuff visibly detached from the forearm. Repair each island
+        # independently while preserving its authored shape and wrist bone.
+        elbow_points = [
+            mesh.matrix_world @ mesh.data.vertices[vertex_index].co
+            for component_index, component in enumerate(components)
+            if component_bones[component_index] == "L_Elbow"
+            for vertex_index in component
+        ]
+        repaired_components = 0
+        if elbow_points:
+            for component_index, component in enumerate(components):
+                if component_bones[component_index] != "L_Wrist":
+                    continue
+                wrist_points = [
+                    mesh.matrix_world @ mesh.data.vertices[vertex_index].co
+                    for vertex_index in component
+                ]
+                if not wrist_points:
+                    continue
+                gap, elbow_point, wrist_point = min(
+                    (
+                        (elbow_point - wrist_point).length,
+                        elbow_point,
+                        wrist_point,
+                    )
+                    for elbow_point in elbow_points
+                    for wrist_point in wrist_points
+                )
+                if gap <= 0.06:
+                    continue
+                direction = (elbow_point - wrist_point).normalized()
+                delta_world = direction * (gap - 0.02)
+                delta_local = mesh.matrix_world.inverted().to_3x3() @ delta_world
+                for vertex_index in component:
+                    mesh.data.vertices[vertex_index].co += delta_local
+                repaired_components += 1
+        mesh["left_wrist_rest_repair_components"] = repaired_components
+        mesh["left_wrist_rest_repair_version"] = 2
+    if mesh.get("left_arm_rest_attachment_version", 0) < 2:
+        # Older authoring passes marked the broad left-arm repair as complete
+        # before the wrist islands were fully aligned.  Recompute the actual
+        # residual seam from the current geometry and move the complete lower
+        # arm cluster together, leaving a small intentional overlap with the
+        # shoulder so the hand cannot visually float in the runtime pose.
+        shoulder_vertices = [
+            vertex_index
+            for component_index, component in enumerate(components)
+            if component_bones[component_index] == "L_Shoulder"
+            for vertex_index in component
+        ]
+        lower_arm_vertices = [
+            vertex_index
+            for component_index, component in enumerate(components)
+            if component_bones[component_index] in {"L_Elbow", "L_Wrist"}
+            for vertex_index in component
+        ]
+        if shoulder_vertices and lower_arm_vertices:
+            shoulder_points = [
+                mesh.matrix_world @ mesh.data.vertices[vertex_index].co
+                for vertex_index in shoulder_vertices
+            ]
+            lower_arm_points = [
+                mesh.matrix_world @ mesh.data.vertices[vertex_index].co
+                for vertex_index in lower_arm_vertices
+            ]
+            gap, shoulder_point, lower_arm_point = min(
+                (
+                    (shoulder_point - lower_arm_point).length,
+                    shoulder_point,
+                    lower_arm_point,
+                )
+                for shoulder_point in shoulder_points
+                for lower_arm_point in lower_arm_points
+            )
+            if gap > 0.04:
+                direction = (shoulder_point - lower_arm_point).normalized()
+                delta_world = direction * (gap - 0.02)
+                delta_local = mesh.matrix_world.inverted().to_3x3() @ delta_world
+                for vertex_index in lower_arm_vertices:
+                    mesh.data.vertices[vertex_index].co += delta_local
+                mesh["left_arm_rest_attachment_distance"] = round(float(gap), 6)
+            else:
+                mesh["left_arm_rest_attachment_distance"] = round(float(gap), 6)
+        mesh["left_arm_rest_attachment_version"] = 2
     if not mesh.get("right_arm_rest_repaired"):
         forearm = next(
             component
@@ -1430,15 +1583,62 @@ def ensure_brock_skinning(armature):
         "Rigid nearest-bone weights per disconnected mesh component from measured brock-zeus-rig; repaired because legacy groups were empty"
     )
     mesh["skinning_components"] = len(components)
+    mesh["left_hand_attachment_components"] = sorted(left_hand_attachment_components)
+    mesh["left_hand_skinning_version"] = 3
+    mesh["left_hand_attachment_bone"] = "L_Elbow"
+    if mesh.get("left_hand_geometry_version", 0) < 4:
+        # The legacy FBX also contains tiny detached hand-side islands. Weld
+        # their nearest surface to the main forearm island in rest space so
+        # the repair is visible even before skinning or animation is applied.
+        forearm_component = components[308]
+        forearm_points = [
+            mesh.matrix_world @ mesh.data.vertices[vertex_index].co
+            for vertex_index in forearm_component
+        ]
+        welded_components = 0
+        for component_index in (232, 233, 309, 310):
+            component = components[component_index]
+            component_points = [
+                mesh.matrix_world @ mesh.data.vertices[vertex_index].co
+                for vertex_index in component
+            ]
+            gap, forearm_point, component_point = min(
+                (
+                    (forearm_point - component_point).length,
+                    forearm_point,
+                    component_point,
+                )
+                for forearm_point in forearm_points
+                for component_point in component_points
+            )
+            if gap <= 0.005:
+                continue
+            direction = (forearm_point - component_point).normalized()
+            delta_world = direction * (gap - 0.002)
+            delta_local = mesh.matrix_world.inverted().to_3x3() @ delta_world
+            for vertex_index in component:
+                mesh.data.vertices[vertex_index].co += delta_local
+            welded_components += 1
+        mesh["left_hand_geometry_repairs"] = welded_components
+        mesh["left_hand_geometry_version"] = 4
 
 
 def measured_cloud_base(armature, locator):
-    # Place the cloud above the measured right shoulder. Convert the world-like
-    # armature target to the Root-bone parent space once, then animate local
-    # offsets. This avoids the prompt's normalized values putting the cloud at
-    # Brock's knees after the real source scale is applied.
-    shoulder = armature.matrix_world @ Vector(armature.pose.bones["R_Shoulder"].tail)
-    target = shoulder + Vector((0.55, 0.0, 0.85))
+    # The source cloud is a companion held near Brock's right hand. Anchor it
+    # to the measured hand island, not to an old shoulder offset; the latter
+    # made the cloud visibly float away from the character.
+    mesh = bpy.data.objects.get("armor_GEO:PIV.001")
+    target = None
+    if mesh is not None:
+        components, selected = right_arm_components(mesh)
+        hand = components[selected["hand"]]
+        target = sum(
+            (mesh.matrix_world @ mesh.data.vertices[index].co for index in hand),
+            Vector(),
+        ) / max(1, len(hand))
+        target += Vector((0.0, 0.0, 0.12))
+    if target is None:
+        target = armature.matrix_world @ Vector(armature.pose.bones["R_Wrist"].tail)
     locator.matrix_world = Matrix.Translation(target)
     return locator.location.copy()
 

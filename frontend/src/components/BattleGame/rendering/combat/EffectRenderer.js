@@ -44,9 +44,17 @@ const createOrbitalEffect = (radius, material, kind) => {
   return group
 }
 
+const createLowQualityEffect = (radius, material, kind) => {
+  const mesh = new THREE.Mesh(new THREE.RingGeometry(radius * .78, radius, 16), material)
+  mesh.rotation.x = -Math.PI / 2
+  mesh.userData.kind = kind
+  return mesh
+}
+
 export class EffectRenderer {
-  constructor(root) {
+  constructor(root, {lowQuality = false} = {}) {
     this.root = root
+    this.lowQuality = lowQuality
     this.meshes = new Map()
   }
 
@@ -65,7 +73,9 @@ export class EffectRenderer {
           side: THREE.DoubleSide,
           depthWrite: false,
         })
-        if (effect.kind === "heal") {
+        if (this.lowQuality && !TRAIL_KINDS.has(effect.kind) && effect.kind !== "mandy_super_wave") {
+          mesh = createLowQualityEffect(radius, material, effect.kind)
+        } else if (effect.kind === "heal") {
           mesh = new THREE.Group()
           mesh.userData.kind = "heal"
           const ring = new THREE.Mesh(
@@ -92,7 +102,7 @@ export class EffectRenderer {
           vertical.position.y = radius * 1.15
           mesh.add(ring, horizontal, vertical)
         } else if (effect.kind === "mandy_super_wave") {
-          mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 24, 1), material)
+          mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, this.lowQuality ? 1 : 24, 1), material)
           mesh.userData.kind = effect.kind
         } else if (TRAIL_KINDS.has(effect.kind)) {
           mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material)

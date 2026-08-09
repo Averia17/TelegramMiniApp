@@ -11,8 +11,49 @@ import (
 	"testing"
 	"time"
 
+	mroom "battle/model/room"
+	"battle/observability"
 	"github.com/gorilla/websocket"
 )
+
+func TestNextClientMessagePrioritizesFreshState(t *testing.T) {
+	client := &mroom.Client{
+		Send:  make(chan []byte, 1),
+		State: make(chan []byte, 1),
+	}
+	client.Send <- []byte("event")
+	client.State <- []byte("state")
+
+	message, ok := nextClientMessage(client)
+	if !ok || string(message) != "state" {
+		t.Fatalf("next client message = %q, %v; want state, true", message, ok)
+	}
+}
+
+func TestRecordWebSocketWritePublishesDurationAndSlowSignal(t *testing.T) {
+	registry := observability.NewRegistry()
+	recordWebSocketWrite(registry, 25*time.Millisecond, 4096, nil)
+	recordWebSocketWrite(registry, 1*time.Millisecond, 128, assertWriteError{})
+
+	metrics := httptest.NewRecorder()
+	registry.ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := metrics.Body.String()
+	for _, want := range []string{
+		"battle_websocket_writes_total 2",
+		"battle_websocket_write_bytes_total 4224",
+		"battle_websocket_write_seconds_count 2",
+		"battle_websocket_slow_writes_total 1",
+		"battle_websocket_write_errors_total 1",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("WebSocket write metric missing %q:\n%s", want, body)
+		}
+	}
+}
+
+type assertWriteError struct{}
+
+func (assertWriteError) Error() string { return "write failed" }
 
 func dialAuthenticated(t *testing.T, wsURL string, userID int64) *websocket.Conn {
 	t.Helper()
@@ -79,7 +120,7 @@ func TestWebSocketUpgrade(t *testing.T) {
 	h := NewHandler()
 	mux := http.NewServeMux()
 	h.SetupRoutes(mux)
-	ts := httptest.NewServer(mux)
+	ts := httptest.NewServer(observability.HTTPMiddleware(observability.NewRegistry(), mux))
 	defer ts.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"

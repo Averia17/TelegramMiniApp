@@ -1445,7 +1445,7 @@ def v3_run_poses():
     # comes from the legs, never from a 35 + 40 degree upper-body fold.
     return {
         0: v3_pose(
-            root_y=0.0,
+            root_y=0.0482,
             hips_x=5,
             spine_x=8,
             head_x=-5,
@@ -1457,7 +1457,7 @@ def v3_run_poses():
             right_forearm=30,
         ),
         6: v3_pose(
-            root_y=-0.02,
+            root_y=0.0050,
             hips_x=5,
             spine_x=8,
             head_x=-3,
@@ -1469,7 +1469,7 @@ def v3_run_poses():
             right_forearm=30,
         ),
         12: v3_pose(
-            root_y=0.0,
+            root_y=0.0440,
             hips_x=5,
             spine_x=8,
             head_x=-5,
@@ -1481,7 +1481,7 @@ def v3_run_poses():
             right_forearm=30,
         ),
         18: v3_pose(
-            root_y=-0.02,
+            root_y=0.0101,
             hips_x=5,
             spine_x=8,
             head_x=-3,
@@ -1493,7 +1493,7 @@ def v3_run_poses():
             right_forearm=30,
         ),
         24: v3_pose(
-            root_y=0.0,
+            root_y=0.0482,
             hips_x=5,
             spine_x=8,
             head_x=-5,
@@ -1512,6 +1512,7 @@ def v3_attack_poses():
     return {
         0: idle,
         3: v3_pose(
+            root_y=-0.2253,
             hips_x=-8,
             spine_x=15,
             chest_x=10,
@@ -1521,6 +1522,7 @@ def v3_attack_poses():
             left_forearm=50,
         ),
         6: v3_pose(
+            root_y=-0.2722,
             hips_x=0,
             spine_x=10,
             chest_x=5,
@@ -1531,6 +1533,7 @@ def v3_attack_poses():
             left_forearm=30,
         ),
         10: v3_pose(
+            root_y=-0.2597,
             hips_x=-2,
             spine_x=6,
             chest_x=2,
@@ -1548,7 +1551,7 @@ def v3_super_poses():
     return {
         0: idle,
         8: v3_pose(
-            root_y=-0.30,
+            root_y=0.0552,
             hips_x=-20,
             spine_x=25,
             chest_x=15,
@@ -1560,7 +1563,7 @@ def v3_super_poses():
             right_leg=80,
         ),
         12: v3_pose(
-            root_y=-0.30,
+            root_y=0.0552,
             hips_x=-20,
             spine_x=25,
             chest_x=15,
@@ -1583,7 +1586,7 @@ def v3_super_poses():
             right_leg=30,
         ),
         25: v3_pose(
-            root_y=0.0,
+            root_y=0.0557,
             hips_x=-10,
             spine_x=30,
             chest_x=10,
@@ -1595,7 +1598,7 @@ def v3_super_poses():
             right_leg=50,
         ),
         40: v3_pose(
-            root_y=0.0,
+            root_y=0.0217,
             hips_x=-3,
             spine_x=8,
             chest_x=5,
@@ -1613,7 +1616,7 @@ def v3_super_poses():
 def v3_aim_poses():
     return {
         0: v3_pose(
-            root_y=-0.02,
+            root_y=0.0513,
             hips_x=-5,
             spine_x=12,
             chest_x=3,
@@ -1628,7 +1631,7 @@ def v3_aim_poses():
             right_leg=-5,
         ),
         30: v3_pose(
-            root_y=-0.02,
+            root_y=0.0513,
             hips_x=-5,
             spine_x=10,
             chest_x=3,
@@ -1643,7 +1646,7 @@ def v3_aim_poses():
             right_leg=-5,
         ),
         60: v3_pose(
-            root_y=-0.02,
+            root_y=0.0513,
             hips_x=-5,
             spine_x=12,
             chest_x=3,
@@ -1663,7 +1666,7 @@ def v3_aim_poses():
 def v3_aim_super_poses():
     return {
         0: v3_pose(
-            root_y=-0.25,
+            root_y=0.0023,
             hips_x=-20,
             spine_x=30,
             chest_x=10,
@@ -1676,7 +1679,7 @@ def v3_aim_super_poses():
             right_leg=90,
         ),
         30: v3_pose(
-            root_y=-0.25,
+            root_y=0.0178,
             hips_x=-18,
             spine_x=25,
             chest_x=8,
@@ -1689,7 +1692,7 @@ def v3_aim_super_poses():
             right_leg=85,
         ),
         60: v3_pose(
-            root_y=-0.25,
+            root_y=0.0023,
             hips_x=-20,
             spine_x=30,
             chest_x=10,
@@ -1709,6 +1712,7 @@ def v3_hit_poses():
     return {
         0: idle,
         3: v3_pose(
+            root_y=-0.1456,
             hips_x=-10,
             spine_x=-5,
             chest_x=-5,
@@ -1718,6 +1722,7 @@ def v3_hit_poses():
             right_leg=0,
         ),
         6: v3_pose(
+            root_y=-0.1919,
             hips_x=-15,
             spine_x=-10,
             right_arm=-50,
@@ -1726,6 +1731,7 @@ def v3_hit_poses():
             right_leg=0,
         ),
         10: v3_pose(
+            root_y=-0.1958,
             hips_x=-4,
             spine_x=4,
             chest_x=2,
@@ -1743,7 +1749,7 @@ def v3_death_poses():
     return {
         0: idle,
         8: v3_pose(
-            root_y=-0.15,
+            root_y=0.0623,
             hips_x=-15,
             spine_x=30,
             left_leg=70,
@@ -1752,7 +1758,7 @@ def v3_death_poses():
             left_arm=40,
         ),
         15: v3_pose(
-            root_y=-0.40,
+            root_y=0.0023,
             hips_x=-20,
             spine_x=50,
             chest_x=20,
@@ -1769,8 +1775,8 @@ def v3_death_poses():
             spine_x=50,
             spine_z=20,
             chest_x=20,
-            head_x=40,
-            left_leg=90,
+            head_x=30,
+            left_leg=-90,
             right_leg=90,
             right_arm=45,
             left_arm=25,
@@ -1782,8 +1788,8 @@ def v3_death_poses():
             spine_x=50,
             spine_z=20,
             chest_x=20,
-            head_x=40,
-            left_leg=90,
+            head_x=30,
+            left_leg=-90,
             right_leg=90,
             right_arm=45,
             left_arm=25,
@@ -1833,7 +1839,7 @@ def v3_victory_poses():
     idle = v3_idle_poses()[0]
     return {
         0: idle,
-        10: v3_pose(root_y=-0.10, left_leg=60, right_leg=60),
+        10: v3_pose(root_y=0.0336, left_leg=60, right_leg=60),
         15: v3_pose(
             root_y=0.25,
             hips_x=10,
@@ -1844,7 +1850,7 @@ def v3_victory_poses():
             right_leg=20,
         ),
         25: v3_pose(
-            root_y=0.0,
+            root_y=0.0557,
             hips_x=-10,
             spine_x=30,
             right_arm=90,
@@ -1855,7 +1861,7 @@ def v3_victory_poses():
             right_leg=50,
         ),
         35: v3_pose(
-            root_y=0.0,
+            root_y=0.0217,
             hips_x=-3,
             spine_x=8,
             chest_x=5,
@@ -1875,7 +1881,7 @@ def v3_gadget_poses():
     return {
         0: idle,
         3: v3_pose(
-            root_y=-0.15,
+            root_y=-0.0505,
             hips_x=-10,
             spine_x=20,
             right_arm=20,
@@ -1886,7 +1892,7 @@ def v3_gadget_poses():
             right_leg=-20,
         ),
         6: v3_pose(
-            root_y=0.0,
+            root_y=0.0325,
             hips_x=5,
             spine_x=-5,
             right_arm=80,
@@ -1897,7 +1903,7 @@ def v3_gadget_poses():
             right_leg=-20,
         ),
         9: v3_pose(
-            root_y=0.0,
+            root_y=-0.2722,
             hips_x=0,
             spine_x=3,
             right_arm=25,
@@ -1912,7 +1918,7 @@ def v3_gadget_poses():
 def v3_aim_gadget_poses():
     return {
         0: v3_pose(
-            root_y=-0.12,
+            root_y=0.0305,
             hips_x=-8,
             spine_x=20,
             chest_x=10,
@@ -1925,7 +1931,7 @@ def v3_aim_gadget_poses():
             right_leg=0,
         ),
         30: v3_pose(
-            root_y=-0.12,
+            root_y=0.0288,
             hips_x=-6,
             spine_x=23,
             chest_x=10,
@@ -1938,7 +1944,7 @@ def v3_aim_gadget_poses():
             right_leg=0,
         ),
         60: v3_pose(
-            root_y=-0.12,
+            root_y=0.0305,
             hips_x=-8,
             spine_x=20,
             chest_x=10,

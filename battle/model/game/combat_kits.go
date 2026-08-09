@@ -288,6 +288,7 @@ func (gs *GameState) destroyWallsInBeam(x, y, angle, reach, halfWidth float64) i
 		for _, wall := range kept {
 			gs.Walls.Insert(wall)
 		}
+		gs.WallsSource = kept
 	}
 	return destroyed
 }
@@ -450,6 +451,7 @@ func (gs *GameState) destroyWallsInSector(x, y, angle, reach, halfArc float64) i
 		for _, wall := range kept {
 			gs.Walls.Insert(wall)
 		}
+		gs.WallsSource = kept
 	}
 	return destroyed
 }

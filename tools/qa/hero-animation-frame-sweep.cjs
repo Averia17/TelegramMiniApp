@@ -1,6 +1,7 @@
 const fs = require("fs")
 const path = require("path")
 const { chromium } = require(path.resolve(__dirname, "../../frontend/node_modules/playwright"))
+const { launchHeadlessChromium, runWithBrowser } = require("./playwright-runner.cjs")
 
 const ROOT = path.resolve(__dirname, "../..")
 const HARNESS = process.env.HARNESS_URL || "http://localhost/test/glb-hero-harness.html"
@@ -49,9 +50,10 @@ async function clickButton(page, index) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: true })
-  const report = []
-  try {
+  await runWithBrowser(
+    () => launchHeadlessChromium(chromium, { headless: true }),
+    async (browser) => {
+      const report = []
     for (const [hero, slug] of heroes) {
       const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 })
       const consoleErrors = []
@@ -80,15 +82,14 @@ async function clickButton(page, index) {
       report.push(row)
       await page.close()
     }
-  } finally {
-    await browser.close()
-  }
-  const output = path.join(ROOT, "artifacts", "hero-browser-qa", "frame-sweep.json")
-  fs.writeFileSync(output, JSON.stringify({ heroes: heroes.length, clips: checks.length, delays, samples: report }, null, 2))
-  const samples = report.flatMap((row) => row.samples)
-  const invalid = samples.filter((sample) => sample.fallbackEvents.length > 0)
-  console.log(JSON.stringify({ heroes: heroes.length, clips: checks.length, delays, samples: samples.length, invalid: invalid.length, output, screenshots: OUT }))
-  if (invalid.length || report.some((row) => row.error || row.consoleErrors.length || row.pageErrors.length)) process.exitCode = 1
+      const output = path.join(ROOT, "artifacts", "hero-browser-qa", "frame-sweep.json")
+      fs.writeFileSync(output, JSON.stringify({ heroes: heroes.length, clips: checks.length, delays, samples: report }, null, 2))
+      const samples = report.flatMap((row) => row.samples)
+      const invalid = samples.filter((sample) => sample.fallbackEvents.length > 0)
+      console.log(JSON.stringify({ heroes: heroes.length, clips: checks.length, delays, samples: samples.length, invalid: invalid.length, output, screenshots: OUT }))
+      if (invalid.length || report.some((row) => row.error || row.consoleErrors.length || row.pageErrors.length)) process.exitCode = 1
+    },
+  )
 })().catch((error) => {
   console.error(error)
   process.exitCode = 1

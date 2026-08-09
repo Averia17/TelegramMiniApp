@@ -21,12 +21,17 @@ from mathutils import Matrix, Vector
 ROOT = Path(__file__).resolve().parents[2]
 HERO_DIR = ROOT / "frontend" / "assets-source" / "heroes" / "brock-zeus"
 SOURCE = HERO_DIR / "source" / "brock_zeus_t-pose.fbx"
+TEXTURE = HERO_DIR / "textures" / "brock_zeus_tex.png"
 MASTER = HERO_DIR / "brock-zeus.blend"
 REPORT = ROOT / "artifacts" / "brock-zeus-master-bootstrap.json"
 
 ROOT_LOCATION = (-0.3127, 0.1409, -0.0301)
 ROOT_SCALE = (0.3447, 0.3447, 0.3447)
-RIG_LOCATION = (0.907134, -0.408695, 0.087458)
+# The FBX mesh keeps its authored pivot at the character root.  The previous
+# bootstrap copied an offset from a legacy rig and cancelled ROOT_LOCATION,
+# leaving the bones at world zero while the body/feet stayed around X=-0.313.
+# Keep the new armature on the same root transform as the source mesh.
+RIG_LOCATION = (0.0, 0.0, 0.0)
 
 BONES = (
     ("Root", None, (0.0, 0.0, 0.0), (0.0, 0.0, 1.279396)),
@@ -143,7 +148,9 @@ def prepare_mesh(mesh, armature):
     modifier = mesh.modifiers.new("BrockZeus_Armature", "ARMATURE")
     modifier.object = armature
     mesh["source_geometry"] = os.fspath(SOURCE.relative_to(ROOT))
-    mesh["binding_contract"] = "semantic armature binding is authored in author_brock_zeus_animation_scenes.py"
+    mesh["binding_contract"] = (
+        "semantic armature binding is authored in author_brock_zeus_animation_scenes.py"
+    )
 
 
 def build():
@@ -152,6 +159,11 @@ def build():
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.fbx(filepath=os.fspath(SOURCE), use_image_search=True)
+    if TEXTURE.exists():
+        for image in bpy.data.images:
+            if image.name.casefold() == "brock_zeus_tex.png":
+                image.filepath = os.fspath(TEXTURE)
+                image.reload()
     meshes = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
     if {obj.name.casefold() for obj in meshes} != {
         "armor_geo:piv.001",
@@ -209,7 +221,16 @@ def build():
         ),
         encoding="utf-8",
     )
-    print(json.dumps({"hero": "brock-zeus", "master": os.fspath(MASTER), "report": os.fspath(REPORT)}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "hero": "brock-zeus",
+                "master": os.fspath(MASTER),
+                "report": os.fspath(REPORT),
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 if __name__ == "__main__":

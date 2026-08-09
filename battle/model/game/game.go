@@ -53,6 +53,7 @@ func InitGameState(gs *GameState) {
 	for _, wall := range m.Collisions {
 		gs.Walls.Insert(wall)
 	}
+	gs.WallsSource = m.Collisions
 
 	gs.State = GameStateWaiting
 	gs.LobbyEndsAt = 0
@@ -122,27 +123,16 @@ func (gs *GameState) updateRegeneration() {
 }
 
 func (gs *GameState) isConcealed(source *player.Player) bool {
-	var sourceBush *geometry.WallTile
-	for _, wall := range gs.Map.Collisions {
-		if isConcealmentWall(wall.Type) && source.X >= wall.MinX && source.X <= wall.MaxX && source.Y >= wall.MinY && source.Y <= wall.MaxY {
-			sourceBush = wall
-			break
-		}
-	}
-	if sourceBush == nil {
+	sourceBushGroup, sourceInBush := gs.bushGroupAt(source.X, source.Y)
+	if !sourceInBush {
 		return false
 	}
 	for _, target := range gs.Players {
 		if target == source || !target.IsAlive() || (source.Team != "" && source.Team == target.Team) {
 			continue
 		}
-		sameBushGroup := false
-		for _, wall := range gs.Map.Collisions {
-			if isConcealmentWall(wall.Type) && wall.BushGroup == sourceBush.BushGroup && target.X >= wall.MinX && target.X <= wall.MaxX && target.Y >= wall.MinY && target.Y <= wall.MaxY {
-				sameBushGroup = true
-				break
-			}
-		}
+		targetBushGroup, targetInBush := gs.bushGroupAt(target.X, target.Y)
+		sameBushGroup := targetInBush && targetBushGroup == sourceBushGroup
 		if sameBushGroup || math.Hypot(target.X-source.X, target.Y-source.Y) <= TileSize*2.5 {
 			return false
 		}
@@ -154,12 +144,18 @@ func (gs *GameState) isInConcealment(source *player.Player) bool {
 	if gs.Map == nil || source == nil {
 		return false
 	}
-	for _, wall := range gs.Map.Collisions {
-		if isConcealmentWall(wall.Type) && source.X >= wall.MinX && source.X <= wall.MaxX && source.Y >= wall.MinY && source.Y <= wall.MaxY {
-			return true
-		}
+	_, inConcealment := gs.bushGroupAt(source.X, source.Y)
+	return inConcealment
+}
+
+func sameWallSource(current, indexed []*geometry.WallTile) bool {
+	if len(current) != len(indexed) {
+		return false
 	}
-	return false
+	if len(current) == 0 {
+		return true
+	}
+	return &current[0] == &indexed[0]
 }
 
 func isConcealmentWall(wallType string) bool {
@@ -971,29 +967,37 @@ func (gs *GameState) playerMove(id string, ts int64, dirX, dirY float64) {
 	}
 }
 
+// EffectiveMovementSpeed is the single movement-speed contract shared by the
+// simulation and the state snapshot. Keeping the modifiers here prevents the
+// client prediction from drifting when a temporary combat effect is active.
+func EffectiveMovementSpeed(p *player.Player, now int64) float64 {
+	if p == nil || p.StunUntil > now || p.ChannelUntil > now {
+		return 0
+	}
+	speed := p.Speed
+	if p.HasteUntil > now {
+		speed *= 1.22
+	}
+	if p.LunarSpeedUntil > now {
+		speed *= 1.15
+	}
+	if p.SlowUntil > now {
+		multiplier := p.SlowMultiplier
+		if multiplier <= 0 {
+			multiplier = .45
+		}
+		speed *= multiplier
+	}
+	return speed
+}
+
 func (gs *GameState) updatePlayerMovement() {
+	now := time.Now().UnixMilli()
 	for _, p := range gs.Players {
-		if !p.IsAlive() || p.StunUntil > time.Now().UnixMilli() || p.ChannelUntil > time.Now().UnixMilli() || (p.MoveX == 0 && p.MoveY == 0) {
+		if !p.IsAlive() || p.StunUntil > now || p.ChannelUntil > now || (p.MoveX == 0 && p.MoveY == 0) {
 			continue
 		}
-		speed := p.Speed / 60
-		now := time.Now().UnixMilli()
-		if p.HasteUntil > now {
-			speed *= 1.22
-		}
-		if p.LunarSpeedUntil > now {
-			speed *= 1.15
-		}
-		if p.LunarSpeedUntil > now {
-			speed *= 1.15
-		}
-		if p.SlowUntil > now {
-			multiplier := p.SlowMultiplier
-			if multiplier <= 0 {
-				multiplier = .45
-			}
-			speed *= multiplier
-		}
+		speed := EffectiveMovementSpeed(p, now) / 60
 		magnitude := math.Hypot(p.MoveX, p.MoveY)
 		geometry.MoveCircleWithBlockingWalls(
 			&p.CircleBody,
@@ -1707,6 +1711,7 @@ func (gs *GameState) destroyWallsInRadius(x, y, radius float64) int {
 		for _, wall := range kept {
 			gs.Walls.Insert(wall)
 		}
+		gs.WallsSource = kept
 	}
 	return destroyed
 }
@@ -1720,6 +1725,7 @@ func (gs *GameState) createTemporaryRock(x, y float64, expiresAt int64) {
 	wall := &geometry.WallTile{MinX: x - size/2, MinY: y - size/2, MaxX: x + size/2, MaxY: y + size/2, Type: "temporary-rock"}
 	gs.Map.Collisions = append(gs.Map.Collisions, wall)
 	gs.Walls.Insert(wall)
+	gs.WallsSource = gs.Map.Collisions
 	gs.TemporaryWalls[wall] = expiresAt
 	gs.MapRevision++
 	gs.addEffect("rock", x, y, 0, 0, 58, 0, 0, 0, "#b87447", 0, 450)

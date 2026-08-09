@@ -94,6 +94,17 @@ func (BrockZeusKit) Basic(gs *GameState, p *player.Player, _ int64, angle, _ flo
 				}
 			}
 		}
+		for id, target := range gs.Monsters {
+			if target == nil || !target.IsAlive() {
+				continue
+			}
+			dx, dy := target.X-p.X, target.Y-p.Y
+			along := dx*math.Cos(angle) + dy*math.Sin(angle)
+			across := math.Abs(-dx*math.Sin(angle) + dy*math.Cos(angle))
+			if along > 0 && along <= 800 && across <= target.Radius+18 {
+				gs.damageMonster(id, target, int(math.Round(float64(p.AttackDmg)*(1+math.Min(4, along/200)*.15))))
+			}
+		}
 		gs.destroyWallsInSector(p.X, p.Y, angle, 800, .08)
 		gs.addEffect("zeus_beam_hole", p.X, p.Y, p.X+math.Cos(angle)*800, p.Y+math.Sin(angle)*800, 20, angle, 800, 0, p.Color, p.AttackDmg, 8000)
 		p.GadgetArmed = false

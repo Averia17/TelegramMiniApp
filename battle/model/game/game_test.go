@@ -424,6 +424,24 @@ func TestPlayerPushAction(t *testing.T) {
 	}
 }
 
+func TestEffectiveMovementSpeedUsesEachModifierOnce(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("p1", "Runner", "Needle")
+	p := gs.Players["p1"]
+	now := int64(10_000)
+	p.Speed = 100
+	p.HasteUntil = now + 1
+	p.LunarSpeedUntil = now + 1
+	p.SlowUntil = now + 1
+	p.SlowMultiplier = .60
+
+	want := 100 * 1.22 * 1.15 * .60
+	if got := EffectiveMovementSpeed(p, now); math.Abs(got-want) > .0001 {
+		t.Fatalf("effective movement speed = %.4f, want %.4f", got, want)
+	}
+}
+
 func TestAbilityAppliesCooldownAndShield(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame

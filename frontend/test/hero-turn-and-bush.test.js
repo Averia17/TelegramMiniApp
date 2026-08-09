@@ -66,3 +66,13 @@ test("bush concealment does not attach an animated leaf wreath to the hero", asy
 
   assert.doesNotMatch(heroView, /createBushOcclusion|updateBushOcclusion|bushOcclusion/)
 })
+
+test("fallback hero hit flash uses cached materials instead of traversing every frame", async () => {
+  const heroView = await readFile(
+    path.join(projectRoot, "src/components/BattleGame/rendering/heroes/HeroView.js"),
+    "utf8",
+  )
+
+  assert.match(heroView, /this\.hitMaterials = collectHitMaterials\(this\.modelMaterials\)/)
+  assert.doesNotMatch(heroView, /if \(!this\.animation\) this\.model\.traverse\(/)
+})

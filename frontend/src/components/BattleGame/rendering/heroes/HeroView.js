@@ -7,6 +7,7 @@ import {disposeObjectTree} from "../shared/disposal"
 import {createContactShadow} from "../shared/materials"
 import {advanceSmoothTurn, blendAngle} from "./turning"
 import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG, RUNTIME_ANIMATION_REFERENCE_SPEED} from "../../heroesConfig"
+import {isInsideConcealment} from "../shared/concealment.js"
 import {
   BUSH_HERO_OPACITY,
   getBushConcealmentMix,
@@ -41,6 +42,7 @@ const createLabel = state => {
 }
 
 const updateLabel = (sprite, state) => {
+  if (!sprite) return
   const signature = `${state.name}:${state.lives}:${state.maxLives}`
   if (sprite.userData.signature === signature) return
   sprite.userData.signature = signature
@@ -82,6 +84,8 @@ const collectMaterials = model => {
   return [...materials]
 }
 
+const collectHitMaterials = materials => materials.filter(material => material?.uniforms?.hit)
+
 const setOpacity = (materials, opacity) => {
   for (const material of materials) {
     if (!material) continue
@@ -114,17 +118,21 @@ const createDeathBurst = heroName => {
 export class HeroView {
   constructor(id, state, simpleMaterials = false) {
     this.id = id
+    this.simpleMaterials = simpleMaterials
     this.group = new THREE.Group()
-    this.shadow = createContactShadow(1.05)
+    this.shadow = simpleMaterials ? null : createContactShadow(1.05)
     this.model = createHeroModel(state.hero, {simple: simpleMaterials})
     this.model.scale.setScalar(0.92)
     this.modelMaterials = collectMaterials(this.model)
+    this.hitMaterials = collectHitMaterials(this.modelMaterials)
     this.modelOpacity = 1
-    this.label = createLabel(state)
+    this.label = simpleMaterials ? null : createLabel(state)
     this.deathBurst = createDeathBurst(state.hero)
     this.bushConcealmentMix = 0
     this.deathTime = 0
-    this.group.add(this.shadow, this.model, this.deathBurst, this.label)
+    this.group.add(this.model, this.deathBurst)
+    if (this.shadow) this.group.add(this.shadow)
+    if (this.label) this.group.add(this.label)
     this.x = this.targetX = state.x
     this.y = this.targetY = state.y
     this.aimAngle = Math.PI / 2 - (state.rotation || 0)
@@ -138,6 +146,7 @@ export class HeroView {
     this.recoil = 0
     this.hit = 0
     this.animation = null
+    this.usingFallback = true
     this.disposed = false
     this.result = null
     this.state = state
@@ -146,6 +155,9 @@ export class HeroView {
   }
 
   async loadGlb(heroName) {
+    // Keep the fallback visible while the authored asset is prepared. The
+    // renderer may use constrained materials, but asset fidelity is not a
+    // quality setting: a live battle must still converge to the selected GLB.
     if (!assetRegistry.hasHero(heroName)) return
     try {
       await waitForHeroUpgradeIdle()
@@ -159,6 +171,7 @@ export class HeroView {
       const previous = this.model
       this.model = instance.root
       this.modelMaterials = collectMaterials(this.model)
+      this.hitMaterials = collectHitMaterials(this.modelMaterials)
       this.modelOpacity = 1
       this.animation = new GLBHeroController(instance.root, instance.animations, instance.asset.clips, {
         companionAnimations: instance.companionAnimations,
@@ -172,6 +185,7 @@ export class HeroView {
       this.group.remove(previous)
       disposeObjectTree(previous)
       this.group.add(this.model)
+      this.usingFallback = false
     } catch (error) {
       console.warn(`Could not load hero GLB: ${heroName}`, error)
     }
@@ -202,6 +216,29 @@ export class HeroView {
     this.lastPulse = state.attackPulse
     this.lastLives = state.lives
     updateLabel(this.label, state)
+  }
+
+  setDisplayState(state) {
+    this.state = state
+    this.targetX = state.x
+    this.targetY = state.y
+  }
+
+  setLowQuality() {
+    if (this.usingFallback) return
+    this.simpleMaterials = true
+    // Lower the cost of the scene around the authored model without replacing
+    // the selected hero with a procedural approximation.
+    if (this.shadow) {
+      this.group.remove(this.shadow)
+      disposeObjectTree(this.shadow)
+      this.shadow = null
+    }
+    if (this.label) {
+      this.group.remove(this.label)
+      disposeObjectTree(this.label)
+      this.label = null
+    }
   }
 
   setResult(result) {
@@ -307,11 +344,11 @@ export class HeroView {
       setOpacity(this.modelMaterials, opacity)
       this.modelOpacity = opacity
     }
-    this.shadow.material.opacity = THREE.MathUtils.lerp(0.34, 0.18, this.bushConcealmentMix)
-    this.label.material.opacity = 1
-    if (!this.animation) this.model.traverse(child => {
-      if (child.material?.uniforms?.hit) child.material.uniforms.hit.value = this.hit
-    })
+    if (this.shadow) this.shadow.material.opacity = THREE.MathUtils.lerp(0.34, 0.18, this.bushConcealmentMix)
+    if (this.label) this.label.material.opacity = 1
+    if (!this.animation) {
+      for (const material of this.hitMaterials) material.uniforms.hit.value = this.hit
+    }
   }
 
   dispose() {
@@ -321,7 +358,4 @@ export class HeroView {
   }
 }
 
-export const isInsideBush = (entity, walls = []) => Boolean(entity && walls.some(wall =>
-  (wall.type === "bush" || wall.type === "half" || wall.type === "moon_mist") &&
-  entity.x >= wall.minX && entity.x <= wall.maxX &&
-  entity.y >= wall.minY && entity.y <= wall.maxY))
+export const isInsideBush = isInsideConcealment

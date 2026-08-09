@@ -2,6 +2,7 @@ package room
 
 import (
 	"battle/model/game"
+	"battle/observability"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -42,6 +43,7 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			MoveX:            p.MoveX,
 			MoveY:            p.MoveY,
 			Speed:            p.Speed,
+			MovementSpeed:    game.EffectiveMovementSpeed(p, now),
 			AttackDamage:     p.AttackDmg,
 			Ack:              p.Ack,
 			Hero:             p.HeroName,
@@ -237,12 +239,14 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 	return updates
 }
 
-func (r *Room) queueStateUpdates(updates []preparedStateUpdate) {
+func (r *Room) queueStateUpdates(updates []preparedStateUpdate) (queuedUpdates, stateBytes, queueDrops int) {
 	for _, update := range updates {
 		data, err := json.Marshal(update.state)
 		if err != nil {
+			observability.Default.IncCounter("battle_state_marshal_errors_total", "State snapshots that failed JSON serialization", nil)
 			continue
 		}
+		stateBytes += len(data)
 		client := update.client
 		queued := false
 		select {
@@ -251,6 +255,7 @@ func (r *Room) queueStateUpdates(updates []preparedStateUpdate) {
 		default:
 			select {
 			case <-client.State:
+				queueDrops++
 			default:
 			}
 			select {
@@ -263,5 +268,9 @@ func (r *Room) queueStateUpdates(updates []preparedStateUpdate) {
 			client.MapRevision = update.mapRevision
 			client.MapSyncFrames++
 		}
+		if queued {
+			queuedUpdates++
+		}
 	}
+	return queuedUpdates, stateBytes, queueDrops
 }

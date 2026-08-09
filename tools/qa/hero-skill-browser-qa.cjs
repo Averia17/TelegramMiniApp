@@ -1,6 +1,7 @@
 const fs = require("fs")
 const path = require("path")
 const { chromium } = require(path.resolve(__dirname, "../../frontend/node_modules/playwright"))
+const { launchHeadlessChromium, runWithBrowser } = require("./playwright-runner.cjs")
 
 const ROOT = path.resolve(__dirname, "../..")
 const OUT = path.join(ROOT, "artifacts", "hero-browser-qa", "quality-v5")
@@ -22,9 +23,10 @@ const skills = [
 fs.mkdirSync(OUT, { recursive: true });
 
 (async () => {
-  const browser = await chromium.launch({ headless: true })
-  const results = []
-  try {
+  await runWithBrowser(
+    () => launchHeadlessChromium(chromium, { headless: true }),
+    async (browser) => {
+      const results = []
     for (const [hero, slug] of heroes) {
       const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
       const consoleErrors = []
@@ -51,13 +53,12 @@ fs.mkdirSync(OUT, { recursive: true });
       }
       await page.close()
     }
-  } finally {
-    await browser.close()
-  }
-  const output = path.join(ROOT, "artifacts", "hero-browser-qa", "skill-quality-matrix-v5.json")
-  fs.writeFileSync(output, JSON.stringify({ generatedAt: new Date().toISOString(), scenes: results.length, invalid: results.filter(item => !item.valid).length, results }, null, 2))
-  console.log(JSON.stringify({ scenes: results.length, invalid: results.filter(item => !item.valid).length, output, screenshots: OUT }))
-  if (results.some(item => !item.valid)) process.exitCode = 1
+      const output = path.join(ROOT, "artifacts", "hero-browser-qa", "skill-quality-matrix-v5.json")
+      fs.writeFileSync(output, JSON.stringify({ generatedAt: new Date().toISOString(), scenes: results.length, invalid: results.filter(item => !item.valid).length, results }, null, 2))
+      console.log(JSON.stringify({ scenes: results.length, invalid: results.filter(item => !item.valid).length, output, screenshots: OUT }))
+      if (results.some(item => !item.valid)) process.exitCode = 1
+    },
+  )
 })().catch(error => {
   console.error(error)
   process.exitCode = 1

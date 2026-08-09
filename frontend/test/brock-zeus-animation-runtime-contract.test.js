@@ -27,6 +27,32 @@ test("Brock Zeus publishes twelve actions and a separate companion cloud asset",
   ].sort())
   const nodeNames = new Set((character.nodes || []).map(node => node.name).filter(Boolean))
   assert.equal([...nodeNames].some(name => /cloud|locator/i.test(name)), false)
+  const armorNode = (character.nodes || []).find(node => node.name === "armor_GEO:PIV.001")
+  assert.equal(
+    armorNode?.extras?.left_wrist_rest_repair_version,
+    2,
+    "Brock Zeus hand islands must use the per-component torso attachment repair",
+  )
+  assert.equal(
+    armorNode?.extras?.left_arm_rest_attachment_version,
+    2,
+    "Brock Zeus lower left arm cluster must use the residual shoulder attachment repair",
+  )
+  assert.equal(
+    armorNode?.extras?.left_hand_skinning_version,
+    3,
+    "Brock Zeus hand and forearm islands must share the repaired elbow skinning contract",
+  )
+  assert.equal(
+    armorNode?.extras?.left_hand_attachment_bone,
+    "L_Elbow",
+    "Brock Zeus left hand must follow the left forearm bone",
+  )
+  assert.equal(
+    armorNode?.extras?.left_hand_geometry_version,
+    4,
+    "Brock Zeus detached hand-side islands must be welded to the forearm in rest space",
+  )
   const cloud = await readGlbJson(asset.companionUrl)
   assert.equal((cloud.meshes || []).length > 0, true)
   assert.equal([...new Set((cloud.nodes || []).map(node => node.name).filter(Boolean))].some(name => /cloud/i.test(name)), true)

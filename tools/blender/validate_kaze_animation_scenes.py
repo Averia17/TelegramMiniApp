@@ -66,11 +66,23 @@ ROOT_UP_LIMITS = {
 ROOT_BONE = "hips_s"
 TORSO_BONES = ("hips_s", "spine_lower_s1", "spine_middle_s", "spine_upper_s", "chest_s")
 WEAPON_GRIP_LOCAL = {
-    "HeroAttachment_FanLeft": (-0.10, 1.70, 1.65),
-    "HeroAttachment_FanRight": (-0.10, 1.70, 1.65),
+    "HeroAttachment_FanLeft": (0.00, 1.67, 3.75),
+    "HeroAttachment_FanRight": (0.00, 1.67, 3.75),
 }
 WEAPON_GRIP_MAX_DISTANCE = 0.01
 FRONT_DEPTH_MAX = 0.23
+RUN_ROTATION_LIMITS = {
+    "L_shoulder_s": (45.0, 1.0, 15.0),
+    "R_shoulder_s": (45.0, 1.0, 15.0),
+    "L_wrist_s": (8.0, 5.0, 8.0),
+    "R_wrist_s": (8.0, 5.0, 8.0),
+    "L_leg_s": (5.0, 6.0, 5.0),
+    "R_leg_s": (5.0, 6.0, 5.0),
+    "L_upper_leg_0_bend_s": (16.0, 5.0, 5.0),
+    "R_upper_leg_0_bend_s": (16.0, 5.0, 5.0),
+    "L_knee_s": (36.0, 5.0, 5.0),
+    "R_knee_s": (36.0, 5.0, 5.0),
+}
 REQUIRED_CURVE_BONES = (
     "hips_s",
     "spine_lower_s1",
@@ -155,6 +167,18 @@ def validate_pose(clip, armature, frame, errors):
         errors.append(
             f"{clip}@{frame}: summed torso pitch={torso_pitch:.2f} exceeds 25 degree budget"
         )
+
+    if clip == "run":
+        for bone_name, limits in RUN_ROTATION_LIMITS.items():
+            degrees = tuple(
+                abs(math.degrees(value)) for value in values[bone_name]["rotation"]
+            )
+            for axis, (actual, limit) in enumerate(zip(degrees, limits)):
+                if actual > limit + 1e-3:
+                    errors.append(
+                        f"{clip}@{frame}: {bone_name} axis {axis} rotation "
+                        f"{actual:.2f} exceeds natural-run limit {limit:.2f}"
+                    )
 
     chest_world = armature.matrix_world @ armature.pose.bones["chest_s"].head
     if clip in {"idle", "aim", "aim-super", "gadget", "aim-gadget"} or frame in {

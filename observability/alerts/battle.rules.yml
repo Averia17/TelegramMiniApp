@@ -1,0 +1,52 @@
+groups:
+  - name: battle-symptoms
+    rules:
+      - alert: BattleTickGapHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(battle_tick_gap_seconds_bucket[5m]))) > 0.025
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Battle authoritative tick gap is high"
+          description: "p95 tick gap is above 25ms for 5 minutes; players can see delayed prediction reconciliation."
+          runbook: "observability/README.md#battle-tick-gap"
+
+      - alert: BattleSnapshotQueueDrops
+        expr: rate(battle_state_queue_drops_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "Battle snapshots are being replaced before delivery"
+          description: "Latest-only state queues are dropping snapshots; inspect write-pump/network saturation."
+          runbook: "observability/README.md#snapshot-queue-drops"
+
+      - alert: BattleWebSocketWriteSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(battle_websocket_write_seconds_bucket[5m]))) > 0.020
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Battle WebSocket writes exceed one simulation frame"
+          description: "p95 outbound write duration is above 20ms for 5 minutes; inspect payload pressure and queue drops."
+          runbook: "observability/README.md#websocket-write-latency"
+
+      - alert: BattleHTTP5xxHigh
+        expr: sum(rate(battle_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(battle_http_requests_total[5m])), 1) > 0.01
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Battle HTTP 5xx rate is above 1%"
+          description: "The battle service is returning elevated HTTP errors."
+          runbook: "observability/README.md#http-errors"
+
+      - alert: BattleWebSocketChurnHigh
+        expr: rate(battle_websocket_disconnects_total[5m]) > 2 * clamp_min(rate(battle_websocket_connections_total[5m]), 1)
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Battle WebSocket disconnect churn is high"
+          description: "Disconnects materially exceed new connections; inspect browser/network errors and write deadlines."
+          runbook: "observability/README.md#websocket-churn"

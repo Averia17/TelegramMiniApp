@@ -8,6 +8,7 @@ import {loadBattleHero} from "./utils/battlePreferences.js"
 
 const BattleGame = lazy(() => import("./components/BattleGame/BattleGame.jsx").then(module => ({default: module.BattleGame})))
 const LandingPage = lazy(() => import("./pages/landing-page.jsx"))
+const KattyLab = lazy(() => import("./pages/katty-lab.jsx"))
 
 const BattlePage = ({id}) => {
   const {roomId} = useParams()
@@ -25,6 +26,7 @@ const App = () => {
   const [authError, setAuthError] = useState("")
 
   useEffect(() => {
+    if (window.location.pathname === "/katty-lab") return undefined
     authenticate().then(async ({user_id: userId}) => {
       setId(userId)
       const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param || ""
@@ -33,12 +35,14 @@ const App = () => {
         if (inviterId > 0) await axios.post(`${API_URL}/users/me/accept_invite`, {inviter_id: inviterId})
       }
     }).catch(error => setAuthError(error.response?.data?.detail || "Authentication failed"))
+    return undefined
   }, [])
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{v7_startTransition:true, v7_relativeSplatPath:true}}>
       <Suspense fallback={<BattleLoading progress={18} status="Загружаем интерфейс..." />}>
         <Routes>
+          <Route path="/katty-lab" element={<KattyLab/>}/>
           <Route path="/" element={id ? <LandingPage id={id}/> : <div role="alert">{authError || "Авторизация…"}</div>}/>
           <Route path="/battle/:roomId?" element={id ? <BattlePage id={id}/> : <></>}/>
         </Routes>

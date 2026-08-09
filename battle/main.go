@@ -4,6 +4,7 @@ import (
 	"battle/config"
 	"battle/handler"
 	mroom "battle/model/room"
+	"battle/observability"
 	"battle/provider"
 	"fmt"
 	"log"
@@ -32,7 +33,7 @@ func main() {
 	log.Printf("Battle server starting on %s", addr)
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           observability.HTTPMiddleware(observability.Default, mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

@@ -6,6 +6,7 @@ let simplifyToon = false
 // painted bands; view-space rim darkening keeps silhouettes readable without
 // rendering a second, inverted copy of every mesh.
 const toon = (color, emissive = 0x000000) => {
+  if (simplifyToon) return new THREE.MeshBasicMaterial({color})
   const material = new THREE.ShaderMaterial({
     uniforms: {
       color: {value:new THREE.Color(color)},

@@ -42,6 +42,10 @@ const (
 	BotVisionRange          = 620.0
 	BotRevealRange          = 900.0
 	BotPathRefreshInterval  = 240 * time.Millisecond
+	BotStuckTimeout         = 650 * time.Millisecond
+	BotProgressDistance     = 1.0
+	BotSearchDuration       = 2800 * time.Millisecond
+	BotExploreDuration      = 2600 * time.Millisecond
 	AttackRateScale         = 1.55
 	ReloadTimeScale         = 1.22
 	// Public hero stats stay compact for the UX; these keep their combat pace
@@ -81,6 +85,7 @@ type GameState struct {
 	SuddenDeathDamage       int
 	Map                     *gamemap.GameMap
 	Walls                   *geometry.SpatialHash
+	WallsSource             []*geometry.WallTile
 	Players                 map[string]*player.Player
 	Monsters                map[string]*monster.Monster
 	Bullets                 []*bullet.Bullet
@@ -116,16 +121,32 @@ type GameState struct {
 	botWallCache            map[string][]*geometry.WallTile
 	botTerrainCacheRevision int
 	botTerrainCache         map[int][]bool
+	botPathQueue            []botPathCell
+	botPathVisited          []uint32
+	botPathParents          []botPathCell
+	botPathSearchID         uint32
+}
+
+type botPathCell struct {
+	x, y int
 }
 
 type BotPerception struct {
+	TargetType              string
 	TargetID                string
 	LastSeenX, LastSeenY    float64
 	LastSeenAt, SearchUntil int64
+	ExploreX, ExploreY      float64
+	ExploreUntil            int64
+	ExploreIndex            int
 	Path                    []geometry.Vector2
 	PathGoalX, PathGoalY    int
 	PathMapRevision         int
 	PathRefreshAt           int64
+	PathLastX, PathLastY    float64
+	PathLastAt              int64
+	PathStuckSince          int64
+	PathReplanCount         int
 }
 
 type DelayedBattleEffect struct {

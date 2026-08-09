@@ -1,4 +1,6 @@
+import {memo, useEffect, useRef} from "react"
 import {getBattleRewardMessage} from "./battleOutcome"
+import {getIslandPhaseIndex, getIslandPhaseProgress, ISLAND_PHASE_ORDER} from "./phaseVisuals.js"
 
 const ISLAND_PHASES = {
   hunt: {label: "Охота и бой", icon: "◈", tone: "hunt", hint: "Дерись с первой секунды и ломай лунные ящики"},
@@ -14,6 +16,13 @@ const ISLAND_EVENTS = {
   ultimate_zone: "Зона ультиматума",
 }
 
+const ISLAND_PHASE_STEP_LABELS = {
+  hunt: "ОХОТА",
+  challenge: "ИСПЫТАНИЕ",
+  collapse: "СЖАТИЕ",
+  beacon: "МАЯК",
+}
+
 export const IslandPhaseHud = ({state}) => {
   const phase = ISLAND_PHASES[state?.phase]
   if (!phase) return null
@@ -21,15 +30,22 @@ export const IslandPhaseHud = ({state}) => {
   const timer = seconds === null ? "ФИНАЛ" : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
   const challengeEvent = state.phase === "challenge" && state.islandEvent ? ISLAND_EVENTS[state.islandEvent] || state.islandEvent : null
   const suddenDeath = state.suddenDeath ? `Дуэль острова · −${state.suddenDeathDamage || 0} HP/с` : null
+  const phaseIndex = getIslandPhaseIndex(state.phase)
+  const phaseProgress = getIslandPhaseProgress(state)
   return (
     <section className={`island-phase-hud island-phase-hud--${phase.tone}`} aria-label={`Фаза матча: ${phase.label}`}>
-      <div className="island-phase-hud__title"><span>{phase.icon}</span><strong>{phase.label}</strong></div>
-      <div className="island-phase-hud__meta"><b>{state.islandName || "Остров Первого Испытания"}</b><span>{timer}</span></div>
+      <div className="island-phase-hud__header">
+        <div className="island-phase-hud__title"><span>{phase.icon}</span><div><small>ФАЗА {phaseIndex + 1} / {ISLAND_PHASE_ORDER.length}</small><strong>{phase.label}</strong></div></div>
+        <time>{timer}</time>
+      </div>
+      <div className="island-phase-hud__meta"><b>{state.islandName || "Остров Первого Испытания"}</b><span>{ISLAND_PHASE_STEP_LABELS[state.phase]}</span></div>
+      <div className="island-phase-hud__progress" aria-hidden="true"><i style={{width: `${Math.round(phaseProgress * 100)}%`}}/></div>
       <p>{challengeEvent || suddenDeath || phase.hint}</p>
-      {state.phase === "collapse" && state.stormDamage > 0 && <small>Шторм: −{state.stormDamage} HP</small>}
+      {state.phase === "collapse" && state.stormDamage > 0 && <small className="island-storm-warning"><i/>Шторм: −{state.stormDamage} HP/с</small>}
       {state.phase === "beacon" && state.beaconHolder && state.beaconProgress > 0 && (
-        <div className="island-beacon-progress"><i style={{width: `${Math.round(state.beaconProgress * 100)}%`}}/></div>
+        <div className="island-beacon-progress"><div><span>Удерживает {state.beaconHolder}</span><b>{Math.round(state.beaconProgress * 100)}%</b></div><i style={{width: `${Math.round(state.beaconProgress * 100)}%`}}/></div>
       )}
+      <div className="island-phase-rail" aria-hidden="true">{ISLAND_PHASE_ORDER.map((tone, index) => <i key={tone} className={index <= phaseIndex ? "is-active" : ""}><span>{index + 1}</span></i>)}</div>
     </section>
   )
 }
@@ -100,6 +116,46 @@ export const AbilityButton = ({keyName, label, description, cooldown = 0, charge
   </button>
 )
 
+const MINI_MAP_COLORS = {
+  bush: "#48ad50",
+  half: "#48ad50",
+  water: "#43bde8",
+  crates: "#d89037",
+  barrels: "#d89037",
+  crystal: "#9c63f5",
+  bones: "#eee1bb",
+  cactus: "#248a57",
+}
+
+const BattleMiniMapObstacles = memo(function BattleMiniMapObstacles({map}) {
+  const canvasRef = useRef(null)
+  const mapWidth = map?.width
+  const mapHeight = map?.height
+  const walls = map?.walls
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !mapWidth || !mapHeight) return
+    const width = 200
+    const height = 150
+    const context = canvas.getContext("2d")
+    if (!context) return
+    canvas.width = width
+    canvas.height = height
+    context.clearRect(0, 0, width, height)
+    ;(walls || []).forEach(wall => {
+      context.fillStyle = MINI_MAP_COLORS[wall.type] || "#d56d48"
+      const x = wall.minX / mapWidth * width
+      const y = wall.minY / mapHeight * height
+      const wallWidth = Math.max(3, (wall.maxX - wall.minX) / mapWidth * width)
+      const wallHeight = Math.max(3.75, (wall.maxY - wall.minY) / mapHeight * height)
+      context.fillRect(x, y, wallWidth, wallHeight)
+    })
+  }, [mapWidth, mapHeight, walls])
+
+  return <canvas ref={canvasRef} className="mini-obstacles-canvas" aria-hidden="true"/>
+})
+
 export const BattleMiniMap = ({state, localId, renderer}) => {
   const map = state?.map
   if (!map) return null
@@ -111,9 +167,7 @@ export const BattleMiniMap = ({state, localId, renderer}) => {
     <aside className="battle-minimap" aria-label="Миникарта">
       {state.game?.stormRadius > 0 && <i className="mini-storm" style={{width: `${state.game.stormRadius / width * 200}%`, height: `${state.game.stormRadius / height * 200}%`}}/>}
       {state.game?.beaconOpen && <i className="mini-beacon"/>}
-      {(map.walls || []).map((wall, index) => (
-        <i key={index} className={`mini-obstacle mini-obstacle--${wall.type}`} style={{left: `${wall.minX / width * 100}%`, top: `${wall.minY / height * 100}%`, width: `${(wall.maxX - wall.minX) / width * 100}%`, height: `${Math.max(2.5, (wall.maxY - wall.minY) / height * 100)}%`}}/>
-      ))}
+      <BattleMiniMapObstacles map={map}/>
       {state.players[localId] && (
         <b className="mini-player mini-player--me" style={{left: `${state.players[localId].x / width * 100}%`, top: `${state.players[localId].y / height * 100}%`}}/>
       )}

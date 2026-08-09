@@ -1,6 +1,7 @@
 const fs = require("fs")
 const path = require("path")
 const {chromium} = require(path.resolve(__dirname, "../../frontend/node_modules/playwright"))
+const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cjs")
 
 const ROOT = path.resolve(__dirname, "../..")
 const HARNESS = process.env.HARNESS_URL || "http://localhost:5173/test/glb-hero-harness.html"
@@ -54,12 +55,13 @@ async function readState(page) {
 }
 
 (async () => {
-  const browser = await chromium.launch({headless: true})
-  const results = []
-  const consoleErrors = []
-  const pageErrors = []
-  let currentItem = "unknown"
-  try {
+  await runWithBrowser(
+    () => launchHeadlessChromium(chromium, {headless: true}),
+    async (browser) => {
+      const results = []
+      const consoleErrors = []
+      const pageErrors = []
+      let currentItem = "unknown"
     for (const item of cases) {
       currentItem = item.name
       const page = await browser.newPage({viewport: {width: 1280, height: 720}, deviceScaleFactor: 1})
@@ -93,31 +95,29 @@ async function readState(page) {
         await page.close()
       }
     }
-  } finally {
-    await browser.close()
-  }
-
-  const invalid = []
-  for (const result of results) {
-    const {item, timeline} = result
-    for (const sample of timeline) {
-      const {state} = sample
-      if (!state.modelVisible || !state.modelBounds || state.modelBounds.some(value => !Number.isFinite(value) || value < .01)
-        || state.renderFrame <= 0 || state.renderCalls <= 0 || state.fallbackEvents.length > 0
-        || (state.hero === "Fairy Mina" && state.heldProjectile)) {
-        invalid.push({name: item.name, offsetMs: sample.offsetMs, reason: "blank-or-runtime-invalid", screenshot: sample.screenshot, state})
+      const invalid = []
+      for (const result of results) {
+        const {item, timeline} = result
+        for (const sample of timeline) {
+          const {state} = sample
+          if (!state.modelVisible || !state.modelBounds || state.modelBounds.some(value => !Number.isFinite(value) || value < .01)
+            || state.renderFrame <= 0 || state.renderCalls <= 0 || state.fallbackEvents.length > 0
+            || (state.hero === "Fairy Mina" && state.heldProjectile)) {
+            invalid.push({name: item.name, offsetMs: sample.offsetMs, reason: "blank-or-runtime-invalid", screenshot: sample.screenshot, state})
+          }
+        }
+        const activeSamples = timeline.filter(sample => sample.offsetMs < item.durationMs * .9)
+        if (item.kind === "skill" && !activeSamples.some(sample => Number(sample.state.actionWeights[item.name] || 0) > .02)) {
+          invalid.push({name: item.name, reason: "skill-action-never-active", timeline})
+        }
       }
-    }
-    const activeSamples = timeline.filter(sample => sample.offsetMs < item.durationMs * .9)
-    if (item.kind === "skill" && !activeSamples.some(sample => Number(sample.state.actionWeights[item.name] || 0) > .02)) {
-      invalid.push({name: item.name, reason: "skill-action-never-active", timeline})
-    }
-  }
-  const report = {hero: "fairy-mina", cases: results.length, results, consoleErrors, pageErrors, invalid}
-  const reportPath = path.join(OUT, "report.json")
-  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
-  console.log(JSON.stringify({hero: report.hero, cases: results.length, invalid: invalid.length, consoleErrors: consoleErrors.length, pageErrors: pageErrors.length, report: reportPath}))
-  if (invalid.length || consoleErrors.length || pageErrors.length) process.exitCode = 1
+      const report = {hero: "fairy-mina", cases: results.length, results, consoleErrors, pageErrors, invalid}
+      const reportPath = path.join(OUT, "report.json")
+      fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
+      console.log(JSON.stringify({hero: report.hero, cases: results.length, invalid: invalid.length, consoleErrors: consoleErrors.length, pageErrors: pageErrors.length, report: reportPath}))
+      if (invalid.length || consoleErrors.length || pageErrors.length) process.exitCode = 1
+    },
+  )
 })().catch(error => {
   console.error(error)
   process.exitCode = 1

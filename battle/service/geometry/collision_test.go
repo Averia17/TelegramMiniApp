@@ -56,6 +56,24 @@ func TestSpatialHashQueryNoMatch(t *testing.T) {
 	}
 }
 
+func TestSpatialHashVisitRectDeduplicatesAndCanStopEarly(t *testing.T) {
+	sh := NewSpatialHash(32)
+	first := &WallTile{MinX: 0, MinY: 0, MaxX: 64, MaxY: 32, Type: "full"}
+	second := &WallTile{MinX: 32, MinY: 32, MaxX: 64, MaxY: 64, Type: "full"}
+	sh.Insert(first)
+	sh.Insert(second)
+
+	visited := make([]*WallTile, 0, 2)
+	sh.VisitRect(0, 0, 64, 64, func(wall *WallTile) bool {
+		visited = append(visited, wall)
+		return len(visited) < 2
+	})
+
+	if len(visited) != 2 || visited[0] == visited[1] {
+		t.Fatalf("VisitRect visited %d unique walls, want 2: %#v", len(visited), visited)
+	}
+}
+
 func TestSpatialHashContainsPointUsesNearbyWalls(t *testing.T) {
 	sh := NewSpatialHash(32)
 	sh.Insert(&WallTile{MinX: 20, MinY: 20, MaxX: 40, MaxY: 40, Type: "bush"})
@@ -72,6 +90,21 @@ func TestSpatialHashContainsPointUsesNearbyWalls(t *testing.T) {
 	}
 	if sh.ContainsPoint(200, 200, "bush") {
 		t.Fatal("did not expect distant point to be found")
+	}
+}
+
+func TestSpatialHashFindPointReturnsTheMatchingWallFromNearbyCell(t *testing.T) {
+	sh := NewSpatialHash(32)
+	bush := &WallTile{MinX: 20, MinY: 20, MaxX: 40, MaxY: 40, Type: "bush", BushGroup: 7}
+	sh.Insert(bush)
+	sh.Insert(&WallTile{MinX: 64, MinY: 20, MaxX: 84, MaxY: 40, Type: "half", BushGroup: 8})
+
+	found := sh.FindPoint(30, 30, func(wall *WallTile) bool { return wall.Type == "bush" })
+	if found != bush {
+		t.Fatalf("FindPoint returned %#v, want bush wall %#v", found, bush)
+	}
+	if sh.FindPoint(30, 30, func(wall *WallTile) bool { return wall.Type == "half" }) != nil {
+		t.Fatal("FindPoint returned a wall that did not match the predicate")
 	}
 }
 
@@ -116,5 +149,20 @@ func TestMoveCircleWithBlockingWallsAllowsBushes(t *testing.T) {
 
 	if body.X != 170 || body.Y != 80 {
 		t.Fatalf("move through bush ended at %.2f,%.2f, want 170,80", body.X, body.Y)
+	}
+}
+
+func BenchmarkCollidesCircleWithBlockingWalls(b *testing.B) {
+	sh := NewSpatialHash(32)
+	for x := 0; x < 256; x += 32 {
+		for y := 0; y < 256; y += 32 {
+			sh.Insert(&WallTile{MinX: float64(x), MinY: float64(y), MaxX: float64(x + 32), MaxY: float64(y + 32), Type: "full"})
+		}
+	}
+	body := &CircleBody{X: 124, Y: 124, Radius: 14}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = CollidesCircleWithBlockingWalls(body, sh)
 	}
 }

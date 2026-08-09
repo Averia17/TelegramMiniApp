@@ -1,6 +1,6 @@
 import * as THREE from "three"
 import {disposeObjectTree} from "./shared/disposal.js"
-import {pixelRatioFor} from "./shared/quality.js"
+import {isSoftwareWebGLContext, pixelRatioFor} from "./shared/quality.js"
 
 export const getBattleWebGLContext = (canvas, lowQuality) => {
   const attributes = {
@@ -22,27 +22,29 @@ export const getBattleWebGLContext = (canvas, lowQuality) => {
 export class SceneRoot {
   constructor(canvas, lowQuality) {
     const context = getBattleWebGLContext(canvas, lowQuality)
+    this.softwareWebGL = isSoftwareWebGLContext(context)
+    this.lowQuality = Boolean(lowQuality) || this.softwareWebGL
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       context,
-      antialias: !lowQuality,
+      antialias: !this.lowQuality,
       alpha: false,
       powerPreference: "high-performance",
-      precision: lowQuality ? "mediump" : "highp",
+      precision: this.lowQuality ? "mediump" : "highp",
     })
-    this.renderer.setPixelRatio(pixelRatioFor(lowQuality))
+    this.renderer.setPixelRatio(pixelRatioFor(this.lowQuality, this.softwareWebGL))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping
+    this.renderer.toneMapping = this.lowQuality ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.08
-    this.renderer.shadowMap.enabled = !lowQuality
+    this.renderer.shadowMap.enabled = !this.lowQuality
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.setClearColor(0xd87850, 1)
     this.scene = new THREE.Scene()
-    this.scene.fog = new THREE.Fog(0xe99a65, 42, 105)
+    this.scene.fog = this.lowQuality ? null : new THREE.Fog(0xe99a65, 42, 105)
     this.fillLight = new THREE.HemisphereLight(0xcde9ff, 0x70452f, 1.65)
     this.keyLight = new THREE.DirectionalLight(0xfff3df, 3.1)
     this.keyLight.position.set(-8, 16, 10)
-    this.keyLight.castShadow = !lowQuality
+    this.keyLight.castShadow = !this.lowQuality
     this.keyLight.shadow.mapSize.set(1024, 1024)
     this.keyLight.shadow.camera.near = 1
     this.keyLight.shadow.camera.far = 75
@@ -72,7 +74,10 @@ export class SceneRoot {
   }
 
   setLowQuality() {
-    this.renderer.setPixelRatio(1)
+    this.lowQuality = true
+    this.renderer.setPixelRatio(pixelRatioFor(true, this.softwareWebGL))
+    this.renderer.toneMapping = THREE.NoToneMapping
+    this.scene.fog = null
     this.renderer.shadowMap.enabled = false
     this.keyLight.castShadow = false
     this.scene.traverse(child => {

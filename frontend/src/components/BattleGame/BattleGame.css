@@ -21,6 +21,41 @@
   box-shadow: inset 0 0 90px rgba(20, 30, 80, 0.36);
 }
 
+.battle-game::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .45s ease, background .45s ease;
+}
+
+.battle-game--phase-hunt::before {
+  opacity: .42;
+  background: radial-gradient(circle at 50% 44%, transparent 0 34%, rgba(105, 224, 118, .12) 72%, rgba(12, 45, 42, .3) 100%);
+}
+
+.battle-game--phase-challenge::before {
+  opacity: .48;
+  background: radial-gradient(circle at 50% 42%, rgba(176, 120, 255, .12), transparent 44%), linear-gradient(135deg, rgba(37, 22, 76, .16), rgba(57, 26, 91, .24));
+}
+
+.battle-game--phase-collapse::before {
+  opacity: .62;
+  background: radial-gradient(circle at 50% 48%, transparent 0 28%, rgba(194, 42, 83, .12) 62%, rgba(55, 11, 48, .42) 100%);
+  animation: phase-collapse-pulse 2.6s ease-in-out infinite;
+}
+
+.battle-game--phase-beacon::before {
+  opacity: .54;
+  background: radial-gradient(circle at 50% 48%, rgba(255, 224, 112, .22), transparent 25%, rgba(109, 46, 130, .18) 72%, rgba(35, 17, 72, .26) 100%);
+  animation: phase-beacon-glow 3.2s ease-in-out infinite;
+}
+
+@keyframes phase-collapse-pulse { 50% { opacity: .8; } }
+@keyframes phase-beacon-glow { 50% { opacity: .74; } }
+
 .battle-canvas {
   display: block;
   width: 100%;
@@ -156,6 +191,44 @@
 .island-voice-notice p { margin: 5px 0 0; color: rgba(255, 255, 255, .92); font: italic 700 12px/1.35 Georgia, serif; }
 @keyframes island-voice-in { from { opacity: 0; transform: translate(-50%, -10px) scale(.97); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
 
+.island-phase-hud {
+  width: min(292px, 52vw);
+  border-color: var(--phase-accent, #8fe9ff);
+  background: linear-gradient(145deg, rgba(35, 48, 113, .96), rgba(18, 20, 58, .94));
+  box-shadow: 0 4px 0 rgba(17, 25, 73, .8), 0 8px 24px var(--phase-shadow, rgba(8, 15, 49, .3)), 0 0 24px var(--phase-glow, rgba(143, 233, 255, .08));
+  transition: border-color .35s ease, background .35s ease, box-shadow .35s ease;
+}
+.island-phase-hud--hunt { --phase-accent: #8fe9a6; --phase-shadow: rgba(50, 179, 112, .25); --phase-glow: rgba(115, 242, 132, .18); background: linear-gradient(145deg, rgba(32, 93, 89, .96), rgba(18, 51, 67, .94)); }
+.island-phase-hud--challenge { --phase-accent: #e3a8ff; --phase-shadow: rgba(138, 74, 206, .34); --phase-glow: rgba(202, 123, 255, .2); background: linear-gradient(145deg, rgba(77, 48, 139, .96), rgba(34, 25, 80, .94)); }
+.island-phase-hud--collapse { --phase-accent: #ff7d78; --phase-shadow: rgba(199, 42, 79, .38); --phase-glow: rgba(255, 84, 92, .2); background: linear-gradient(145deg, rgba(120, 39, 75, .96), rgba(44, 22, 66, .95)); }
+.island-phase-hud--beacon { --phase-accent: #ffe45a; --phase-shadow: rgba(217, 148, 38, .34); --phase-glow: rgba(255, 224, 86, .22); background: linear-gradient(145deg, rgba(106, 64, 159, .96), rgba(37, 25, 85, .94)); }
+.island-phase-hud__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.island-phase-hud__title { min-width: 0; }
+.island-phase-hud__title > div { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+.island-phase-hud__title small { color: var(--phase-accent, #bcd4ff); font: 900 7px/1 system-ui, sans-serif; letter-spacing: 1.2px; }
+.island-phase-hud__title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.island-phase-hud__header time { flex: 0 0 auto; color: #fff2a0; font: 900 16px/1 Impact, sans-serif; letter-spacing: .5px; text-shadow: 0 2px 0 #17265f; }
+.island-phase-hud__meta span { color: var(--phase-accent, #fff2a0); }
+.island-phase-hud__progress { height: 3px; margin-top: 7px; overflow: hidden; border-radius: 4px; background: rgba(8, 13, 42, .7); }
+.island-phase-hud__progress i { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--phase-accent, #8fe9ff), #fff7bb); box-shadow: 0 0 10px var(--phase-glow, rgba(143, 233, 255, .3)); transition: width .25s linear; }
+.island-storm-warning { display: flex !important; align-items: center; gap: 5px; color: #ffb1a3 !important; }
+.island-storm-warning i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ff706c; box-shadow: 0 0 9px #ff706c; animation: storm-warning-pulse .8s ease-in-out infinite alternate; }
+@keyframes storm-warning-pulse { to { transform: scale(1.65); opacity: .55; } }
+.island-beacon-progress > div { display: flex; justify-content: space-between; margin-bottom: 4px; color: #ffeaa0; font: 900 8px/1 system-ui, sans-serif; }
+.island-beacon-progress > div b { color: #fff; }
+.island-phase-rail { display: flex; align-items: center; gap: 0; margin-top: 8px; }
+.island-phase-rail i { position: relative; display: flex; flex: 1; align-items: center; }
+.island-phase-rail i::before { content: ""; width: 100%; height: 2px; background: rgba(255, 255, 255, .16); }
+.island-phase-rail i:first-child::before { border-radius: 3px 0 0 3px; }
+.island-phase-rail i:last-child::before { border-radius: 0 3px 3px 0; }
+.island-phase-rail i.is-active::before { background: var(--phase-accent, #8fe9ff); box-shadow: 0 0 7px var(--phase-glow, rgba(143, 233, 255, .3)); }
+.island-phase-rail i span { position: absolute; left: 50%; display: grid; place-items: center; width: 12px; height: 12px; transform: translateX(-50%); color: rgba(255,255,255,.55); border: 1px solid rgba(255,255,255,.25); border-radius: 50%; background: #202452; font: 900 7px/1 system-ui,sans-serif; }
+.island-phase-rail i.is-active span { color: #17213f; border-color: var(--phase-accent, #8fe9ff); background: var(--phase-accent, #8fe9ff); }
+
+@media (prefers-reduced-motion: reduce) {
+  .battle-game--phase-collapse::before, .battle-game--phase-beacon::before, .island-storm-warning i { animation: none; }
+}
+
 .battle-player-card {
   position: absolute;
   z-index: 11;
@@ -257,6 +330,7 @@
 .death-skull { font-size: 72px; }
 
 .battle-minimap { position: absolute; z-index: 13; right: 16px; top: 76px; width: 154px; aspect-ratio: 4/3; overflow: hidden; border: 4px solid rgba(255,255,255,.82); border-radius: 15px; background: rgba(31,45,69,.78); box-shadow: 0 5px 0 #17233e,0 8px 18px rgba(0,0,0,.25); pointer-events: none; }
+.mini-obstacles-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .mini-storm { position: absolute; z-index: 1; left: 50%; top: 50%; transform: translate(-50%, -50%); min-width: 18%; min-height: 18%; border: 2px solid rgba(255, 105, 111, .95); border-radius: 50%; background: transparent; box-shadow: 0 0 0 999px rgba(71, 17, 65, .32), inset 0 0 14px rgba(255, 78, 92, .64); }
 .mini-beacon { position: absolute; z-index: 2; left: 50%; top: 50%; width: 10px; height: 10px; transform: translate(-50%, -50%); border: 2px solid #fff6a1; border-radius: 50%; background: #ffc83d; box-shadow: 0 0 12px 4px rgba(255, 216, 72, .82); }
 .mini-obstacle { position: absolute; min-width: 3px; border-radius: 2px; background: #d56d48; }

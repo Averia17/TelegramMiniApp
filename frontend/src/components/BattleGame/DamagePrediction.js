@@ -3,11 +3,22 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback
 
 const entityKey = (targetType, targetId) => `${targetType}:${String(targetId)}`
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key)
 
-const entitiesFromState = state => [
-  ...Object.entries(state?.players || {}).map(([id, entity]) => ({type: "players", id, entity})),
-  ...Object.entries(state?.monsters || {}).map(([id, entity]) => ({type: "monsters", id, entity})),
-]
+const ingestEntity = (prediction, targetType, id, entity, now, seen) => {
+  const key = entityKey(targetType, id)
+  const lives = Math.max(0, finite(entity?.lives))
+  const previous = prediction.authoritativeLives.get(key)
+  // An HP delta is not enough to identify which local command caused it:
+  // another player may have damaged this target in the same interval. Only
+  // combat events are allowed to consume a matching prediction.
+  if (previous !== undefined && lives < previous && prediction.pending.has(key)) {
+    prediction.rollbackStarts.set(key, now)
+  }
+  if (lives <= 0) prediction.pending.delete(key)
+  prediction.authoritativeLives.set(key, lives)
+  seen.add(key)
+}
 
 const distanceToSegmentSquared = (point, from, to) => {
   const dx = finite(to?.x) - finite(from?.x)
@@ -48,24 +59,19 @@ export class DamagePrediction {
     this.presentationLives = new Map()
     this.rollbackStarts = new Map()
     this.processedEvents = new Map()
+    this.lastExpireAt = null
   }
 
   ingest(state, now = Date.now()) {
     const seen = new Set()
-    entitiesFromState(state).forEach(({type, id, entity}) => {
-      const key = entityKey(type, id)
-      const lives = Math.max(0, finite(entity?.lives))
-      const previous = this.authoritativeLives.get(key)
-      // An HP delta is not enough to identify which local command caused it:
-      // another player may have damaged this target in the same interval. Only
-      // combat events are allowed to consume a matching prediction.
-      if (previous !== undefined && lives < previous && this.pending.has(key)) {
-        this.rollbackStarts.set(key, now)
-      }
-      if (lives <= 0) this.pending.delete(key)
-      this.authoritativeLives.set(key, lives)
-      seen.add(key)
-    })
+    const players = state?.players || {}
+    const monsters = state?.monsters || {}
+    for (const id in players) {
+      if (hasOwn(players, id)) ingestEntity(this, "players", id, players[id], now, seen)
+    }
+    for (const id in monsters) {
+      if (hasOwn(monsters, id)) ingestEntity(this, "monsters", id, monsters[id], now, seen)
+    }
     this.authoritativeLives.forEach((_, key) => {
       if (!seen.has(key)) {
         this.authoritativeLives.delete(key)
@@ -154,6 +160,8 @@ export class DamagePrediction {
   }
 
   expire(now = Date.now()) {
+    if (this.lastExpireAt === now) return
+    this.lastExpireAt = now
     this.pending.forEach((entries, key) => {
       const active = entries.filter(entry => entry.expiresAt > now && entry.amount > 0.0001)
       if (active.length > 0) this.pending.set(key, active)

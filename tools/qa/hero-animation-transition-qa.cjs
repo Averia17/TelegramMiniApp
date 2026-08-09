@@ -1,6 +1,7 @@
 const fs = require("fs")
 const path = require("path")
 const { chromium } = require(path.resolve(__dirname, "../../frontend/node_modules/playwright"))
+const { launchHeadlessChromium, runWithBrowser } = require("./playwright-runner.cjs")
 
 const ROOT = path.resolve(__dirname, "../..")
 const HARNESS = process.env.HARNESS_URL || "http://localhost/test/glb-hero-harness.html"
@@ -69,9 +70,10 @@ async function readState(page) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: true })
-  const results = []
-  try {
+  await runWithBrowser(
+    () => launchHeadlessChromium(chromium, { headless: true }),
+    async (browser) => {
+      const results = []
     for (const [hero, slug] of heroes) {
       const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 })
       const consoleErrors = []
@@ -96,14 +98,13 @@ async function readState(page) {
       }
       await page.close()
     }
-  } finally {
-    await browser.close()
-  }
-  const output = path.join(ROOT, "artifacts", "hero-browser-qa", "transition-matrix.json")
-  const invalid = results.filter(item => !item.valid)
-  fs.writeFileSync(output, JSON.stringify({ heroes: heroes.length, scenarios: scenarios.length, checks: results.length, invalid: invalid.length, results }, null, 2))
-  console.log(JSON.stringify({ heroes: heroes.length, scenarios: scenarios.length, checks: results.length, invalid: invalid.length, output, screenshots: OUT }))
-  if (invalid.length) process.exitCode = 1
+      const output = path.join(ROOT, "artifacts", "hero-browser-qa", "transition-matrix.json")
+      const invalid = results.filter(item => !item.valid)
+      fs.writeFileSync(output, JSON.stringify({ heroes: heroes.length, scenarios: scenarios.length, checks: results.length, invalid: invalid.length, results }, null, 2))
+      console.log(JSON.stringify({ heroes: heroes.length, scenarios: scenarios.length, checks: results.length, invalid: invalid.length, output, screenshots: OUT }))
+      if (invalid.length) process.exitCode = 1
+    },
+  )
 })().catch(error => {
   console.error(error)
   process.exitCode = 1

@@ -1,6 +1,7 @@
 package game
 
 import (
+	"battle/model/monster"
 	"math"
 	"testing"
 	"time"
@@ -164,6 +165,22 @@ func TestBrockSuperSchedulesThreeTimedStrikes(t *testing.T) {
 	BrockZeusKit{}.Super(gs, p, now, 0, 300)
 	if len(gs.LightningStrikes) != 3 || p.ChannelUntil != now+1000 {
 		t.Fatalf("strikes=%d channel=%d", len(gs.LightningStrikes), p.ChannelUntil)
+	}
+}
+
+func TestBrockArmedBeamDamagesVisibleMonster(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("brock", "Brock", "Brock Zeus")
+	p := gs.Players["brock"]
+	p.X, p.Y, p.GadgetArmed = 100, 100, true
+	gs.Monsters["bat"] = monster.NewMonster(180, 100, 16, 480, 480, monster.MonsterLives)
+	before := gs.Monsters["bat"].Lives
+
+	BrockZeusKit{}.Basic(gs, p, time.Now().UnixMilli(), 0, 0)
+
+	if gs.Monsters["bat"].Lives >= before {
+		t.Fatalf("armed beam did not damage monster: lives=%d before=%d", gs.Monsters["bat"].Lives, before)
 	}
 }
 

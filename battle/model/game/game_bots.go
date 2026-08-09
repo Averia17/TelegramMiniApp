@@ -3,6 +3,7 @@ package game
 import (
 	"battle/model/monster"
 	"battle/model/player"
+	"battle/model/prop"
 	"battle/service/geometry"
 	"fmt"
 	"math"
@@ -129,6 +130,15 @@ func (gs *GameState) bushGroupAt(x, y float64) (int, bool) {
 	if gs.Map == nil {
 		return 0, false
 	}
+	if gs.Walls != nil && sameWallSource(gs.Map.Collisions, gs.WallsSource) {
+		wall := gs.Walls.FindPoint(x, y, func(candidate *geometry.WallTile) bool {
+			return isConcealmentWall(candidate.Type)
+		})
+		if wall == nil {
+			return 0, false
+		}
+		return wall.BushGroup, true
+	}
 	for _, wall := range gs.Map.Collisions {
 		if isConcealmentWall(wall.Type) && x >= wall.MinX && x <= wall.MaxX && y >= wall.MinY && y <= wall.MaxY {
 			return wall.BushGroup, true
@@ -169,17 +179,162 @@ func (gs *GameState) botCanSee(observer, target *player.Player, now int64) bool 
 	return revealed
 }
 
+func (gs *GameState) botCanSeeMonster(observer *player.Player, target *monster.Monster) bool {
+	if observer == nil || target == nil || !target.IsAlive() {
+		return false
+	}
+	distance := math.Hypot(target.X-observer.X, target.Y-observer.Y)
+	if distance > BotVisionRange {
+		return false
+	}
+	if gs.Walls != nil && segmentHitsBlockingWall(observer.X, observer.Y, target.X, target.Y, 2, gs.Walls) {
+		return false
+	}
+	targetGroup, targetInBush := gs.bushGroupAt(target.X, target.Y)
+	if !targetInBush {
+		return true
+	}
+	observerGroup, observerInBush := gs.bushGroupAt(observer.X, observer.Y)
+	return (observerInBush && observerGroup == targetGroup) || distance <= TileSize*2.5
+}
+
 func (gs *GameState) rememberBotTarget(botID string, target *player.Player, now int64) *BotPerception {
 	memory := gs.BotMemory[botID]
 	if memory == nil {
 		memory = &BotPerception{}
 		gs.BotMemory[botID] = memory
 	}
+	memory.TargetType = "player"
 	memory.TargetID = target.PlayerId
 	memory.LastSeenX, memory.LastSeenY = target.X, target.Y
 	memory.LastSeenAt = now
-	memory.SearchUntil = now + 2800
+	memory.SearchUntil = now + BotSearchDuration.Milliseconds()
 	return memory
+}
+
+func (gs *GameState) rememberBotMonster(botID, targetID string, target *monster.Monster, now int64) *BotPerception {
+	memory := gs.BotMemory[botID]
+	if memory == nil {
+		memory = &BotPerception{}
+		gs.BotMemory[botID] = memory
+	}
+	memory.TargetType = "monster"
+	memory.TargetID = targetID
+	memory.LastSeenX, memory.LastSeenY = target.X, target.Y
+	memory.LastSeenAt = now
+	memory.SearchUntil = now + BotSearchDuration.Milliseconds()
+	return memory
+}
+
+type botTarget struct {
+	kind     string
+	id       string
+	player   *player.Player
+	monster  *monster.Monster
+	x, y     float64
+	distance float64
+	score    float64
+}
+
+func (target *botTarget) radius() float64 {
+	if target == nil {
+		return 0
+	}
+	if target.player != nil {
+		return target.player.Radius
+	}
+	if target.monster != nil {
+		return target.monster.Radius
+	}
+	return 0
+}
+
+func (gs *GameState) botSelectTarget(bot *player.Player, now int64) *botTarget {
+	if bot == nil {
+		return nil
+	}
+	var best *botTarget
+	consider := func(candidate *botTarget) {
+		if best == nil || candidate.score > best.score || (candidate.score == best.score && candidate.id < best.id) {
+			best = candidate
+		}
+	}
+	for id, candidate := range gs.Players {
+		if id == bot.PlayerId || candidate == nil || !candidate.CanBulletHurt(bot.PlayerId, bot.Team) || !gs.botCanSee(bot, candidate, now) {
+			continue
+		}
+		distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
+		healthRatio := float64(candidate.Lives) / math.Max(1, float64(candidate.MaxLives))
+		consider(&botTarget{kind: "player", id: id, player: candidate, x: candidate.X, y: candidate.Y, distance: distance, score: 90 - distance + (1-healthRatio)*120})
+	}
+	for id, candidate := range gs.Monsters {
+		if candidate == nil || !gs.botCanSeeMonster(bot, candidate) {
+			continue
+		}
+		distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
+		consider(&botTarget{kind: "monster", id: id, monster: candidate, x: candidate.X, y: candidate.Y, distance: distance, score: -distance})
+	}
+	return best
+}
+
+func (gs *GameState) botPickupTarget(bot *player.Player) *prop.Prop {
+	if bot == nil || !bot.IsAlive() {
+		return nil
+	}
+	healthRatio := float64(bot.Lives) / math.Max(1, float64(bot.MaxLives))
+	var best *prop.Prop
+	bestScore := math.Inf(-1)
+	for _, candidate := range gs.Props {
+		if candidate == nil || !candidate.Active {
+			continue
+		}
+		switch candidate.Type {
+		case "potion-red":
+			if healthRatio >= .8 {
+				continue
+			}
+		case "power", "lunar_speed", "lunar_damage", "lunar_shield", "lunar_cooldown":
+		default:
+			continue
+		}
+		distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
+		if distance > BotVisionRange || (gs.Walls != nil && segmentHitsBlockingWall(bot.X, bot.Y, candidate.X, candidate.Y, 2, gs.Walls)) {
+			continue
+		}
+		score := -distance
+		if candidate.Type == "potion-red" {
+			score += 260 + (1-healthRatio)*180
+		}
+		if score > bestScore {
+			best, bestScore = candidate, score
+		}
+	}
+	return best
+}
+
+func botAttackRange(bot *player.Player) float64 {
+	if bot == nil {
+		return 0
+	}
+	if kit := CombatKitFor(bot.HeroName); kit != nil {
+		return kit.AttackRange()
+	}
+	return 180
+}
+
+func botIsMelee(bot *player.Player) bool {
+	if bot == nil {
+		return false
+	}
+	switch bot.HeroName {
+	case "Mandy", "Kaze", "Wukong Mico", "Viper", "Spark":
+		return true
+	}
+	switch bot.AttackType {
+	case "slam", "dash", "double_melee":
+		return true
+	}
+	return botAttackRange(bot) <= 140
 }
 
 func (gs *GameState) updateBots() {
@@ -194,88 +349,75 @@ func (gs *GameState) updateBots() {
 		if !bot.IsBot || !bot.IsAlive() {
 			continue
 		}
+		if dodgeX, dodgeY, threatened := gs.botProjectileDodge(bot); threatened {
+			gs.playerMove(id, now, dodgeX, dodgeY)
+			botIndex++
+			continue
+		}
 		if threat, flee := gs.botMonsterThreat(bot); threat != nil {
-			angle := math.Atan2(threat.Y-bot.Y, threat.X-bot.X)
-			bot.Rotation = angle
-			distance := math.Hypot(threat.X-bot.X, threat.Y-bot.Y)
 			if flee {
-				retreatDistance := 300.0
-				targetX := bot.X - math.Cos(angle)*retreatDistance
-				targetY := bot.Y - math.Sin(angle)*retreatDistance
-				if gs.Map != nil {
-					target := gs.Map.ClampCircle(&geometry.CircleBody{X: targetX, Y: targetY, Radius: bot.Radius})
-					targetX, targetY = target.X, target.Y
-				}
-				dx, dy := gs.botTravelDirection(id, &bot.CircleBody, targetX, targetY, now)
+				gs.botRetreatFrom(id, bot, threat.X, threat.Y, now)
+			} else {
+				gs.botEngageTarget(id, bot, &botTarget{kind: "monster", id: "threat", monster: threat, x: threat.X, y: threat.Y, distance: math.Hypot(threat.X-bot.X, threat.Y-bot.Y)}, botIndex, now)
+			}
+			botIndex++
+			continue
+		}
+		if pickup := gs.botPickupTarget(bot); pickup != nil {
+			angle := math.Atan2(pickup.Y-bot.Y, pickup.X-bot.X)
+			bot.Rotation = angle
+			distance := math.Hypot(pickup.X-bot.X, pickup.Y-bot.Y)
+			if distance > bot.Radius+pickup.Radius+4 {
+				dx, dy := gs.botTravelDirection(id, &bot.CircleBody, pickup.X, pickup.Y, now)
 				gs.playerMove(id, now, dx, dy)
 			} else {
-				approach := 1.0
-				if distance < 135 {
-					approach = -.35
-				}
-				strafe := math.Sin(float64(now)/560+float64(botIndex)*1.9) * .45
-				intentX := bot.X + (math.Cos(angle)*approach+math.Cos(angle+math.Pi/2)*strafe)*180
-				intentY := bot.Y + (math.Sin(angle)*approach+math.Sin(angle+math.Pi/2)*strafe)*180
-				dx, dy := gs.botTravelDirection(id, &bot.CircleBody, intentX, intentY, now)
-				gs.playerMove(id, now, dx, dy)
-			}
-			if bot.Ammo > 0 && distance < 520 {
-				gs.playerShoot(id, now, screenAngleFromWorld(angle))
+				gs.playerMove(id, now, 0, 0)
 			}
 			botIndex++
 			continue
 		}
 		if opening {
 			if crate := gs.closestWallOfType(bot.X, bot.Y, "crates"); crate != nil {
-				targetX, targetY := (crate.MinX+crate.MaxX)/2, (crate.MinY+crate.MaxY)/2
-				angle := math.Atan2(targetY-bot.Y, targetX-bot.X)
+				crateX, crateY := (crate.MinX+crate.MaxX)/2, (crate.MinY+crate.MaxY)/2
+				targetX, targetY := botWallApproachPoint(bot, crate)
+				angle := math.Atan2(crateY-bot.Y, crateX-bot.X)
 				bot.Rotation = angle
 				distance := math.Hypot(targetX-bot.X, targetY-bot.Y)
-				if distance > 105 {
+				if distance > 28 {
 					dx, dy := gs.botTravelDirection(id, &bot.CircleBody, targetX, targetY, now)
 					gs.playerMove(id, now, dx, dy)
 				} else {
 					gs.playerMove(id, now, 0, 0)
 				}
-				if distance < 520 {
-					gs.playerShoot(id, now, screenAngleFromWorld(angle))
+				if math.Hypot(crateX-bot.X, crateY-bot.Y) <= botAttackRange(bot)+TileSize {
+					bot.AimDistance = math.Hypot(crateX-bot.X, crateY-bot.Y)
+					gs.playerShoot(id, now, screenAngleFromWorld(angle), bot.AimDistance)
 				}
 				botIndex++
 				continue
 			}
 		}
-		if dodgeX, dodgeY, threatened := gs.botProjectileDodge(bot); threatened {
-			gs.playerMove(id, now, dodgeX, dodgeY)
-			botIndex++
-			continue
-		}
-		var target *player.Player
-		closest, bestScore := math.MaxFloat64, -math.MaxFloat64
-		for otherID, candidate := range gs.Players {
-			if otherID == id || !candidate.IsAlive() || (bot.Team != "" && candidate.Team == bot.Team) {
-				continue
-			}
-			distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
-			if !gs.botCanSee(bot, candidate, now) {
-				continue
-			}
-			healthRatio := float64(candidate.Lives) / math.Max(1, float64(candidate.MaxLives))
-			score := 700 - distance
-			if healthRatio < .3 {
-				score += 180
-			}
-			if score > bestScore {
-				closest, bestScore, target = distance, score, candidate
-			}
-		}
+		target := gs.botSelectTarget(bot, now)
 		var memory *BotPerception
 		targetVisible := target != nil
 		if targetVisible {
-			memory = gs.rememberBotTarget(id, target, now)
+			if target.player != nil {
+				memory = gs.rememberBotTarget(id, target.player, now)
+			} else {
+				memory = gs.rememberBotMonster(id, target.id, target.monster, now)
+			}
 		} else {
 			memory = gs.BotMemory[id]
 			if memory != nil && now < memory.SearchUntil {
-				if remembered := gs.Players[memory.TargetID]; remembered == nil || !remembered.IsAlive() {
+				rememberedAlive := false
+				if memory.TargetType == "monster" {
+					remembered := gs.Monsters[memory.TargetID]
+					rememberedAlive = remembered != nil && remembered.IsAlive()
+				} else {
+					remembered := gs.Players[memory.TargetID]
+					rememberedAlive = remembered != nil && remembered.IsAlive()
+				}
+				if !rememberedAlive {
 					memory = nil
 					delete(gs.BotMemory, id)
 				}
@@ -303,36 +445,180 @@ func (gs *GameState) updateBots() {
 				botIndex++
 				continue
 			}
-			if bush := gs.closestWallOfType(bot.X, bot.Y, "bush"); bush != nil {
-				x, y := (bush.MinX+bush.MaxX)/2, (bush.MinY+bush.MaxY)/2
-				dx, dy := gs.botTravelDirection(id, &bot.CircleBody, x, y, now)
-				gs.playerMove(id, now, dx, dy)
-			}
+			gs.botExplore(id, bot, now)
 			continue
 		}
-		angle := math.Atan2(target.Y-bot.Y, target.X-bot.X)
-		bot.Rotation = angle
-		approach := 0.18
-		if closest > 260 {
-			approach = 1
-		} else if closest < 115 || bot.Lives*3 < bot.MaxLives {
-			approach = -0.85
-		}
-		strafe := math.Sin(float64(now)/620+float64(botIndex)*1.7) * 0.62
-		dx := math.Cos(angle)*approach + math.Cos(angle+math.Pi/2)*strafe
-		dy := math.Sin(angle)*approach + math.Sin(angle+math.Pi/2)*strafe
-		intentX, intentY := bot.X+dx*220, bot.Y+dy*220
-		moveX, moveY := gs.botTravelDirection(id, &bot.CircleBody, intentX, intentY, now)
-		gs.playerMove(id, now, moveX, moveY)
-		if !opening && targetVisible && closest < 520 {
-			if SuperChargePercent(bot, now) >= 100 {
-				gs.playerAbility(id, now, "primary")
-			} else {
-				gs.playerShoot(id, now, screenAngleFromWorld(angle))
-			}
-		}
+		gs.botEngageTarget(id, bot, target, botIndex, now)
 		botIndex++
 	}
+}
+
+func (gs *GameState) botEngageTarget(id string, bot *player.Player, target *botTarget, botIndex int, now int64) {
+	if bot == nil || target == nil {
+		return
+	}
+	angle := math.Atan2(target.y-bot.Y, target.x-bot.X)
+	bot.Rotation = angle
+	reach := botAttackRange(bot)
+	attackDistance := reach + target.radius()
+	melee := botIsMelee(bot)
+	preferred := reach * .72
+	approach := 0.0
+	if target.distance > preferred {
+		approach = 1
+	} else if !melee && target.distance < reach*.38 {
+		approach = -.85
+	}
+	strafe := math.Sin(float64(now)/620+float64(botIndex)*1.7) * .62
+	if math.Abs(approach)+math.Abs(strafe) < .05 {
+		strafe = .45
+	}
+	dx := math.Cos(angle)*approach + math.Cos(angle+math.Pi/2)*strafe
+	dy := math.Sin(angle)*approach + math.Sin(angle+math.Pi/2)*strafe
+	intentX, intentY := bot.X+dx*220, bot.Y+dy*220
+	moveX, moveY := gs.botTravelDirection(id, &bot.CircleBody, intentX, intentY, now)
+	gs.playerMove(id, now, moveX, moveY)
+	if target.distance > attackDistance || !gs.botHasLineOfSight(bot, target) {
+		return
+	}
+	bot.AimDistance = target.distance
+	if gs.botTryAbility(id, bot, target, now) {
+		return
+	}
+	if bot.Ammo > 0 {
+		gs.playerShoot(id, now, screenAngleFromWorld(angle), target.distance)
+	}
+}
+
+func (gs *GameState) botHasLineOfSight(bot *player.Player, target *botTarget) bool {
+	if target == nil {
+		return false
+	}
+	if target.player != nil {
+		return gs.botCanSee(bot, target.player, time.Now().UnixMilli())
+	}
+	return gs.botCanSeeMonster(bot, target.monster)
+}
+
+func (gs *GameState) botRetreatFrom(id string, bot *player.Player, threatX, threatY float64, now int64) {
+	angle := math.Atan2(threatY-bot.Y, threatX-bot.X)
+	bot.Rotation = angle
+	targetX := bot.X - math.Cos(angle)*300
+	targetY := bot.Y - math.Sin(angle)*300
+	if gs.Map != nil {
+		target := gs.Map.ClampCircle(&geometry.CircleBody{X: targetX, Y: targetY, Radius: bot.Radius})
+		targetX, targetY = target.X, target.Y
+	}
+	dx, dy := gs.botTravelDirection(id, &bot.CircleBody, targetX, targetY, now)
+	gs.playerMove(id, now, dx, dy)
+}
+
+func (gs *GameState) botTryAbility(id string, bot *player.Player, target *botTarget, now int64) bool {
+	if bot == nil || target == nil {
+		return false
+	}
+	if SuperChargePercent(bot, now) >= 100 && botPrimaryUseful(bot, target) {
+		bot.AimDistance = target.distance
+		gs.playerAbility(id, now, "primary")
+		if bot.LastAbilityOK {
+			return true
+		}
+	}
+	if bot.GadgetCharges <= 0 || now-bot.LastSecondaryAt < AbilityCooldownMs(bot.HeroName, "secondary") || !botSecondaryUseful(bot, target) {
+		return false
+	}
+	bot.AimDistance = target.distance
+	gs.playerAbility(id, now, "secondary")
+	return bot.LastAbilityOK
+}
+
+func botPrimaryUseful(bot *player.Player, target *botTarget) bool {
+	if bot == nil || target == nil {
+		return false
+	}
+	if target.kind == "monster" {
+		switch bot.HeroName {
+		case "Needle", "Kaze", "Persephone Lumi":
+			return false
+		}
+	}
+	switch bot.HeroName {
+	case "Fairy Mina":
+		return float64(bot.Lives) < float64(bot.MaxLives)*.72
+	case "Kaze":
+		return target.distance <= 320+target.radius()
+	case "Wukong Mico":
+		return target.distance <= 180+target.radius()
+	case "Mandy":
+		return target.distance <= 160+target.radius()
+	default:
+		return target.distance <= botAttackRange(bot)+target.radius()
+	}
+}
+
+func botSecondaryUseful(bot *player.Player, target *botTarget) bool {
+	if bot == nil || target == nil {
+		return false
+	}
+	if target.kind == "monster" {
+		switch bot.HeroName {
+		case "Needle", "Fairy Mina", "Persephone Lumi":
+			return false
+		}
+	}
+	switch bot.HeroName {
+	case "Needle", "Fairy Mina":
+		return target.distance <= 150+target.radius()
+	case "Brock Zeus":
+		return target.distance <= botAttackRange(bot)+target.radius()
+	case "Kaze":
+		return target.distance <= 300+target.radius()
+	case "Wukong Mico":
+		return target.distance <= 190+target.radius() || bot.Lives*2 < bot.MaxLives
+	case "Persephone Lumi":
+		return target.distance <= 200+target.radius()
+	default:
+		return target.distance <= botAttackRange(bot)+target.radius()
+	}
+}
+
+func (gs *GameState) botExplore(id string, bot *player.Player, now int64) {
+	if bot == nil || gs.Map == nil {
+		return
+	}
+	if gs.BotMemory == nil {
+		gs.BotMemory = make(map[string]*BotPerception)
+	}
+	memory := gs.BotMemory[id]
+	if memory == nil {
+		memory = &BotPerception{}
+		gs.BotMemory[id] = memory
+	}
+	if now >= memory.ExploreUntil || math.Hypot(memory.ExploreX-bot.X, memory.ExploreY-bot.Y) < 38 {
+		points := make([]geometry.Vector2, 0, len(gs.Map.Spawners)+5)
+		for _, spawn := range gs.Map.Spawners {
+			points = append(points, geometry.Vector2{X: spawn.CenterX(), Y: spawn.CenterY()})
+		}
+		margin := TileSize * 1.5
+		points = append(points,
+			geometry.Vector2{X: gs.Map.WidthInPixels / 2, Y: gs.Map.HeightInPixels / 2},
+			geometry.Vector2{X: margin, Y: margin},
+			geometry.Vector2{X: gs.Map.WidthInPixels - margin, Y: margin},
+			geometry.Vector2{X: margin, Y: gs.Map.HeightInPixels - margin},
+			geometry.Vector2{X: gs.Map.WidthInPixels - margin, Y: gs.Map.HeightInPixels - margin},
+		)
+		if len(points) == 0 {
+			return
+		}
+		memory.ExploreIndex++
+		point := points[memory.ExploreIndex%len(points)]
+		memory.ExploreX, memory.ExploreY = point.X, point.Y
+		memory.ExploreUntil = now + BotExploreDuration.Milliseconds()
+	}
+	angle := math.Atan2(memory.ExploreY-bot.Y, memory.ExploreX-bot.X)
+	bot.Rotation = angle
+	dx, dy := gs.botTravelDirection(id, &bot.CircleBody, memory.ExploreX, memory.ExploreY, now)
+	gs.playerMove(id, now, dx, dy)
 }
 
 func (gs *GameState) moveBot(id string, now int64, dx, dy float64) {
@@ -355,8 +641,10 @@ func (gs *GameState) botMonsterThreat(bot *player.Player) (*monster.Monster, boo
 			continue
 		}
 		distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
-		isAttackingBot := candidate.State == monster.MonsterChase && candidate.TargetPlayerId == bot.PlayerId
-		if !isAttackingBot && distance > monster.MonsterSight {
+		if distance > monster.MonsterSight {
+			continue
+		}
+		if !gs.botCanSeeMonster(bot, candidate) {
 			continue
 		}
 		if distance < closest {
@@ -368,6 +656,41 @@ func (gs *GameState) botMonsterThreat(bot *player.Player) (*monster.Monster, boo
 	}
 	healthRatio := float64(bot.Lives) / math.Max(1, float64(bot.MaxLives))
 	return threat, healthRatio < .35 || (bot.Ammo == 0 && closest < 170)
+}
+
+func botWallApproachPoint(bot *player.Player, wall *geometry.WallTile) (float64, float64) {
+	if bot == nil || wall == nil {
+		return 0, 0
+	}
+	margin := bot.Radius + 8
+	insideX := bot.X >= wall.MinX && bot.X <= wall.MaxX
+	insideY := bot.Y >= wall.MinY && bot.Y <= wall.MaxY
+	if !insideX {
+		x := wall.MinX - margin
+		if bot.X > wall.MaxX {
+			x = wall.MaxX + margin
+		}
+		return x, math.Min(wall.MaxY+margin, math.Max(wall.MinY-margin, bot.Y))
+	}
+	if !insideY {
+		y := wall.MinY - margin
+		if bot.Y > wall.MaxY {
+			y = wall.MaxY + margin
+		}
+		return math.Min(wall.MaxX+margin, math.Max(wall.MinX-margin, bot.X)), y
+	}
+	left, right := bot.X-wall.MinX, wall.MaxX-bot.X
+	top, bottom := bot.Y-wall.MinY, wall.MaxY-bot.Y
+	if left <= right && left <= top && left <= bottom {
+		return wall.MinX - margin, bot.Y
+	}
+	if right <= top && right <= bottom {
+		return wall.MaxX + margin, bot.Y
+	}
+	if top <= bottom {
+		return bot.X, wall.MinY - margin
+	}
+	return bot.X, wall.MaxY + margin
 }
 
 // botTravelDirection follows a short cached grid route. Unlike local wall
@@ -388,6 +711,23 @@ func (gs *GameState) botTravelDirection(agentID string, body *geometry.CircleBod
 	if memory == nil {
 		memory = &BotPerception{}
 		gs.BotMemory[agentID] = memory
+	}
+	if memory.PathLastAt > 0 {
+		moved := math.Hypot(body.X-memory.PathLastX, body.Y-memory.PathLastY)
+		if now > memory.PathLastAt && moved < BotProgressDistance {
+			if memory.PathStuckSince == 0 {
+				memory.PathStuckSince = memory.PathLastAt
+			}
+		} else if moved >= BotProgressDistance {
+			memory.PathStuckSince = 0
+		}
+	}
+	memory.PathLastX, memory.PathLastY, memory.PathLastAt = body.X, body.Y, now
+	if memory.PathStuckSince > 0 && now-memory.PathStuckSince >= BotStuckTimeout.Milliseconds() {
+		memory.Path = nil
+		memory.PathRefreshAt = 0
+		memory.PathStuckSince = 0
+		memory.PathReplanCount++
 	}
 	goalX, goalY := int(targetX/TileSize), int(targetY/TileSize)
 	goalChanged := memory.PathGoalX != goalX || memory.PathGoalY != goalY
@@ -420,7 +760,33 @@ func (gs *GameState) findBotPath(body *geometry.CircleBody, targetX, targetY flo
 	if columns <= 0 || rows <= 0 {
 		return nil
 	}
-	type cell struct{ x, y int }
+	cellCount := columns * rows
+	if cap(gs.botPathVisited) < cellCount {
+		gs.botPathVisited = make([]uint32, cellCount)
+	} else {
+		gs.botPathVisited = gs.botPathVisited[:cellCount]
+	}
+	if cap(gs.botPathParents) < cellCount {
+		gs.botPathParents = make([]botPathCell, cellCount)
+	} else {
+		gs.botPathParents = gs.botPathParents[:cellCount]
+	}
+	if cap(gs.botPathQueue) < cellCount {
+		gs.botPathQueue = make([]botPathCell, 0, cellCount)
+	} else {
+		gs.botPathQueue = gs.botPathQueue[:0]
+	}
+	visited := gs.botPathVisited
+	parents := gs.botPathParents
+	queue := gs.botPathQueue
+	nextSearchID := func() uint32 {
+		gs.botPathSearchID++
+		if gs.botPathSearchID == 0 {
+			clear(visited)
+			gs.botPathSearchID = 1
+		}
+		return gs.botPathSearchID
+	}
 	clampCell := func(value, limit int) int {
 		if value < 0 {
 			return 0
@@ -430,24 +796,50 @@ func (gs *GameState) findBotPath(body *geometry.CircleBody, targetX, targetY flo
 		}
 		return value
 	}
-	start := cell{clampCell(int(body.X/TileSize), columns), clampCell(int(body.Y/TileSize), rows)}
-	goal := cell{clampCell(int(targetX/TileSize), columns), clampCell(int(targetY/TileSize), rows)}
-	index := func(c cell) int { return c.y*columns + c.x }
+	start := botPathCell{clampCell(int(body.X/TileSize), columns), clampCell(int(body.Y/TileSize), rows)}
+	goal := botPathCell{clampCell(int(targetX/TileSize), columns), clampCell(int(targetY/TileSize), rows)}
+	index := func(c botPathCell) int { return c.y*columns + c.x }
 	terrain := gs.botTerrain(body.Radius, columns, rows)
-	passable := func(c cell) bool { return terrain[index(c)] }
-	queue := []cell{start}
-	visited := make([]bool, columns*rows)
-	parents := make([]cell, columns*rows)
-	visited[index(start)] = true
+	passable := func(c botPathCell) bool { return terrain[index(c)] }
+	if !passable(goal) {
+		searchID := nextSearchID()
+		queue = append(queue, goal)
+		visited[index(goal)] = searchID
+		foundFallback := false
+		for head := 0; head < len(queue) && !foundFallback; head++ {
+			current := queue[head]
+			if passable(current) {
+				goal = current
+				foundFallback = true
+				break
+			}
+			for _, delta := range [...]botPathCell{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+				next := botPathCell{current.x + delta.x, current.y + delta.y}
+				if next.x < 0 || next.y < 0 || next.x >= columns || next.y >= rows || visited[index(next)] == searchID {
+					continue
+				}
+				visited[index(next)] = searchID
+				queue = append(queue, next)
+			}
+		}
+		if !foundFallback {
+			gs.botPathQueue = queue
+			return nil
+		}
+	}
+	queue = queue[:0]
+	searchID := nextSearchID()
+	queue = append(queue, start)
+	visited[index(start)] = searchID
 	found := start == goal
 	for head := 0; head < len(queue) && !found; head++ {
 		current := queue[head]
-		for _, delta := range [...]cell{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
-			next := cell{current.x + delta.x, current.y + delta.y}
-			if next.x < 0 || next.y < 0 || next.x >= columns || next.y >= rows || visited[index(next)] || !passable(next) {
+		for _, delta := range [...]botPathCell{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+			next := botPathCell{current.x + delta.x, current.y + delta.y}
+			if next.x < 0 || next.y < 0 || next.x >= columns || next.y >= rows || visited[index(next)] == searchID || !passable(next) {
 				continue
 			}
-			visited[index(next)] = true
+			visited[index(next)] = searchID
 			parents[index(next)] = current
 			queue = append(queue, next)
 			if next == goal {
@@ -457,16 +849,18 @@ func (gs *GameState) findBotPath(body *geometry.CircleBody, targetX, targetY flo
 		}
 	}
 	if !found {
+		gs.botPathQueue = queue
 		return nil
 	}
-	reversed := make([]geometry.Vector2, 0)
+	pathCapacity := int(math.Abs(float64(goal.x-start.x)) + math.Abs(float64(goal.y-start.y)) + 1)
+	path := make([]geometry.Vector2, 0, pathCapacity)
 	for current := goal; current != start; current = parents[index(current)] {
-		reversed = append(reversed, geometry.Vector2{X: (float64(current.x) + .5) * TileSize, Y: (float64(current.y) + .5) * TileSize})
+		path = append(path, geometry.Vector2{X: (float64(current.x) + .5) * TileSize, Y: (float64(current.y) + .5) * TileSize})
 	}
-	path := make([]geometry.Vector2, len(reversed))
-	for i := range reversed {
-		path[len(reversed)-1-i] = reversed[i]
+	for left, right := 0, len(path)-1; left < right; left, right = left+1, right-1 {
+		path[left], path[right] = path[right], path[left]
 	}
+	gs.botPathQueue = queue
 	return path
 }
 

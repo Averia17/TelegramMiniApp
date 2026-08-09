@@ -124,3 +124,22 @@ test("Kaze publishes both authored fans inside the canonical hero GLB", async ()
   assert.equal(nodes.some(node => node.name === "HeroAttachment_FanLeft"), true)
   assert.equal(nodes.some(node => node.name === "HeroAttachment_FanRight"), true)
 })
+
+test("Kaze fans open outward from their hand grips", async () => {
+  const document = await readGlbJson(HERO_ASSETS.Kaze.url)
+  const bounds = name => {
+    const node = document.nodes.find(candidate => candidate.name === name)
+    assert.notEqual(node?.mesh, undefined, `${name} is missing its mesh`)
+    const accessors = document.meshes[node.mesh].primitives
+      .map(primitive => document.accessors[primitive.attributes.POSITION])
+    return {
+      minX: Math.min(...accessors.map(accessor => accessor.min[0])),
+      maxX: Math.max(...accessors.map(accessor => accessor.max[0])),
+    }
+  }
+
+  const left = bounds("HeroAttachment_FanLeft")
+  const right = bounds("HeroAttachment_FanRight")
+  assert.ok(left.minX < -3.5 && left.maxX < 2.2, `left fan does not open outward: ${JSON.stringify(left)}`)
+  assert.ok(right.maxX > 3.5 && right.minX > -2.2, `right fan does not open outward: ${JSON.stringify(right)}`)
+})

@@ -1,6 +1,7 @@
 const fs = require("fs")
 const path = require("path")
 const { chromium } = require(path.resolve(__dirname, "../../frontend/node_modules/playwright"))
+const { launchHeadlessChromium, runWithBrowser } = require("./playwright-runner.cjs")
 
 const ROOT = path.resolve(__dirname, "../..")
 const HARNESS = process.env.HARNESS_URL || "http://localhost/test/glb-hero-harness.html"
@@ -41,9 +42,10 @@ function buttonClick(page, label) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: true })
-  const results = []
-  try {
+  await runWithBrowser(
+    () => launchHeadlessChromium(chromium, { headless: true }),
+    async (browser) => {
+      const results = []
     for (const [hero, slug] of heroes) {
       const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 })
       const consoleErrors = []
@@ -93,14 +95,13 @@ function buttonClick(page, label) {
       results.push(row)
       await page.close()
     }
-  } finally {
-    await browser.close()
-  }
-  const output = path.join(ROOT, "artifacts", "hero-browser-qa", "final-matrix.json")
-  const invalid = results.flatMap((row) => row.checks.filter((check) => !check.valid).map((check) => ({ hero: row.slug, ...check })))
-  fs.writeFileSync(output, JSON.stringify({ scenes: results.reduce((sum, row) => sum + row.checks.length, 0), invalid: invalid.length, results }, null, 2))
-  console.log(JSON.stringify({ scenes: results.reduce((sum, row) => sum + row.checks.length, 0), invalid: invalid.length, output, screenshots: OUT }))
-  if (invalid.length || results.some((row) => row.error || row.consoleErrors.length || row.pageErrors.length)) process.exitCode = 1
+      const output = path.join(ROOT, "artifacts", "hero-browser-qa", "final-matrix.json")
+      const invalid = results.flatMap((row) => row.checks.filter((check) => !check.valid).map((check) => ({ hero: row.slug, ...check })))
+      fs.writeFileSync(output, JSON.stringify({ scenes: results.reduce((sum, row) => sum + row.checks.length, 0), invalid: invalid.length, results }, null, 2))
+      console.log(JSON.stringify({ scenes: results.reduce((sum, row) => sum + row.checks.length, 0), invalid: invalid.length, output, screenshots: OUT }))
+      if (invalid.length || results.some((row) => row.error || row.consoleErrors.length || row.pageErrors.length)) process.exitCode = 1
+    },
+  )
 })().catch((error) => {
   console.error(error)
   process.exitCode = 1

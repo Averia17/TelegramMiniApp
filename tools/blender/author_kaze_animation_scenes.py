@@ -124,17 +124,21 @@ ATTACHMENTS = {
     ),
 }
 EMBEDDED_GRIP_LOCAL = {
-    "HeroAttachment_FanLeft": (-0.10, 1.70, 1.65),
-    "HeroAttachment_FanRight": (-0.10, 1.70, 1.65),
+    # Use the panel's central hub as the socket point.  The long source handle
+    # then stays inside the sleeve instead of leaving a visible gap to the fan.
+    "HeroAttachment_FanLeft": (0.00, 1.67, 3.75),
+    "HeroAttachment_FanRight": (0.00, 1.67, 3.75),
 }
 EMBEDDED_FAN_OUTWARD_ROTATIONS = {
-    # Flip around the black round handle on the export-safe local X axis,
-    # then toe each panel slightly toward the standard three-quarter gameplay
-    # camera so the fan opens out of the sleeve instead of dropping below it.
+    # Turn the opened panels a quarter turn around their thin local axis so
+    # they grow outward from the cuffs instead of lying along the forearms.
+    # The signs are mirrored because the two source fans use opposite hands.
     "HeroAttachment_FanLeft": Matrix.Rotation(math.radians(-25), 4, "Z")
-    @ Matrix.Rotation(math.pi, 4, "X"),
+    @ Matrix.Rotation(math.pi, 4, "X")
+    @ Matrix.Rotation(math.radians(-90), 4, "Y"),
     "HeroAttachment_FanRight": Matrix.Rotation(math.radians(25), 4, "Z")
-    @ Matrix.Rotation(math.pi, 4, "X"),
+    @ Matrix.Rotation(math.pi, 4, "X")
+    @ Matrix.Rotation(math.radians(90), 4, "Y"),
 }
 RIGHT_ARM_SEMANTICS = {"upper_r", "elbow_r", "forearm_r", "wrist_r"}
 
@@ -216,15 +220,15 @@ def pose(
 
 
 def low_base():
-    """Relaxed low stance: arms hang beside the torso, hands stay visible."""
+    """Ready stance: sleeves angle outward so each fan exits its cuff."""
     return pose(
         torso=(8, 0, 0),
         head=(-2, 10, 0),
-        upper_l=(-8, 0, -8),
+        upper_l=(30, 0, -8),
         elbow_l=(-14, 0, 0),
         forearm_l=(-8, 0, 0),
         wrist_l=(3, 0, -4),
-        upper_r=(-8, 0, 8),
+        upper_r=(30, 0, 8),
         elbow_r=(-14, 0, 0),
         forearm_r=(-8, 0, 0),
         wrist_r=(3, 0, 4),
@@ -275,114 +279,122 @@ def idle_poses():
 
 def run_poses():
     left_forward = dict(
-        upper_l=(-72, 16, -48),
-        elbow_l=(-34, 0, 0),
-        forearm_l=(-12, 0, 0),
-        wrist_l=(10, -10, -12),
+        upper_l=(-42, 0, -10),
+        elbow_l=(-38, 0, 0),
+        forearm_l=(-6, 0, 0),
+        wrist_l=(4, -3, -4),
     )
     right_forward = dict(
-        upper_r=(-72, -16, 48),
-        elbow_r=(-34, 0, 0),
-        forearm_r=(-12, 0, 0),
-        wrist_r=(10, 10, 12),
+        upper_r=(-42, 0, 10),
+        elbow_r=(-38, 0, 0),
+        forearm_r=(-6, 0, 0),
+        wrist_r=(4, 3, 4),
     )
     left_back = dict(
-        upper_l=(-42, -10, -30),
+        upper_l=(-24, 0, -6),
         elbow_l=(-48, 0, 0),
         forearm_l=(-8, 0, 0),
-        wrist_l=(5, 0, -8),
+        wrist_l=(2, 0, -3),
     )
     right_back = dict(
-        upper_r=(-42, 10, 30),
+        upper_r=(-24, 0, 6),
         elbow_r=(-48, 0, 0),
         forearm_r=(-8, 0, 0),
-        wrist_r=(5, 0, 8),
+        wrist_r=(2, 0, 3),
+    )
+    arms_mid = dict(
+        upper_l=(-32, 0, -8),
+        elbow_l=(-44, 0, 0),
+        forearm_l=(-7, 0, 0),
+        wrist_l=(3, -1, -3),
+        upper_r=(-32, 0, 8),
+        elbow_r=(-44, 0, 0),
+        forearm_r=(-7, 0, 0),
+        wrist_r=(3, 1, 3),
     )
     return {
         0: pose(
             root_up=-0.01,
-            torso=(10, 0, 0),
-            head=(-3, 4, 0),
-            **left_forward,
-            **right_back,
-            leg_l=(0, -12, 0),
-            thigh_l=(-28, 0, 0),
-            knee_l=(54, 0, 0),
-            shin_l=(-22, 0, 0),
-            foot_l=(8, 0, 0),
-            leg_r=(0, 12, 0),
-            thigh_r=(12, 0, 0),
-            knee_r=(18, 0, 0),
-            shin_r=(-6, 0, 0),
-            foot_r=(-4, 0, 0),
-        ),
-        5: pose(
-            root_up=-0.02,
-            torso=(10, 0, 0),
-            head=(-3, -2, 0),
+            torso=(8, 0, 0),
+            head=(-2, 3, 0),
             **left_back,
             **right_forward,
-            leg_l=(0, 12, 0),
-            thigh_l=(12, 0, 0),
+            leg_l=(0, -5, 0),
+            thigh_l=(-14, 0, 0),
+            knee_l=(32, 0, 0),
+            shin_l=(-12, 0, 0),
+            foot_l=(4, 0, 0),
+            leg_r=(0, 5, 0),
+            thigh_r=(6, 0, 0),
+            knee_r=(14, 0, 0),
+            shin_r=(-4, 0, 0),
+            foot_r=(-2, 0, 0),
+        ),
+        5: pose(
+            root_up=-0.025,
+            torso=(9, 0, 0),
+            head=(-2, -2, 0),
+            **arms_mid,
+            leg_l=(0, 2, 0),
+            thigh_l=(4, 0, 0),
             knee_l=(18, 0, 0),
             shin_l=(-6, 0, 0),
-            foot_l=(-4, 0, 0),
-            leg_r=(0, -12, 0),
-            thigh_r=(-28, 0, 0),
-            knee_r=(54, 0, 0),
-            shin_r=(-22, 0, 0),
-            foot_r=(8, 0, 0),
+            foot_l=(-2, 0, 0),
+            leg_r=(0, -2, 0),
+            thigh_r=(-6, 0, 0),
+            knee_r=(26, 0, 0),
+            shin_r=(-10, 0, 0),
+            foot_r=(3, 0, 0),
         ),
         9: pose(
             root_up=-0.01,
-            torso=(10, 0, 0),
-            head=(-3, 4, 0),
-            **right_forward,
-            **left_back,
-            leg_l=(0, -12, 0),
-            thigh_l=(-28, 0, 0),
-            knee_l=(54, 0, 0),
-            shin_l=(-22, 0, 0),
-            foot_l=(8, 0, 0),
-            leg_r=(0, 12, 0),
-            thigh_r=(12, 0, 0),
-            knee_r=(18, 0, 0),
-            shin_r=(-6, 0, 0),
-            foot_r=(-4, 0, 0),
+            torso=(8, 0, 0),
+            head=(-2, 3, 0),
+            **left_forward,
+            **right_back,
+            leg_l=(0, 5, 0),
+            thigh_l=(6, 0, 0),
+            knee_l=(14, 0, 0),
+            shin_l=(-4, 0, 0),
+            foot_l=(-2, 0, 0),
+            leg_r=(0, -5, 0),
+            thigh_r=(-14, 0, 0),
+            knee_r=(32, 0, 0),
+            shin_r=(-12, 0, 0),
+            foot_r=(4, 0, 0),
         ),
         14: pose(
-            root_up=-0.02,
-            torso=(10, 0, 0),
-            head=(-3, -2, 0),
-            **right_back,
-            **left_forward,
-            leg_l=(0, 12, 0),
-            thigh_l=(12, 0, 0),
-            knee_l=(18, 0, 0),
-            shin_l=(-6, 0, 0),
-            foot_l=(-4, 0, 0),
-            leg_r=(0, -12, 0),
-            thigh_r=(-28, 0, 0),
-            knee_r=(54, 0, 0),
-            shin_r=(-22, 0, 0),
-            foot_r=(8, 0, 0),
+            root_up=-0.025,
+            torso=(9, 0, 0),
+            head=(-2, -2, 0),
+            **arms_mid,
+            leg_l=(0, -2, 0),
+            thigh_l=(-6, 0, 0),
+            knee_l=(26, 0, 0),
+            shin_l=(-10, 0, 0),
+            foot_l=(3, 0, 0),
+            leg_r=(0, 2, 0),
+            thigh_r=(4, 0, 0),
+            knee_r=(18, 0, 0),
+            shin_r=(-6, 0, 0),
+            foot_r=(-2, 0, 0),
         ),
         18: pose(
             root_up=-0.01,
-            torso=(10, 0, 0),
-            head=(-3, 4, 0),
-            **left_forward,
-            **right_back,
-            leg_l=(0, -12, 0),
-            thigh_l=(-28, 0, 0),
-            knee_l=(54, 0, 0),
-            shin_l=(-22, 0, 0),
-            foot_l=(8, 0, 0),
-            leg_r=(0, 12, 0),
-            thigh_r=(12, 0, 0),
-            knee_r=(18, 0, 0),
-            shin_r=(-6, 0, 0),
-            foot_r=(-4, 0, 0),
+            torso=(8, 0, 0),
+            head=(-2, 3, 0),
+            **left_back,
+            **right_forward,
+            leg_l=(0, -5, 0),
+            thigh_l=(-14, 0, 0),
+            knee_l=(32, 0, 0),
+            shin_l=(-12, 0, 0),
+            foot_l=(4, 0, 0),
+            leg_r=(0, 5, 0),
+            thigh_r=(6, 0, 0),
+            knee_r=(14, 0, 0),
+            shin_r=(-4, 0, 0),
+            foot_r=(-2, 0, 0),
         ),
     }
 
@@ -1206,7 +1218,9 @@ def ensure_attachments(armature):
 
 def ensure_source_textures():
     """Relink the source texture that is stored beside the unpacked model."""
-    texture = MASTER.parent / "source" / "nested" / "Texture" / "kaze_geisha_tex_highres.png"
+    texture = (
+        MASTER.parent / "source" / "nested" / "Texture" / "kaze_geisha_tex_highres.png"
+    )
     for image in bpy.data.images:
         if image.size[0] > 0 and image.size[1] > 0:
             continue

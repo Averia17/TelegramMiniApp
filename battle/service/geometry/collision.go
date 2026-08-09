@@ -65,14 +65,17 @@ type WallTile struct {
 }
 
 type SpatialHash struct {
-	cellSize float64
-	cells    map[int][]*WallTile
+	cellSize  float64
+	cells     map[int][]*WallTile
+	queryMark map[*WallTile]uint64
+	queryID   uint64
 }
 
 func NewSpatialHash(cellSize float64) *SpatialHash {
 	return &SpatialHash{
-		cellSize: cellSize,
-		cells:    make(map[int][]*WallTile),
+		cellSize:  cellSize,
+		cells:     make(map[int][]*WallTile),
+		queryMark: make(map[*WallTile]uint64),
 	}
 }
 
@@ -91,11 +94,27 @@ func (sh *SpatialHash) Insert(wall *WallTile) {
 }
 
 func (sh *SpatialHash) QueryRect(minX, minY, maxX, maxY float64) []*WallTile {
-	// A query usually spans only a handful of cells. Keeping the already
-	// returned walls in a small slice avoids allocating a map on every
-	// collision probe while preserving deduplication for walls crossing cells.
 	result := make([]*WallTile, 0, 8)
+	sh.VisitRect(minX, minY, maxX, maxY, func(wall *WallTile) bool {
+		result = append(result, wall)
+		return true
+	})
+	return result
+}
 
+// VisitRect walks each intersecting wall once. A reusable mark table keeps
+// collision probes out of the temporary-map and linear-deduplication paths.
+// Returning false from visit stops the query immediately.
+func (sh *SpatialHash) VisitRect(minX, minY, maxX, maxY float64, visit func(*WallTile) bool) {
+	if sh == nil || sh.cellSize <= 0 || visit == nil {
+		return
+	}
+	sh.queryID++
+	if sh.queryID == 0 {
+		sh.queryID = 1
+		clear(sh.queryMark)
+	}
+	queryID := sh.queryID
 	minCX := int(math.Floor(minX / sh.cellSize))
 	maxCX := int(math.Floor(maxX / sh.cellSize))
 	minCY := int(math.Floor(minY / sh.cellSize))
@@ -105,20 +124,19 @@ func (sh *SpatialHash) QueryRect(minX, minY, maxX, maxY float64) []*WallTile {
 		for cy := minCY; cy <= maxCY; cy++ {
 			key := cx*73856093 ^ cy*19349663
 			for _, wall := range sh.cells[key] {
-				duplicate := false
-				for _, existing := range result {
-					if existing == wall {
-						duplicate = true
-						break
-					}
+				if wall.MinX >= maxX || wall.MaxX <= minX || wall.MinY >= maxY || wall.MaxY <= minY {
+					continue
 				}
-				if !duplicate && wall.MinX < maxX && wall.MaxX > minX && wall.MinY < maxY && wall.MaxY > minY {
-					result = append(result, wall)
+				if sh.queryMark[wall] == queryID {
+					continue
+				}
+				sh.queryMark[wall] = queryID
+				if !visit(wall) {
+					return
 				}
 			}
 		}
 	}
-	return result
 }
 
 func (sh *SpatialHash) QueryCircle(c *CircleBody) []*WallTile {
@@ -146,13 +164,31 @@ func (sh *SpatialHash) ContainsPoint(x, y float64, collisionType string) bool {
 	return false
 }
 
-func CorrectCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType string) {
-	candidates := walls.QueryCircle(body)
-	box := body.Box()
-
-	for _, wall := range candidates {
-		if collisionType != "" && wall.Type != collisionType {
+// FindPoint returns the first wall containing the point and accepted by match.
+// Point queries touch one spatial-hash cell instead of scanning the map.
+func (sh *SpatialHash) FindPoint(x, y float64, match func(*WallTile) bool) *WallTile {
+	if sh == nil || sh.cellSize <= 0 || match == nil {
+		return nil
+	}
+	cx := int(math.Floor(x / sh.cellSize))
+	cy := int(math.Floor(y / sh.cellSize))
+	key := cx*73856093 ^ cy*19349663
+	for _, wall := range sh.cells[key] {
+		if x < wall.MinX || x > wall.MaxX || y < wall.MinY || y > wall.MaxY {
 			continue
+		}
+		if match(wall) {
+			return wall
+		}
+	}
+	return nil
+}
+
+func CorrectCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType string) {
+	box := body.Box()
+	walls.VisitRect(body.Left(), body.Top(), body.Right(), body.Bottom(), func(wall *WallTile) bool {
+		if collisionType != "" && wall.Type != collisionType {
+			return true
 		}
 		wallRect := &RectangleBody{X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY}
 		side := circleToRectangleSide(body, wallRect)
@@ -170,21 +206,24 @@ func CorrectCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType 
 			box.SetTop(wallRect.Bottom())
 			body.Y = box.CenterY()
 		}
-	}
+		return true
+	})
 }
 
 func CollidesCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType string) bool {
-	candidates := walls.QueryCircle(body)
-	for _, wall := range candidates {
+	collides := false
+	walls.VisitRect(body.Left(), body.Top(), body.Right(), body.Bottom(), func(wall *WallTile) bool {
 		if collisionType != "" && wall.Type != collisionType {
-			continue
+			return true
 		}
 		wallRect := &RectangleBody{X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY}
 		if CircleToRectangle(body, wallRect) {
-			return true
+			collides = true
+			return false
 		}
-	}
-	return false
+		return true
+	})
+	return collides
 }
 
 func IsBlockingWall(wallType string) bool {
@@ -192,11 +231,10 @@ func IsBlockingWall(wallType string) bool {
 }
 
 func CorrectCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) {
-	candidates := walls.QueryCircle(body)
 	box := body.Box()
-	for _, wall := range candidates {
+	walls.VisitRect(body.Left(), body.Top(), body.Right(), body.Bottom(), func(wall *WallTile) bool {
 		if !IsBlockingWall(wall.Type) {
-			continue
+			return true
 		}
 		wallRect := &RectangleBody{X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY}
 		switch circleToRectangleSide(body, wallRect) {
@@ -213,20 +251,24 @@ func CorrectCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) {
 			box.SetTop(wallRect.Bottom())
 			body.Y = box.CenterY()
 		}
-	}
+		return true
+	})
 }
 
 func CollidesCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) bool {
-	for _, wall := range walls.QueryCircle(body) {
+	collides := false
+	walls.VisitRect(body.Left(), body.Top(), body.Right(), body.Bottom(), func(wall *WallTile) bool {
 		if !IsBlockingWall(wall.Type) {
-			continue
+			return true
 		}
 		wallRect := &RectangleBody{X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY}
 		if CircleToRectangle(body, wallRect) {
-			return true
+			collides = true
+			return false
 		}
-	}
-	return false
+		return true
+	})
+	return collides
 }
 
 // MoveCircleWithBlockingWalls sweeps long moves in small increments so a body

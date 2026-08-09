@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, useCallback} from "react"
+import {Profiler, useEffect, useRef, useState, useCallback} from "react"
 import {useNavigate} from "react-router-dom"
 import {GameClient} from "./GameClient"
 import {Renderer} from "./Renderer"
@@ -8,13 +8,15 @@ import {getHeroSkill} from "./heroSkills.js"
 import {getBattlePlayerCount, getPlayerBattleStats, getStateBattleResult, getSynchronizedBattleView} from "./battleOutcome"
 import {AbilityButton, ActiveStatusEffects, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TouchStick} from "./BattleGameUI.jsx"
 import {getActiveStatusEffects} from "./statusEffects.js"
+import {formatBattleMessage} from "./battleMessages.js"
 import {releaseAllPreviewContexts} from "./rendering/shared/previewContextRegistry.js"
+import {getBattlePerformanceSnapshot, recordBattleMetric} from "./rendering/shared/performance.js"
+import {isInsideConcealment} from "./rendering/shared/concealment.js"
 import {WS_URL} from "../../utils/urls.js"
 import {getAccessToken} from "../../utils/auth.js"
 import {BattleLoading} from "../BattleLoading/BattleLoading.jsx"
 import "./BattleGame.css"
 
-const BATTLE_RENDER_STATE_INTERVAL = 1 / 30
 
 const saveBattleResult = result => {
   try {
@@ -23,6 +25,10 @@ const saveBattleResult = result => {
     const stats = JSON.parse(window.localStorage.getItem("battle_stats") || "{}")
     window.localStorage.setItem("battle_stats", JSON.stringify({battles:(stats.battles||0)+1,wins:(stats.wins||0)+(result.won?1:0),kills:(stats.kills||0)+(result.kills||0),monsters:(stats.monsters||0)+(result.monsters||0)}))
   } catch (error) { console.warn("Could not save battle result", error) }
+}
+
+const profileBattleUi = (_id, phase, actualDuration) => {
+  if (import.meta.env.DEV) recordBattleMetric("ui.commit", actualDuration, {phase})
 }
 
 export const BattleGame = ({playerId, roomId, heroName}) => {
@@ -59,7 +65,12 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const finishBattle = useCallback(result => {
     if (savedResultRef.current) return
     savedResultRef.current = true
-    const snapshotStats = getPlayerBattleStats(latestStateRef.current, clientRef.current?.playerId)
+    const snapshotStats = getPlayerBattleStats(
+      latestStateRef.current,
+      clientRef.current?.playerId,
+      Date.now(),
+      {eliminated: result.won === false},
+    )
     const normalized = {duration:0,kills:0,monsters:0,...snapshotStats,...result}
     saveBattleResult(normalized)
     setBattleResult(normalized)
@@ -130,11 +141,13 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
         getAccessToken(),
         (state) => {
           latestStateRef.current = state
-          simulation.ingest(state)
-          const displayState = simulation.getDisplayState(undefined, {copyEntities: true}) || state
+          const receivedAt = Date.now()
+          simulation.ingest(state, client.clockOffset, receivedAt)
           const now = performance.now()
-          if (!lastUiUpdateRef.current || now - lastUiUpdateRef.current >= 100) {
+          const shouldUpdateUi = !lastUiUpdateRef.current || now - lastUiUpdateRef.current >= 100
+          if (shouldUpdateUi) {
             lastUiUpdateRef.current = now
+            const displayState = simulation.getDisplayState(receivedAt, {copyEntities: true}) || state
             setGameState(displayState)
           }
           const v = viewRef.current
@@ -240,6 +253,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
             lunarRewards: (state?.props || []).filter(prop => String(prop.type).startsWith("lunar_") && prop.type !== "lunar_crate").length,
             mapWalls: state?.map?.walls?.length || 0,
             mapObjects: renderer.impl?.mapRenderer?.objects?.size || 0,
+            metrics: getBattlePerformanceSnapshot(),
           })
         }
         window.advanceTime = milliseconds => {
@@ -249,26 +263,38 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
           if (state) renderer.setState(state)
           renderer.render()
         }
+        window.getBattleMetrics = getBattlePerformanceSnapshot
       }
 
       let rendererFailed = false
-      let stateSyncElapsed = BATTLE_RENDER_STATE_INTERVAL
       let sceneFrameReady = false
+      let renderedSnapshotTimestamp = null
       let previousFrameAt = performance.now()
       const gameLoop = () => {
+        const loopStartedAt = performance.now()
         const frameAt = performance.now()
-        const delta = Math.max(0, (frameAt - previousFrameAt) / 1000)
+        const frameInterval = frameAt - previousFrameAt
+        const delta = Math.max(0, frameInterval / 1000)
         previousFrameAt = frameAt
+        recordBattleMetric("game.frame_interval", frameInterval)
+        if (frameInterval > 20) recordBattleMetric("game.frame_jank", frameInterval)
+        const networkNow = Date.now()
         input.update()
         simulation.advance(delta)
-        stateSyncElapsed += delta
-        let renderedStateThisFrame = false
-        if (stateSyncElapsed >= BATTLE_RENDER_STATE_INTERVAL) {
-          stateSyncElapsed -= BATTLE_RENDER_STATE_INTERVAL
-          const displayState = simulation.getDisplayState()
-          if (displayState) {
+        simulation.setRenderTime(networkNow)
+        // Prediction and snapshot interpolation are time-based, so the
+        // renderer must consume the current display frame on every RAF. The
+        // websocket snapshot rate is only the input to the interpolation
+        // buffer; it must not become the visual frame rate.
+        const displayState = simulation.getDisplayState()
+        const renderedStateThisFrame = Boolean(displayState)
+        if (displayState) {
+          const snapshotTimestamp = Number(displayState.ts)
+          if (snapshotTimestamp !== renderedSnapshotTimestamp) {
+            renderedSnapshotTimestamp = snapshotTimestamp
             renderer.setState(displayState)
-            renderedStateThisFrame = true
+          } else {
+            renderer.setDisplayState(displayState)
           }
         }
         try {
@@ -284,6 +310,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
             rendererFailed = true
           }
         }
+        recordBattleMetric("game.loop", performance.now() - loopStartedAt)
         animFrameRef.current = requestAnimationFrame(gameLoop)
       }
       gameLoop()
@@ -304,6 +331,7 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
       if (import.meta.env.DEV) {
         delete window.render_game_to_text
         delete window.advanceTime
+        delete window.getBattleMetrics
       }
       renderer?.destroy()
       inputRef.current = null
@@ -362,178 +390,170 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const health = localPlayer?.lives ?? 0
   const maxHealth = localPlayer?.maxLives ?? 1
   const healthPercent = Math.max(0, Math.min(100, (health / maxHealth) * 100))
-  const localPlayerInBush = Boolean(localPlayer && gameState?.map?.walls?.some(wall =>
-    (wall.type === "bush" || wall.type === "half") &&
-    localPlayer.x >= wall.minX && localPlayer.x <= wall.maxX &&
-    localPlayer.y >= wall.minY && localPlayer.y <= wall.maxY
-  ))
+  const localPlayerInBush = isInsideConcealment(localPlayer, gameState?.map?.walls)
   const activeStatusEffects = getActiveStatusEffects(localPlayer || {}, {inBush: localPlayerInBush})
+  const islandPhase = gameState?.game?.phase || "none"
 
   return (
-    <div className={`battle-game ${mobileMode ? "battle-game--mobile" : "battle-game--desktop"}`}>
-      {import.meta.env.DEV && <output data-testid="battle-debug" style={{display:"none"}}>{JSON.stringify({
-        connected,
-        stateHz: clientRef.current?.stateHz,
-        stateBytes: clientRef.current?.lastStateBytes,
-        renderer: rendererRef.current?.mode,
-        fps: rendererRef.current?.impl?.fps,
-        drawCalls: rendererRef.current?.impl?.renderer?.info?.render?.calls,
-        triangles: rendererRef.current?.impl?.renderer?.info?.render?.triangles,
-        playerId: clientRef.current?.playerId,
-        state: gameState?.game?.state,
-        x: localPlayer?.x,
-        y: localPlayer?.y,
-        ack: localPlayer?.ack,
-        lives: localPlayer?.lives,
-        invulnerable: localPlayer?.invulnerable,
-        attackPulse: localPlayer?.attackPulse,
-        ammo: localPlayer?.ammo,
-        reloadProgress: localPlayer?.reloadProgress,
-        shield: localPlayer?.shield,
-        haste: localPlayer?.haste,
-        stun: localPlayer?.stun,
-        vine: localPlayer?.vine,
-        vortex: localPlayer?.vortex,
-        flying: localPlayer?.flying,
-        inBush: Boolean(localPlayer && gameState?.map?.walls?.some(wall => (wall.type === "bush" || wall.type === "half") && localPlayer.x >= wall.minX && localPlayer.x <= wall.maxX && localPlayer.y >= wall.minY && localPlayer.y <= wall.maxY)),
-      })}</output>}
-      <canvas ref={canvasRef} className="battle-canvas"/>
+    <Profiler id="battle-ui" onRender={profileBattleUi}>
+      <div className={`battle-game battle-game--phase-${islandPhase} ${mobileMode ? "battle-game--mobile" : "battle-game--desktop"}`}>
+        {import.meta.env.DEV && <output data-testid="battle-debug" style={{display:"none"}}>{JSON.stringify({
+          connected,
+          stateHz: clientRef.current?.stateHz,
+          stateBytes: clientRef.current?.lastStateBytes,
+          renderer: rendererRef.current?.mode,
+          lowQuality: rendererRef.current?.impl?.lowQuality,
+          fps: rendererRef.current?.impl?.fps,
+          drawCalls: rendererRef.current?.impl?.renderer?.info?.render?.calls,
+          triangles: rendererRef.current?.impl?.renderer?.info?.render?.triangles,
+          playerId: clientRef.current?.playerId,
+          state: gameState?.game?.state,
+          x: localPlayer?.x,
+          y: localPlayer?.y,
+          ack: localPlayer?.ack,
+          lives: localPlayer?.lives,
+          invulnerable: localPlayer?.invulnerable,
+          attackPulse: localPlayer?.attackPulse,
+          ammo: localPlayer?.ammo,
+          reloadProgress: localPlayer?.reloadProgress,
+          shield: localPlayer?.shield,
+          haste: localPlayer?.haste,
+          stun: localPlayer?.stun,
+          vine: localPlayer?.vine,
+          vortex: localPlayer?.vortex,
+          flying: localPlayer?.flying,
+          inBush: isInsideConcealment(localPlayer, gameState?.map?.walls),
+        })}</output>}
+        <canvas ref={canvasRef} className="battle-canvas"/>
 
-      {(!sceneReady || view === "connecting") && (
-        <BattleLoading
-          progress={connected ? 62 : 42}
-          status={connected ? "Получаем карту арены..." : "Подключаемся к арене..."}
-        />
+        {(!sceneReady || view === "connecting") && (
+          <BattleLoading
+            progress={connected ? 62 : 42}
+            status={connected ? "Получаем карту арены..." : "Подключаемся к арене..."}
+          />
 
-      )}
+        )}
 
-      {view === "lobby" && roomInfo && (
-        <div className="battle-lobby-hud">
-          <div className="lobby-info">
-            <div className="lobby-kicker">BATTLE ARENA</div>
-            <h3>{roomInfo.roomName}</h3>
-            <p className="lobby-mode">{roomInfo.mode} · {roomInfo.mapName === "battle-royale" ? "Остров Первого Испытания" : roomInfo.mapName}</p>
-            <div className="lobby-player-count"><strong>{playerCount}</strong><span>/{roomInfo.maxPlayers}</span></div>
-            <p>Код команды <span className="room-code" onClick={() => navigator.clipboard.writeText(roomInfo.roomId)} title="Скопировать">{roomInfo.roomId}</span></p>
-            {gameState?.players && clientRef.current?.playerId && (() => {
-              const me = gameState.players[clientRef.current.playerId]
-              return me?.hero ? <p className="hint">Your hero: {me.hero}</p> : null
-            })()}
-            {connected && gameState?.game?.state === "waiting" && <p className="hint">Ждём других бойцов...</p>}
-            {connected && gameState?.game?.state === "lobby" && gameState?.game?.lobbyEndsAt > 0 && (
-              <p className="hint">До начала: {Math.max(0, Math.ceil((gameState.game.lobbyEndsAt - Date.now()) / 1000))} сек.</p>
-            )}
-            <button onClick={handleBackToMenu}>ВЫЙТИ</button>
+        {view === "lobby" && roomInfo && (
+          <div className="battle-lobby-hud">
+            <div className="lobby-info">
+              <div className="lobby-kicker">BATTLE ARENA</div>
+              <h3>{roomInfo.roomName}</h3>
+              <p className="lobby-mode">{roomInfo.mode} · {roomInfo.mapName === "battle-royale" ? "Остров Первого Испытания" : roomInfo.mapName}</p>
+              <div className="lobby-player-count"><strong>{playerCount}</strong><span>/{roomInfo.maxPlayers}</span></div>
+              <p>Код команды <span className="room-code" onClick={() => navigator.clipboard.writeText(roomInfo.roomId)} title="Скопировать">{roomInfo.roomId}</span></p>
+              {gameState?.players && clientRef.current?.playerId && (() => {
+                const me = gameState.players[clientRef.current.playerId]
+                return me?.hero ? <p className="hint">Your hero: {me.hero}</p> : null
+              })()}
+              {connected && gameState?.game?.state === "waiting" && <p className="hint">Ждём других бойцов...</p>}
+              {connected && gameState?.game?.state === "lobby" && gameState?.game?.lobbyEndsAt > 0 && (
+                <p className="hint">До начала: {Math.max(0, Math.ceil((gameState.game.lobbyEndsAt - Date.now()) / 1000))} сек.</p>
+              )}
+              <button onClick={handleBackToMenu}>ВЫЙТИ</button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {view === "game" && (
-        <>
-          <header className="battle-topbar">
-            <button className="battle-exit-btn" onClick={handleBackToMenu} aria-label="Выйти">✕</button>
-            <div className="battle-mode-pill"><span>⚡</span> BRAWL STARS</div>
-            <div className="battle-alive"><i/> {alivePlayerCount} В БОЮ</div>
-          </header>
-          <IslandPhaseHud state={gameState?.game}/>
-          <IslandVoiceNotice voice={islandVoice}/>
-          {localPlayer && (
-            <div className="battle-player-card">
-              <div className="player-avatar">{String(localPlayer.hero || heroName || "H").slice(0, 1).toUpperCase()}</div>
-              <div className="player-vitals">
-                <strong>{localPlayer.name || playerName}</strong>
-                <div className="health-track"><span style={{width: `${healthPercent}%`}}/></div>
-                <div className="ammo-track" aria-label={`Боезапас ${localPlayer.ammo || 0} из ${localPlayer.maxAmmo || 3}`}>
-                  {Array.from({length: localPlayer.maxAmmo || 3}, (_, index) => (
-                    <i key={index} className={index < (localPlayer.ammo || 0) ? "is-ready" : ""}>
-                      {index === (localPlayer.ammo || 0) && index < (localPlayer.maxAmmo || 3) && <span style={{width: `${(localPlayer.reloadProgress || 0) * 100}%`}}/>}
-                    </i>
-                  ))}
-                </div>
-                {localPlayer.hero === "Mandy" && (
-                  <div className={`focus-track${localPlayer.focusCharge >= 100 ? " is-ready" : ""}`} aria-label={`Фокус ${localPlayer.focusCharge || 0}%`}>
-                    <span style={{width: `${localPlayer.focusCharge || 0}%`}}/>
+        {view === "game" && (
+          <>
+            <header className="battle-topbar">
+              <button className="battle-exit-btn" onClick={handleBackToMenu} aria-label="Выйти">✕</button>
+              <div className="battle-mode-pill"><span>⚡</span> BRAWL STARS</div>
+              <div className="battle-alive"><i/> {alivePlayerCount} В БОЮ</div>
+            </header>
+            <IslandPhaseHud state={gameState?.game}/>
+            <IslandVoiceNotice voice={islandVoice}/>
+            {localPlayer && (
+              <div className="battle-player-card">
+                <div className="player-avatar">{String(localPlayer.hero || heroName || "H").slice(0, 1).toUpperCase()}</div>
+                <div className="player-vitals">
+                  <strong>{localPlayer.name || playerName}</strong>
+                  <div className="health-track"><span style={{width: `${healthPercent}%`}}/></div>
+                  <div className="ammo-track" aria-label={`Боезапас ${localPlayer.ammo || 0} из ${localPlayer.maxAmmo || 3}`}>
+                    {Array.from({length: localPlayer.maxAmmo || 3}, (_, index) => (
+                      <i key={index} className={index < (localPlayer.ammo || 0) ? "is-ready" : ""}>
+                        {index === (localPlayer.ammo || 0) && index < (localPlayer.maxAmmo || 3) && <span style={{width: `${(localPlayer.reloadProgress || 0) * 100}%`}}/>}
+                      </i>
+                    ))}
                   </div>
-                )}
-                <small>❤ {health} / {maxHealth}</small>
-                <ActiveStatusEffects effects={activeStatusEffects}/>
+                  {localPlayer.hero === "Mandy" && (
+                    <div className={`focus-track${localPlayer.focusCharge >= 100 ? " is-ready" : ""}`} aria-label={`Фокус ${localPlayer.focusCharge || 0}%`}>
+                      <span style={{width: `${localPlayer.focusCharge || 0}%`}}/>
+                    </div>
+                  )}
+                  <small>❤ {health} / {maxHealth}</small>
+                  <ActiveStatusEffects effects={activeStatusEffects}/>
+                </div>
               </div>
+            )}
+            {gameState?.map && <BattleMiniMap state={gameState} localId={clientRef.current?.playerId} renderer={rendererRef.current}/>}
+            {localPlayer && (
+              <div className="battle-abilities">
+                <AbilityButton slot="primary" keyName="Q" label={getHeroSkill(localPlayer.hero, "primary").name} description={getHeroSkill(localPlayer.hero, "primary").description} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper onUse={() => clientRef.current?.ability?.("primary")}/>
+                <AbilityButton slot="secondary" keyName="E" label={`${getHeroSkill(localPlayer.hero, "secondary").name} · ${localPlayer.gadgetCharges || 0}`} description={getHeroSkill(localPlayer.hero, "secondary").description} cooldown={localPlayer.cooldowns?.secondary} disabled={!localPlayer.gadgetCharges || localPlayer.gadgetArmed} onUse={() => clientRef.current?.ability?.("secondary")}/>
+              </div>
+            )}
+          </>
+        )}
+
+        {(view === "game" || (view === "lobby" && roomInfo)) && (
+          <>
+            <TouchStick kind="move" control={touchControls.move}/>
+            <TouchStick kind="fire" control={touchControls.aim}/>
+          </>
+        )}
+
+        {view === "dead" && (
+          <div className="battle-overlay" style={{background: "rgba(139, 0, 0, 0.85)"}}>
+            <div style={{textAlign: "center", color: "#fff"}}>
+              <div className="death-skull">☠</div>
+              <h2>ТЫ ВЫБЫЛ</h2>
+              <p>Тебя победил: {battleResult?.killerName || deathInfo?.killerName || "Неизвестный боец"}</p>
+              <BattleResultStats result={battleResult}/>
+              <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
             </div>
-          )}
-          {gameState?.map && <BattleMiniMap state={gameState} localId={clientRef.current?.playerId} renderer={rendererRef.current}/>}
-          {localPlayer && (
-            <div className="battle-abilities">
-              <AbilityButton slot="primary" keyName="Q" label={getHeroSkill(localPlayer.hero, "primary").name} description={getHeroSkill(localPlayer.hero, "primary").description} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper onUse={() => clientRef.current?.ability?.("primary")}/>
-              <AbilityButton slot="secondary" keyName="E" label={`${getHeroSkill(localPlayer.hero, "secondary").name} · ${localPlayer.gadgetCharges || 0}`} description={getHeroSkill(localPlayer.hero, "secondary").description} cooldown={localPlayer.cooldowns?.secondary} disabled={!localPlayer.gadgetCharges || localPlayer.gadgetArmed} onUse={() => clientRef.current?.ability?.("secondary")}/>
+          </div>
+        )}
+
+        {view === "result" && (
+          <div className="battle-overlay battle-result-overlay">
+            <div className="battle-result-card">
+              <div className="battle-result-crown">♛</div>
+              <h2>ПОБЕДА!</h2>
+              <p>Арена зачищена — результат сохранён.</p>
+              <BattleRewardNotice result={battleResult}/>
+              <BattleResultStats result={battleResult}/>
+              <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
             </div>
-          )}
-        </>
-      )}
-
-      {(view === "game" || (view === "lobby" && roomInfo)) && (
-        <>
-          <TouchStick kind="move" control={touchControls.move}/>
-          <TouchStick kind="fire" control={touchControls.aim}/>
-        </>
-      )}
-
-      {view === "dead" && (
-        <div className="battle-overlay" style={{background: "rgba(139, 0, 0, 0.85)"}}>
-          <div style={{textAlign: "center", color: "#fff"}}>
-            <div className="death-skull">☠</div>
-            <h2>ТЫ ВЫБЫЛ</h2>
-            <p>Тебя победил: {battleResult?.killerName || deathInfo?.killerName || "Неизвестный боец"}</p>
-            <BattleResultStats result={battleResult}/>
-            <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
           </div>
+        )}
+
+        {view === "timeout" && (
+          <div className="battle-overlay battle-result-overlay">
+            <div className="battle-result-card">
+              <div className="battle-result-crown">⌛</div>
+              <h2>ВРЕМЯ ВЫШЛО</h2>
+              <p>Матч завершён по таймеру.</p>
+              <BattleRewardNotice result={battleResult}/>
+              <BattleResultStats result={battleResult}/>
+              <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
+            </div>
+          </div>
+        )}
+
+        <div className="battle-messages">
+          {messages.map((msg, i) => {
+            const text = formatBattleMessage(msg)
+            return text ? <div key={i} className={`msg-${msg.type}`}>{text}</div> : null
+          })}
         </div>
-      )}
 
-      {view === "result" && (
-        <div className="battle-overlay battle-result-overlay">
-          <div className="battle-result-card">
-            <div className="battle-result-crown">♛</div>
-            <h2>ПОБЕДА!</h2>
-            <p>Арена зачищена — результат сохранён.</p>
-            <BattleRewardNotice result={battleResult}/>
-            <BattleResultStats result={battleResult}/>
-            <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
-          </div>
+        <div className="battle-controls">
+          <div className="control-hint">WASD — движение · мышь — прицел · клик / пробел — атака</div>
         </div>
-      )}
-
-      {view === "timeout" && (
-        <div className="battle-overlay battle-result-overlay">
-          <div className="battle-result-card">
-            <div className="battle-result-crown">⌛</div>
-            <h2>ВРЕМЯ ВЫШЛО</h2>
-            <p>Матч завершён по таймеру.</p>
-            <BattleRewardNotice result={battleResult}/>
-            <BattleResultStats result={battleResult}/>
-            <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
-          </div>
-        </div>
-      )}
-
-      <div className="battle-messages">
-        {messages.map((msg, i) => (
-          <div key={i} className={`msg-${msg.type}`}>
-            {msg.type === "killed" && `${msg.params?.killerName} killed ${msg.params?.killedName}`}
-            {msg.type === "won" && `${msg.params?.name} won!`}
-            {msg.type === "joined" && `${msg.params?.name} joined as ${msg.params?.hero || "Unknown"}`}
-            {msg.type === "left" && `${msg.params?.name} left`}
-            {msg.type === "start" && "Game started!"}
-            {msg.type === "stop" && "Game over"}
-            {msg.type === "timeout" && "Time out!"}
-            {msg.type === "waiting" && "Waiting for players..."}
-          </div>
-        ))}
       </div>
-
-      <div className="battle-controls">
-        <div className="control-hint">WASD — движение · мышь — прицел · клик / пробел — атака</div>
-      </div>
-    </div>
+    </Profiler>
   )
 }
 

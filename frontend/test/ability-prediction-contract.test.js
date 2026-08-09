@@ -17,3 +17,15 @@ test("an authoritative ability acknowledgement clears the pending command", () =
   client.handleMessage({type: "state", ts: Date.now(), players: {"player-1": {abilityAck: id}}, map: {}})
   assert.equal(client.pendingAbilities.has(id), false)
 })
+
+test("clock sync responses estimate clock skew without treating transit as skew", () => {
+  const client = new GameClient("ws://example", "token", () => {})
+  const sentAt = Date.now()
+
+  client.handleMessage({
+    type: "clock_sync",
+    params: {clientTs: sentAt, serverTs: sentAt - 50},
+  })
+
+  assert.ok(Math.abs(client.clockOffset - 50) < 10)
+})

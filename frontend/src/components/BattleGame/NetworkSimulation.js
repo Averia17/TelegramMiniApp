@@ -1,10 +1,25 @@
 import {DamagePrediction} from "./DamagePrediction.js"
+import {endBattlePerformance, recordBattleMetric, startBattlePerformance} from "./rendering/shared/performance.js"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const lerp = (a, b, t) => a + (b - a) * t
 const MAX_SIMULATION_STEP = .05
 const MAX_CATCH_UP_TIME = .25
+const MAX_INPUT_HISTORY = 240
 const SCREEN_DEPTH_SCALE = .66
+const MIN_INTERPOLATION_DELAY = 33
+const MAX_INTERPOLATION_DELAY = 120
+const MAX_SNAPSHOT_INTERVAL_SAMPLES = 24
+const MAX_PRESENTATION_EXTRAPOLATION = 80
+const COLLISION_CELL_SIZE = 160
+const EMPTY_WALLS = []
+const EMPTY_COLLISION_INDEX = {
+  walls: EMPTY_WALLS,
+  blockingWalls: EMPTY_WALLS,
+  cells: new Map(),
+  queryMarks: new Uint32Array(0),
+  queryScratchIndices: [],
+}
 
 const worldAngleFromScreen = angle => Math.atan2(Math.sin(angle) / SCREEN_DEPTH_SCALE, Math.cos(angle))
 
@@ -39,10 +54,74 @@ const attackDamage = player => {
 
 const blockingWall = wall => wall.type !== "half" && wall.type !== "bush" && wall.type !== "moon_mist"
 
+const cellCoordinate = value => Math.floor((Number(value) || 0) / COLLISION_CELL_SIZE)
+const collisionCellKey = (x, y) => `${x}:${y}`
+
+export const createCollisionIndex = walls => {
+  const source = Array.isArray(walls) ? walls : EMPTY_WALLS
+  const cells = new Map()
+  const blockingWalls = []
+  source.forEach((wall, index) => {
+    if (!blockingWall(wall)) return
+    blockingWalls.push(wall)
+    const minX = cellCoordinate(wall.minX)
+    const maxX = cellCoordinate(wall.maxX)
+    const minY = cellCoordinate(wall.minY)
+    const maxY = cellCoordinate(wall.maxY)
+    for (let cellX = minX; cellX <= maxX; cellX += 1) {
+      for (let cellY = minY; cellY <= maxY; cellY += 1) {
+        const key = collisionCellKey(cellX, cellY)
+        const bucket = cells.get(key)
+        if (bucket) bucket.push(index)
+        else cells.set(key, [index])
+      }
+    }
+  })
+  return {
+    walls: source,
+    blockingWalls,
+    cells,
+    queryMarks: new Uint32Array(source.length),
+    queryScratchIndices: [],
+    queryId: 0,
+  }
+}
+
+export const queryCollisionWalls = (index, position, radius, result = null) => {
+  const output = Array.isArray(result) ? result : []
+  output.length = 0
+  if (!index?.cells?.size) return output
+  const safeRadius = Math.max(0, Number(radius) || 0)
+  const minX = cellCoordinate(Number(position?.x) - safeRadius)
+  const maxX = cellCoordinate(Number(position?.x) + safeRadius)
+  const minY = cellCoordinate(Number(position?.y) - safeRadius)
+  const maxY = cellCoordinate(Number(position?.y) + safeRadius)
+  const indices = index.queryScratchIndices || (index.queryScratchIndices = [])
+  indices.length = 0
+  index.queryId = ((Number(index.queryId) || 0) + 1) >>> 0
+  if (index.queryId === 0) {
+    index.queryMarks?.fill(0)
+    index.queryId = 1
+  }
+  const queryId = index.queryId
+  for (let cellX = minX; cellX <= maxX; cellX += 1) {
+    for (let cellY = minY; cellY <= maxY; cellY += 1) {
+      const bucket = index.cells.get(collisionCellKey(cellX, cellY))
+      bucket?.forEach(wallIndex => {
+        if (index.queryMarks[wallIndex] === queryId) return
+        index.queryMarks[wallIndex] = queryId
+        indices.push(wallIndex)
+      })
+    }
+  }
+  indices.sort((a, b) => a - b)
+  indices.forEach(wallIndex => output.push(index.walls[wallIndex]))
+  return output
+}
+
 const resolveWalls = (position, radius, walls) => {
   let {x, y} = position
   for (const wall of walls || []) {
-    if (!blockingWall(wall)) continue
     const closestX = clamp(x, wall.minX, wall.maxX)
     const closestY = clamp(y, wall.minY, wall.maxY)
     const dx = x - closestX
@@ -69,11 +148,31 @@ const resolveWalls = (position, radius, walls) => {
 }
 
 const movementSpeed = player => {
+  const authoritativeSpeed = Number(player?.movementSpeed)
+  if (Number.isFinite(authoritativeSpeed)) return Math.max(0, authoritativeSpeed)
   let speed = Number(player?.speed) || 0
   if (Number(player?.haste) > 0) speed *= 1.22
+  if (Number(player?.lunarSpeed) > 0) speed *= 1.15
   if (Number(player?.slow) > 0) speed *= .45
-  if (Number(player?.stun) > 0) speed = 0
+  if (Number(player?.stun) > 0 || Number(player?.channel) > 0) speed = 0
   return speed
+}
+
+const movePosition = (position, input, player, delta, map, collisionIndex = null, collisionResult = null) => {
+  const magnitude = Math.hypot(input.x, input.y)
+  if (magnitude <= .001 || delta <= 0) return position
+  const distance = movementSpeed(player) * delta
+  const radius = Number(player.radius) || 14
+  const next = {
+    x: position.x + input.x / magnitude * distance,
+    y: position.y + input.y / magnitude * distance,
+  }
+  next.x = clamp(next.x, radius, Math.max(radius, (map.width || radius) - radius))
+  next.y = clamp(next.y, radius, Math.max(radius, (map.height || radius) - radius))
+  const collisionWalls = collisionIndex?.cells
+    ? queryCollisionWalls(collisionIndex, next, radius, collisionResult)
+    : map.walls
+  return resolveWalls(next, radius, collisionWalls)
 }
 
 const interpolateAngle = (a = 0, b = 0, t) =>
@@ -134,8 +233,16 @@ const syncInterpolatedList = (cache, older = [], newer = [], keyOf, t) => {
 }
 
 export class NetworkSimulation {
-  constructor({interpolationDelay = 100} = {}) {
-    this.interpolationDelay = interpolationDelay
+  constructor({interpolationDelay = null} = {}) {
+    this.adaptiveInterpolation = interpolationDelay == null
+    this.interpolationDelay = this.adaptiveInterpolation
+      ? 66
+      : Math.max(0, Number(interpolationDelay) || 0)
+    this.snapshotIntervals = []
+    this.snapshotArrivalIntervals = []
+    this.snapshotIntervalSortBuffer = []
+    this.snapshotArrivalIntervalSortBuffer = []
+    this.lastSnapshotArrivalAt = null
     this.playerId = null
     this.snapshots = []
     this.latestState = null
@@ -146,10 +253,17 @@ export class NetworkSimulation {
     this.pendingInputs = []
     this.positionHistory = []
     this.clockOffset = null
+    this.predictionTime = null
     this.damagePrediction = new DamagePrediction()
     this.displayPlayers = {}
     this.displayMonsters = {}
     this.displayBullets = new Map()
+    this.renderTime = null
+    this.collisionWallsSource = null
+    this.collisionWalls = EMPTY_WALLS
+    this.collisionIndexSource = null
+    this.collisionIndex = EMPTY_COLLISION_INDEX
+    this.collisionQueryResult = []
   }
 
   setLocalPlayerId(id) {
@@ -161,19 +275,87 @@ export class NetworkSimulation {
     const nextInput = {x: Number(x) || 0, y: Number(y) || 0}
     this.input = nextInput
     this.movementInput = nextInput
-    if (Number.isFinite(ack)) this.pendingInputs.push({ack, ...this.input})
+    if (Number.isFinite(ack)) {
+      this.pendingInputs = this.pendingInputs.filter(input => input.ack !== ack)
+      this.pendingInputs.push({ack, sentAt: ack, ...this.input})
+      if (this.pendingInputs.length > MAX_INPUT_HISTORY) this.pendingInputs.shift()
+    }
   }
 
-  ingest(state) {
+  ingest(state, clockOffset = null, receivedAt = Date.now()) {
     if (!state || state.type !== "state") return
-    const measuredOffset = Date.now() - Number(state.ts || Date.now())
-    this.clockOffset = this.clockOffset == null ? measuredOffset : lerp(this.clockOffset, measuredOffset, .08)
+    const timestamp = Number(state.ts)
+    const lastTimestamp = Number(this.snapshots.at(-1)?.ts)
+    if (Number.isFinite(timestamp) && Number.isFinite(lastTimestamp) && timestamp < lastTimestamp) return
+    if (Number.isFinite(timestamp) && Number.isFinite(lastTimestamp) && timestamp === lastTimestamp) {
+      this.latestState = state
+      return
+    }
+    const perfToken = startBattlePerformance("simulation.ingest")
+    if (Number.isFinite(timestamp) && Number.isFinite(lastTimestamp)) {
+      const interval = timestamp - lastTimestamp
+      if (interval > 0 && interval <= 1000) {
+        this.snapshotIntervals.push(interval)
+        if (this.snapshotIntervals.length > MAX_SNAPSHOT_INTERVAL_SAMPLES) this.snapshotIntervals.shift()
+      }
+    }
+    if (Number.isFinite(receivedAt) && this.lastSnapshotArrivalAt != null) {
+      const arrivalInterval = receivedAt - this.lastSnapshotArrivalAt
+      if (arrivalInterval > 0 && arrivalInterval <= 1000) {
+        this.snapshotArrivalIntervals.push(arrivalInterval)
+        if (this.snapshotArrivalIntervals.length > MAX_SNAPSHOT_INTERVAL_SAMPLES) this.snapshotArrivalIntervals.shift()
+      }
+    }
+    if (Number.isFinite(receivedAt)) this.lastSnapshotArrivalAt = receivedAt
+    this.updateInterpolationDelay()
+    if (Number.isFinite(clockOffset)) {
+      this.clockOffset = clockOffset
+    } else if (this.clockOffset == null) {
+      // Fallback for consumers that do not have an active clock-sync channel.
+      // This is only an initial estimate; every later synced state replaces it.
+      this.clockOffset = Date.now() - Number(state.ts || Date.now())
+    }
     this.latestState = state
     this.damagePrediction.ingest(state)
     this.damagePrediction.reconcileEvents(state.combatEvents, Date.now())
     this.snapshots.push(state)
+    // Older timestamps are rejected above, so the accepted stream is already
+    // ordered. Avoid sorting the whole 40-frame presentation buffer per state.
     if (this.snapshots.length > 40) this.snapshots.shift()
+    const snapshotLocalTime = this.serverTimeToLocal(timestamp || Date.now())
+    this.predictionTime = Math.max(this.predictionTime ?? snapshotLocalTime, snapshotLocalTime)
     this.reconcile()
+    endBattlePerformance(perfToken)
+  }
+
+  updateInterpolationDelay() {
+    if (!this.adaptiveInterpolation || this.snapshotIntervals.length < 3) return
+    const serverSorted = this.snapshotIntervalSortBuffer
+    serverSorted.length = this.snapshotIntervals.length
+    for (let index = 0; index < this.snapshotIntervals.length; index += 1) {
+      serverSorted[index] = this.snapshotIntervals[index]
+    }
+    serverSorted.sort((a, b) => a - b)
+    const serverP90 = serverSorted[Math.min(serverSorted.length - 1, Math.ceil(serverSorted.length * .9) - 1)]
+    const arrivalSorted = this.snapshotArrivalIntervalSortBuffer
+    arrivalSorted.length = this.snapshotArrivalIntervals.length
+    for (let index = 0; index < this.snapshotArrivalIntervals.length; index += 1) {
+      arrivalSorted[index] = this.snapshotArrivalIntervals[index]
+    }
+    arrivalSorted.sort((a, b) => a - b)
+    const arrivalP90 = arrivalSorted.length >= 3
+      ? arrivalSorted[Math.min(arrivalSorted.length - 1, Math.ceil(arrivalSorted.length * .9) - 1)]
+      : 0
+    const p90 = Math.max(serverP90, arrivalP90)
+    const target = clamp(p90 * 1.25 + 8, MIN_INTERPOLATION_DELAY, MAX_INTERPOLATION_DELAY)
+    // Move slowly so one delayed packet cannot make the presentation jump
+    // forward and then immediately fall back to a shorter buffer.
+    this.interpolationDelay += (target - this.interpolationDelay) * .2
+    recordBattleMetric("network.interpolation_delay", this.interpolationDelay, {
+      snapshotIntervalP90: p90,
+      serverIntervalP90: serverP90,
+      arrivalIntervalP90: arrivalP90,
+    })
   }
 
   predictLocalShoot({angle, autoAim = false, commandId = "", now = Date.now()} = {}) {
@@ -230,7 +412,10 @@ export class NetworkSimulation {
 
   seedLocalPlayer() {
     const player = this.latestState?.players?.[this.playerId]
-    if (player && !this.predicted) this.predicted = {x: player.x, y: player.y}
+    if (player && !this.predicted) {
+      this.predicted = {x: player.x, y: player.y}
+      this.predictionTime = this.serverTimeToLocal(this.latestState.ts || Date.now())
+    }
   }
 
   serverTimeToLocal(serverTime) {
@@ -241,35 +426,82 @@ export class NetworkSimulation {
     return Number(localTime) - (this.clockOffset || 0)
   }
 
+  setRenderTime(now) {
+    this.renderTime = Number.isFinite(now) ? now : null
+  }
+
+  getCollisionIndex(map = {}) {
+    const walls = Array.isArray(map.walls) ? map.walls : EMPTY_WALLS
+    if (walls !== this.collisionIndexSource) {
+      this.collisionIndexSource = walls
+      this.collisionIndex = walls.length > 0 ? createCollisionIndex(walls) : EMPTY_COLLISION_INDEX
+      this.collisionWallsSource = walls
+      this.collisionWalls = this.collisionIndex.blockingWalls
+    }
+    return this.collisionIndex
+  }
+
   reconcile() {
     const authoritative = this.latestState?.players?.[this.playerId]
     if (!authoritative) return
-    this.pendingInputs = this.pendingInputs.filter(input => input.ack > Number(authoritative.ack || 0))
+    const authoritativeAck = Number(authoritative.ack || 0)
+    this.pendingInputs = this.pendingInputs.filter(input => input.ack > authoritativeAck)
     if (!this.predicted) {
       this.predicted = {x: authoritative.x, y: authoritative.y}
+      this.predictionTime = this.serverTimeToLocal(this.latestState.ts || Date.now())
       return
     }
-    // Both protocol timestamps are Unix milliseconds. Network transit time is
-    // not clock skew: adding it here compares an old authoritative position to
-    // the current predicted frame and creates a visible backward correction.
+    // Reconcile in one clock domain. The snapshot is an old authoritative
+    // frame, so compare it with the current client simulation time, not with
+    // a wall-clock sample collected during an arbitrary render frame.
     const snapshotLocalTime = this.serverTimeToLocal(this.latestState.ts)
-    const historical = this.positionHistory.reduce((nearest, sample) =>
-      !nearest || Math.abs(sample.time - snapshotLocalTime) < Math.abs(nearest.time - snapshotLocalTime) ? sample : nearest, null)
-    const comparison = historical || this.predicted
-    const errorX = authoritative.x - comparison.x
-    const errorY = authoritative.y - comparison.y
+    const targetTime = Math.max(this.predictionTime ?? snapshotLocalTime, snapshotLocalTime)
+    const before = {...this.predicted}
+    const map = this.latestState.map || {}
+    const collisionIndex = this.getCollisionIndex(map)
+    let replayed = {x: Number(authoritative.x) || 0, y: Number(authoritative.y) || 0}
+    let cursor = snapshotLocalTime
+    let replayInput = {
+      x: Number(authoritative.moveX) || 0,
+      y: Number(authoritative.moveY) || 0,
+    }
+    const replayInputs = [...this.pendingInputs].sort((a, b) => a.ack - b.ack)
+    for (const pending of replayInputs) {
+      const commandTime = Number(pending.sentAt ?? pending.ack)
+      const start = Number.isFinite(commandTime)
+        ? Math.max(cursor, Math.min(commandTime, targetTime))
+        : cursor
+      replayed = movePosition(replayed, replayInput, authoritative, (start - cursor) / 1000, map, collisionIndex, this.collisionQueryResult)
+      replayInput = {x: pending.x, y: pending.y}
+      cursor = start
+    }
+    replayed = movePosition(replayed, replayInput, authoritative, (targetTime - cursor) / 1000, map, collisionIndex, this.collisionQueryResult)
+    this.predicted = replayed
+    this.predictionTime = targetTime
+
+    const errorX = replayed.x - before.x
+    const errorY = replayed.y - before.y
     const error = Math.hypot(errorX, errorY)
-    if (error > Math.max(90, (authoritative.radius || 14) * 4) || authoritative.lives <= 0) {
+    recordBattleMetric("prediction.reconciliation_error", error, {
+      state: this.latestState?.game?.state || "unknown",
+      pendingInputs: this.pendingInputs.length,
+    })
+    if (authoritative.lives <= 0) {
       this.predicted = {x: authoritative.x, y: authoritative.y}
       this.correction = {x: 0, y: 0}
     } else {
-      this.correction.x += errorX
-      this.correction.y += errorY
-      this.positionHistory.forEach(sample => {
-        sample.x += errorX
-        sample.y += errorY
-      })
+      // Simulation truth is corrected immediately. Only the rendered local
+      // pose carries the old-vs-new delta, so the same frame remains visually
+      // continuous while authoritative state wins underneath.
+      this.correction = {
+        x: before.x + this.correction.x - replayed.x,
+        y: before.y + this.correction.y - replayed.y,
+      }
     }
+    recordBattleMetric("prediction.reconciliation_offset", Math.hypot(this.correction.x, this.correction.y), {
+      state: this.latestState?.game?.state || "unknown",
+      pendingInputs: this.pendingInputs.length,
+    })
   }
 
   advance(delta) {
@@ -287,33 +519,22 @@ export class NetworkSimulation {
     this.seedLocalPlayer()
     if (!this.predicted) return
 
-    const magnitude = Math.hypot(this.movementInput.x, this.movementInput.y)
-    if (magnitude > .001) {
-      const distance = movementSpeed(player) * delta
-      this.predicted.x += this.movementInput.x / magnitude * distance
-      this.predicted.y += this.movementInput.y / magnitude * distance
-    }
+    this.predictionTime = (this.predictionTime ?? this.serverTimeToLocal(this.latestState.ts || Date.now())) + delta * 1000
+    const map = this.latestState.map || {}
+    this.predicted = movePosition(this.predicted, this.movementInput, player, delta, map, this.getCollisionIndex(map), this.collisionQueryResult)
 
     const correctionBlend = 1 - Math.exp(-12 * delta)
-    this.predicted.x += this.correction.x * correctionBlend
-    this.predicted.y += this.correction.y * correctionBlend
     this.correction.x *= 1 - correctionBlend
     this.correction.y *= 1 - correctionBlend
 
-    const map = this.latestState.map || {}
-    const radius = Number(player.radius) || 14
-    this.predicted.x = clamp(this.predicted.x, radius, Math.max(radius, (map.width || radius) - radius))
-    this.predicted.y = clamp(this.predicted.y, radius, Math.max(radius, (map.height || radius) - radius))
-    this.predicted = resolveWalls(this.predicted, radius, map.walls)
-    const now = Date.now()
-    this.positionHistory.push({time: now, x: this.predicted.x, y: this.predicted.y})
-    while (this.positionHistory.length && this.positionHistory[0].time < now - 2000) this.positionHistory.shift()
   }
 
-  getDisplayState(now = Date.now(), {copyEntities = false} = {}) {
+  getDisplayState(now = this.renderTime ?? Date.now(), {copyEntities = false} = {}) {
     if (!this.latestState) return null
+    const perfToken = startBattlePerformance("simulation.display")
     const targetTime = this.localTimeToServer(now - this.interpolationDelay)
-    let older = this.snapshots[0] || this.latestState
+    const latestIndex = Math.max(0, this.snapshots.length - 1)
+    let older = this.snapshots[Math.max(0, latestIndex - 1)] || this.latestState
     let newer = this.latestState
     for (let index = 1; index < this.snapshots.length; index += 1) {
       const candidate = this.snapshots[index]
@@ -322,14 +543,31 @@ export class NetworkSimulation {
         older = this.snapshots[index - 1]
         break
       }
-      older = candidate
+      if (index < this.snapshots.length - 1) older = candidate
     }
     const span = Math.max(1, Number(newer.ts) - Number(older.ts))
-    const t = clamp((targetTime - Number(older.ts)) / span, 0, 1)
+    const latestTimestamp = Number(newer.ts)
+    const isPresentationUnderrun = Number.isFinite(latestTimestamp) && targetTime > latestTimestamp
+    recordBattleMetric("network.presentation_buffer_ms", latestTimestamp - targetTime, {
+      snapshotsBuffered: this.snapshots.length,
+      underrun: isPresentationUnderrun,
+    })
+    recordBattleMetric("network.snapshot_buffer_size", this.snapshots.length)
+    const presentationTime = isPresentationUnderrun
+      ? Math.min(targetTime, latestTimestamp + MAX_PRESENTATION_EXTRAPOLATION)
+      : targetTime
+    const t = clamp((presentationTime - Number(older.ts)) / span, 0, 1 + MAX_PRESENTATION_EXTRAPOLATION / span)
+    if (isPresentationUnderrun) {
+      recordBattleMetric("network.presentation_underrun", 1, {
+        requestedMs: targetTime - latestTimestamp,
+        extrapolatedMs: presentationTime - latestTimestamp,
+      })
+      recordBattleMetric("network.presentation_extrapolation_ms", presentationTime - latestTimestamp)
+    }
     const players = syncInterpolatedMap(this.displayPlayers, older.players, newer.players, t)
     if (this.playerId && players[this.playerId] && this.predicted) {
-      players[this.playerId].x = this.predicted.x
-      players[this.playerId].y = this.predicted.y
+      players[this.playerId].x = this.predicted.x + this.correction.x
+      players[this.playerId].y = this.predicted.y + this.correction.y
     }
     const monsters = syncInterpolatedMap(this.displayMonsters, older.monsters, newer.monsters, t)
     const bullets = syncInterpolatedList(
@@ -339,10 +577,12 @@ export class NetworkSimulation {
       (bullet, index) => bullet.id ?? `${bullet.playerId || ""}:${bullet.kind || ""}:${index}`,
       t,
     )
-    return this.damagePrediction.applyToState(
+    const displayState = this.damagePrediction.applyToState(
       {...this.latestState, players, monsters, bullets, networkSmoothed: true},
       now,
       {mutateEntities: !copyEntities},
     )
+    endBattlePerformance(perfToken)
+    return displayState
   }
 }

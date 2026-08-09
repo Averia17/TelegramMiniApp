@@ -3,6 +3,7 @@ package room
 import (
 	"battle/model/game"
 	"battle/model/player"
+	"battle/observability"
 	"battle/provider"
 	"sync"
 	"time"
@@ -78,6 +79,7 @@ func GetOrCreateRoom(roomId, roomName, mapName, mode string, maxPlayers int) *Ro
 	r.State = gs
 
 	rooms[roomId] = r
+	observability.Default.SetGauge("battle_active_rooms", "Currently registered battle rooms", float64(len(rooms)), nil)
 	go r.Run()
 
 	return r
@@ -104,12 +106,14 @@ func RemoveRoom(roomId string) {
 	roomsMu.Lock()
 	defer roomsMu.Unlock()
 	delete(rooms, roomId)
+	observability.Default.SetGauge("battle_active_rooms", "Currently registered battle rooms", float64(len(rooms)), nil)
 }
 
 func ResetRooms() {
 	roomsMu.Lock()
 	defer roomsMu.Unlock()
 	rooms = make(map[string]*Room)
+	observability.Default.SetGauge("battle_active_rooms", "Currently registered battle rooms", 0, nil)
 }
 
 func ListRoomsFromStore() ([]provider.RoomRecord, error) {

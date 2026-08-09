@@ -2,6 +2,7 @@ package room
 
 import (
 	"battle/model/game"
+	"battle/observability"
 	"battle/provider"
 	"encoding/json"
 	"log"
@@ -34,8 +35,12 @@ func (r *Room) Run() {
 	defer ticker.Stop()
 	defer redisTicker.Stop()
 
-	frame := 0
 	var emptySince time.Time
+	var previousTickAt time.Time
+	var metricsWindowAt time.Time
+	var metricsTicks int
+	var metricsSlowTicks int
+	var metricsMaxGap, metricsMaxUpdate, metricsMaxSnapshot, metricsMaxQueue time.Duration
 
 	for {
 		select {
@@ -120,6 +125,12 @@ func (r *Room) Run() {
 
 		case <-ticker.C:
 			var updates []preparedStateUpdate
+			tickStarted := time.Now()
+			tickGap := time.Duration(0)
+			if !previousTickAt.IsZero() {
+				tickGap = tickStarted.Sub(previousTickAt)
+			}
+			previousTickAt = tickStarted
 			r.mu.Lock()
 			r.expireDisconnectedPlayers()
 			if len(r.Clients) == 0 {
@@ -134,13 +145,42 @@ func (r *Room) Run() {
 				}
 				continue
 			}
-			r.State.Update()
-			frame++
-			if frame%2 == 0 {
-				updates = r.prepareStateUpdates()
+			if metricsWindowAt.IsZero() {
+				metricsWindowAt = tickStarted
 			}
+			r.State.Update()
+			updateDuration := time.Since(tickStarted)
+			// The simulation already advances at 60 Hz. Keep the transport at
+			// the same cadence so client prediction only bridges real network
+			// delay instead of an avoidable extra server frame.
+			snapshotStarted := time.Now()
+			updates = r.prepareStateUpdates()
+			snapshotDuration := time.Since(snapshotStarted)
 			r.mu.Unlock()
-			r.queueStateUpdates(updates)
+			queueStarted := time.Now()
+			queuedUpdates, stateBytes, queueDrops := r.queueStateUpdates(updates)
+			queueDuration := time.Since(queueStarted)
+
+			metricsTicks++
+			metricsMaxGap = maxDuration(metricsMaxGap, tickGap)
+			metricsMaxUpdate = maxDuration(metricsMaxUpdate, updateDuration)
+			metricsMaxSnapshot = maxDuration(metricsMaxSnapshot, snapshotDuration)
+			metricsMaxQueue = maxDuration(metricsMaxQueue, queueDuration)
+			if tickGap > 20*time.Millisecond || updateDuration > 10*time.Millisecond || snapshotDuration > 10*time.Millisecond || queueDuration > 10*time.Millisecond {
+				metricsSlowTicks++
+			}
+			observability.RecordBattleTick(observability.Default, observability.BattleTickSample{
+				Gap: tickGap, Update: updateDuration, Snapshot: snapshotDuration, Queue: queueDuration,
+				Updates: queuedUpdates, Bytes: stateBytes, Dropped: queueDrops,
+				Slow: tickGap > 20*time.Millisecond || updateDuration > 10*time.Millisecond || snapshotDuration > 10*time.Millisecond || queueDuration > 10*time.Millisecond,
+			})
+			if time.Since(metricsWindowAt) >= 2*time.Second {
+				log.Printf("battle tick metrics room=%s ticks=%d hz=%.1f slow=%d gap_max=%s update_max=%s snapshot_max=%s queue_max=%s players=%d bots=%d bullets=%d effects=%d", r.Id, metricsTicks, float64(metricsTicks)/time.Since(metricsWindowAt).Seconds(), metricsSlowTicks, metricsMaxGap, metricsMaxUpdate, metricsMaxSnapshot, metricsMaxQueue, len(r.State.Players), countBots(r.State), len(r.State.Bullets), len(r.State.Effects))
+				metricsWindowAt = tickStarted
+				metricsTicks = 0
+				metricsSlowTicks = 0
+				metricsMaxGap, metricsMaxUpdate, metricsMaxSnapshot, metricsMaxQueue = 0, 0, 0, 0
+			}
 
 		case <-redisTicker.C:
 			r.mu.RLock()
@@ -212,6 +252,22 @@ func (r *Room) HandleMessage(client *Client, data []byte) {
 	defer r.mu.Unlock()
 
 	switch msg.Type {
+	case "clock_sync":
+		var v game.ClockSyncValue
+		if err := json.Unmarshal(msg.Value, &v); err != nil || v.ClientTs <= 0 {
+			return
+		}
+		response, err := json.Marshal(game.NewServerMessage("clock_sync", game.ClockSyncParams{
+			ClientTs: v.ClientTs,
+			ServerTs: time.Now().UnixMilli(),
+		}))
+		if err != nil || r.Clients[client.Id] != client {
+			return
+		}
+		select {
+		case client.Send <- response:
+		default:
+		}
 	case "move":
 		var v game.MoveValue
 		if err := json.Unmarshal(msg.Value, &v); err == nil {
@@ -255,4 +311,24 @@ func (r *Room) HandleMessage(client *Client, data []byte) {
 			}
 		}
 	}
+}
+
+func maxDuration(current, candidate time.Duration) time.Duration {
+	if candidate > current {
+		return candidate
+	}
+	return current
+}
+
+func countBots(state *game.GameState) int {
+	if state == nil {
+		return 0
+	}
+	count := 0
+	for _, candidate := range state.Players {
+		if candidate != nil && candidate.IsBot {
+			count++
+		}
+	}
+	return count
 }

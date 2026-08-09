@@ -3,6 +3,7 @@ package handler
 import (
 	"battle/model/game"
 	mroom "battle/model/room"
+	"battle/observability"
 	sroom "battle/service/room"
 	"encoding/json"
 	"log"
@@ -41,6 +42,20 @@ var upgrader = websocket.Upgrader{
 
 type Handler struct{}
 
+var websocketWriteDurationBuckets = []float64{.001, .0025, .005, .01, .0167, .025, .05, .1, .25, .5, 1, 2.5}
+
+func recordWebSocketWrite(registry *observability.Registry, duration time.Duration, bytes int, err error) {
+	registry.IncCounter("battle_websocket_writes_total", "Outbound WebSocket messages written by the battle service", nil)
+	registry.AddCounter("battle_websocket_write_bytes_total", "Outbound WebSocket payload bytes written by the battle service", float64(bytes), nil)
+	registry.ObserveHistogram("battle_websocket_write_seconds", "Outbound WebSocket write duration in seconds", duration.Seconds(), websocketWriteDurationBuckets, nil)
+	if duration >= 20*time.Millisecond {
+		registry.IncCounter("battle_websocket_slow_writes_total", "Outbound WebSocket writes exceeding one simulation frame", nil)
+	}
+	if err != nil {
+		registry.IncCounter("battle_websocket_write_errors_total", "Outbound WebSocket writes that failed", nil)
+	}
+}
+
 func NewHandler() *Handler {
 	return &Handler{}
 }
@@ -49,6 +64,7 @@ func (h *Handler) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/ws", h.HandleWebSocket)
 	mux.HandleFunc("/health", h.HandleHealth)
 	mux.HandleFunc("/heroes", h.HandleHeroes)
+	mux.Handle("/metrics", observability.Default)
 }
 
 func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +73,8 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return
 	}
+	observability.Default.IncCounter("battle_websocket_connections_total", "WebSocket connections accepted by the battle service", nil)
+	observability.Default.AddGauge("battle_websocket_active", "Currently open battle WebSocket connections", 1, nil)
 
 	client := &mroom.Client{
 		Id: uuid.New().String(), Conn: conn, Send: make(chan []byte, 256), State: make(chan []byte, 1), MapRevision: -1,
@@ -82,6 +100,8 @@ func (h *Handler) HandleHeroes(w http.ResponseWriter, r *http.Request) {
 
 func clientReadPump(c *mroom.Client) {
 	defer func() {
+		observability.Default.AddGauge("battle_websocket_active", "Currently open battle WebSocket connections", -1, nil)
+		observability.Default.IncCounter("battle_websocket_disconnects_total", "Battle WebSocket connections closed", nil)
 		if c.Room != nil {
 			c.Room.Unregister <- c
 		}
@@ -93,12 +113,14 @@ func clientReadPump(c *mroom.Client) {
 		if err != nil {
 			break
 		}
+		observability.Default.IncCounter("battle_websocket_messages_total", "Inbound WebSocket messages received by the battle service", nil)
 		now := time.Now()
 		if c.MessageWindow.IsZero() || now.Sub(c.MessageWindow) >= time.Second {
 			c.MessageWindow, c.MessageCount = now, 0
 		}
 		c.MessageCount++
 		if c.MessageCount > 120 {
+			observability.Default.IncCounter("battle_websocket_rate_limited_total", "WebSocket connections closed after exceeding the inbound message budget", nil)
 			_ = c.Conn.WriteControl(
 				websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "message rate exceeded"),
@@ -161,28 +183,35 @@ func clientReadPump(c *mroom.Client) {
 	}
 }
 
+func nextClientMessage(c *mroom.Client) ([]byte, bool) {
+	// State updates are latest-only and time-sensitive. Drain one before the
+	// event channel so a burst of combat notifications cannot make snapshots
+	// wait behind an unbounded Send queue.
+	select {
+	case message, ok := <-c.State:
+		return message, ok
+	default:
+	}
+	select {
+	case message, ok := <-c.State:
+		return message, ok
+	case message, ok := <-c.Send:
+		return message, ok
+	}
+}
+
 func clientWritePump(c *mroom.Client) {
 	defer c.Conn.Close()
 	for {
-		var message []byte
-		select {
-		case queued, ok := <-c.Send:
-			if !ok {
-				return
-			}
-			message = queued
-		default:
-			select {
-			case queued, ok := <-c.Send:
-				if !ok {
-					return
-				}
-				message = queued
-			case message = <-c.State:
-			}
+		message, ok := nextClientMessage(c)
+		if !ok {
+			return
 		}
 		_ = c.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
+		writeStarted := time.Now()
+		err := c.Conn.WriteMessage(websocket.TextMessage, message)
+		recordWebSocketWrite(observability.Default, time.Since(writeStarted), len(message), err)
+		if err != nil {
 			return
 		}
 	}

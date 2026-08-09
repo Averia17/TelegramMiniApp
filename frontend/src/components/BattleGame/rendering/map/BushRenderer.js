@@ -2,10 +2,13 @@ import * as THREE from "three"
 import {WORLD_SCALE} from "../shared/coordinates.js"
 import {flatMaterial} from "../shared/materials.js"
 
-export const createBushField = (walls, kind = "bush") => {
-  const geometry = new THREE.IcosahedronGeometry(0.62, 0)
+export const createBushField = (walls, kind = "bush", {lowQuality = false} = {}) => {
+  const geometry = lowQuality
+    ? new THREE.ConeGeometry(0.62, 0.72, 5)
+    : new THREE.IcosahedronGeometry(0.62, 0)
   const material = flatMaterial(kind === "moon_mist" ? 0x9db9e8 : 0x4aaa57, kind === "moon_mist" ? {transparent: true, opacity: .62, depthWrite: false} : {})
-  const bushes = new THREE.InstancedMesh(geometry, material, walls.length * 3)
+  const partsPerWall = lowQuality ? 1 : 3
+  const bushes = new THREE.InstancedMesh(geometry, material, walls.length * partsPerWall)
   const matrix = new THREE.Matrix4()
   const axis = new THREE.Vector3(0, 1, 0)
   let instance = 0
@@ -13,9 +16,9 @@ export const createBushField = (walls, kind = "bush") => {
   walls.forEach((wall, index) => {
     const centerX = (wall.minX + wall.maxX) * 0.5 * WORLD_SCALE
     const centerZ = (wall.minY + wall.maxY) * 0.5 * WORLD_SCALE
-    for (let part = 0; part < 3; part++) {
+    for (let part = 0; part < partsPerWall; part++) {
       const seed = index * 37 + part * 23
-      const scale = 0.76 + (seed % 5) * 0.045
+      const scale = lowQuality ? 0.88 : 0.76 + (seed % 5) * 0.045
       const position = new THREE.Vector3(centerX + Math.sin(seed) * 0.31, 0.5 + part * 0.07, centerZ + Math.cos(seed * 1.7) * 0.29)
       const rotation = new THREE.Quaternion().setFromAxisAngle(axis, seed)
       matrix.compose(position, rotation, new THREE.Vector3(scale * 1.22, scale, scale))

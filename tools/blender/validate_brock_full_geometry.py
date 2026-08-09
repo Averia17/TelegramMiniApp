@@ -39,6 +39,7 @@ FRAME_ENDS = {
 # between the groups remains meaningful even though each hard-surface prop is
 # a separate disconnected mesh island.
 JOINT_PAIRS = (
+    ("Chest", "L_Shoulder"),
     ("R_Shoulder", "R_Elbow"),
     ("R_Elbow", "R_Wrist"),
     ("L_Shoulder", "L_Elbow"),

@@ -33,7 +33,7 @@ CLIPS = {
     "gadget": 12,
     "aim-gadget": 60,
 }
-GRIP_LOCAL = (-0.10, 1.70, 1.65)
+GRIP_LOCAL = (0.00, 1.67, 3.75)
 FAN_NAMES = ("HeroAttachment_FanLeft", "HeroAttachment_FanRight")
 MARKER_NAMES = (
     "Grip.Primary.HeroAttachment_FanLeft",

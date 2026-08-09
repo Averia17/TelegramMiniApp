@@ -1,0 +1,110 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "battle-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "title": "Authoritative tick rate",
+      "type": "timeseries",
+      "targets": [{"expr": "rate(battle_ticks_total[1m])", "legendFormat": "ticks/s", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "battle-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ms"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "id": 2,
+      "title": "Tick gap p95",
+      "type": "timeseries",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(battle_tick_gap_seconds_bucket[5m]))) * 1000", "legendFormat": "p95", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "battle-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ms"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "id": 3,
+      "title": "State update p95",
+      "type": "timeseries",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(battle_state_update_seconds_bucket[5m]))) * 1000", "legendFormat": "p95", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "battle-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "Bps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "id": 4,
+      "title": "Snapshot throughput",
+      "type": "timeseries",
+      "targets": [{"expr": "rate(battle_state_bytes_total[1m])", "legendFormat": "bytes/s", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "battle-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+      "id": 5,
+      "title": "Snapshot queue drops",
+      "type": "timeseries",
+      "targets": [{"expr": "rate(battle_state_queue_drops_total[5m])", "legendFormat": "drops/s", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "battle-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+      "id": 6,
+      "title": "Active rooms / WebSockets",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "battle_active_rooms", "legendFormat": "rooms", "refId": "A"},
+        {"expr": "battle_websocket_active", "legendFormat": "websockets", "refId": "B"}
+      ]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "battle-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ms"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "id": 7,
+      "title": "HTTP request p95",
+      "type": "timeseries",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, route) (rate(battle_http_request_duration_seconds_bucket[5m]))) * 1000", "legendFormat": "{{route}}", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "battle-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "id": 8,
+      "title": "HTTP 5xx rate",
+      "type": "timeseries",
+      "targets": [{"expr": "100 * sum(rate(battle_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(battle_http_requests_total[5m])), 1)", "legendFormat": "5xx %", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "battle-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ms"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "id": 9,
+      "title": "WebSocket write p95",
+      "type": "timeseries",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(battle_websocket_write_seconds_bucket[5m]))) * 1000", "legendFormat": "p95", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "battle-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "id": 10,
+      "title": "Slow WebSocket writes",
+      "type": "timeseries",
+      "targets": [{"expr": "rate(battle_websocket_slow_writes_total[5m])", "legendFormat": "writes/s", "refId": "A"}]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["battle", "performance", "network"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "title": "Battle Runtime",
+  "uid": "battle-runtime",
+  "version": 2
+}

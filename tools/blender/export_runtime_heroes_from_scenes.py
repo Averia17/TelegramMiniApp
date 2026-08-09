@@ -12,6 +12,8 @@ from pathlib import Path
 
 import bpy
 
+EXPORT_WINDOW = getattr(bpy.context, "window", None)
+
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 OUTPUT = ROOT / "frontend" / "public" / "assets" / "heroes" / "output_heroes"
@@ -66,6 +68,29 @@ def select_character_objects(armature, excluded_names=()):
     bpy.context.view_layer.objects.active = armature
 
 
+def export_gltf(**kwargs):
+    """Run the exporter with an explicit context for Blender 5.2/MCP."""
+    window = getattr(bpy.context, "window", None) or EXPORT_WINDOW
+    if window is None:
+        # Blender's background context has no cursor/window, but the 5.2 glTF
+        # add-on still tries to update it during export.
+        from io_scene_gltf2.blender.exp import export as gltf_export
+
+        gltf_export.__notify_start = lambda *args, **inner_kwargs: None
+        gltf_export.__notify_end = lambda *args, **inner_kwargs: None
+    active = bpy.context.view_layer.objects.active
+    selected = [obj for obj in bpy.context.scene.objects if obj.select_get()]
+    override = {
+        "active_object": active,
+        "selected_objects": selected,
+        "selected_editable_objects": selected,
+    }
+    if window is not None:
+        override["window"] = window
+    with bpy.context.temp_override(**override):
+        return bpy.ops.export_scene.gltf(**kwargs)
+
+
 def export_brock_cloud(hero_dir: Path, scene_actions: dict[str, str]) -> None:
     """Publish the companion mesh with all authored cloud Actions."""
     idle_scene = hero_dir / "scenes" / "idle.blend"
@@ -109,12 +134,14 @@ def export_brock_cloud(hero_dir: Path, scene_actions: dict[str, str]) -> None:
     # Blender's Windows exporter can reject a leading-dot temporary filename
     # even though the same path is valid to Python's filesystem APIs.
     temp = OUTPUT / "brock-zeus_cloud.tmp.glb"
-    bpy.ops.export_scene.gltf(
+    export_gltf(
         filepath=os.fspath(temp),
         export_format="GLB",
         export_animations=True,
         export_animation_mode="NLA_TRACKS",
-        export_force_sampling=True,
+        export_force_sampling=(
+            True if os.environ.get("BLENDER_EXPORT_FAST") != "1" else False
+        ),
         export_skins=False,
         export_yup=True,
         export_extras=True,
@@ -205,12 +232,14 @@ def export(hero: str) -> None:
     OUTPUT.mkdir(parents=True, exist_ok=True)
     out = OUTPUT / f"{hero}_base.glb"
     temp_out = OUTPUT / f"{hero}_base.tmp.glb"
-    bpy.ops.export_scene.gltf(
+    export_gltf(
         filepath=os.fspath(temp_out),
         export_format="GLB",
         export_animations=True,
         export_animation_mode="ACTIONS",
-        export_force_sampling=True,
+        export_force_sampling=(
+            True if os.environ.get("BLENDER_EXPORT_FAST") != "1" else False
+        ),
         export_skins=True,
         export_yup=True,
         export_extras=True,
@@ -234,7 +263,9 @@ def main() -> None:
                 f"HERO_FILTER={requested_hero!r} is not in the runtime hero list"
             )
         if requested_hero == "brock-zeus":
-            export_brock_cloud(SOURCE / requested_hero, SCENE_ACTIONS | BROCK_EXTRA_ACTIONS)
+            export_brock_cloud(
+                SOURCE / requested_hero, SCENE_ACTIONS | BROCK_EXTRA_ACTIONS
+            )
         export(requested_hero)
         return
     manifest = json.loads(

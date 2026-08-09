@@ -149,8 +149,9 @@ const createSporeBurst = position => {
 }
 
 export class ProjectileRenderer {
-  constructor(root) {
+  constructor(root, {lowQuality = false} = {}) {
     this.root = root
+    this.lowQuality = lowQuality
     this.meshes = new Map()
     this.bursts = []
   }
@@ -167,15 +168,11 @@ export class ProjectileRenderer {
         this.meshes.set(id, mesh)
         this.root.add(mesh, mesh.userData.shadow)
       }
-      mesh.position.copy(worldToScene(projectile.x, projectile.y, 24 + (projectile.z || 0)))
-      mesh.userData.shadow.position.copy(worldToScene(projectile.x, projectile.y, 0.5))
-      const flight = clamp((projectile.z || 0) / 90, 0, 1)
-      mesh.userData.shadow.scale.setScalar(1 - flight * 0.55)
-      mesh.userData.shadow.material.opacity = 0.22 * (1 - flight * 0.65)
+      this.updateMesh(mesh, projectile)
     })
     this.meshes.forEach((mesh, id) => {
       if (active.has(id)) return
-      if (mesh.userData.vfxType === "needle-spore") {
+      if (!this.lowQuality && mesh.userData.vfxType === "needle-spore") {
         const burst = createSporeBurst(mesh.position)
         this.bursts.push(burst)
         this.root.add(burst)
@@ -188,9 +185,32 @@ export class ProjectileRenderer {
     endBattlePerformance(perfToken)
   }
 
+  updateMesh(mesh, projectile) {
+    mesh.position.copy(worldToScene(projectile.x, projectile.y, 24 + (projectile.z || 0)))
+    const shadow = mesh.userData.shadow
+    if (!shadow?.position) return
+    shadow.position.copy(worldToScene(projectile.x, projectile.y, 0.5))
+    const flight = clamp((projectile.z || 0) / 90, 0, 1)
+    shadow.scale.setScalar(1 - flight * 0.55)
+    if (shadow.material) shadow.material.opacity = 0.22 * (1 - flight * 0.65)
+  }
+
+  setDisplayState(projectiles = []) {
+    const perfToken = startBattlePerformance("projectiles.display")
+    projectiles.forEach((projectile, index) => {
+      const id = String(projectile.id ?? `${projectile.playerId}:${index}`)
+      const mesh = this.meshes.get(id)
+      if (mesh) this.updateMesh(mesh, projectile)
+    })
+    endBattlePerformance(perfToken)
+  }
+
   create(projectile) {
-    const mesh = createProjectileVisual(projectile)
-    mesh.userData.shadow = createContactShadow(0.45)
+    const radius = clamp((projectile.radius || 5) * WORLD_SCALE, 0.12, 0.32)
+    const mesh = this.lowQuality
+      ? new THREE.Mesh(new THREE.SphereGeometry(radius, 6, 4), flatMaterial(projectile.color || 0xffdf66))
+      : createProjectileVisual(projectile)
+    mesh.userData.shadow = this.lowQuality ? new THREE.Object3D() : createContactShadow(0.45)
     return mesh
   }
 

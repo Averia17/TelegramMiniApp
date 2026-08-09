@@ -1,12 +1,15 @@
 package game
 
 import (
+	"battle/model/bullet"
 	"battle/model/gamemap"
 	"battle/model/monster"
 	"battle/model/player"
+	"battle/model/prop"
 	"battle/service/geometry"
 	"math"
 	"testing"
+	"time"
 )
 
 func perceptionPlayer(id string, x, y float64) *player.Player {
@@ -42,6 +45,161 @@ func TestBotCannotSeePlayerThroughBlockingWall(t *testing.T) {
 
 	if gs.botCanSee(perceptionPlayer("bot", 100, 100), perceptionPlayer("human", 300, 100), 10_000) {
 		t.Fatal("bot must not see exact player coordinates through a blocking wall")
+	}
+}
+
+func TestBotCannotTreatMonsterBehindBlockingWallAsThreat(t *testing.T) {
+	wall := &geometry.WallTile{MinX: 180, MinY: 0, MaxX: 220, MaxY: 240, Type: "wall"}
+	walls := geometry.NewSpatialHash(TileSize)
+	walls.Insert(wall)
+	gs := &GameState{
+		Map:      &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480, Collisions: []*geometry.WallTile{wall}},
+		Walls:    walls,
+		Monsters: map[string]*monster.Monster{},
+	}
+	threat := monster.NewMonster(300, 100, 16, 480, 480, monster.MonsterLives)
+	gs.Monsters["bat"] = threat
+
+	visible, flee := gs.botMonsterThreat(perceptionPlayer("bot", 100, 100))
+
+	if visible != nil || flee {
+		t.Fatal("bot must not react to a monster it cannot see through a wall")
+	}
+}
+
+func TestMeleeBotDoesNotAttackOutsideItsAttackRange(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
+	gs.PlayerAdd("bot", "Bot", "Kaze")
+	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	gs.State = GameStateGame
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.IsBot = true
+	bot.X, bot.Y, bot.Ammo = 100, 100, 1
+	bot.LastPrimaryAt = time.Now().UnixMilli()
+	enemy.X, enemy.Y = 300, 100
+
+	gs.updateBots()
+
+	if bot.LastShootAt != 0 || bot.AttackPulse != 0 || bot.Ammo != 1 {
+		t.Fatalf("melee bot attacked from 200px: lastShoot=%d pulse=%d ammo=%d", bot.LastShootAt, bot.AttackPulse, bot.Ammo)
+	}
+	if bot.MoveX <= 0 {
+		t.Fatalf("melee bot did not close distance: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+}
+
+func TestBotCrateApproachPointStaysOutsideBlockingWall(t *testing.T) {
+	crate := &geometry.WallTile{MinX: 300, MinY: 100, MaxX: 340, MaxY: 140, Type: "crates"}
+	bot := perceptionPlayer("bot", 260, 120)
+
+	x, y := botWallApproachPoint(bot, crate)
+
+	if x >= crate.MinX-bot.Radius-1 || math.Abs(y-120) > 1 {
+		t.Fatalf("crate approach point = (%.1f, %.1f), should be outside left edge", x, y)
+	}
+}
+
+func TestBotSearchesTheMapWhenNoOpponentIsVisible(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Colt")
+	gs.State = GameStateGame
+	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
+	bot := gs.Players["bot"]
+	bot.IsBot, bot.X, bot.Y = true, 100, 100
+
+	gs.updateBots()
+
+	if math.Hypot(bot.MoveX, bot.MoveY) <= .01 {
+		t.Fatal("bot stood still despite having no visible target")
+	}
+}
+
+func TestBotUsesReadyPrimaryAgainstVisibleTarget(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Kaze")
+	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	gs.State = GameStateGame
+	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.IsBot, bot.X, bot.Y = true, 100, 100
+	enemy.X, enemy.Y = 180, 100
+
+	gs.updateBots()
+
+	if bot.SuperPulse != 1 || !bot.LastAbilityOK || math.Abs(bot.AimDistance-80) > .01 {
+		t.Fatalf("bot did not use a correctly aimed primary: pulses=%d ok=%v aim=%.1f", bot.SuperPulse, bot.LastAbilityOK, bot.AimDistance)
+	}
+}
+
+func TestBotAttacksVisibleMonsterWithItsSelectedTarget(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Kaze")
+	gs.State = GameStateGame
+	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
+	bot := gs.Players["bot"]
+	bot.IsBot, bot.X, bot.Y, bot.Ammo = true, 100, 100, 1
+	bot.LastPrimaryAt = time.Now().UnixMilli()
+	bot.GadgetCharges = 0
+	monsterTarget := monster.NewMonster(180, 100, 16, 480, 480, monster.MonsterLives)
+	gs.Monsters["bat"] = monsterTarget
+	before := monsterTarget.Lives
+
+	gs.updateBots()
+
+	if monsterTarget.Lives >= before {
+		t.Fatalf("bot did not attack its visible monster target: lives=%d before=%d", monsterTarget.Lives, before)
+	}
+}
+
+func TestBotPrioritizesProjectileDodgeOverVisibleMonster(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Kaze")
+	gs.State = GameStateGame
+	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
+	bot := gs.Players["bot"]
+	bot.IsBot, bot.X, bot.Y, bot.Ammo = true, 100, 100, 1
+	bot.LastPrimaryAt = time.Now().UnixMilli()
+	gs.Monsters["bat"] = monster.NewMonster(180, 100, 16, 480, 480, monster.MonsterLives)
+	shot := bullet.NewBullet("human", "", 0, 100, 5, 0, "#fff")
+	shot.Speed = 10
+	gs.Bullets = append(gs.Bullets, shot)
+
+	gs.updateBots()
+
+	if math.Abs(bot.MoveX) > .1 || bot.MoveY < .5 {
+		t.Fatalf("bot did not sidestep the incoming projectile before engaging: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+	if bot.LastShootAt != 0 || bot.Ammo != 1 {
+		t.Fatalf("bot attacked while dodging: lastShoot=%d ammo=%d", bot.LastShootAt, bot.Ammo)
+	}
+}
+
+func TestWoundedBotSelectsVisibleHealthPickup(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	bot := perceptionPlayer("bot", 100, 100)
+	bot.Lives, bot.MaxLives = 20, 100
+	gs.Props = append(gs.Props, prop.NewProp("potion-red", 180, 100, 12))
+
+	if got := gs.botPickupTarget(bot); got == nil || got.Type != "potion-red" {
+		t.Fatalf("wounded bot did not choose visible healing pickup: %#v", got)
+	}
+
+	bot.Lives = bot.MaxLives
+	if got := gs.botPickupTarget(bot); got != nil {
+		t.Fatalf("healthy bot should not reserve healing pickup: %#v", got)
 	}
 }
 

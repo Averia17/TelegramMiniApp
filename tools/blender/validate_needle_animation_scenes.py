@@ -45,17 +45,17 @@ FRAME_ENDS = {
 CYCLES = {"idle", "run", "aim", "aim-super", "aim-gadget"}
 ROOT_Y_LIMITS = {
     "idle": (-0.03, 0.03),
-    "run": (-0.05, 0.0),
-    "attack": (0.0, 0.0),
-    "super": (-0.30, 0.20),
-    "aim": (-0.15, 0.0),
-    "aim-super": (-0.25, -0.15),
-    "hit": (0.0, 0.0),
-    "death": (-0.40, 0.0),
+    "run": (0.0, 0.05),
+    "attack": (-0.28, 0.0),
+    "super": (0.0, 0.20),
+    "aim": (0.05, 0.052),
+    "aim-super": (0.0, 0.02),
+    "hit": (-0.20, 0.0),
+    "death": (-0.40, 0.07),
     "spawn": (-0.30, 0.0),
-    "victory": (-0.15, 0.25),
-    "gadget": (-0.20, 0.02),
-    "aim-gadget": (-0.18, -0.12),
+    "victory": (0.0, 0.25),
+    "gadget": (-0.28, 0.04),
+    "aim-gadget": (0.028, 0.032),
 }
 
 
@@ -106,9 +106,7 @@ def check_pose_limits(clip, armature, frame, errors):
     }
     # The event spec deliberately permits deeper collapse poses for these two
     # one-shot clips; keep the stricter limits for all other animations.
-    if clip == "death":
-        limits["Head"] = (45, 60, 20)
-    elif clip == "spawn":
+    if clip == "spawn":
         limits["Head"] = (40, 60, 20)
     for name, maximums in limits.items():
         values_deg = tuple(

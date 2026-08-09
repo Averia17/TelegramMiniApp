@@ -1,6 +1,7 @@
 const fs = require("fs")
 const path = require("path")
 const {chromium} = require(path.resolve(__dirname, "../../frontend/node_modules/playwright"))
+const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cjs")
 
 const ROOT = path.resolve(__dirname, "../..")
 const HARNESS = process.env.HARNESS_URL || "http://localhost:5173/test/glb-hero-harness.html"
@@ -31,11 +32,12 @@ async function trigger(page, item) {
 }
 
 (async () => {
-  const browser = await chromium.launch({headless: true})
-  const results = []
-  const consoleErrors = []
-  const pageErrors = []
-  try {
+  await runWithBrowser(
+    () => launchHeadlessChromium(chromium, {headless: true}),
+    async (browser) => {
+      const results = []
+      const consoleErrors = []
+      const pageErrors = []
     for (const item of cases) {
       const page = await browser.newPage({viewport: {width: 1280, height: 720}, deviceScaleFactor: 1})
       page.on("console", message => {
@@ -64,21 +66,19 @@ async function trigger(page, item) {
         await page.close()
       }
     }
-  } finally {
-    await browser.close()
-  }
-
-  const invalid = results.filter(result => {
-    const {item, state} = result
-    return state.fallbackEvents.length > 0
-      || !state.clips.includes(item.expected)
-      || Number(state.actionWeights[item.expectedKey] || 0) <= 0
-  })
-  const report = {hero: "fairy-mina", clips: results.length, results, consoleErrors, pageErrors, invalid: invalid.length}
-  const reportPath = path.join(OUT, "report.json")
-  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
-  console.log(JSON.stringify({hero: report.hero, clips: results.length, invalid: invalid.length, consoleErrors: consoleErrors.length, pageErrors: pageErrors.length, report: reportPath, screenshots: OUT}))
-  if (invalid.length || consoleErrors.length || pageErrors.length) process.exitCode = 1
+      const invalid = results.filter(result => {
+        const {item, state} = result
+        return state.fallbackEvents.length > 0
+          || !state.clips.includes(item.expected)
+          || Number(state.actionWeights[item.expectedKey] || 0) <= 0
+      })
+      const report = {hero: "fairy-mina", clips: results.length, results, consoleErrors, pageErrors, invalid: invalid.length}
+      const reportPath = path.join(OUT, "report.json")
+      fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
+      console.log(JSON.stringify({hero: report.hero, clips: results.length, invalid: invalid.length, consoleErrors: consoleErrors.length, pageErrors: pageErrors.length, report: reportPath, screenshots: OUT}))
+      if (invalid.length || consoleErrors.length || pageErrors.length) process.exitCode = 1
+    },
+  )
 })().catch(error => {
   console.error(error)
   process.exitCode = 1

@@ -11,6 +11,15 @@ type ClientMessage struct {
 	Value json.RawMessage `json:"value,omitempty"`
 }
 
+type ClockSyncValue struct {
+	ClientTs int64 `json:"clientTs"`
+}
+
+type ClockSyncParams struct {
+	ClientTs int64 `json:"clientTs"`
+	ServerTs int64 `json:"serverTs"`
+}
+
 type ServerMessage struct {
 	Type   string      `json:"type"`
 	Ts     int64       `json:"ts,omitempty"`
@@ -99,6 +108,7 @@ type PlayerJSON struct {
 	MoveX            float64       `json:"moveX"`
 	MoveY            float64       `json:"moveY"`
 	Speed            float64       `json:"speed"`
+	MovementSpeed    float64       `json:"movementSpeed"`
 	AttackDamage     int           `json:"attackDamage"`
 	Ack              int64         `json:"ack"`
 	Hero             string        `json:"hero"`

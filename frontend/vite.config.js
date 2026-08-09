@@ -29,6 +29,10 @@ export default defineConfig({
             ],
         },
         host: '0.0.0.0',
+        // Nginx proxies requests using the Docker service name. Keep the
+        // allowlist explicit so the dev server accepts both browser and
+        // internal proxy hosts without disabling Vite's host check.
+        allowedHosts: ['localhost', 'frontend'],
         strictPort: true,
         port: 5173,
         proxy: {

@@ -1,6 +1,7 @@
 const fs = require("fs")
 const path = require("path")
 const {chromium} = require(path.resolve(__dirname, "../../frontend/node_modules/playwright"))
+const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cjs")
 
 const ROOT = path.resolve(__dirname, "../..")
 const HARNESS = process.env.HARNESS_URL || "http://127.0.0.1:5173/test/glb-hero-harness.html"
@@ -23,8 +24,10 @@ const cases = [
 fs.mkdirSync(OUT, {recursive: true});
 
 (async () => {
-  const browser = await chromium.launch({headless: true, args: ["--disable-gpu"]})
-  const page = await browser.newPage({viewport: {width: 1280, height: 720}, deviceScaleFactor: 1})
+  await runWithBrowser(
+    () => launchHeadlessChromium(chromium, {headless: true}),
+    async (browser) => {
+      const page = await browser.newPage({viewport: {width: 1280, height: 720}, deviceScaleFactor: 1})
   const consoleErrors = []
   const pageErrors = []
   page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()) })
@@ -54,8 +57,9 @@ fs.mkdirSync(OUT, {recursive: true});
   const report = {hero: "Kaze", clips, cases: results, consoleErrors, pageErrors, status: results.every(item => item.valid) && !consoleErrors.length && !pageErrors.length ? "PASS" : "FAIL"}
   fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify(report, null, 2))
   console.log(JSON.stringify({status: report.status, clips, cases: results.length, invalid: results.filter(item => !item.valid).length, consoleErrors: consoleErrors.length, pageErrors: pageErrors.length, report: path.join(OUT, "report.json")}))
-  await browser.close()
-  if (report.status !== "PASS") process.exitCode = 1
+      if (report.status !== "PASS") process.exitCode = 1
+    },
+  )
 })().catch(error => {
   console.error(error)
   process.exitCode = 1
