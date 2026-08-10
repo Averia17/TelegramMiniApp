@@ -1,9 +1,133 @@
 import * as THREE from "three"
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js"
 import {clone} from "three/addons/utils/SkeletonUtils.js"
+import {mergeGeometries} from "three/addons/utils/BufferGeometryUtils.js"
 import {ENVIRONMENT_ASSETS, HERO_ASSETS, getHeroAsset, resolveHeroName} from "./assetManifest.js"
 
 const loadWith = loader => url => loader.loadAsync(url)
+
+const ATTACHMENT_ROLES = new Set([
+  "attack-cloud",
+  "companion-cloud",
+  "detached-ammo",
+  "held-weapon",
+  "throwable-weapon",
+  "menu-only",
+])
+
+const hasProtectedAncestor = node => {
+  let current = node
+  while (current) {
+    const role = current.userData?.attachment_role || current.userData?.attachmentRole
+    if (ATTACHMENT_ROLES.has(role) || current.name === "SpawnCactus") return true
+    current = current.parent
+  }
+  return false
+}
+
+const materialKey = material => [
+  material?.type,
+  material?.color?.getHex?.() ?? null,
+  material?.emissive?.getHex?.() ?? null,
+  material?.emissiveIntensity ?? null,
+  material?.roughness ?? null,
+  material?.metalness ?? null,
+  material?.opacity ?? null,
+  material?.transparent ?? false,
+  material?.alphaTest ?? 0,
+  material?.side ?? null,
+  material?.vertexColors ?? false,
+  material?.map?.uuid ?? null,
+  material?.normalMap?.uuid ?? null,
+  material?.alphaMap?.uuid ?? null,
+].join(":")
+
+const geometryKey = geometry => [
+  Object.keys(geometry.attributes).sort().join(","),
+  geometry.index?.array?.constructor?.name || "no-index",
+  Object.keys(geometry.morphAttributes || {}).sort().join(","),
+].join("|")
+
+const canMergeMesh = mesh => Boolean(
+  mesh?.isMesh &&
+  !Array.isArray(mesh.material) &&
+  mesh.material &&
+  mesh.geometry?.attributes?.position &&
+  !hasProtectedAncestor(mesh),
+)
+
+const mergeMeshGroup = (meshes, parent) => {
+  if (meshes.length < 2) return null
+  const first = meshes[0]
+  const geometries = []
+  try {
+    meshes.forEach(mesh => {
+      const geometry = mesh.geometry.clone()
+      geometry.applyMatrix4(mesh.matrix)
+      geometry.clearGroups()
+      geometries.push(geometry)
+    })
+    const mergedGeometry = mergeGeometries(geometries, false)
+    if (!mergedGeometry) {
+      geometries.forEach(geometry => geometry.dispose())
+      return null
+    }
+    const merged = first.isSkinnedMesh
+      ? new THREE.SkinnedMesh(mergedGeometry, first.material)
+      : new THREE.Mesh(mergedGeometry, first.material)
+    merged.name = `${parent.name || "hero"}:merged:${first.material.name || first.material.type}`
+    merged.castShadow = first.castShadow
+    merged.receiveShadow = first.receiveShadow
+    if (first.isSkinnedMesh) merged.bind(first.skeleton, first.bindMatrix)
+    parent.add(merged)
+    meshes.forEach(mesh => {
+      mesh.parent?.remove(mesh)
+      if (mesh !== first) {
+        const material = mesh.material
+        if (material && material !== first.material) material.dispose?.()
+      }
+    })
+    return merged
+  } catch {
+    geometries.forEach(geometry => geometry.dispose())
+    return null
+  }
+}
+
+/**
+ * Collapse the many tiny authored parts exported by some heroes into meshes
+ * that share one material, parent transform, and (when skinned) skeleton.
+ * Skin attributes are preserved, so the GLB animation still drives every
+ * vertex. Attachments and spawn helpers stay separate because runtime code
+ * addresses them by node name/role.
+ */
+export const mergeHeroRenderParts = root => {
+  if (!root) return {before: 0, after: 0, mergedGroups: 0}
+  const meshes = []
+  root.traverse(node => { if (canMergeMesh(node)) meshes.push(node) })
+  const before = meshes.length
+  const groups = new Map()
+  meshes.forEach(mesh => {
+    const parent = mesh.parent
+    // GLTFLoader may create a different Skeleton wrapper for each mesh while
+    // all wrappers still reference the same bone objects. Group by the bones,
+    // not by Skeleton.uuid, or the exporter fragmentation survives merging.
+    const skeletonKey = mesh.isSkinnedMesh
+      ? mesh.skeleton?.bones?.map(bone => bone.uuid).join(",") || "no-skeleton"
+      : "static"
+    const key = `${parent?.uuid || "root"}|${skeletonKey}|${materialKey(mesh.material)}|${geometryKey(mesh.geometry)}`
+    const group = groups.get(key)
+    if (group) group.push(mesh)
+    else groups.set(key, [mesh])
+  })
+  let mergedGroups = 0
+  groups.forEach(group => {
+    if (mergeMeshGroup(group, group[0].parent)) mergedGroups += 1
+  })
+  let after = 0
+  root.traverse(node => { if (node.isMesh) after += 1 })
+  return {before, after, mergedGroups}
+}
 
 export const normalizeHeroHeight = (root, targetHeight = 2.45) => {
   const excludedRoles = new Set([
@@ -128,7 +252,7 @@ export const attachCompanionCloud = (heroRoot, cloudScene) => {
   if (Number.isFinite(extent) && extent > .001) cloud.scale.multiplyScalar(.64 / extent)
   cloud.updateMatrixWorld(true)
   const centerWorld = new THREE.Box3().setFromObject(cloud, true).getCenter(new THREE.Vector3())
-  const targetWorld = target.localToWorld(new THREE.Vector3(.58, 1.32, -.10))
+  const targetWorld = target.localToWorld(new THREE.Vector3(.90, 1.82, -.10))
   cloud.position.add(cloud.parent.worldToLocal(targetWorld).sub(cloud.parent.worldToLocal(centerWorld)))
   cloud.userData.attachmentRole = "companion-cloud"
   return cloud
@@ -142,7 +266,12 @@ export class AssetRegistry {
     this.heroLoads = new Map()
     this.companionLoads = new Map()
     this.readyHeroes = new Set()
+    this.readyCompanions = new Set()
+    this.heroAssets = new Map()
+    this.companionAssets = new Map()
     this.environmentLoads = new Map()
+    this.readyEnvironments = new Set()
+    this.environmentAssets = new Map()
   }
 
   hasHero(name) {
@@ -157,15 +286,21 @@ export class AssetRegistry {
     const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
     const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
     if (!asset?.available) return Promise.resolve(null)
+    if (asset.procedural) {
+      this.readyHeroes.add(asset.id)
+      return Promise.resolve(null)
+    }
     if (!this.heroLoads.has(asset.id)) {
       const pending = this.load(asset.url)
         .then(gltf => {
           this.readyHeroes.add(asset.id)
+          this.heroAssets.set(asset.id, gltf)
           return gltf
         })
         .catch(error => {
           this.heroLoads.delete(asset.id)
           this.readyHeroes.delete(asset.id)
+          this.heroAssets.delete(asset.id)
           throw error
         })
       this.heroLoads.set(asset.id, pending)
@@ -178,10 +313,18 @@ export class AssetRegistry {
     const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
     if (!asset?.companionUrl) return Promise.resolve(null)
     if (!this.companionLoads.has(asset.id)) {
-      const pending = this.load(asset.companionUrl).catch(error => {
-        this.companionLoads.delete(asset.id)
-        throw error
-      })
+      const pending = this.load(asset.companionUrl)
+        .then(gltf => {
+          this.readyCompanions.add(asset.id)
+          this.companionAssets.set(asset.id, gltf)
+          return gltf
+        })
+        .catch(error => {
+          this.companionLoads.delete(asset.id)
+          this.readyCompanions.delete(asset.id)
+          this.companionAssets.delete(asset.id)
+          throw error
+        })
       this.companionLoads.set(asset.id, pending)
     }
     return this.companionLoads.get(asset.id)
@@ -190,13 +333,28 @@ export class AssetRegistry {
   isHeroReady(name) {
     const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
     const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
-    return Boolean(asset?.available && this.readyHeroes.has(asset.id))
+    return Boolean(asset?.available && (asset.procedural || this.readyHeroes.has(asset.id)) &&
+      (!asset.companionUrl || this.readyCompanions.has(asset.id)))
+  }
+
+  isEnvironmentReady(visual) {
+    const asset = this.environmentManifest[visual]
+    return Boolean(asset?.available && this.readyEnvironments.has(visual))
+  }
+
+  areBattleAssetsReady() {
+    const heroesReady = Object.keys(this.manifest)
+      .filter(name => this.hasHero(name))
+      .every(name => this.isHeroReady(name))
+    return heroesReady
   }
 
   async preloadHeroes(names, concurrency = 2) {
     const queue = []
     for (const name of [...new Set(names)].filter(heroName => this.hasHero(heroName))) {
       queue.push({label: `${name} model`, load: () => this.loadHero(name)})
+      const asset = this.manifest[name]
+      if (asset.companionUrl) queue.push({label: `${name} companion`, load: () => this.loadHeroCompanion(name)})
     }
     const worker = async () => {
       while (queue.length) {
@@ -216,14 +374,37 @@ export class AssetRegistry {
     return this.preloadHeroes(Object.keys(this.manifest), concurrency)
   }
 
-  async instantiateHero(name) {
-    const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
+  async preloadEnvironments(names = Object.keys(this.environmentManifest), concurrency = 3) {
+    const queue = [...new Set(names)]
+      .filter(visual => this.hasEnvironment(visual))
+      .map(visual => ({label: `${visual} environment`, load: () => this.loadEnvironment(visual)}))
+    const worker = async () => {
+      while (queue.length) {
+        const task = queue.shift()
+        try {
+          await task.load()
+        } catch (error) {
+          console.warn(`Could not preload environment GLB: ${task.label}`, error)
+        }
+      }
+    }
+    const workerCount = Math.min(Math.max(1, concurrency), queue.length)
+    await Promise.all(Array.from({length: workerCount}, worker))
+  }
+
+  preloadBattleAssets(concurrency = 3) {
+    return this.preloadHeroes(Object.keys(this.manifest), concurrency)
+  }
+
+  createHeroInstance(resolvedName, gltf, companionGltf) {
     const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
-    const [gltf, companionGltf] = await Promise.all([
-      this.loadHero(resolvedName),
-      this.loadHeroCompanion(resolvedName),
-    ])
-    if (!gltf) return null
+    if (asset?.procedural && typeof asset.factory === "function") {
+      const root = asset.factory()
+      root.scale.multiplyScalar(asset.scale || 1)
+      root.rotation.y = asset.rotationOffset || 0
+      return {root, animations: [], companionAnimations: [], asset}
+    }
+    if (!gltf || !asset) return null
     const animations = gltf.animations || []
     const root = clone(gltf.scene)
     root.traverse(child => {
@@ -247,23 +428,57 @@ export class AssetRegistry {
       attachCompanionCloud(root, cloudRoot)
     }
     normalizeHeroHeight(root, asset.targetHeight || 2.45)
+    mergeHeroRenderParts(root)
     root.scale.multiplyScalar(asset.scale)
     root.position.y += asset.groundOffset || 0
     root.rotation.y = asset.rotationOffset
     return {root, animations, companionAnimations: companionGltf?.animations || [], asset}
   }
 
-  async instantiateEnvironment(visual) {
+  instantiateReadyHero(name) {
+    const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
+    const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
+    if (!asset?.available || !this.isHeroReady(resolvedName)) return null
+    return this.createHeroInstance(
+      resolvedName,
+      this.heroAssets.get(asset.id),
+      asset.companionUrl ? this.companionAssets.get(asset.id) : null,
+    )
+  }
+
+  async instantiateHero(name) {
+    const resolvedName = this.manifest[name] ? name : resolveHeroName(name)
+    const [gltf, companionGltf] = await Promise.all([
+      this.loadHero(resolvedName),
+      this.loadHeroCompanion(resolvedName),
+    ])
+    return this.createHeroInstance(resolvedName, gltf, companionGltf)
+  }
+
+  loadEnvironment(visual) {
     const asset = this.environmentManifest[visual]
-    if (!asset?.available) return null
+    if (!asset?.available) return Promise.resolve(null)
     if (!this.environmentLoads.has(visual)) {
-      const pending = this.load(asset.url).catch(error => {
-        this.environmentLoads.delete(visual)
-        throw error
-      })
+      const pending = this.load(asset.url)
+        .then(gltf => {
+          this.readyEnvironments.add(visual)
+          this.environmentAssets.set(visual, gltf)
+          return gltf
+        })
+        .catch(error => {
+          this.environmentLoads.delete(visual)
+          this.readyEnvironments.delete(visual)
+          this.environmentAssets.delete(visual)
+          throw error
+        })
       this.environmentLoads.set(visual, pending)
     }
-    const gltf = await this.environmentLoads.get(visual)
+    return this.environmentLoads.get(visual)
+  }
+
+  createEnvironmentInstance(visual, gltf) {
+    const asset = this.environmentManifest[visual]
+    if (!asset || !gltf) return null
     const sourceRoot = clone(gltf.scene)
     const root = asset.includeNodes?.length
       ? this.extractEnvironmentNodes(sourceRoot, asset.includeNodes)
@@ -273,6 +488,16 @@ export class AssetRegistry {
     normalizeEnvironmentRoot(root, asset.targetHeight)
     applyEnvironmentMaterial(root, asset)
     return {root, animations: gltf.animations || [], asset}
+  }
+
+  instantiateReadyEnvironment(visual) {
+    if (!this.isEnvironmentReady(visual)) return null
+    return this.createEnvironmentInstance(visual, this.environmentAssets.get(visual))
+  }
+
+  async instantiateEnvironment(visual) {
+    const gltf = await this.loadEnvironment(visual)
+    return this.createEnvironmentInstance(visual, gltf)
   }
 
   extractEnvironmentNodes(root, names) {
@@ -299,7 +524,12 @@ export class AssetRegistry {
     this.heroLoads.clear()
     this.companionLoads.clear()
     this.readyHeroes.clear()
+    this.readyCompanions.clear()
+    this.heroAssets.clear()
+    this.companionAssets.clear()
     this.environmentLoads.clear()
+    this.readyEnvironments.clear()
+    this.environmentAssets.clear()
   }
 }
 

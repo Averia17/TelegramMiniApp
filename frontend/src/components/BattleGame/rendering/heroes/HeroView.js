@@ -1,5 +1,4 @@
 import * as THREE from "three"
-import {createHeroModel} from "../three/HeroModelFactory"
 import {assetRegistry} from "../assets/AssetRegistry"
 import {GLBHeroController} from "./GLBHeroController"
 import {worldToScene} from "../shared/coordinates"
@@ -8,33 +7,27 @@ import {createContactShadow} from "../shared/materials"
 import {advanceSmoothTurn, blendAngle} from "./turning"
 import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG, RUNTIME_ANIMATION_REFERENCE_SPEED} from "../../heroesConfig"
 import {isInsideConcealment} from "../shared/concealment.js"
+import {formatHeroHealthLabel, getHeroHealthFraction} from "./healthBadge.js"
 import {
   BUSH_HERO_OPACITY,
   getBushConcealmentMix,
 } from "./BushConcealment"
+import {createClownTaunt} from "./tauntVisuals.js"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const blend = (speed, delta) => 1 - Math.exp(-speed * delta)
 const heroSpeed = heroName => HEROES_CONFIG.find(hero => hero.name === heroName)?.speed || ANIMATION_REFERENCE_SPEED
 
-const waitForHeroUpgradeIdle = () => new Promise(resolve => {
-  if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
-    window.requestIdleCallback(resolve, {timeout: 800})
-    return
-  }
-  setTimeout(resolve, 0)
-})
-
 const createLabel = state => {
   const canvas = document.createElement("canvas")
   canvas.width = 256
-  canvas.height = 64
+  canvas.height = 80
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   const material = new THREE.SpriteMaterial({map: texture, transparent: true, depthTest: false, depthWrite: false})
   const sprite = new THREE.Sprite(material)
-  sprite.scale.set(4.8, 1.2, 1)
-  sprite.position.y = 4.35
+  sprite.scale.set(4.8, 1.45, 1)
+  sprite.position.y = 4.5
   sprite.renderOrder = 20
   sprite.userData = {canvas, texture, signature: ""}
   updateLabel(sprite, state)
@@ -48,30 +41,24 @@ const updateLabel = (sprite, state) => {
   sprite.userData.signature = signature
   const {canvas, texture} = sprite.userData
   const context = canvas.getContext("2d")
-  const health = clamp((state.lives || 0) / (state.maxLives || 1), 0, 1)
+  const health = getHeroHealthFraction(state)
   context.clearRect(0, 0, canvas.width, canvas.height)
   context.textAlign = "center"
-  context.font = "800 22px Arial"
-  context.lineWidth = 7
-  context.strokeStyle = "#17213b"
-  context.strokeText(state.name || state.hero || "Hero", 128, 24)
-  context.fillStyle = "#fff"
-  context.fillText(state.name || state.hero || "Hero", 128, 24)
-  context.fillStyle = "#151d34"
-  context.fillRect(46, 37, 164, 16)
-  context.fillStyle = health < 0.35 ? "#ff4b57" : health < 0.65 ? "#ffc934" : "#55df57"
-  context.fillRect(51, 42, 154 * health, 6)
-  context.textAlign = "center"
   context.textBaseline = "middle"
-  context.font = "900 12px Arial"
-  context.lineWidth = 3
-  context.strokeStyle = "#151d34"
-  const currentHealth = Math.max(0, Math.round(Number(state.lives) || 0))
-  const maximumHealth = Math.max(1, Math.round(Number(state.maxLives) || 1))
-  const healthText = `${currentHealth} / ${maximumHealth}`
-  context.strokeText(healthText, 128, 46)
+  context.font = "800 21px Arial"
+  context.lineWidth = 6
+  context.strokeStyle = "#17213b"
+  context.strokeText(state.name || state.hero || "Hero", 128, 16)
   context.fillStyle = "#fff"
-  context.fillText(healthText, 128, 46)
+  context.fillText(state.name || state.hero || "Hero", 128, 16)
+  context.font = "900 14px Arial"
+  const healthText = formatHeroHealthLabel(state)
+  context.strokeText(healthText, 128, 34)
+  context.fillText(healthText, 128, 34)
+  context.fillStyle = "#151d34"
+  context.fillRect(38, 47, 180, 17)
+  context.fillStyle = health < 0.35 ? "#ff4b57" : health < 0.65 ? "#ffc934" : "#55df57"
+  context.fillRect(43, 52, 170 * health, 7)
   texture.needsUpdate = true
 }
 
@@ -119,18 +106,22 @@ export class HeroView {
   constructor(id, state, simpleMaterials = false) {
     this.id = id
     this.simpleMaterials = simpleMaterials
+    const readyInstance = assetRegistry.instantiateReadyHero(state.hero)
     this.group = new THREE.Group()
     this.shadow = simpleMaterials ? null : createContactShadow(1.05)
-    this.model = createHeroModel(state.hero, {simple: simpleMaterials})
-    this.model.scale.setScalar(0.92)
+    this.model = readyInstance ? readyInstance.root : new THREE.Group()
     this.modelMaterials = collectMaterials(this.model)
     this.hitMaterials = collectHitMaterials(this.modelMaterials)
     this.modelOpacity = 1
-    this.label = simpleMaterials ? null : createLabel(state)
+    // HP is gameplay-critical information, so keep the badge visible even on
+    // the low-quality rendering path.
+    this.label = createLabel(state)
     this.deathBurst = createDeathBurst(state.hero)
+    this.taunt = createClownTaunt()
+    this.tauntRemaining = 0
     this.bushConcealmentMix = 0
     this.deathTime = 0
-    this.group.add(this.model, this.deathBurst)
+    this.group.add(this.model, this.deathBurst, this.taunt)
     if (this.shadow) this.group.add(this.shadow)
     if (this.label) this.group.add(this.label)
     this.x = this.targetX = state.x
@@ -146,48 +137,36 @@ export class HeroView {
     this.recoil = 0
     this.hit = 0
     this.animation = null
-    this.usingFallback = true
     this.disposed = false
     this.result = null
     this.state = state
     this.group.position.copy(worldToScene(state.x, state.y))
-    this.loadGlb(state.hero)
+    if (readyInstance) this.installGlbInstance(readyInstance, state.hero)
   }
 
-  async loadGlb(heroName) {
-    // Keep the fallback visible while the authored asset is prepared. The
-    // renderer may use constrained materials, but asset fidelity is not a
-    // quality setting: a live battle must still converge to the selected GLB.
-    if (!assetRegistry.hasHero(heroName)) return
-    try {
-      await waitForHeroUpgradeIdle()
-      if (this.disposed) return
-      const instance = await assetRegistry.instantiateHero(heroName)
-      if (!instance) return
-      if (this.disposed) {
-        disposeObjectTree(instance.root)
-        return
-      }
-      const previous = this.model
-      this.model = instance.root
-      this.modelMaterials = collectMaterials(this.model)
-      this.hitMaterials = collectHitMaterials(this.modelMaterials)
-      this.modelOpacity = 1
-      this.animation = new GLBHeroController(instance.root, instance.animations, instance.asset.clips, {
-        companionAnimations: instance.companionAnimations,
-        heroName,
-        attackPulse: this.state.attackPulse,
-        superPulse: this.state.superPulse,
-        gadgetPulse: this.state.gadgetPulse,
-        spawnPulse: this.spawnPulse,
-        fullBodySuper: true,
-      })
+  isReady() {
+    return Boolean(this.animation && !this.disposed)
+  }
+
+  installGlbInstance(instance, heroName) {
+    const previous = this.model
+    this.model = instance.root
+    this.modelMaterials = collectMaterials(this.model)
+    this.hitMaterials = collectHitMaterials(this.modelMaterials)
+    this.modelOpacity = 1
+    this.animation = new GLBHeroController(instance.root, instance.animations, instance.asset.clips, {
+      companionAnimations: instance.companionAnimations,
+      heroName,
+      attackPulse: this.state.attackPulse,
+      superPulse: this.state.superPulse,
+      gadgetPulse: this.state.gadgetPulse,
+      spawnPulse: this.spawnPulse,
+      fullBodySuper: true,
+    })
+    if (previous !== instance.root) {
       this.group.remove(previous)
       disposeObjectTree(previous)
       this.group.add(this.model)
-      this.usingFallback = false
-    } catch (error) {
-      console.warn(`Could not load hero GLB: ${heroName}`, error)
     }
   }
 
@@ -195,7 +174,10 @@ export class HeroView {
     this.state = state
     this.targetX = state.x
     this.targetY = state.y
-    if (networkSmoothed) {
+    if (!networkSmoothed) {
+      // Non-network callers may intentionally hard-reset a view (for example
+      // a local preview or a respawn). Network presentation already has a
+      // render target and must let update() bridge snapshot corrections.
       this.x = state.x
       this.y = state.y
     }
@@ -222,27 +204,38 @@ export class HeroView {
     this.state = state
     this.targetX = state.x
     this.targetY = state.y
+    updateLabel(this.label, state)
   }
 
   setLowQuality() {
-    if (this.usingFallback) return
     this.simpleMaterials = true
-    // Lower the cost of the scene around the authored model without replacing
-    // the selected hero with a procedural approximation.
     if (this.shadow) {
       this.group.remove(this.shadow)
       disposeObjectTree(this.shadow)
       this.shadow = null
     }
-    if (this.label) {
-      this.group.remove(this.label)
-      disposeObjectTree(this.label)
-      this.label = null
-    }
+  }
+
+  setShadowCasting(enabled) {
+    const next = Boolean(enabled)
+    if (this.shadowCasting === next) return
+    this.shadowCasting = next
+    this.model.traverse(child => {
+      if (child.isMesh) child.castShadow = next
+    })
   }
 
   setResult(result) {
     this.result = result
+  }
+
+  showTaunt(tauntId = "clown_laugh") {
+    if (tauntId !== "clown_laugh" || this.disposed) return
+    this.tauntRemaining = 1.7
+    this.taunt.visible = true
+    this.taunt.position.y = 5.5
+    this.taunt.rotation.set(0, 0, 0)
+    this.taunt.scale.setScalar(.15)
   }
 
   update(delta, time, inBush) {
@@ -320,10 +313,6 @@ export class HeroView {
       })
       this.model.rotation.y += this.animation.attackSwingYaw
       this.animation.setHitFlash(this.hit)
-    } else {
-      this.model.visible = this.state.lives > 0
-      const legDelta = this.bodyAngle - this.aimAngle
-      this.model.userData.bones?.legs?.forEach(leg => { leg.rotation.y = legDelta })
     }
     if (this.deathTime > 0) {
       this.deathTime = Math.max(0, this.deathTime - delta)
@@ -336,6 +325,16 @@ export class HeroView {
       })
       this.deathBurst.visible = this.deathTime > 0
     }
+    if (this.tauntRemaining > 0) {
+      this.tauntRemaining = Math.max(0, this.tauntRemaining - delta)
+      const elapsed = 1.7 - this.tauntRemaining
+      const entrance = Math.min(1, elapsed / .18)
+      const exit = this.tauntRemaining < .28 ? this.tauntRemaining / .28 : 1
+      this.taunt.visible = this.tauntRemaining > 0
+      this.taunt.position.y = 5.5 + Math.sin(elapsed * 6) * .12
+      this.taunt.rotation.y += delta * 3.8
+      this.taunt.scale.setScalar((.92 + .12 * Math.sin(elapsed * 8)) * entrance * exit)
+    }
     this.recoil *= Math.exp(-15 * delta)
     this.hit *= Math.exp(-12 * delta)
     this.bushConcealmentMix = getBushConcealmentMix(this.bushConcealmentMix, inBush, delta)
@@ -346,9 +345,6 @@ export class HeroView {
     }
     if (this.shadow) this.shadow.material.opacity = THREE.MathUtils.lerp(0.34, 0.18, this.bushConcealmentMix)
     if (this.label) this.label.material.opacity = 1
-    if (!this.animation) {
-      for (const material of this.hitMaterials) material.uniforms.hit.value = this.hit
-    }
   }
 
   dispose() {

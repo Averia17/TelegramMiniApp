@@ -1,6 +1,6 @@
 import logging
 
-from auth import AuthenticatedUser, current_user
+from auth import AuthenticatedUser, current_user, require_shop_service
 from consumers import send_kafka_message
 from exeptions import InternalError, PaymentFailedError
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -16,6 +16,16 @@ router = APIRouter(prefix="/products")
 @router.get("/")
 async def get_products(repo: RequestsRepo = Depends(get_repo)):
     return await repo.products.get_all()
+
+
+@router.get("/{product_id}/price", dependencies=[Depends(require_shop_service)])
+async def get_product_price(product_id: int, repo: RequestsRepo = Depends(get_repo)):
+    product = await repo.products.get_by_id(product_id)
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Product not found"
+        )
+    return {"product_id": product.product_id, "price": float(product.price)}
 
 
 @router.post("/{product_id}/buy")

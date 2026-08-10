@@ -277,22 +277,72 @@ func TestSuddenDeathLeavesOneSurvivorWhenATickWouldKillEveryone(t *testing.T) {
 	}
 }
 
-func TestUpdateRegenerationUsesHeroRate(t *testing.T) {
+func TestUpdateRegenerationAppliesBatchedFifteenPercentPulse(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("regen", "Regen", "Shelly")
+	gs.PlayerAdd("regen", "Regen", "Needle")
 	p := gs.Players["regen"]
 	p.Lives = p.MaxLives / 2
-	p.LastDamageAt = time.Now().Add(-4 * time.Second).UnixMilli()
+	now := int64(10_000_000)
+	p.LastDamageAt = now - int64(4*time.Second/time.Millisecond)
 	start := p.Lives
 
-	for range 60 {
-		gs.updateRegeneration()
+	gs.updateRegenerationAt(now)
+
+	want := int(math.Round(float64(p.MaxLives) * .15))
+	if got := p.Lives - start; got != want {
+		t.Fatalf("regenerated %d HP in one pulse, want %d", got, want)
+	}
+}
+
+func TestUpdateRegenerationWaitsBetweenPulsesAndAfterDamage(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("regen", "Regen", "Needle")
+	p := gs.Players["regen"]
+	p.Lives = p.MaxLives / 2
+	now := int64(10_000_000)
+	p.LastDamageAt = now - int64(regenerationCooldown/time.Millisecond)
+
+	gs.updateRegenerationAt(now)
+	first := p.Lives
+	gs.updateRegenerationAt(now + int64(regenerationInterval/time.Millisecond) - 1)
+	if p.Lives != first {
+		t.Fatalf("regenerated during the interval: got %d, want %d", p.Lives, first)
+	}
+	gs.updateRegenerationAt(now + int64(regenerationInterval/time.Millisecond))
+	if p.Lives <= first {
+		t.Fatalf("did not regenerate on the next pulse: got %d, first %d", p.Lives, first)
 	}
 
-	want := int(float64(p.MaxLives) * p.RegenRate)
+	p.Lives = p.MaxLives / 2
+	p.LastRegenAt = now
+	p.LastDamageAt = now + 1
+	gs.updateRegenerationAt(now + int64(regenerationInterval/time.Millisecond))
+	if p.Lives != p.MaxLives/2 {
+		t.Fatalf("regenerated before the post-damage cooldown: got %d", p.Lives)
+	}
+}
+
+func TestUpdateRegenerationKeepsTwentyFivePercentPulseInConcealment(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("regen", "Regen", "Needle")
+	gs.PlayerAdd("enemy", "Enemy", "Mandy")
+	gs.State = GameStateGame
+	p, enemy := gs.Players["regen"], gs.Players["enemy"]
+	p.X, p.Y = 110, 110
+	enemy.X, enemy.Y = 600, 600
+	p.Lives = p.MaxLives / 2
+	now := int64(10_000_000)
+	p.LastDamageAt = now - int64(4*time.Second/time.Millisecond)
+	gs.Map.Collisions = []*geometry.WallTile{{MinX: 100, MinY: 100, MaxX: 140, MaxY: 140, Type: "bush", BushGroup: 1}}
+
+	start := p.Lives
+	gs.updateRegenerationAt(now)
+
+	want := int(math.Round(float64(p.MaxLives) * .25))
 	if got := p.Lives - start; got != want {
-		t.Fatalf("regenerated %d HP in one second, want %d", got, want)
+		t.Fatalf("regenerated %d HP in concealment, want %d", got, want)
 	}
 }
 
@@ -543,6 +593,44 @@ func TestMovementMatchesLocalEnginePixelsPerSecond(t *testing.T) {
 	want := 256.0 + p.Speed/60.0
 	if math.Abs(p.X-want) > .01 {
 		t.Fatalf("x = %.3f, want %.3f (%.0f px/s at 60 Hz)", p.X, want, p.Speed)
+	}
+}
+
+func TestMovementUsesElapsedServerTimeAfterDelayedTick(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("p1", "Alice", "Shelly")
+	p := gs.Players["p1"]
+	p.X, p.Y = 256, 256
+
+	gs.playerMove("p1", 100, 1, 0)
+	gs.updatePlayerMovement(100 * time.Millisecond)
+
+	want := 256.0 + p.Speed*0.1
+	if math.Abs(p.X-want) > .01 {
+		t.Fatalf("x = %.3f, want %.3f after a 100ms tick (%.0f px/s)", p.X, want, p.Speed)
+	}
+}
+
+func TestDelayedTickDoesNotApplyNewDirectionRetroactively(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("p1", "Alice", "Shelly")
+	p := gs.Players["p1"]
+	p.X, p.Y = 256, 256
+
+	gs.PlayerPushAction(Action{PlayerId: "p1", Type: "move", Ts: 100, Value: &MoveValue{X: 0, Y: -1}})
+	gs.UpdateWithDelta(time.Second / 60)
+	beforeTurnX, beforeTurnY := p.X, p.Y
+
+	gs.PlayerPushAction(Action{PlayerId: "p1", Type: "move", Ts: 200, Value: &MoveValue{X: -1, Y: 0}})
+	gs.UpdateWithDelta(100 * time.Millisecond)
+
+	if p.X < beforeTurnX-p.Speed/60*1.1 {
+		t.Fatalf("delayed direction change moved left by %.2f px, want at most one tick", beforeTurnX-p.X)
+	}
+	if p.Y >= beforeTurnY {
+		t.Fatalf("delayed tick did not preserve the previous movement direction: y=%.2f before=%.2f", p.Y, beforeTurnY)
 	}
 }
 

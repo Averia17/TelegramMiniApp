@@ -79,10 +79,14 @@ func TestPlayerMoveZeroDirection(t *testing.T) {
 
 func TestPlayerHurtHeal(t *testing.T) {
 	p := newTestPlayer("p1", "Test", 0, 0, 16, 3, "")
+	p.LastRegenAt = 123
 
 	p.Hurt()
 	if p.Lives != 2 {
 		t.Errorf("After Hurt: Lives = %v, want 2", p.Lives)
+	}
+	if p.LastRegenAt != 0 {
+		t.Errorf("After Hurt: LastRegenAt = %v, want 0", p.LastRegenAt)
 	}
 
 	p.Heal()

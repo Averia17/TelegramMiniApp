@@ -10,7 +10,13 @@ import {
   resolveHeroName,
   resolveEnvironmentVisual,
 } from "../src/components/BattleGame/rendering/assets/assetManifest.js"
-import {AssetRegistry, assetRegistry, normalizeEnvironmentRoot, normalizeHeroHeight} from "../src/components/BattleGame/rendering/assets/AssetRegistry.js"
+import {
+  AssetRegistry,
+  assetRegistry,
+  mergeHeroRenderParts,
+  normalizeEnvironmentRoot,
+  normalizeHeroHeight,
+} from "../src/components/BattleGame/rendering/assets/AssetRegistry.js"
 import {GLBHeroController} from "../src/components/BattleGame/rendering/heroes/GLBHeroController.js"
 import {turnTowardsAngle} from "../src/components/BattleGame/rendering/heroes/turning.js"
 import {
@@ -40,10 +46,12 @@ import {
   MapRenderer,
   createStormRingGeometry,
   selectEnvironmentUpgradeWalls,
+  shouldRefreshEnvironmentFocus,
   shouldBatchEnvironmentVisual,
   smoothStormRadius,
 } from "../src/components/BattleGame/rendering/map/MapRenderer.js"
 import {GroundRenderer} from "../src/components/BattleGame/rendering/map/GroundRenderer.js"
+import {createProp} from "../src/components/BattleGame/rendering/map/PropRenderer.js"
 import {PickupRenderer} from "../src/components/BattleGame/rendering/map/PickupRenderer.js"
 import {EffectRenderer} from "../src/components/BattleGame/rendering/combat/EffectRenderer.js"
 import {getIslandPhaseIndex, getIslandPhaseProgress} from "../src/components/BattleGame/phaseVisuals.js"
@@ -51,10 +59,12 @@ import {
   getBattlePlayerCount,
   getBattleRewardMessage,
   getPlayerBattleStats,
+  getPresentedBattleResult,
   getStateBattleResult,
   getSynchronizedBattleView,
 } from "../src/components/BattleGame/battleOutcome.js"
 import {isAlivePlayerState} from "../src/components/BattleGame/rendering/heroes/playerVisibility.js"
+import {formatHeroHealthLabel, getHeroHealthFraction} from "../src/components/BattleGame/rendering/heroes/healthBadge.js"
 import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG, RUNTIME_ANIMATION_REFERENCE_SPEED} from "../src/components/BattleGame/heroesConfig.js"
 import {
   createEnvironmentModel,
@@ -128,10 +138,10 @@ test("bush concealment softly fades the brawler without adding hero-bound foliag
   assert.equal(getBushConcealmentMix(1, false, .1) < 1, true)
 })
 
-test("attack direction guides never stay visible while aiming", () => {
+test("melee attack range stays visible as a static, full-size semicircle", () => {
   const root = new THREE.Group()
   const aim = new AimRenderer(root)
-  aim.update({
+  const player = {
     aiming: true,
     x: 100,
     y: 200,
@@ -140,8 +150,17 @@ test("attack direction guides never stay visible while aiming", () => {
     attackRange: 105,
     attackHalfArcDegrees: 55,
     color: "#B88CFF",
-  })
-  assert.equal(aim.root.visible, false)
+  }
+  aim.update(player)
+  assert.equal(aim.root.visible, true)
+  assert.equal(aim.meleeArea.visible, true)
+  assert.equal(aim.line.visible, false)
+  assert.equal(aim.meleeArea.userData.halfArcDegrees, 55)
+  assert.equal(Math.abs(aim.meleeArea.scale.x - 105 * WORLD_SCALE) < .001, true)
+
+  const firstScale = aim.meleeArea.scale.clone()
+  aim.update({...player, rotation: 2.2})
+  assert.deepEqual(aim.meleeArea.scale.toArray(), firstScale.toArray())
 
   aim.update({
     aiming: true,
@@ -152,15 +171,17 @@ test("attack direction guides never stay visible while aiming", () => {
     attackRange: 760,
     color: "#62C8FF",
   })
-  assert.equal(aim.root.visible, false)
+  assert.equal(aim.root.visible, true)
+  assert.equal(aim.meleeArea.visible, false)
+  assert.equal(aim.line.visible, true)
+  assert.equal(aim.target.visible, true)
 })
 
-test("attack direction guides stay hidden after an attack pulse", () => {
+test("attack range guides hide when aiming ends", () => {
   const root = new THREE.Group()
   const aim = new AimRenderer(root)
   const base = {
     aiming: false,
-    attackPulse: 1,
     x: 100,
     y: 200,
     rotation: .4,
@@ -169,9 +190,27 @@ test("attack direction guides stay hidden after an attack pulse", () => {
     attackHalfArcDegrees: 48,
     color: "#FFB33E",
   }
-  aim.update({...base, attackPulse: 0})
-  aim.update(base, .016)
+  aim.update({...base, aiming: true})
+  aim.update(base)
   assert.equal(aim.root.visible, false)
+})
+
+test("screen aim mapping keeps the full world direction instead of compressing it", () => {
+  const camera = new CameraRig()
+  const player = {x: 512, y: 384}
+  camera.resize(1000, 700)
+  camera.follow(player, {width: 1024, height: 768}, 1 / 60)
+  camera.camera.updateMatrixWorld(true)
+
+  for (const angle of [0, Math.PI / 4, Math.PI / 2, Math.PI, -Math.PI / 2, -Math.PI / 4]) {
+    const target = camera.worldToScreen(
+      player.x + Math.cos(angle) * 100,
+      player.y + Math.sin(angle) * 100,
+    )
+    const resolved = camera.screenToAimAngle(target.x, target.y, player)
+    const error = Math.atan2(Math.sin(resolved - angle), Math.cos(resolved - angle))
+    assert.ok(Math.abs(error) < .001, `angle ${angle} resolved to ${resolved}`)
+  }
 })
 
 test("server bats are rendered, animated, and removed with the monster snapshot", () => {
@@ -257,6 +296,13 @@ test("the phase HUD no longer advertises a landing phase", async () => {
   const source = await readFile(projectFile("src/components/BattleGame/BattleGameUI.jsx"), "utf8")
   assert.doesNotMatch(source, /\blanding:\s*\{/)
   assert.match(source, /hunt:\s*\{/)
+})
+
+test("hero health badges format current/max HP and clamp the progress fraction", () => {
+  assert.equal(formatHeroHealthLabel({lives: 3708, maxLives: 6700}), "3708 / 6700")
+  assert.equal(getHeroHealthFraction({lives: 3350, maxLives: 6700}), .5)
+  assert.equal(getHeroHealthFraction({lives: 8000, maxLives: 6700}), 1)
+  assert.equal(getHeroHealthFraction({lives: -10, maxLives: 6700}), 0)
 })
 
 test("battle minimap keeps static obstacle DOM out of the moving HUD rerender", async () => {
@@ -500,7 +546,7 @@ test("camera keeps the last hero position when the local hero dies", () => {
 })
 
 test("the hero manifest uses self-contained base GLBs", () => {
-  assert.deepEqual(Object.keys(HERO_ASSETS), ["Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi"])
+  assert.deepEqual(Object.keys(HERO_ASSETS), ["Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi", "Katty"])
   for (const name of Object.keys(HERO_ASSETS)) {
     const asset = getHeroAsset(name)
     assert.equal(asset.id, name)
@@ -512,7 +558,7 @@ test("the hero manifest uses self-contained base GLBs", () => {
     assert.equal("eventAnimations" in asset, false)
     assert.equal("weaponUrl" in asset, false)
     assert.equal("weaponAttachments" in asset, false)
-    assert.match(asset.url, /\/assets\/heroes\/output_heroes\/[^/]+_base\.glb$/)
+    if (!asset.procedural) assert.match(asset.url, /\/assets\/heroes\/output_heroes\/[^/]+_base\.glb$/)
   }
   for (const name of Object.keys(HERO_ASSETS)) assert.equal(HERO_ASSETS[name].available, true)
   assert.equal(HERO_ASSETS.Needle.url, "/assets/heroes/output_heroes/needle_base.glb")
@@ -526,6 +572,7 @@ test("hero asset resolution keeps canonical names and handles unknown names safe
   assert.equal(resolveHeroName("brock-zeus"), "Brock Zeus")
   assert.equal(resolveHeroName("wukong-mico"), "Wukong Mico")
   assert.equal(resolveHeroName("persephone-lumi"), "Persephone Lumi")
+  assert.equal(resolveHeroName("katty"), "Katty")
   assert.equal(resolveHeroName("missing-hero"), "Mandy")
 })
 
@@ -580,10 +627,14 @@ test("battle renderer does not rescan compact map wrappers every snapshot", asyn
 
 test("battle loading stays visible until the first arena frame is rendered", async () => {
   const source = await readFile(projectFile("src/components/BattleGame/BattleGame.jsx"), "utf8")
+  const rendererSource = await readFile(projectFile("src/components/BattleGame/rendering/three/ThreeBattleRenderer.js"), "utf8")
 
   assert.match(source, /const \[sceneReady, setSceneReady\] = useState\(false\)/)
   assert.match(source, /!sceneReady \|\| view === "connecting"/)
-  assert.match(source, /setSceneReady\(true\)/)
+  assert.match(source, /setSceneReady\(renderer\.isReady\(\)\)/)
+  assert.match(rendererSource, /isReady\(\)/)
+  assert.match(rendererSource, /this\.players\.size > 0/)
+  assert.match(rendererSource, /view\.isReady\(\)/)
 })
 
 test("battle hero is not exposed or selected through query parameters", async () => {
@@ -643,22 +694,35 @@ test("a death message cannot award first place from a stale alive snapshot", () 
   )
 })
 
-test("a lethal battle snapshot opens results before the UI view catches up", () => {
-  const state = {
+test("a lethal authoritative snapshot waits for the presentation frame before opening results", () => {
+  const authoritative = {
     game: {state: "game"},
     players: {
       local: {lives: 0},
       alive: {lives: 1200},
     },
   }
+  const presentation = {
+    game: {state: "game"},
+    players: {
+      local: {lives: 1200},
+      alive: {lives: 1200},
+    },
+  }
 
-  assert.deepEqual(getStateBattleResult(state, "local", "lobby"), {
+  assert.equal(getPresentedBattleResult(authoritative, presentation, "local", "game"), null)
+  assert.deepEqual(getPresentedBattleResult(authoritative, authoritative, "local", "game"), {
     won: false,
     place: 2,
     kills: 0,
     monsters: 0,
     duration: 0,
   })
+})
+
+test("battle outcome checks the rendered presentation state before covering the arena", async () => {
+  const source = await readFile(projectFile("src/components/BattleGame/BattleGame.jsx"), "utf8")
+  assert.match(source, /getPresentedBattleResult\(/)
 })
 
 test("a post-death game snapshot cannot replace the defeat result view", () => {
@@ -673,6 +737,18 @@ test("dead heroes are excluded from the rendered player scene", () => {
   assert.equal(isAlivePlayerState({lives: 1200}), true)
   assert.equal(isAlivePlayerState({lives: 0}), false)
   assert.equal(isAlivePlayerState({lives: -1}), false)
+})
+
+test("renderer keeps an existing hero view long enough to show its death pose", async () => {
+  const source = await readFile(projectFile("src/components/BattleGame/rendering/three/ThreeBattleRenderer.js"), "utf8")
+  assert.match(source, /const existingView = this\.players\.get\(String\(id\)\)/)
+  assert.match(source, /if \(!isAlivePlayerState\(player\) && !existingView\) return/)
+  assert.match(source, /active\.add\(String\(id\)\)/)
+})
+
+test("interpolated lethal frames trigger the existing view death transition", async () => {
+  const source = await readFile(projectFile("src/components/BattleGame/rendering/three/ThreeBattleRenderer.js"), "utf8")
+  assert.match(source, /if \(!isAlivePlayerState\(player\)\) \{[\s\S]*?view\.setState\(player, Boolean\(state\.networkSmoothed\)\)/)
 })
 
 test("the in-battle counter uses the authoritative total when hidden heroes are absent", () => {
@@ -718,13 +794,11 @@ test("the battle scene provides PBR lighting and soft shadows for GLB heroes", a
   assert.match(source, /PCFSoftShadowMap/)
 })
 
-test("battle renderer drops expensive quality settings after sustained slow frames", async () => {
+test("battle renderer keeps the full-quality path throughout combat", async () => {
   const source = await readFile(projectFile("src/components/BattleGame/rendering/three/ThreeBattleRenderer.js"), "utf8")
 
-  assert.match(source, /slowFrameCount/)
-  assert.match(source, /frameElapsed >= 22/)
-  assert.match(source, /slowFrameCount >= 10/)
-  assert.match(source, /this\.enableLowQuality\(\)/)
+  assert.match(source, /new SceneRoot\(canvas, false\)/)
+  assert.doesNotMatch(source, /detectLowQualityDevice|slowFrameCount|enableLowQuality|setLowQuality/) 
   assert.match(source, /new MapRenderer\(this\.mapRoot, \{lowQuality: this\.lowQuality\}\)/)
 })
 
@@ -734,26 +808,67 @@ test("software WebGL renderers select the constrained battle path before asset u
   assert.equal(isSoftwareWebGLRenderer("ANGLE (NVIDIA, NVIDIA GeForce RTX 4070, OpenGL 4.6)"), false)
 })
 
-test("dynamic quality fallback can remove expensive surroundings without replacing authored assets", async () => {
+test("battle keeps authored hero assets without a dynamic quality fallback", async () => {
   const heroSource = await readFile(projectFile("src/components/BattleGame/rendering/heroes/HeroView.js"), "utf8")
   const mapSource = await readFile(projectFile("src/components/BattleGame/rendering/map/MapRenderer.js"), "utf8")
   const sceneSource = await readFile(projectFile("src/components/BattleGame/rendering/SceneRoot.js"), "utf8")
-  const modelSource = await readFile(projectFile("src/components/BattleGame/rendering/three/HeroModelFactory.js"), "utf8")
-  assert.match(heroSource, /setLowQuality\(\)/)
+  const rendererSource = await readFile(projectFile("src/components/BattleGame/rendering/three/ThreeBattleRenderer.js"), "utf8")
+  assert.doesNotMatch(heroSource, /async loadGlb\(/)
+  assert.doesNotMatch(rendererSource, /enableLowQuality|setLowQuality/) 
   assert.match(heroSource, /const updateLabel = \(sprite, state\) => \{\s*if \(!sprite\) return/)
-  assert.match(mapSource, /setLowQuality\(\)/)
+  assert.match(mapSource, /createProp\(wall, index, this\.waterTexture\)/)
   assert.match(sceneSource, /isSoftwareWebGLContext/)
-  assert.match(modelSource, /if \(simplifyToon\) return new THREE\.MeshBasicMaterial/)
+  assert.match(sceneSource, /this\.lowQuality = Boolean\(lowQuality\)/)
+  assert.doesNotMatch(sceneSource, /Boolean\(lowQuality\) \|\| this\.softwareWebGL/)
+  assert.doesNotMatch(heroSource, /HeroModelFactory|createHeroModel/)
 })
 
-test("constrained rendering keeps authored hero and environment GLB upgrades enabled", async () => {
+test("constrained rendering keeps authored GLB heroes and procedural environment enabled", async () => {
   const heroSource = await readFile(projectFile("src/components/BattleGame/rendering/heroes/HeroView.js"), "utf8")
   const mapSource = await readFile(projectFile("src/components/BattleGame/rendering/map/MapRenderer.js"), "utf8")
 
-  assert.doesNotMatch(heroSource, /if \(this\.simpleMaterials\) return/)
-  assert.doesNotMatch(heroSource, /this\.disposed \|\| this\.simpleMaterials/)
-  assert.doesNotMatch(mapSource, /async upgradeToEnvironment\(key, fallback, wall\) \{\s*if \(this\.lowQuality\) return/)
-  assert.match(mapSource, /this\.upgradeToEnvironment\(key, fallback, wall\)/)
+  assert.match(heroSource, /const readyInstance = assetRegistry\.instantiateReadyHero\(state\.hero\)/)
+  assert.match(heroSource, /if \(readyInstance\) this\.installGlbInstance\(readyInstance, state\.hero\)/)
+  assert.doesNotMatch(mapSource, /assetRegistry\.instantiate(?:Ready)?Environment/)
+  assert.doesNotMatch(mapSource, /upgradeToEnvironment/)
+  assert.match(mapSource, /createLowQualityPropBatch/)
+})
+
+test("authored hero parts merge without breaking shared skeleton skinning", () => {
+  const root = new THREE.Group()
+  const rig = new THREE.Group()
+  const bone = new THREE.Bone()
+  bone.name = "Root"
+  rig.add(bone)
+  root.add(rig)
+  const skeleton = new THREE.Skeleton([bone])
+  const material = new THREE.MeshStandardMaterial({color: 0x55c889})
+  const makeGeometry = () => {
+    const geometry = new THREE.BoxGeometry(.2, .2, .2)
+    const count = geometry.attributes.position.count
+    geometry.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(new Array(count * 4).fill(0), 4))
+    geometry.setAttribute("skinWeight", new THREE.Float32BufferAttribute(
+      Array.from({length: count * 4}, (_, index) => index % 4 === 0 ? 1 : 0),
+      4,
+    ))
+    return geometry
+  }
+  const first = new THREE.SkinnedMesh(makeGeometry(), material.clone())
+  const second = new THREE.SkinnedMesh(makeGeometry(), material.clone())
+  first.bind(skeleton)
+  second.bind(skeleton)
+  rig.add(first, second)
+
+  const result = mergeHeroRenderParts(root)
+
+  assert.equal(result.before, 2)
+  assert.equal(result.after, 1)
+  assert.equal(result.mergedGroups, 1)
+  const merged = rig.children.find(child => child.isSkinnedMesh)
+  assert.ok(merged)
+  assert.equal(merged.skeleton.bones[0], bone)
+  assert.equal(merged.geometry.attributes.skinIndex.count, first.geometry.attributes.skinIndex.count * 2)
+  merged.geometry.dispose()
 })
 
 test("AssetRegistry loads each GLB once and returns independent clones", async () => {
@@ -922,16 +1037,66 @@ test("AssetRegistry preloads only the canonical hero GLB through the shared cach
   assert.deepEqual(loads, ["/alpha.glb"])
 })
 
-test("the app does not preload every hero GLB before the first render", async () => {
-  const source = await readFile(projectFile("src/main.jsx"), "utf8")
-  assert.doesNotMatch(source, /assetRegistry\.preloadAll\(/)
+test("AssetRegistry preloads battle heroes and companions, not environment GLBs", async () => {
+  const loads = []
+  const template = new THREE.Group()
+  const registry = new AssetRegistry({
+    manifest: {
+      Alpha: {
+        id: "Alpha",
+        url: "/alpha.glb",
+        companionUrl: "/alpha-cloud.glb",
+        available: true,
+        scale: 1,
+        rotationOffset: 0,
+        clips: {},
+      },
+    },
+    environmentManifest: {
+      bush_a: {
+        id: "bush_a",
+        url: "/bush.glb",
+        available: true,
+        placement: "repeat",
+        footprint: 40,
+        scale: 1,
+        rotationOffset: 0,
+      },
+    },
+    load: async url => {
+      loads.push(url)
+      return {scene: template, animations: []}
+    },
+  })
+
+  await registry.preloadBattleAssets(2)
+
+  assert.deepEqual(loads.sort(), ["/alpha-cloud.glb", "/alpha.glb"])
+  assert.equal(registry.isHeroReady("Alpha"), true)
+  assert.equal(registry.isEnvironmentReady("bush_a"), false)
+  assert.equal(registry.areBattleAssetsReady(), true)
+  assert.ok(registry.instantiateReadyHero("Alpha"))
+  assert.equal(registry.instantiateReadyEnvironment("bush_a"), null)
 })
 
-test("battle hero GLB upgrades wait for idle time after the fallback is visible", async () => {
+test("the app does not preload battle GLBs outside the battle flow", async () => {
+  const source = await readFile(projectFile("src/main.jsx"), "utf8")
+  assert.doesNotMatch(source, /preloadBattleAssets/)
+})
+
+test("battle startup waits for the shared GLB cache before creating WebGL resources", async () => {
+  const source = await readFile(projectFile("src/components/BattleGame/BattleGame.jsx"), "utf8")
+  assert.match(source, /await assetRegistry\.preloadBattleAssets\(/)
+})
+
+test("battle heroes use the ready authored GLB before entering combat", async () => {
   const source = await readFile(projectFile("src/components/BattleGame/rendering/heroes/HeroView.js"), "utf8")
-  assert.match(source, /requestIdleCallback/)
-  assert.match(source, /await waitForHeroUpgradeIdle\(\)/)
-  assert.doesNotMatch(source, /if \(this\.simpleMaterials\) return/)
+  assert.match(source, /const readyInstance = assetRegistry\.instantiateReadyHero\(state\.hero\)/)
+  assert.match(source, /this\.model = readyInstance \? readyInstance\.root : new THREE\.Group\(\)/)
+  assert.match(source, /if \(readyInstance\) this\.installGlbInstance\(readyInstance, state\.hero\)/)
+  assert.doesNotMatch(source, /loadGlb\(/)
+  const constructorSource = source.slice(source.indexOf("constructor(id"), source.indexOf("isReady()"))
+  assert.match(constructorSource, /instantiateReadyHero/)
 })
 
 test("hero GLBs are normalized to one visual height instead of relying on authoring units", () => {
@@ -1271,7 +1436,7 @@ test("hero equipment profiles hide detached ammo, keep Mina unarmed, and animate
   const cloudBounds = new THREE.Box3().setFromObject(cloud)
   const cloudCenter = cloudBounds.getCenter(new THREE.Vector3())
   assert.equal(Math.abs(Math.max(...cloudBounds.getSize(new THREE.Vector3()).toArray()) - .64) < .001, true)
-  assert.equal(cloudCenter.distanceTo(new THREE.Vector3(.58, 1.32, -.10)) < .001, true)
+  assert.equal(cloudCenter.distanceTo(new THREE.Vector3(.90, 1.82, -.10)) < .001, true)
   brock.update(.22, {alive: true, attackPulse: 1})
   brock.update(.001, {alive: true, attackPulse: 1})
   assert.equal(cloud.visible, true)
@@ -1377,6 +1542,21 @@ test("all solid map blocks use the authored stone GLB instead of primitive cubes
   }
 })
 
+test("high-quality stone props use the shared faceted block silhouette", () => {
+  const prop = createProp(
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
+    0,
+    new THREE.Texture(),
+  )
+  const block = prop.children.find(child => child.geometry?.userData?.stylizedStoneBlock)
+  assert.ok(block)
+  assert.equal(block.geometry.userData.stoneFacets, true)
+  prop.traverse(node => {
+    if (node.geometry) node.geometry.dispose()
+    if (node.material) node.material.dispose()
+  })
+})
+
 test("low-quality combat effects collapse to lightweight visuals", () => {
   const root = new THREE.Group()
   const renderer = new EffectRenderer(root, {lowQuality: true})
@@ -1396,7 +1576,7 @@ test("low-quality combat effects collapse to lightweight visuals", () => {
   assert.ok(root.children[0].geometry.parameters?.thetaLength <= Math.PI * 2)
 })
 
-test("concealment bushes keep one compact fallback field while their GLB loads", () => {
+test("un-authored concealment fields use one compact volumetric field per clearing", () => {
   const root = new THREE.Group()
   const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
 
@@ -1404,17 +1584,60 @@ test("concealment bushes keep one compact fallback field while their GLB loads",
     width: 240,
     height: 180,
     walls: [
-      {minX: 20, minY: 20, maxX: 100, maxY: 60, type: "bush"},
-      {minX: 120, minY: 80, maxX: 200, maxY: 120, type: "half"},
+      {minX: 20, minY: 20, maxX: 100, maxY: 60, type: "moon_mist"},
+      {minX: 120, minY: 80, maxX: 200, maxY: 120, type: "moon_mist"},
     ],
   })
 
   assert.equal(mapRenderer.objects.size, 2)
-  for (const fallback of mapRenderer.objects.values()) {
-    assert.equal(fallback.children[0].isInstancedMesh, true)
-    assert.equal(fallback.children[0].count, 3)
-  }
+  const fallback = [...mapRenderer.objects.values()][0]
+  assert.equal(fallback.isGroup, true)
+  assert.equal(fallback.getObjectByName("bush-field-base").count, 1)
+  assert.ok(fallback.getObjectByName("bush-field-crown").count >= 25)
   mapRenderer.dispose()
+})
+
+test("battle bushes keep one contiguous procedural field even when an authored GLB is ready", () => {
+  const originalInstantiateReadyEnvironment = assetRegistry.instantiateReadyEnvironment
+  assetRegistry.instantiateReadyEnvironment = visual => {
+    if (visual !== "bush_a") return null
+    const model = new THREE.Group()
+    model.userData.authoredEnvironmentVisual = visual
+    model.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial()))
+    return {
+      root: model,
+      animations: [],
+      asset: {placement: "repeat", footprint: 40, fitToCell: true},
+    }
+  }
+
+  try {
+    const root = new THREE.Group()
+    const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+    mapRenderer.sync({
+      width: 240,
+      height: 180,
+      walls: [
+        {minX: 20, minY: 20, maxX: 100, maxY: 60, type: "bush"},
+        {minX: 100, minY: 20, maxX: 180, maxY: 60, type: "bush"},
+      ],
+    })
+
+    const mountedAuthoredBush = [...mapRenderer.objects.values()].some(object => {
+      let found = false
+      object.traverse(child => {
+        if (child.userData.authoredEnvironmentVisual === "bush_a") found = true
+      })
+      return found
+    })
+    const mountedField = [...mapRenderer.objects.values()].find(object => object.name === "bush-field")
+    assert.equal(mountedAuthoredBush, false)
+    assert.ok(mountedField)
+    assert.equal(mountedField.getObjectByName("bush-field-base").count, 1)
+    mapRenderer.dispose()
+  } finally {
+    assetRegistry.instantiateReadyEnvironment = originalInstantiateReadyEnvironment
+  }
 })
 
 test("low-quality map props without authored GLBs use instanced batches without contact shadows", () => {
@@ -1437,7 +1660,7 @@ test("low-quality map props without authored GLBs use instanced batches without 
   mapRenderer.dispose()
 })
 
-test("low-quality concealment fields without authored GLBs use one low-poly instance per collider", () => {
+test("low-quality concealment fields without authored GLBs use a dense procedural leaf field", () => {
   const root = new THREE.Group()
   const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture(), lowQuality: true})
 
@@ -1448,26 +1671,19 @@ test("low-quality concealment fields without authored GLBs use one low-poly inst
   })
 
   const bushBatch = [...mapRenderer.objects.values()]
-    .map(object => object.isInstancedMesh ? object : object.children?.[0])
-    .find(object => object?.geometry?.type === "ConeGeometry")
-  assert.equal(bushBatch.count, 1)
-  assert.equal(bushBatch.geometry.type, "ConeGeometry")
-  assert.ok(bushBatch.geometry.parameters.radialSegments <= 5)
+    .map(object => object.getObjectByName?.("bush-field-crown") || object)
+    .find(object => object?.geometry?.userData?.bushLeafCluster)
+  assert.ok(bushBatch.count >= 25)
+  assert.equal(bushBatch.geometry.userData.bushLeafCluster, true)
   mapRenderer.dispose()
 })
 
-test("low-quality combat still replaces a stone fallback with its authored environment GLB", async () => {
+test("low-quality combat renders a rounded procedural stone batch without environment GLBs", () => {
   const originalInstantiateEnvironment = assetRegistry.instantiateEnvironment
   let loadCount = 0
-  assetRegistry.instantiateEnvironment = async visual => {
+  assetRegistry.instantiateEnvironment = async () => {
     loadCount += 1
-    const root = new THREE.Group()
-    root.userData.authoredEnvironmentVisual = visual
-    root.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial()))
-    return {
-      root,
-      asset: {placement: "single", footprint: 40, fitToCell: false},
-    }
+    return null
   }
 
   try {
@@ -1478,32 +1694,28 @@ test("low-quality combat still replaces a stone fallback with its authored envir
       height: 180,
       walls: [{minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"}],
     })
-    await new Promise(resolve => setImmediate(resolve))
 
     const wallObject = [...mapRenderer.objects.values()][0]
-    assert.equal(loadCount, 1)
-    let authoredEnvironment = null
-    wallObject.traverse(child => {
-      if (child.userData.authoredEnvironmentVisual === "desert_wall_a") authoredEnvironment = child
-    })
-    assert.ok(authoredEnvironment)
-    assert.equal(wallObject.children[0].isInstancedMesh, undefined)
+    assert.equal(loadCount, 0)
+    assert.equal(wallObject.isInstancedMesh, true)
+    assert.equal(wallObject.geometry.type, "BufferGeometry")
+    assert.equal(wallObject.geometry.userData.stylizedStoneBlock, true)
+    assert.equal(wallObject.geometry.userData.stoneFacets, true)
+    assert.equal(wallObject.material.type, "MeshStandardMaterial")
+    assert.equal(wallObject.material.vertexColors, true)
+    assert.ok(wallObject.instanceColor)
     mapRenderer.dispose()
   } finally {
     assetRegistry.instantiateEnvironment = originalInstantiateEnvironment
   }
 })
 
-test("moving the environment focus keeps an authored GLB mounted", async () => {
+test("moving the environment focus keeps the procedural map batch mounted", () => {
   const originalInstantiateEnvironment = assetRegistry.instantiateEnvironment
-  assetRegistry.instantiateEnvironment = async visual => {
-    const root = new THREE.Group()
-    root.userData.authoredEnvironmentVisual = visual
-    root.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial()))
-    return {
-      root,
-      asset: {placement: "single", footprint: 40, fitToCell: false},
-    }
+  let loadCount = 0
+  assetRegistry.instantiateEnvironment = async () => {
+    loadCount += 1
+    return null
   }
 
   try {
@@ -1515,21 +1727,112 @@ test("moving the environment focus keeps an authored GLB mounted", async () => {
       height: 2400,
       walls: [{minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"}],
     })
-    await new Promise(resolve => setImmediate(resolve))
-
-    const key = "20:20:60:60:wall:"
-    const authoredWall = mapRenderer.objects.get(key)
-    assert.ok(authoredWall)
-    assert.equal(authoredWall.parent, root)
+    const proceduralWall = [...mapRenderer.objects.values()][0]
 
     mapRenderer.setFocus(2000, 2000)
 
-    assert.equal(mapRenderer.objects.get(key), authoredWall)
-    assert.equal(authoredWall.parent, root)
+    assert.equal(loadCount, 0)
+    assert.equal([...mapRenderer.objects.values()][0], proceduralWall)
+    assert.equal(proceduralWall.parent, root)
     mapRenderer.dispose()
   } finally {
     assetRegistry.instantiateEnvironment = originalInstantiateEnvironment
   }
+})
+
+test("moving the environment focus never starts environment GLB requests", async () => {
+  const originalInstantiateReadyEnvironment = assetRegistry.instantiateReadyEnvironment
+  const originalInstantiateEnvironment = assetRegistry.instantiateEnvironment
+  const loadedVisuals = []
+  assetRegistry.instantiateReadyEnvironment = () => null
+  assetRegistry.instantiateEnvironment = async visual => {
+    loadedVisuals.push(visual)
+    const root = new THREE.Group()
+    root.userData.authoredEnvironmentVisual = visual
+    root.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial()))
+    return {root, asset: {placement: "single", footprint: 40, fitToCell: false}}
+  }
+
+  try {
+    const root = new THREE.Group()
+    const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture(), lowQuality: true})
+    const map = {
+      width: 2400,
+      height: 2400,
+      walls: [
+        {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
+        {minX: 1960, minY: 1960, maxX: 2000, maxY: 2000, type: "wall"},
+      ],
+    }
+
+    mapRenderer.setFocus(40, 40)
+    mapRenderer.sync(map)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    assert.deepEqual(loadedVisuals, [])
+
+    mapRenderer.setFocus(2000, 2000)
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    assert.deepEqual(loadedVisuals, [])
+    assert.equal([...mapRenderer.objects.values()][0].parent, root)
+    mapRenderer.dispose()
+  } finally {
+    assetRegistry.instantiateReadyEnvironment = originalInstantiateReadyEnvironment
+    assetRegistry.instantiateEnvironment = originalInstantiateEnvironment
+  }
+})
+
+test("focus movement does not rebuild procedural environment batches", async () => {
+  const originalInstantiateReadyEnvironment = assetRegistry.instantiateReadyEnvironment
+  const originalInstantiateEnvironment = assetRegistry.instantiateEnvironment
+  const loadedVisuals = []
+  assetRegistry.instantiateReadyEnvironment = () => null
+  assetRegistry.instantiateEnvironment = async visual => {
+    loadedVisuals.push(visual)
+    const root = new THREE.Group()
+    root.userData.authoredEnvironmentVisual = visual
+    root.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial()))
+    return {root, asset: {placement: "single", footprint: 40, fitToCell: false}}
+  }
+
+  try {
+    const root = new THREE.Group()
+    const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture(), lowQuality: true})
+    const blockers = Array.from({length: 64}, (_, index) => ({
+      minX: -620,
+      minY: index * 4 - 128,
+      maxX: -580,
+      maxY: index * 4 - 124,
+      type: "wall",
+    }))
+    const map = {
+      width: 2400,
+      height: 2400,
+      walls: [...blockers, {minX: 760, minY: -20, maxX: 800, maxY: 20, type: "wall"}],
+    }
+
+    mapRenderer.setFocus(0, 0)
+    mapRenderer.sync(map)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const firstBatch = [...mapRenderer.objects.values()][0]
+    assert.equal(loadedVisuals.length, 0)
+
+    mapRenderer.setFocus(200, 0)
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    assert.equal(loadedVisuals.length, 0)
+    assert.equal([...mapRenderer.objects.values()][0], firstBatch)
+    mapRenderer.dispose()
+  } finally {
+    assetRegistry.instantiateReadyEnvironment = originalInstantiateReadyEnvironment
+    assetRegistry.instantiateEnvironment = originalInstantiateEnvironment
+  }
+})
+
+test("environment focus refreshes only after a coarse world-space transition", () => {
+  assert.equal(shouldRefreshEnvironmentFocus(null, {x: 0, y: 0}), true)
+  assert.equal(shouldRefreshEnvironmentFocus({x: 0, y: 0}, {x: 255, y: 0}), false)
+  assert.equal(shouldRefreshEnvironmentFocus({x: 0, y: 0}, {x: 256, y: 0}), true)
 })
 
 test("low-quality environment upgrades stay bounded and prefer the focused battle area", () => {
@@ -1542,6 +1845,22 @@ test("low-quality environment upgrades stay bounded and prefer the focused battl
   const selected = selectEnvironmentUpgradeWalls(walls, true, {x: 1000, y: 1000}, 1, 300)
   assert.deepEqual(selected, [walls[0]])
   assert.deepEqual(selectEnvironmentUpgradeWalls(walls, false, {x: 1000, y: 1000}, 1, 300), walls)
+})
+
+test("nearby authored environment colliders are prioritized over distant budget candidates", () => {
+  const walls = [
+    {minX: 0, minY: 0, maxX: 40, maxY: 40, type: "wall"},
+    {minX: 80, minY: 0, maxX: 120, maxY: 40, type: "wall"},
+    {minX: 1600, minY: 1600, maxX: 1640, maxY: 1640, type: "wall"},
+  ]
+
+  assert.deepEqual(selectEnvironmentUpgradeWalls(walls, true, {x: 0, y: 0}, 2, 720), walls.slice(0, 2))
+})
+
+test("environment proximity uses the collider edge instead of a long wall center", () => {
+  const wall = {minX: -500, minY: 0, maxX: 500, maxY: 40, type: "wall"}
+
+  assert.deepEqual(selectEnvironmentUpgradeWalls([wall], true, {x: 800, y: 20}, 1, 600), [wall])
 })
 
 test("selected environment GLBs are published and normalized to their authored height", async () => {
@@ -1603,6 +1922,66 @@ test("island decoration stays below impassable map surfaces", () => {
 
   const layerHeights = mapRenderer.islandTerrain.children.slice(0, 3).map(layer => layer.position.y)
   assert.ok(Math.max(...layerHeights) < 0.015)
+  mapRenderer.dispose()
+})
+
+test("island decoration uses non-overlapping surfaces to avoid depth-fighting fans", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+
+  mapRenderer.syncIslandTerrain(true, 2400, 2400)
+
+  const layers = mapRenderer.islandTerrain.children.slice(0, 3)
+  assert.equal(layers[0].geometry.type, "RingGeometry")
+  assert.equal(layers[1].geometry.type, "RingGeometry")
+  assert.equal(layers[2].geometry.type, "CircleGeometry")
+  assert.equal(layers.every(layer => layer.material.polygonOffset), true)
+  assert.equal(layers[0].geometry.parameters.innerRadius, layers[1].geometry.parameters.outerRadius)
+  assert.equal(layers[1].geometry.parameters.innerRadius, layers[2].geometry.parameters.radius)
+  mapRenderer.dispose()
+})
+
+test("first-trial beacon is a layered faceted landmark with animated energy details", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+
+  mapRenderer.syncIsland({islandName: "Остров Первого Испытания", beaconOpen: false}, 2400, 2400)
+
+  const beacon = mapRenderer.beaconGroup
+  assert.ok(beacon)
+  assert.equal(beacon.userData.role, "beacon")
+  assert.ok(beacon.scale.x >= 20)
+  assert.equal(beacon.scale.x, beacon.scale.y)
+  assert.equal(beacon.scale.y, beacon.scale.z)
+  for (const name of [
+    "beacon-pedestal",
+    "beacon-tower",
+    "beacon-core",
+    "beacon-beam",
+    "beacon-beam-core",
+    "beacon-activation-ring",
+  ]) {
+    assert.ok(beacon.getObjectByName(name), `missing ${name}`)
+  }
+
+  const tower = beacon.getObjectByName("beacon-tower")
+  const beam = beacon.getObjectByName("beacon-beam")
+  const beamCore = beacon.getObjectByName("beacon-beam-core")
+  const core = beacon.getObjectByName("beacon-core")
+  assert.equal(tower.material.flatShading, true)
+  assert.equal(tower.geometry.parameters.radialSegments, 8)
+  assert.equal(beam.material.depthWrite, false)
+  assert.equal(beam.material.side, THREE.DoubleSide)
+  assert.equal(beamCore.material.depthWrite, false)
+  assert.ok(core.material.emissiveIntensity > 0)
+
+  const closedBeamOpacity = beam.material.opacity
+  const closedCoreIntensity = core.material.emissiveIntensity
+  mapRenderer.syncIsland({islandName: "Остров Первого Испытания", beaconOpen: true}, 2400, 2400)
+  assert.equal(beacon.userData.open, true)
+  assert.ok(beam.material.opacity > closedBeamOpacity)
+  assert.ok(core.material.emissiveIntensity > closedCoreIntensity)
+
   mapRenderer.dispose()
 })
 

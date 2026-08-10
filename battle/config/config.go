@@ -3,9 +3,10 @@ package config
 import "os"
 
 type Config struct {
-	Port      string
-	RedisAddr string
-	KafkaAddr string
+	Port       string
+	RedisAddr  string
+	KafkaAddr  string
+	AccountURL string
 }
 
 func Load() *Config {
@@ -21,9 +22,14 @@ func Load() *Config {
 	if kafkaAddr == "" {
 		kafkaAddr = "localhost:9092"
 	}
+	accountURL := os.Getenv("ACCOUNT_URL")
+	if accountURL == "" {
+		accountURL = "http://localhost:8000"
+	}
 	return &Config{
-		Port:      port,
-		RedisAddr: redisAddr,
-		KafkaAddr: kafkaAddr,
+		Port:       port,
+		RedisAddr:  redisAddr,
+		KafkaAddr:  kafkaAddr,
+		AccountURL: accountURL,
 	}
 }

@@ -23,7 +23,7 @@ export class SceneRoot {
   constructor(canvas, lowQuality) {
     const context = getBattleWebGLContext(canvas, lowQuality)
     this.softwareWebGL = isSoftwareWebGLContext(context)
-    this.lowQuality = Boolean(lowQuality) || this.softwareWebGL
+    this.lowQuality = Boolean(lowQuality)
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       context,

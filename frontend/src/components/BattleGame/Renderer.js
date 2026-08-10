@@ -9,6 +9,7 @@ export class Renderer {
 
   setState(state) { return this.impl.setState(state) }
   setDisplayState(state) { return this.impl.setDisplayState(state) }
+  isReady() { return this.impl.isReady() }
   setLocalPlayerId(id) { return this.impl.setLocalPlayerId(id) }
   setOutcome(outcome) { return this.impl.setOutcome(outcome) }
   resize(width, height) { return this.impl.resize(width, height) }

@@ -12,7 +12,9 @@ const ingestEntity = (prediction, targetType, id, entity, now, seen) => {
   // An HP delta is not enough to identify which local command caused it:
   // another player may have damaged this target in the same interval. Only
   // combat events are allowed to consume a matching prediction.
-  if (previous !== undefined && lives < previous && prediction.pending.has(key)) {
+  if (previous !== undefined && lives < previous) {
+    // Keep the presentation timeline anchored to packet arrival, not to the
+    // first render that happens to consume the snapshot.
     prediction.rollbackStarts.set(key, now)
   }
   if (lives <= 0) prediction.pending.delete(key)
@@ -183,7 +185,7 @@ export class DamagePrediction {
     return this.pendingDamage(entityKey(targetType, targetId), lives, now) > 0
   }
 
-  displayLives(targetType, targetId, authoritativeLives, maxLives, now = Date.now()) {
+  displayLives(targetType, targetId, authoritativeLives, maxLives, now = Date.now(), smoothAuthoritativeDamage = false) {
     const key = entityKey(targetType, targetId)
     const authoritative = Math.max(0, finite(authoritativeLives))
     const maximum = Math.max(1, finite(maxLives, authoritative || 1))
@@ -196,6 +198,16 @@ export class DamagePrediction {
     if (!previous) {
       this.presentationLives.set(key, {value: desired, target: desired, changedAt: now})
       return Math.round(desired)
+    }
+    if (desired < previous.value && speculative <= 0 && smoothAuthoritativeDamage && authoritative > 0) {
+      if (previous.target !== desired) {
+        previous.target = desired
+        previous.changedAt = this.rollbackStarts.get(key) ?? now
+      }
+      const progress = clamp((now - previous.changedAt) / Math.max(1, this.rollbackMs), 0, 1)
+      previous.value += (previous.target - previous.value) * progress
+      if (progress >= 1) previous.value = previous.target
+      return Math.round(previous.value)
     }
     if (desired <= previous.value) {
       previous.value = desired
@@ -217,15 +229,28 @@ export class DamagePrediction {
     return Math.round(previous.value)
   }
 
-  applyToState(state, now = Date.now(), {mutateEntities = false} = {}) {
+  applyToState(state, now = Date.now(), {mutateEntities = false, smoothAuthoritativeDamage = false} = {}) {
     this.expire(now)
     const players = mutateEntities ? (state?.players || {}) : Object.fromEntries(Object.entries(state?.players || {}).map(([id, entity]) => [id, {...entity}]))
     const monsters = mutateEntities ? (state?.monsters || {}) : Object.fromEntries(Object.entries(state?.monsters || {}).map(([id, entity]) => [id, {...entity}]))
     Object.entries(players).forEach(([id, entity]) => {
-      entity.lives = this.displayLives("players", id, this.authoritativeLives.get(entityKey("players", id)) ?? entity?.lives, entity?.maxLives, now)
+      const key = entityKey("players", id)
+      const authoritativeLives = this.authoritativeLives.get(key) ?? entity?.lives
+      // A lethal packet can already be authoritative while the interpolated
+      // entity is still on its older, alive snapshot. Keep that presentation
+      // frame alive until the timeline reaches the lethal snapshot.
+      const presentationLives = Number(entity?.lives) > 0 && Number(authoritativeLives) <= 0
+        ? entity.lives
+        : authoritativeLives
+      entity.lives = this.displayLives("players", id, presentationLives, entity?.maxLives, now, smoothAuthoritativeDamage)
     })
     Object.entries(monsters).forEach(([id, entity]) => {
-      entity.lives = this.displayLives("monsters", id, this.authoritativeLives.get(entityKey("monsters", id)) ?? entity?.lives, entity?.maxLives, now)
+      const key = entityKey("monsters", id)
+      const authoritativeLives = this.authoritativeLives.get(key) ?? entity?.lives
+      const presentationLives = Number(entity?.lives) > 0 && Number(authoritativeLives) <= 0
+        ? entity.lives
+        : authoritativeLives
+      entity.lives = this.displayLives("monsters", id, presentationLives, entity?.maxLives, now, smoothAuthoritativeDamage)
     })
     return {...state, players, monsters}
   }

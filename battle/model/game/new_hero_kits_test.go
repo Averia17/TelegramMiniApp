@@ -10,7 +10,7 @@ import (
 func TestNewHeroCombatKitsAreRegistered(t *testing.T) {
 	want := map[string]string{
 		"Fairy Mina": "cone", "Brock Zeus": "line", "Kaze": "cone",
-		"Wukong Mico": "cone", "Persephone Lumi": "line",
+		"Wukong Mico": "cone", "Persephone Lumi": "line", "Katty": "cone",
 	}
 	for name, shape := range want {
 		kit := CombatKitFor(name)
@@ -113,7 +113,7 @@ func TestNeedleSuperRechargesByCooldownTimeWithoutHits(t *testing.T) {
 }
 
 func TestActiveSuperCooldownsAreTimeBasedAndCapped(t *testing.T) {
-	for _, hero := range []string{"Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi"} {
+	for _, hero := range []string{"Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi", "Katty"} {
 		cooldown := AbilityCooldownMs(hero, "primary")
 		if cooldown <= 0 || cooldown > MaxHeroSkillDuration.Milliseconds() {
 			t.Fatalf("%s primary cooldown=%dms, want 1..%dms", hero, cooldown, MaxHeroSkillDuration.Milliseconds())

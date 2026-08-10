@@ -91,6 +91,157 @@ func TestMeleeBotDoesNotAttackOutsideItsAttackRange(t *testing.T) {
 	}
 }
 
+func TestBotRunsTowardStormCenterBeforeEngagingTarget(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
+	gs.IslandPhase = IslandPhaseCollapse
+	gs.StormRadius = 220
+	gs.PlayerAdd("bot", "Bot", "Kaze")
+	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	gs.State = GameStateGame
+
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.IsBot, bot.X, bot.Y = true, 800, 500
+	enemy.X, enemy.Y = 900, 500
+
+	gs.updateBots()
+
+	if bot.MoveX >= 0 {
+		t.Fatalf("bot did not retreat toward storm center: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+}
+
+func TestBotInsideStormSafetyMarginKeepsCombatBehavior(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
+	gs.IslandPhase = IslandPhaseCollapse
+	gs.StormRadius = 500
+	gs.PlayerAdd("bot", "Bot", "Kaze")
+	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	gs.State = GameStateGame
+
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.IsBot, bot.X, bot.Y, bot.Ammo = true, 550, 500, 1
+	enemy.X, enemy.Y = 650, 500
+
+	gs.updateBots()
+
+	if bot.MoveX <= 0 {
+		t.Fatalf("bot abandoned a visible target inside storm safety margin: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+}
+
+func TestBotPrioritizesRecentlyAttackingTargetOverWoundedTarget(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Colt")
+	gs.PlayerAdd("wounded", "Wounded", "Shelly")
+	gs.PlayerAdd("attacker", "Attacker", "Shelly")
+
+	bot := gs.Players["bot"]
+	bot.X, bot.Y = 100, 100
+	wounded := gs.Players["wounded"]
+	wounded.X, wounded.Y, wounded.Lives, wounded.MaxLives = 250, 100, 10, 100
+	attacker := gs.Players["attacker"]
+	attacker.X, attacker.Y = 180, 100
+	attacker.LastShootAt = time.Now().UnixMilli()
+
+	target := gs.botSelectTarget(bot, time.Now().UnixMilli())
+	if target == nil || target.id != "attacker" {
+		t.Fatalf("bot chose %q instead of the recently attacking target", targetID(target))
+	}
+}
+
+func targetID(target *botTarget) string {
+	if target == nil {
+		return ""
+	}
+	return target.id
+}
+
+func TestWoundedBotKitesHealthyPlayerTarget(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
+	gs.State = GameStateGame
+	gs.PlayerAdd("bot", "Bot", "Kaze")
+	gs.PlayerAdd("enemy", "Enemy", "Colt")
+
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.IsBot, bot.X, bot.Y, bot.Lives = true, 100, 100, 80
+	enemy.X, enemy.Y = 180, 100
+
+	gs.updateBots()
+
+	if bot.MoveX >= 0 {
+		t.Fatalf("wounded bot moved into a healthy target: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+}
+
+func TestBotLeadsMovingTargetWhenAiming(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.State = GameStateGame
+	gs.PlayerAdd("bot", "Bot", "Colt")
+	gs.PlayerAdd("enemy", "Enemy", "Shelly")
+
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.X, bot.Y, bot.Ammo = 100, 100, 1
+	enemy.X, enemy.Y, enemy.MoveX, enemy.MoveY, enemy.Speed = 300, 100, 0, 1, 100
+	target := &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, x: enemy.X, y: enemy.Y, distance: 200}
+
+	gs.botEngageTarget(bot.PlayerId, bot, target, 0, time.Now().UnixMilli())
+
+	if bot.Rotation <= .01 {
+		t.Fatalf("bot aimed at current position instead of leading moving target: rotation=%.3f", bot.Rotation)
+	}
+}
+
+func TestBotDoesNotAbandonNearbyEnemyForPowerPickup(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Kaze")
+	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.X, bot.Y = 100, 100
+	enemy.X, enemy.Y = 180, 100
+	pickup := prop.NewProp("power", 100, 300, 12)
+
+	target := gs.botSelectTarget(bot, time.Now().UnixMilli())
+	if gs.botShouldCollectPickup(bot, pickup, target) {
+		t.Fatalf("bot chose a distant power pickup while an enemy was nearby")
+	}
+}
+
+func TestBotEngagesVisibleTargetBeforeOpeningCrates(t *testing.T) {
+	crate := &geometry.WallTile{MinX: 80, MinY: 260, MaxX: 120, MaxY: 300, Type: "crates"}
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000, Collisions: []*geometry.WallTile{crate}}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.Walls.Insert(crate)
+	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
+	gs.State = GameStateGame
+	gs.PlayerAdd("bot", "Bot", "Colt")
+	gs.PlayerAdd("enemy", "Enemy", "Shelly")
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.IsBot, bot.X, bot.Y = true, 100, 100
+	enemy.X, enemy.Y = 180, 100
+
+	gs.updateBots()
+
+	if math.Abs(bot.MoveY) >= .1 {
+		t.Fatalf("bot ignored a visible enemy for an opening crate: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+}
+
 func TestBotCrateApproachPointStaysOutsideBlockingWall(t *testing.T) {
 	crate := &geometry.WallTile{MinX: 300, MinY: 100, MaxX: 340, MaxY: 140, Type: "crates"}
 	bot := perceptionPlayer("bot", 260, 120)

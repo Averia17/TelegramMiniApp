@@ -18,6 +18,7 @@ import math
 import os
 from pathlib import Path
 
+import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
@@ -97,16 +98,15 @@ def idle_poses():
         R_Shoulder=(-28, -8, 5),
         R_Elbow=(48, 0, -8),
         R_Wrist=(-18, 0, 10),
-        L_Shoulder=(-15, 0, -14),
+        L_Shoulder=(-45, 0, -14),
         L_Elbow=(45, 0, 10),
         L_Wrist=(-26, 0, -8),
         Head=(0, 8, 0),
         L_UpperLeg=(4, -2, 0),
         R_UpperLeg=(-4, 2, 0),
     )
-    return {frame: neutral for frame in (0, 20, 40, 60, 80)}
     return {
-        0: neutral,
+        0: legacy_neutral,
         20: pose(
             R_Shoulder=(-24, -5, 8),
             R_Elbow=(44, 0, -5),
@@ -144,7 +144,7 @@ def idle_poses():
             Chest=(1, 0, 0),
             Head=(0, -5, 0),
         ),
-        80: neutral,
+        80: legacy_neutral,
     }
 
 
@@ -1311,6 +1311,7 @@ def ensure_brock_skinning(armature):
         312,
         313,
     }
+    right_forearm_components = {266}
     # These source islands are the visible left forearm, hand, and the small
     # underside hand detail.  The nearest-bone classifier misreads them as
     # Spine/L_UpperLeg because the legacy mesh and rig use different bind
@@ -1328,6 +1329,8 @@ def ensure_brock_skinning(armature):
         )[0]
         if component_index in right_wrist_components:
             bone_name = "R_Wrist"
+        if component_index in right_forearm_components:
+            bone_name = "R_Elbow"
         if component_index in left_hand_attachment_components:
             bone_name = "L_Elbow"
         component_bones[component_index] = bone_name
@@ -1510,6 +1513,48 @@ def ensure_brock_skinning(armature):
             else:
                 mesh["left_arm_rest_attachment_distance"] = round(float(gap), 6)
         mesh["left_arm_rest_attachment_version"] = 2
+    if mesh.get("left_arm_rest_attachment_version", 0) < 3:
+        # Leave a small overlap at the shoulder seam.  The previous pass
+        # stopped 0.02 units short of the nearest shoulder surface, which is
+        # enough to read as a floating hand in the runtime camera.
+        shoulder_vertices = [
+            vertex_index
+            for component_index, component in enumerate(components)
+            if component_bones[component_index] == "L_Shoulder"
+            for vertex_index in component
+        ]
+        lower_arm_vertices = [
+            vertex_index
+            for component_index, component in enumerate(components)
+            if component_bones[component_index] in {"L_Elbow", "L_Wrist"}
+            for vertex_index in component
+        ]
+        if shoulder_vertices and lower_arm_vertices:
+            shoulder_points = [
+                mesh.matrix_world @ mesh.data.vertices[vertex_index].co
+                for vertex_index in shoulder_vertices
+            ]
+            lower_arm_points = [
+                mesh.matrix_world @ mesh.data.vertices[vertex_index].co
+                for vertex_index in lower_arm_vertices
+            ]
+            gap, shoulder_point, lower_arm_point = min(
+                (
+                    (shoulder_point - lower_arm_point).length,
+                    shoulder_point,
+                    lower_arm_point,
+                )
+                for shoulder_point in shoulder_points
+                for lower_arm_point in lower_arm_points
+            )
+            if gap > 0.0:
+                direction = (shoulder_point - lower_arm_point).normalized()
+                delta_world = direction * (gap + 0.006)
+                delta_local = mesh.matrix_world.inverted().to_3x3() @ delta_world
+                for vertex_index in lower_arm_vertices:
+                    mesh.data.vertices[vertex_index].co += delta_local
+            mesh["left_arm_rest_attachment_distance"] = round(float(gap), 6)
+        mesh["left_arm_rest_attachment_version"] = 3
     if not mesh.get("right_arm_rest_repaired"):
         forearm = next(
             component
@@ -1586,6 +1631,8 @@ def ensure_brock_skinning(armature):
     mesh["left_hand_attachment_components"] = sorted(left_hand_attachment_components)
     mesh["left_hand_skinning_version"] = 3
     mesh["left_hand_attachment_bone"] = "L_Elbow"
+    mesh["right_forearm_attachment_bone"] = "R_Elbow"
+    mesh["right_forearm_attachment_version"] = 1
     if mesh.get("left_hand_geometry_version", 0) < 4:
         # The legacy FBX also contains tiny detached hand-side islands. Weld
         # their nearest surface to the main forearm island in rest space so
@@ -1623,10 +1670,90 @@ def ensure_brock_skinning(armature):
         mesh["left_hand_geometry_version"] = 4
 
 
+def ensure_right_arm_visual_repair(armature):
+    """Mirror Brock's authored left lower-arm islands onto the broken side.
+
+    The imported FBX has a complete hand on the negative-X side, while the
+    matching positive-X lower-arm islands stop at the forearm.  Reusing the
+    authored islands keeps the same stylized fingers, materials, and UVs as
+    the good arm instead of inventing a second hand mesh.  The repair is a
+    separate skinned object so it remains easy to audit and idempotent.
+    """
+    source = bpy.data.objects.get("armor_GEO:PIV.001")
+    if source is None or source.type != "MESH":
+        raise RuntimeError("Brock master is missing armor_GEO:PIV.001")
+    old = bpy.data.objects.get("BrockZeus_RightArm_Repair")
+    if old is not None:
+        old_data = old.data if old.type == "MESH" else None
+        bpy.data.objects.remove(old, do_unlink=True)
+        if old_data is not None and old_data.users == 0:
+            bpy.data.meshes.remove(old_data)
+
+    components = mesh_components(source)
+    keep = set()
+    selected_components = []
+    for component_index, component in enumerate(components):
+        weights = {}
+        for vertex_index in component:
+            for group in source.data.vertices[vertex_index].groups:
+                group_name = source.vertex_groups[group.group].name
+                weights[group_name] = weights.get(group_name, 0.0) + float(group.weight)
+        owner = max(weights, key=weights.get) if weights else None
+        # Component 308 is already present on the positive-X side as the
+        # mirrored upper-arm shell.  The remaining authored L_Elbow islands
+        # are the bracer/hand details that are missing on the other side.
+        if owner == "L_Elbow" and component_index != 308:
+            keep.update(component)
+            selected_components.append(component_index)
+    if not keep:
+        raise RuntimeError("Brock master has no authored left-hand islands to mirror")
+
+    repair = source.copy()
+    repair.data = source.data.copy()
+    repair.name = "BrockZeus_RightArm_Repair"
+    for collection in source.users_collection or [bpy.context.scene.collection]:
+        collection.objects.link(repair)
+    repair.parent = source.parent
+    repair.parent_type = source.parent_type
+    repair.parent_bone = source.parent_bone
+    repair.matrix_parent_inverse = source.matrix_parent_inverse.copy()
+    repair.matrix_world = source.matrix_world.copy()
+    for modifier in list(repair.modifiers):
+        repair.modifiers.remove(modifier)
+    for property_name in list(repair.keys()):
+        del repair[property_name]
+
+    builder = bmesh.new()
+    builder.from_mesh(repair.data)
+    for vertex in list(builder.verts):
+        if vertex.index not in keep:
+            builder.verts.remove(vertex)
+    builder.to_mesh(repair.data)
+    builder.free()
+
+    center_x = (armature.matrix_world @ armature.pose.bones["Chest"].head).x
+    mirror = Matrix.Identity(4)
+    mirror[0][0] = -1.0
+    mirror[0][3] = 2.0 * center_x
+    local_mirror = source.matrix_world.inverted() @ mirror @ source.matrix_world
+    for vertex in repair.data.vertices:
+        vertex.co = local_mirror @ vertex.co
+
+    repair.vertex_groups.clear()
+    elbow_group = repair.vertex_groups.new(name="R_Elbow")
+    elbow_group.add([vertex.index for vertex in repair.data.vertices], 1.0, "REPLACE")
+    modifier = repair.modifiers.new("BrockZeus_RightArm_Armature", "ARMATURE")
+    modifier.object = armature
+    repair["attachment_role"] = "right-arm-repair"
+    repair["right_arm_visual_repair_version"] = 1
+    repair["repair_source_components"] = selected_components
+    return repair
+
+
 def measured_cloud_base(armature, locator):
-    # The source cloud is a companion held near Brock's right hand. Anchor it
-    # to the measured hand island, not to an old shoulder offset; the latter
-    # made the cloud visibly float away from the character.
+    # The source cloud is a companion weapon that hovers above and outside
+    # Brock's right hand. Anchor it to the measured hand island, then lift it
+    # into the same upper-side silhouette as the Zeus reference.
     mesh = bpy.data.objects.get("armor_GEO:PIV.001")
     target = None
     if mesh is not None:
@@ -1636,7 +1763,7 @@ def measured_cloud_base(armature, locator):
             (mesh.matrix_world @ mesh.data.vertices[index].co for index in hand),
             Vector(),
         ) / max(1, len(hand))
-        target += Vector((0.0, 0.0, 0.12))
+        target += Vector((0.53, 0.0, 0.64))
     if target is None:
         target = armature.matrix_world @ Vector(armature.pose.bones["R_Wrist"].tail)
     locator.matrix_world = Matrix.Translation(target)
@@ -1814,6 +1941,7 @@ def prepare_master():
         raise RuntimeError("Brock master is missing brock-zeus-rig")
     reset_pose(armature)
     ensure_brock_skinning(armature)
+    ensure_right_arm_visual_repair(armature)
     ensure_cloud_hierarchy(armature)
     clear_actions()
     bpy.context.scene.frame_set(0)

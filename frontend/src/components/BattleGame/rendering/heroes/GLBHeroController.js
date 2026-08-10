@@ -310,7 +310,7 @@ export class GLBHeroController {
         // his silhouette so the fighter remains the visual center.
         const cloudTarget = this.previewLayout
           ? new THREE.Vector3(-2.1, 1.34, -.28)
-          : new THREE.Vector3(.58, 1.32, -.10)
+          : new THREE.Vector3(.90, 1.82, -.10)
         const targetWorld = root.getWorldPosition(new THREE.Vector3()).add(cloudTarget)
         const centerInParent = this.cloud.parent.worldToLocal(centerWorld.clone())
         const targetInParent = this.cloud.parent.worldToLocal(targetWorld.clone())

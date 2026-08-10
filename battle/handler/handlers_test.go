@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"battle/model/gamemap"
 	mroom "battle/model/room"
 	"battle/observability"
 	"github.com/gorilla/websocket"
@@ -95,6 +96,50 @@ func TestHandleHealth(t *testing.T) {
 	ct := w.Header().Get("Content-Type")
 	if ct != "application/json" {
 		t.Errorf("Content-Type = %v, want application/json", ct)
+	}
+}
+
+func TestHandleMapPreviewReturnsCanonicalBattleMap(t *testing.T) {
+	h := NewHandler()
+	req := httptest.NewRequest(http.MethodGet, "/map-preview?seed=42", nil)
+	w := httptest.NewRecorder()
+
+	h.HandleMapPreview(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %v, want 200", w.Code)
+	}
+	var payload struct {
+		Seed int64 `json:"seed"`
+		Map  struct {
+			Width    float64 `json:"width"`
+			Height   float64 `json:"height"`
+			TileSize float64 `json:"tileSize"`
+			Walls    []struct {
+				MinX float64 `json:"minX"`
+				MinY float64 `json:"minY"`
+				Type string  `json:"type"`
+			} `json:"walls"`
+		} `json:"map"`
+		Spawners []struct {
+			X      float64 `json:"x"`
+			Y      float64 `json:"y"`
+			Width  float64 `json:"width"`
+			Height float64 `json:"height"`
+		} `json:"spawners"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode map preview: %v", err)
+	}
+	canonical := gamemap.GenerateBattleRoyale(42)
+	if payload.Seed != 42 || payload.Map.Width != canonical.WidthInPixels || payload.Map.Height != canonical.HeightInPixels {
+		t.Fatalf("preview header = %#v, want seed 42 and %.0fx%.0f", payload, canonical.WidthInPixels, canonical.HeightInPixels)
+	}
+	if payload.Map.TileSize != 40 || len(payload.Map.Walls) != len(canonical.Collisions) || len(payload.Spawners) != len(canonical.Spawners) {
+		t.Fatalf("preview geometry = tile %.0f, walls %d, spawners %d; want tile 40, walls %d, spawners %d", payload.Map.TileSize, len(payload.Map.Walls), len(payload.Spawners), len(canonical.Collisions), len(canonical.Spawners))
+	}
+	if payload.Map.Walls[0].MinX != canonical.Collisions[0].MinX || payload.Map.Walls[0].MinY != canonical.Collisions[0].MinY || payload.Map.Walls[0].Type != canonical.Collisions[0].Type {
+		t.Fatalf("first wall = %#v, want %.0f,%.0f,%s", payload.Map.Walls[0], canonical.Collisions[0].MinX, canonical.Collisions[0].MinY, canonical.Collisions[0].Type)
 	}
 }
 

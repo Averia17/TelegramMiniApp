@@ -6,6 +6,7 @@ import (
 	mroom "battle/model/room"
 	"battle/observability"
 	"battle/provider"
+	"battle/service/economy"
 	"fmt"
 	"log"
 	"net/http"
@@ -19,6 +20,7 @@ func main() {
 
 	store := provider.NewRedisProvider(cfg.RedisAddr)
 	mroom.SetStore(store)
+	mroom.SetTauntSpender(economy.NewClient(cfg.AccountURL))
 
 	kafka := provider.NewKafkaProducer(cfg.KafkaAddr)
 	mroom.SetKafka(kafka)

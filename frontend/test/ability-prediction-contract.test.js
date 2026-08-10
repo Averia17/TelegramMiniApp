@@ -18,6 +18,20 @@ test("an authoritative ability acknowledgement clears the pending command", () =
   assert.equal(client.pendingAbilities.has(id), false)
 })
 
+test("taunt commands use the shared clown taunt contract", () => {
+  const client = new GameClient("ws://example", "token", () => {})
+  const sent = []
+  const previousWebSocket = globalThis.WebSocket
+  globalThis.WebSocket = {OPEN: 1}
+  client.ws = {readyState: 1, send: payload => sent.push(JSON.parse(payload))}
+
+  client.taunt("clown_laugh", "enemy-2")
+
+  globalThis.WebSocket = previousWebSocket
+  assert.deepEqual(sent[0].value, {tauntId: "clown_laugh", targetId: "enemy-2"})
+  assert.equal(sent[0].type, "taunt")
+})
+
 test("clock sync responses estimate clock skew without treating transit as skew", () => {
   const client = new GameClient("ws://example", "token", () => {})
   const sentAt = Date.now()

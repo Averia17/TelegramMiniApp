@@ -1,7 +1,9 @@
 from auth import AuthenticatedUser, current_user
 from fastapi import APIRouter, Depends, HTTPException
 from infrastructure import Repo
-from services import open_chest, spend_battle_energy, wallet_view
+from services import (open_chest, purchase_taunt_pack, spend_battle_energy,
+                      spend_taunt, wallet_view)
+from services.shop_catalog import ShopCatalogError
 
 from .deps import get_repo
 
@@ -25,6 +27,33 @@ async def start_my_battle(
         raise HTTPException(status_code=409, detail=str(err))
 
 
+@router.post("/me/taunt")
+async def use_my_taunt(
+    payload: dict,
+    repo: Repo = Depends(get_repo),
+    user: AuthenticatedUser = Depends(current_user),
+):
+    try:
+        return await spend_taunt(
+            repo.session, user.user_id, payload.get("taunt_id", "")
+        )
+    except LookupError as err:
+        raise HTTPException(status_code=404, detail=str(err))
+    except ValueError as err:
+        raise HTTPException(status_code=409, detail=str(err))
+
+
+@router.post("/me/taunt-pack")
+async def buy_my_taunt_pack(
+    repo: Repo = Depends(get_repo),
+    user: AuthenticatedUser = Depends(current_user),
+):
+    try:
+        return await purchase_taunt_pack(repo.session, user.user_id)
+    except ValueError as err:
+        raise HTTPException(status_code=409, detail=str(err))
+
+
 @router.post("/me/chests/{product_id}/open")
 async def open_my_chest(
     product_id: int,
@@ -35,6 +64,8 @@ async def open_my_chest(
         return await open_chest(repo.session, user.user_id, product_id)
     except LookupError as err:
         raise HTTPException(status_code=404, detail=str(err))
+    except ShopCatalogError:
+        raise HTTPException(status_code=503, detail="Магазин временно недоступен")
     except ValueError as err:
         raise HTTPException(status_code=409, detail=str(err))
 
@@ -77,5 +108,7 @@ async def buy_chest(
         return await open_chest(repo.session, user_id, product_id)
     except LookupError as err:
         raise HTTPException(status_code=404, detail=str(err))
+    except ShopCatalogError:
+        raise HTTPException(status_code=503, detail="Магазин временно недоступен")
     except ValueError as err:
         raise HTTPException(status_code=409, detail=str(err))

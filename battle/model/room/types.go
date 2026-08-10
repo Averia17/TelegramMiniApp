@@ -9,6 +9,7 @@ import (
 
 type Client struct {
 	Id            string
+	AccessToken   string
 	Name          string
 	HeroName      string
 	Conn          *websocket.Conn
@@ -20,6 +21,7 @@ type Client struct {
 	Authenticated bool
 	MessageWindow time.Time
 	MessageCount  int
+	LastTauntAt   int64
 }
 
 type Room struct {
@@ -34,5 +36,6 @@ type Room struct {
 	Broadcast    chan []byte
 	Register     chan *Client
 	Unregister   chan *Client
+	TauntSpender TauntSpender
 	mu           sync.RWMutex
 }

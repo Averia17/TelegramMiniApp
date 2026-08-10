@@ -12,6 +12,7 @@ const GAME_MESSAGES = new Set([
   "error",
   "you_died",
   "match_found",
+  "taunt",
 ])
 
 import {recordBattleMetric} from "./rendering/shared/performance.js"
@@ -213,6 +214,10 @@ export class GameClient {
     this.pendingAbilities.set(clientId, {slot, sentAt: Date.now()})
     this.send("ability", {slot, clientId, ...(targetId ? {targetId} : {})})
     return clientId
+  }
+
+  taunt(tauntId = "clown_laugh", targetId = undefined) {
+    return this.send("taunt", {tauntId, ...(targetId ? {targetId} : {})})
   }
 
   disconnect() {

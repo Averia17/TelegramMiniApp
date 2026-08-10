@@ -92,7 +92,6 @@ export class CameraRig {
     )
     const hit = new THREE.Vector3()
     if (!raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) return null
-    const worldAngle = Math.atan2(hit.z - player.y * WORLD_SCALE, hit.x - player.x * WORLD_SCALE)
-    return Math.atan2(Math.sin(worldAngle) * 0.66, Math.cos(worldAngle))
+    return Math.atan2(hit.z - player.y * WORLD_SCALE, hit.x - player.x * WORLD_SCALE)
   }
 }

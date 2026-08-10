@@ -6,11 +6,17 @@ const lerp = (a, b, t) => a + (b - a) * t
 const MAX_SIMULATION_STEP = .05
 const MAX_CATCH_UP_TIME = .25
 const MAX_INPUT_HISTORY = 240
+const INPUT_TIMELINE_RESYNC_THRESHOLD = MAX_SIMULATION_STEP * 1000
 const SCREEN_DEPTH_SCALE = .66
 const MIN_INTERPOLATION_DELAY = 33
-const MAX_INTERPOLATION_DELAY = 120
+// Busy mobile/WebSocket runtimes can deliver several snapshots in a burst
+// after a 140-170 ms scheduling gap. Keep enough history to interpolate
+// through that jitter instead of extrapolating a visible combat frame.
+const MAX_INTERPOLATION_DELAY = 220
 const MAX_SNAPSHOT_INTERVAL_SAMPLES = 24
 const MAX_PRESENTATION_EXTRAPOLATION = 80
+const STOP_CORRECTION_HOLD_TIME = .12
+const MIN_CORRECTION_SPEED = 1
 const COLLISION_CELL_SIZE = 160
 const EMPTY_WALLS = []
 const EMPTY_COLLISION_INDEX = {
@@ -187,7 +193,11 @@ const assignEntitySnapshot = (target, snapshot) => {
 }
 
 const updateInterpolatedEntity = (target, older, newer, t) => {
-  assignEntitySnapshot(target, newer)
+  // Discrete gameplay fields (HP, attack pulses, status flags) must travel
+  // with the presentation timeline too. Copying them from `newer` before the
+  // interpolation reaches that snapshot makes a future hit/death appear
+  // immediately even while the body is still between positions.
+  assignEntitySnapshot(target, t < 1 ? older : newer)
   target.x = lerp(older.x, newer.x, t)
   target.y = lerp(older.y, newer.y, t)
   if (Number.isFinite(older.z) && Number.isFinite(newer.z)) target.z = lerp(older.z, newer.z, t)
@@ -199,14 +209,20 @@ const updateInterpolatedEntity = (target, older, newer, t) => {
 const syncInterpolatedMap = (cache, older = {}, newer = {}, t) => {
   const previousMap = older || {}
   const nextMap = newer || {}
+  // Entity membership is also time-based. Holding the older map until the
+  // presentation boundary prevents a hidden/dead opponent from vanishing at
+  // packet arrival and prevents a newly visible opponent from popping in early.
+  const presentationMap = t < 1 ? previousMap : nextMap
+  const active = new Set(Object.keys(presentationMap))
   Object.keys(cache).forEach(id => {
-    if (!Object.prototype.hasOwnProperty.call(nextMap, id)) delete cache[id]
+    if (!active.has(id)) delete cache[id]
   })
-  Object.entries(nextMap).forEach(([id, newerEntity]) => {
+  Object.entries(presentationMap).forEach(([id, presentationEntity]) => {
     const olderEntity = previousMap[id]
+    const newerEntity = nextMap[id]
     const target = cache[id] || (cache[id] = {})
-    if (olderEntity) updateInterpolatedEntity(target, olderEntity, newerEntity, t)
-    else assignEntitySnapshot(target, newerEntity)
+    if (olderEntity && newerEntity) updateInterpolatedEntity(target, olderEntity, newerEntity, t)
+    else assignEntitySnapshot(target, presentationEntity)
   })
   return cache
 }
@@ -215,15 +231,21 @@ const syncInterpolatedList = (cache, older = [], newer = [], keyOf, t) => {
   const previousList = Array.isArray(older) ? older : []
   const nextList = Array.isArray(newer) ? newer : []
   const previous = new Map(previousList.map((entity, index) => [String(keyOf(entity, index)), entity]))
+  const next = new Map(nextList.map((entity, index) => [String(keyOf(entity, index)), entity]))
+  // Membership is part of the same presentation timeline as position. Do not
+  // spawn a projectile from a future packet or remove it before its last
+  // interpolated frame has been shown.
+  const presentationList = t < 1 ? previousList : nextList
   const active = new Set()
-  const result = nextList.map((newerEntity, index) => {
-    const key = String(keyOf(newerEntity, index))
+  const result = presentationList.map((presentationEntity, index) => {
+    const key = String(keyOf(presentationEntity, index))
     active.add(key)
     const olderEntity = previous.get(key)
+    const newerEntity = next.get(key)
     const target = cache.get(key) || {}
     cache.set(key, target)
-    if (olderEntity) updateInterpolatedEntity(target, olderEntity, newerEntity, t)
-    else assignEntitySnapshot(target, newerEntity)
+    if (olderEntity && newerEntity) updateInterpolatedEntity(target, olderEntity, newerEntity, t)
+    else assignEntitySnapshot(target, presentationEntity)
     return target
   })
   cache.forEach((value, key) => {
@@ -248,6 +270,9 @@ export class NetworkSimulation {
     this.latestState = null
     this.predicted = null
     this.correction = {x: 0, y: 0}
+    this.correctionHoldRemaining = 0
+    this.recentlyStopped = false
+    this.lastNonZeroInput = {x: 0, y: 0}
     this.input = {x: 0, y: 0}
     this.movementInput = {x: 0, y: 0}
     this.pendingInputs = []
@@ -273,9 +298,22 @@ export class NetworkSimulation {
 
   setInput(x, y, ack) {
     const nextInput = {x: Number(x) || 0, y: Number(y) || 0}
+    const wasMoving = Math.hypot(this.movementInput.x, this.movementInput.y) > .001
+    const isMoving = Math.hypot(nextInput.x, nextInput.y) > .001
+    this.recentlyStopped = wasMoving && !isMoving
+    if (isMoving) {
+      this.lastNonZeroInput = nextInput
+      this.correctionHoldRemaining = 0
+    }
     this.input = nextInput
     this.movementInput = nextInput
     if (Number.isFinite(ack)) {
+      // Input timestamps are in the same local clock domain as predictionTime.
+      // If a render frame was capped, move the timeline to the command time so
+      // reconciliation cannot replay the previous direction through the gap.
+      if (this.predictionTime != null && ack - this.predictionTime > INPUT_TIMELINE_RESYNC_THRESHOLD) {
+        this.predictionTime = ack
+      }
       this.pendingInputs = this.pendingInputs.filter(input => input.ack !== ack)
       this.pendingInputs.push({ack, sentAt: ack, ...this.input})
       if (this.pendingInputs.length > MAX_INPUT_HISTORY) this.pendingInputs.shift()
@@ -316,8 +354,9 @@ export class NetworkSimulation {
       this.clockOffset = Date.now() - Number(state.ts || Date.now())
     }
     this.latestState = state
-    this.damagePrediction.ingest(state)
-    this.damagePrediction.reconcileEvents(state.combatEvents, Date.now())
+    const predictionNow = Number.isFinite(receivedAt) ? receivedAt : Date.now()
+    this.damagePrediction.ingest(state, predictionNow)
+    this.damagePrediction.reconcileEvents(state.combatEvents, predictionNow)
     this.snapshots.push(state)
     // Older timestamps are rejected above, so the accepted stream is already
     // ordered. Avoid sorting the whole 40-frame presentation buffer per state.
@@ -497,6 +536,14 @@ export class NetworkSimulation {
         x: before.x + this.correction.x - replayed.x,
         y: before.y + this.correction.y - replayed.y,
       }
+      const correctionAlongLastMovement = this.correction.x * this.lastNonZeroInput.x +
+        this.correction.y * this.lastNonZeroInput.y
+      if (this.recentlyStopped && correctionAlongLastMovement > 0.001) {
+        // An older authoritative stop can leave the local prediction slightly
+        // ahead. Hold that visual lead briefly instead of decaying it into a
+        // visible backward kick during the first stopped frames.
+        this.correctionHoldRemaining = Math.max(this.correctionHoldRemaining, STOP_CORRECTION_HOLD_TIME)
+      }
     }
     recordBattleMetric("prediction.reconciliation_offset", Math.hypot(this.correction.x, this.correction.y), {
       state: this.latestState?.game?.state || "unknown",
@@ -505,11 +552,21 @@ export class NetworkSimulation {
   }
 
   advance(delta) {
-    let remaining = clamp(Number(delta) || 0, 0, MAX_CATCH_UP_TIME)
+    const numericDelta = Number(delta)
+    const requested = Number.isFinite(numericDelta) ? Math.max(0, numericDelta) : 0
+    let remaining = Math.min(requested, MAX_CATCH_UP_TIME)
+    let simulated = 0
     while (remaining > 0) {
       const step = Math.min(remaining, MAX_SIMULATION_STEP)
       this.update(step)
       remaining -= step
+      simulated += step
+    }
+    if (this.predictionTime != null && requested > simulated) {
+      // Keep the simulation clock current while retaining the safety cap on
+      // actual movement. The next authoritative snapshot will reconcile the
+      // skipped distance without making the old input active retroactively.
+      this.predictionTime += (requested - simulated) * 1000
     }
   }
 
@@ -521,11 +578,71 @@ export class NetworkSimulation {
 
     this.predictionTime = (this.predictionTime ?? this.serverTimeToLocal(this.latestState.ts || Date.now())) + delta * 1000
     const map = this.latestState.map || {}
+    const before = this.predicted
     this.predicted = movePosition(this.predicted, this.movementInput, player, delta, map, this.getCollisionIndex(map), this.collisionQueryResult)
 
-    const correctionBlend = 1 - Math.exp(-12 * delta)
-    this.correction.x *= 1 - correctionBlend
-    this.correction.y *= 1 - correctionBlend
+    if (this.correctionHoldRemaining > 0) {
+      this.correctionHoldRemaining = Math.max(0, this.correctionHoldRemaining - delta)
+    } else {
+      const correctionBlend = 1 - Math.exp(-12 * delta)
+      let correctionDelta = {
+        x: -this.correction.x * correctionBlend,
+        y: -this.correction.y * correctionBlend,
+      }
+      const movementDelta = {
+        x: this.predicted.x - before.x,
+        y: this.predicted.y - before.y,
+      }
+      const movementDistance = Math.hypot(movementDelta.x, movementDelta.y)
+      const movementSpeedValue = Number(player.movementSpeed)
+      const correctionSpeed = Math.max(
+        MIN_CORRECTION_SPEED,
+        Number.isFinite(movementSpeedValue) ? movementSpeedValue : Number(player.speed) || 0,
+      )
+      // A reconciliation offset is presentation-only. Its decay must not
+      // become a second movement vector: after a delayed reversal, removing
+      // an offset in the old direction can otherwise move the rendered hero
+      // backward or faster than the authoritative movement speed.
+      const maxPresentationDistance = correctionSpeed * delta
+      const desiredPresentationDelta = {
+        x: movementDelta.x + correctionDelta.x,
+        y: movementDelta.y + correctionDelta.y,
+      }
+      if (Math.hypot(desiredPresentationDelta.x, desiredPresentationDelta.y) > maxPresentationDistance + 1e-9) {
+        let low = 0
+        let high = 1
+        for (let iteration = 0; iteration < 12; iteration += 1) {
+          const scale = (low + high) / 2
+          const candidateX = movementDelta.x + correctionDelta.x * scale
+          const candidateY = movementDelta.y + correctionDelta.y * scale
+          if (Math.hypot(candidateX, candidateY) <= maxPresentationDistance) low = scale
+          else high = scale
+        }
+        correctionDelta = {
+          x: correctionDelta.x * low,
+          y: correctionDelta.y * low,
+        }
+      }
+      if (movementDistance > 1e-9) {
+        const directionX = movementDelta.x / movementDistance
+        const directionY = movementDelta.y / movementDistance
+        const projected = (movementDelta.x + correctionDelta.x) * directionX +
+          (movementDelta.y + correctionDelta.y) * directionY
+        const minimumProgress = movementDistance * .1
+        if (projected < minimumProgress) {
+          const correctionProjection = correctionDelta.x * directionX + correctionDelta.y * directionY
+          if (correctionProjection < -1e-9) {
+            const scale = Math.max(0, Math.min(1, (movementDistance - minimumProgress) / -correctionProjection))
+            correctionDelta = {
+              x: correctionDelta.x * scale,
+              y: correctionDelta.y * scale,
+            }
+          }
+        }
+      }
+      this.correction.x += correctionDelta.x
+      this.correction.y += correctionDelta.y
+    }
 
   }
 
@@ -580,7 +697,7 @@ export class NetworkSimulation {
     const displayState = this.damagePrediction.applyToState(
       {...this.latestState, players, monsters, bullets, networkSmoothed: true},
       now,
-      {mutateEntities: !copyEntities},
+      {mutateEntities: !copyEntities, smoothAuthoritativeDamage: true},
     )
     endBattlePerformance(perfToken)
     return displayState

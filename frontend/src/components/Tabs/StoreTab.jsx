@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from "react"
 import axios from "axios"
 import {API_URL, SHOP_URL} from "../../utils/urls.js"
+import {getTauntPurchaseState} from "./storeEconomy.js"
 import "./StoreTab.css"
 import "./Economy.css"
 
@@ -14,6 +15,7 @@ export const StoreTab = ({economy, onEconomyChange}) => {
   const [products, setProducts] = useState([])
   const [status, setStatus] = useState("loading")
   const [opening, setOpening] = useState(null)
+  const [buyingTaunt, setBuyingTaunt] = useState(false)
   const [reward, setReward] = useState(null)
   const [notice, setNotice] = useState("")
   const rewardTimer = useRef(null)
@@ -38,10 +40,11 @@ export const StoreTab = ({economy, onEconomyChange}) => {
     setNotice("")
     try {
       const {data} = await axios.post(`${API_URL}/economy/me/chests/${product.product_id}/open`)
-      onEconomyChange?.({...economy, gold: data.gold, energy: data.energy, max_energy: data.max_energy})
+      onEconomyChange?.({...economy, gold: data.gold, crystals: data.crystals, energy: data.energy, max_energy: data.max_energy, taunt_charges: data.taunt_charges ?? economy.taunt_charges})
       setReward({
         amount: data.energy_reward,
         rolled: data.rolled_energy,
+        crystalsReward: data.crystals_reward || 0,
         tone: chestStyle(Number(product.product_id)).tone,
       })
       clearTimeout(rewardTimer.current)
@@ -53,10 +56,30 @@ export const StoreTab = ({economy, onEconomyChange}) => {
     }
   }
 
+  const buyTauntPack = async () => {
+    setBuyingTaunt(true)
+    setNotice("")
+    try {
+      const {data} = await axios.post(`${API_URL}/economy/me/taunt-pack`)
+      onEconomyChange?.({...economy, crystals: data.crystals, taunt_charges: data.taunt_charges})
+    } catch (error) {
+      setNotice(error.response?.data?.detail || "Не удалось купить насмешки")
+    } finally {
+      setBuyingTaunt(false)
+    }
+  }
+
+  const tauntPurchase = getTauntPurchaseState(economy, buyingTaunt)
+
   return <section className="store-page">
     <div className="store-hero"><span>ПРЕДЛОЖЕНИЯ АРЕНЫ</span><h2>СУНДУКИ</h2><p>Испытай удачу и пополни запас энергии</p></div>
-    <div className="store-balance"><span>ТВОЙ БАЛАНС</span><b>● {economy?.gold || 0}</b><strong>⚡ {economy?.energy || 0}/{economy?.max_energy || 100}</strong></div>
+    <div className="store-balance"><span>ТВОЙ БАЛАНС</span><b>◆ {economy?.crystals || 0}</b><b>● {economy?.gold || 0}</b><strong>⚡ {economy?.energy || 0}/{economy?.max_energy || 100}</strong></div>
     {notice && <div className="store-notice store-notice--error">{notice}</div>}
+    <article className="taunt-pack-card">
+      <div className="taunt-pack-card__icon">🤡</div>
+      <div className="taunt-pack-card__copy"><strong>ПАКЕТ НАСМЕШЕК</strong><span>10 использований · не влияет на силу героя</span><small>Осталось: {economy?.taunt_charges || 0}</small></div>
+      <button type="button" disabled={tauntPurchase.disabled} title={tauntPurchase.title} onClick={buyTauntPack}><b>◆ {tauntPurchase.cost}</b><small>{tauntPurchase.buttonLabel}</small></button>
+    </article>
     {status === "loading" && <StoreState text="Загружаем магазин..."/>}
     {status === "error" && <StoreState text="Магазин временно недоступен" retry={load}/>} 
     {status === "ready" && products.length === 0 && <StoreState text="Сундуки скоро появятся"/>}
@@ -94,6 +117,7 @@ const RewardReveal = ({reward, onClose}) => <div className={`reward-reveal rewar
     <div className="reward-chest" aria-hidden="true"><i/><b>✦</b></div>
     <div className="reward-energy"><span>⚡</span><strong>+{reward.amount}</strong></div>
     <p>ЭНЕРГИИ</p>
+    {reward.crystalsReward > 0 && <div className="reward-crystals"><span>◆</span><strong>+{reward.crystalsReward}</strong><small>КРИСТАЛЛОВ</small></div>}
     {reward.rolled !== reward.amount && <small>Выпало {reward.rolled}, запас заполнен до максимума</small>}
     <button type="button" onClick={onClose}>ЗАБРАТЬ</button>
   </div>

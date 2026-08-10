@@ -20,6 +20,7 @@ const readGlbJson = async url => {
 const expectedClips = ["idle", "run", "hit", "death", "super", "Aim", "AimSuper", "Attack", "Spawn", "Victory"]
 
 for (const [heroName, asset] of Object.entries(HERO_ASSETS)) {
+  if (asset.procedural || asset.static) continue
   test(`${heroName} canonical GLB contains the complete authored animation set`, async () => {
     const hero = await readGlbJson(asset.url)
     const names = new Set((hero.animations || []).map(animation => animation.name))

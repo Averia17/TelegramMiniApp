@@ -17,8 +17,11 @@ services:
       - KAFKA_ADDR=kafka:9092
       - APP_AUTH_SECRET=${APP_AUTH_SECRET:-local-development-auth-secret-change-before-production}
       - APP_ENV=development
+      - ACCOUNT_URL=http://account:8000
     restart: unless-stopped
     depends_on:
+      account:
+        condition: service_healthy
       battle-redis:
         condition: service_healthy
       kafka:

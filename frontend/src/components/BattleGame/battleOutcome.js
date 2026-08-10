@@ -46,6 +46,18 @@ export const getStateBattleResult = (state, playerId, currentView) => {
   }
 }
 
+// A state snapshot can be authoritative before the presentation buffer has
+// reached it. Do not cover the still-alive rendered frame with the defeat UI.
+// The authoritative snapshot remains the source for the result details; the
+// presentation snapshot only gates when those details become visible.
+export const getPresentedBattleResult = (authoritativeState, presentationState, playerId, currentView) => {
+  const result = getStateBattleResult(authoritativeState, playerId, currentView)
+  if (!result) return null
+  const presentedPlayer = presentationState?.players?.[playerId]
+  if (!presentedPlayer || Number(presentedPlayer.lives) > 0) return null
+  return result
+}
+
 export const getBattleRewardMessage = result => {
   if (!result?.won) return ""
   const place = Number(result.place) || 1

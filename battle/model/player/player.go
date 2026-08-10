@@ -84,6 +84,7 @@ type Player struct {
 	RegenRate           float64
 	RegenCarry          float64
 	LastDamageAt        int64
+	LastRegenAt         int64
 	RevealedUntil       int64
 	HitImpulseX         float64
 	HitImpulseY         float64
@@ -109,6 +110,7 @@ func (p *Player) TakeDamage(amount int) {
 		return
 	}
 	p.LastDamageAt = time.Now().UnixMilli()
+	p.LastRegenAt = 0
 	if p.LunarShield {
 		p.LunarShield = false
 		p.ShieldHP = 0

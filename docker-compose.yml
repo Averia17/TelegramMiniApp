@@ -24,6 +24,7 @@ services:
     command: ["npm", "run", "dev"]
     environment:
       VITE_BATTLE_PROXY_TARGET: http://battle:8000
+      VITE_USE_POLLING: "true"
     stop_signal: SIGINT
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]

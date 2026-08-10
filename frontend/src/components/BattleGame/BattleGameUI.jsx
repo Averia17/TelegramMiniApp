@@ -116,6 +116,13 @@ export const AbilityButton = ({keyName, label, description, cooldown = 0, charge
   </button>
 )
 
+export const TauntButton = ({cooldown = 0, disabled = false, onUse}) => (
+  <button className="battle-ability battle-taunt" title="Показать клоуна над ближайшим противником" aria-label="Показать клоуна над ближайшим противником" disabled={disabled || cooldown > 0} onClick={onUse}>
+    <b>{cooldown > 0 ? cooldown.toFixed(1) : "🤡"}</b>
+    <span>НАСМЕШКА</span>
+  </button>
+)
+
 const MINI_MAP_COLORS = {
   bush: "#48ad50",
   half: "#48ad50",

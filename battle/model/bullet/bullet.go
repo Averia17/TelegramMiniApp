@@ -17,6 +17,7 @@ type Bullet struct {
 	Rotation     float64
 	Active       bool
 	Color        string
+	HitRadius    float64 `json:"-"`
 	Damage       int
 	Kind         string
 	Speed        float64
@@ -87,6 +88,7 @@ func (b *Bullet) Reset(playerId, team string, x, y, radius, rotation float64, co
 	b.Rotation = rotation
 	b.Active = true
 	b.Color = color
+	b.HitRadius = 0
 	b.Damage = 0
 	b.Kind = ""
 	b.Speed = 4.0

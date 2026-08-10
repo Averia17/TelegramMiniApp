@@ -20,6 +20,19 @@ type ClockSyncParams struct {
 	ServerTs int64 `json:"serverTs"`
 }
 
+type TauntValue struct {
+	TauntID  string `json:"tauntId"`
+	TargetID string `json:"targetId"`
+}
+
+type TauntParams struct {
+	PlayerID   string `json:"playerId"`
+	PlayerName string `json:"playerName"`
+	TauntID    string `json:"tauntId"`
+	TargetID   string `json:"targetId"`
+	TargetName string `json:"targetName"`
+}
+
 type ServerMessage struct {
 	Type   string      `json:"type"`
 	Ts     int64       `json:"ts,omitempty"`

@@ -249,6 +249,47 @@ func (target *botTarget) radius() float64 {
 	return 0
 }
 
+func botProximityScore(distance, maxDistance, weight float64) float64 {
+	if maxDistance <= 0 {
+		return 0
+	}
+	return math.Max(0, 1-distance/maxDistance) * weight
+}
+
+func (gs *GameState) botTargetScore(bot *player.Player, target *botTarget, now int64) float64 {
+	if bot == nil || target == nil {
+		return math.Inf(-1)
+	}
+	score := 0.0
+	if target.player != nil {
+		score = 20 + botProximityScore(target.distance, BotVisionRange, 35)
+		score += (1 - math.Min(1, float64(target.player.Lives)/math.Max(1, float64(target.player.MaxLives)))) * 30
+		if target.distance <= botAttackRange(bot)+target.radius() {
+			score += 28
+		}
+		if target.player.LastShootAt > 0 && now-target.player.LastShootAt <= BotRecentThreatDuration.Milliseconds() {
+			score += 55
+		}
+		if memory := gs.BotMemory[bot.PlayerId]; memory != nil && memory.TargetType == "player" &&
+			memory.TargetID == target.id && now-memory.LastSeenAt <= BotTargetStickDuration.Milliseconds() {
+			score += 18
+		}
+		if gs.outsideStorm(target.player) {
+			score -= 50
+		}
+		return score
+	}
+	score = 8 + botProximityScore(target.distance, BotVisionRange, 20)
+	if target.distance <= botAttackRange(bot)+target.radius() {
+		score += 12
+	}
+	if memory := gs.BotMemory[bot.PlayerId]; memory != nil && memory.TargetType == "monster" &&
+		memory.TargetID == target.id && now-memory.LastSeenAt <= BotTargetStickDuration.Milliseconds() {
+		score += 12
+	}
+	return score
+}
+
 func (gs *GameState) botSelectTarget(bot *player.Player, now int64) *botTarget {
 	if bot == nil {
 		return nil
@@ -264,17 +305,52 @@ func (gs *GameState) botSelectTarget(bot *player.Player, now int64) *botTarget {
 			continue
 		}
 		distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
-		healthRatio := float64(candidate.Lives) / math.Max(1, float64(candidate.MaxLives))
-		consider(&botTarget{kind: "player", id: id, player: candidate, x: candidate.X, y: candidate.Y, distance: distance, score: 90 - distance + (1-healthRatio)*120})
+		target := &botTarget{kind: "player", id: id, player: candidate, x: candidate.X, y: candidate.Y, distance: distance}
+		target.score = gs.botTargetScore(bot, target, now)
+		consider(target)
 	}
 	for id, candidate := range gs.Monsters {
 		if candidate == nil || !gs.botCanSeeMonster(bot, candidate) {
 			continue
 		}
 		distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
-		consider(&botTarget{kind: "monster", id: id, monster: candidate, x: candidate.X, y: candidate.Y, distance: distance, score: -distance})
+		target := &botTarget{kind: "monster", id: id, monster: candidate, x: candidate.X, y: candidate.Y, distance: distance}
+		target.score = gs.botTargetScore(bot, target, now)
+		consider(target)
 	}
 	return best
+}
+
+func botShouldKite(bot *player.Player, target *botTarget) bool {
+	if bot == nil || target == nil || target.player == nil || bot.MaxLives <= 0 {
+		return false
+	}
+	healthRatio := float64(bot.Lives) / float64(bot.MaxLives)
+	targetHealthRatio := float64(target.player.Lives) / math.Max(1, float64(target.player.MaxLives))
+	if healthRatio >= .28 || targetHealthRatio < .2 {
+		return false
+	}
+	dangerDistance := botAttackRange(bot) * .55
+	if botIsMelee(bot) {
+		dangerDistance = math.Max(180, botAttackRange(bot)*1.5)
+	}
+	return target.distance <= dangerDistance
+}
+
+func botTargetAimPoint(target *botTarget) (float64, float64) {
+	if target == nil {
+		return 0, 0
+	}
+	x, y := target.x, target.y
+	if target.player == nil || (target.player.MoveX == 0 && target.player.MoveY == 0) {
+		return x, y
+	}
+	moveLength := math.Hypot(target.player.MoveX, target.player.MoveY)
+	if moveLength <= .01 {
+		return x, y
+	}
+	lead := math.Min(100, math.Max(0, target.player.Speed*.14))
+	return x + target.player.MoveX/moveLength*lead, y + target.player.MoveY/moveLength*lead
 }
 
 func (gs *GameState) botPickupTarget(bot *player.Player) *prop.Prop {
@@ -312,6 +388,22 @@ func (gs *GameState) botPickupTarget(bot *player.Player) *prop.Prop {
 	return best
 }
 
+func (gs *GameState) botShouldCollectPickup(bot *player.Player, pickup *prop.Prop, target *botTarget) bool {
+	if bot == nil || pickup == nil || !pickup.Active {
+		return false
+	}
+	if target == nil {
+		return true
+	}
+	if pickup.Type == "potion-red" {
+		healthRatio := float64(bot.Lives) / math.Max(1, float64(bot.MaxLives))
+		attackDistance := botAttackRange(bot) + target.radius()
+		return healthRatio < .35 && target.distance > math.Max(180, attackDistance*1.15)
+	}
+	return target.distance > BotVisionRange*.72 &&
+		math.Hypot(pickup.X-bot.X, pickup.Y-bot.Y) < BotVisionRange*.35
+}
+
 func botAttackRange(bot *player.Player) float64 {
 	if bot == nil {
 		return 0
@@ -337,6 +429,20 @@ func botIsMelee(bot *player.Player) bool {
 	return botAttackRange(bot) <= 140
 }
 
+func (gs *GameState) botStormCenterTarget(bot *player.Player) (float64, float64, bool) {
+	if bot == nil || gs.Map == nil || gs.StormRadius <= 0 ||
+		(gs.IslandPhase != IslandPhaseCollapse && gs.IslandPhase != IslandPhaseBeacon) {
+		return 0, 0, false
+	}
+	centerX, centerY := gs.Map.WidthInPixels/2, gs.Map.HeightInPixels/2
+	distance := math.Hypot(bot.X-centerX, bot.Y-centerY)
+	safeRadius := math.Max(0, gs.StormRadius-bot.Radius-BotStormSafetyMargin)
+	if distance <= safeRadius {
+		return 0, 0, false
+	}
+	return centerX, centerY, true
+}
+
 func (gs *GameState) updateBots() {
 	if gs.State != GameStateGame {
 		return
@@ -354,6 +460,14 @@ func (gs *GameState) updateBots() {
 			botIndex++
 			continue
 		}
+		if centerX, centerY, seekCenter := gs.botStormCenterTarget(bot); seekCenter {
+			angle := math.Atan2(centerY-bot.Y, centerX-bot.X)
+			bot.Rotation = angle
+			dx, dy := gs.botTravelDirection(id, &bot.CircleBody, centerX, centerY, now)
+			gs.playerMove(id, now, dx, dy)
+			botIndex++
+			continue
+		}
 		if threat, flee := gs.botMonsterThreat(bot); threat != nil {
 			if flee {
 				gs.botRetreatFrom(id, bot, threat.X, threat.Y, now)
@@ -363,7 +477,8 @@ func (gs *GameState) updateBots() {
 			botIndex++
 			continue
 		}
-		if pickup := gs.botPickupTarget(bot); pickup != nil {
+		visibleTarget := gs.botSelectTarget(bot, now)
+		if pickup := gs.botPickupTarget(bot); gs.botShouldCollectPickup(bot, pickup, visibleTarget) {
 			angle := math.Atan2(pickup.Y-bot.Y, pickup.X-bot.X)
 			bot.Rotation = angle
 			distance := math.Hypot(pickup.X-bot.X, pickup.Y-bot.Y)
@@ -376,7 +491,7 @@ func (gs *GameState) updateBots() {
 			botIndex++
 			continue
 		}
-		if opening {
+		if opening && visibleTarget == nil {
 			if crate := gs.closestWallOfType(bot.X, bot.Y, "crates"); crate != nil {
 				crateX, crateY := (crate.MinX+crate.MaxX)/2, (crate.MinY+crate.MaxY)/2
 				targetX, targetY := botWallApproachPoint(bot, crate)
@@ -397,7 +512,7 @@ func (gs *GameState) updateBots() {
 				continue
 			}
 		}
-		target := gs.botSelectTarget(bot, now)
+		target := visibleTarget
 		var memory *BotPerception
 		targetVisible := target != nil
 		if targetVisible {
@@ -457,27 +572,33 @@ func (gs *GameState) botEngageTarget(id string, bot *player.Player, target *botT
 	if bot == nil || target == nil {
 		return
 	}
-	angle := math.Atan2(target.y-bot.Y, target.x-bot.X)
+	aimX, aimY := botTargetAimPoint(target)
+	angle := math.Atan2(aimY-bot.Y, aimX-bot.X)
 	bot.Rotation = angle
 	reach := botAttackRange(bot)
 	attackDistance := reach + target.radius()
 	melee := botIsMelee(bot)
 	preferred := reach * .72
-	approach := 0.0
-	if target.distance > preferred {
-		approach = 1
-	} else if !melee && target.distance < reach*.38 {
-		approach = -.85
+	if botShouldKite(bot, target) {
+		gs.botRetreatFrom(id, bot, target.x, target.y, now)
+		bot.Rotation = angle
+	} else {
+		approach := 0.0
+		if target.distance > preferred {
+			approach = 1
+		} else if !melee && target.distance < reach*.38 {
+			approach = -.85
+		}
+		strafe := math.Sin(float64(now)/620+float64(botIndex)*1.7) * .62
+		if math.Abs(approach)+math.Abs(strafe) < .05 {
+			strafe = .45
+		}
+		dx := math.Cos(angle)*approach + math.Cos(angle+math.Pi/2)*strafe
+		dy := math.Sin(angle)*approach + math.Sin(angle+math.Pi/2)*strafe
+		intentX, intentY := bot.X+dx*220, bot.Y+dy*220
+		moveX, moveY := gs.botTravelDirection(id, &bot.CircleBody, intentX, intentY, now)
+		gs.playerMove(id, now, moveX, moveY)
 	}
-	strafe := math.Sin(float64(now)/620+float64(botIndex)*1.7) * .62
-	if math.Abs(approach)+math.Abs(strafe) < .05 {
-		strafe = .45
-	}
-	dx := math.Cos(angle)*approach + math.Cos(angle+math.Pi/2)*strafe
-	dy := math.Sin(angle)*approach + math.Sin(angle+math.Pi/2)*strafe
-	intentX, intentY := bot.X+dx*220, bot.Y+dy*220
-	moveX, moveY := gs.botTravelDirection(id, &bot.CircleBody, intentX, intentY, now)
-	gs.playerMove(id, now, moveX, moveY)
 	if target.distance > attackDistance || !gs.botHasLineOfSight(bot, target) {
 		return
 	}

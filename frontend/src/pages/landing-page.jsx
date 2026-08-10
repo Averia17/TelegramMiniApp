@@ -19,7 +19,7 @@ const LandingPage = ({id}) => {
   const tabParam = searchParams.get("tab")
   const [tab, setTab] = useState(() => TABS.includes(tabParam) ? tabParam : "play")
   const [selectedHero, setSelectedHero] = useState(() => loadBattleHero(id))
-  const [economy, setEconomy] = useState({energy:100,max_energy:100,gold:0,next_energy_in:0})
+  const [economy, setEconomy] = useState({energy:100,max_energy:100,gold:0,crystals:0,taunt_charges:0,next_energy_in:0})
   const [playError, setPlayError] = useState("")
   const [battleStarting, setBattleStarting] = useState(false)
 
@@ -47,7 +47,7 @@ const LandingPage = ({id}) => {
     try {
       const {data}=await axios.post(`${API_URL}/economy/me/battle`)
       setEconomy(data)
-      navigate("/battle", {state: {heroName: selectedHero}})
+      navigate("/battle", {state: {heroName: selectedHero, tauntCharges: data.taunt_charges || 0}})
     } catch (error) {
       setBattleStarting(false)
       setPlayError(error.response?.data?.detail || "Не удалось начать бой")
@@ -67,7 +67,7 @@ const LandingPage = ({id}) => {
             </button>
             <div className="lp-currencies">
               <Currency icon="⚡" value={`${economy.energy}/${economy.max_energy}`} color="#b663f1"/>
-              <Currency icon="◆" value="0" color="#53e473"/>
+              <Currency icon="◆" value={economy.crystals} color="#53e473"/>
               <Currency icon="●" value={economy.gold} color="#ffd340"/>
             </div>
           </header>

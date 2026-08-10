@@ -1,16 +1,17 @@
 import * as THREE from "three"
 import {WORLD_SCALE} from "../shared/coordinates.js"
 import {createColoredBox, createContactShadow, flatMaterial} from "../shared/materials.js"
-import {createEnvironmentModel} from "./environmentPlacement.js"
+import {createStoneBlockGeometry} from "./StoneBlockGeometry.js"
 
 const propColors = {
+  wall: 0x4d5a5b,
   fence: 0x8b5436,
   crates: 0xb86f31,
   barrels: 0xa6463c,
   cactus: 0x2f9b52,
   crystal: 0x7653dc,
   bones: 0xe7d9b7,
-  destructible: 0xd6854d,
+  destructible: 0x64635f,
   tree: 0x4f352b,
   dead_tree: 0x77736a,
   shipwreck: 0x6f4b35,
@@ -18,6 +19,7 @@ const propColors = {
   sacrificial_stone: 0x8e394c,
   menhir: 0x626879,
 }
+const STONE_PROP_TYPES = new Set(["wall", "destructible", "sacrificial_stone", "menhir"])
 
 export const createProp = (wall, index, waterTexture) => {
   const width = Math.max(2, wall.maxX - wall.minX) * WORLD_SCALE
@@ -39,11 +41,14 @@ export const createProp = (wall, index, waterTexture) => {
   }
 
   const height = wall.type === "fence" ? 0.9 : wall.type === "crates" ? 1.65 : wall.type === "tree" ? 2.8 : wall.type === "shipwreck" ? 1.9 : wall.type === "menhir" ? 1.45 : 2.15
-  const color = propColors[wall.type] || (index % 5 === 0 ? 0x9853a8 : 0xd2764f)
-  const block = createColoredBox(width, height, depth, color)
+  const color = propColors[wall.type] || 0x536060
+  const block = STONE_PROP_TYPES.has(wall.type)
+    ? new THREE.Mesh(
+      createStoneBlockGeometry().scale(width, height, depth),
+      new THREE.MeshStandardMaterial({color, roughness: .92, metalness: 0, flatShading: true, side: THREE.DoubleSide}),
+    )
+    : createColoredBox(width, height, depth, color)
   block.position.y = height / 2
   group.add(block, createContactShadow(Math.max(width, depth) * 0.55))
   return group
 }
-
-export {createEnvironmentModel}

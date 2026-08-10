@@ -13,6 +13,13 @@ import (
 	"time"
 )
 
+const (
+	regenerationCooldown              = 3 * time.Second
+	regenerationInterval              = 2 * time.Second
+	regenerationPulsePercent          = 0.15
+	regenerationConcealedPulsePercent = 0.25
+)
+
 func InitGameState(gs *GameState) {
 	gs.Players = make(map[string]*player.Player)
 	gs.Monsters = make(map[string]*monster.Monster)
@@ -25,6 +32,8 @@ func InitGameState(gs *GameState) {
 	gs.DamageZones = make([]*DamageZone, 0)
 	gs.PendingMandySupers = make([]*PendingMandySuper, 0)
 	gs.HeroZones = make([]*HeroZone, 0)
+	gs.KattyPaintStacks = make(map[string]map[string]int)
+	gs.KattyPaintUntil = make(map[string]map[string]int64)
 	gs.DoomedUntil = make(map[string]int64)
 	gs.LightMarkedUntil = make(map[string]int64)
 	gs.AbilityTargets = make(map[string]string)
@@ -60,9 +69,37 @@ func InitGameState(gs *GameState) {
 }
 
 func (gs *GameState) Update() {
+	gs.updateWithDelta(time.Second / 60)
+}
+
+// UpdateWithDelta keeps movement tied to elapsed wall-clock time when the
+// room loop misses a tick. The rest of the simulation remains on its existing
+// 60 Hz cadence, while movement no longer slows down under server load.
+func (gs *GameState) UpdateWithDelta(elapsed time.Duration) {
+	if elapsed <= 0 {
+		elapsed = time.Second / 60
+	}
+	gs.updateWithDelta(elapsed)
+}
+
+func (gs *GameState) updateWithDelta(elapsed time.Duration) {
 	gs.updateGame()
+	nominalStep := time.Second / 60
+	currentStep := elapsed
+	if currentStep <= 0 {
+		currentStep = nominalStep
+	}
+	if elapsed > nominalStep {
+		// The input actions were received during the delayed interval. Let the
+		// direction that was active at the last tick cover the missed time,
+		// then apply the newest direction for one normal simulation step. This
+		// prevents a fresh turn from being replayed retroactively across the
+		// whole server stall.
+		gs.updatePlayerMovement(elapsed - nominalStep)
+		currentStep = nominalStep
+	}
 	gs.updatePlayers()
-	gs.updatePlayerMovement()
+	gs.updatePlayerMovement(currentStep)
 	gs.updateStatuses()
 	gs.updateActiveAbilities()
 	gs.updateScheduledShots()
@@ -101,24 +138,33 @@ func (gs *GameState) pruneCombatEvents(now int64) {
 }
 
 func (gs *GameState) updateRegeneration() {
+	gs.updateRegenerationAt(time.Now().UnixMilli())
+}
+
+func (gs *GameState) updateRegenerationAt(now int64) {
 	if gs.State != GameStateGame {
 		return
 	}
-	now := time.Now().UnixMilli()
 	for _, p := range gs.Players {
-		if !p.IsAlive() || p.IsFullLives() || p.RegenRate <= 0 || now-p.LastDamageAt < 3000 {
+		if !p.IsAlive() || p.IsFullLives() || p.RegenRate <= 0 || now-p.LastDamageAt < regenerationCooldown.Milliseconds() {
 			continue
 		}
-		rate := p.RegenRate
-		if gs.isInConcealment(p) && gs.isConcealed(p) {
-			rate *= 2
+		if p.LastRegenAt > 0 && now-p.LastRegenAt < regenerationInterval.Milliseconds() {
+			continue
 		}
-		p.RegenCarry += float64(p.MaxLives) * rate / 60
+		pulsePercent := regenerationPulsePercent
+		if gs.isInConcealment(p) && gs.isConcealed(p) {
+			pulsePercent = regenerationConcealedPulsePercent
+		}
+		p.RegenCarry += float64(p.MaxLives) * pulsePercent
 		heal := int(p.RegenCarry)
 		if heal > 0 {
-			p.Lives = int(math.Min(float64(p.MaxLives), float64(p.Lives+heal)))
-			p.RegenCarry -= float64(heal)
+			missing := p.MaxLives - p.Lives
+			applied := int(math.Min(float64(missing), float64(heal)))
+			p.Lives += applied
+			p.RegenCarry -= float64(applied)
 		}
+		p.LastRegenAt = now
 	}
 }
 
@@ -218,7 +264,7 @@ func (gs *GameState) updatePlayers() {
 				if v.AutoAim {
 					angle, v.AimDistance = gs.autoAimTarget(action.PlayerId)
 				}
-				gs.playerShootWithCommand(action.PlayerId, time.Now().UnixMilli(), angle, v.ClientID, v.AimDistance)
+				gs.playerShootWithMode(action.PlayerId, time.Now().UnixMilli(), angle, v.ClientID, v.AutoAim, v.AimDistance)
 			}
 		case "ability":
 			if v, ok := action.Value.(*AbilityValue); ok {
@@ -643,7 +689,11 @@ func (gs *GameState) updateBullets() {
 				b.Active = false
 				continue
 			}
-			if !p.CanBulletHurt(b.PlayerId, b.Team) || !segmentHitsCircle(previousX, previousY, b.X, b.Y, p.X, p.Y, p.Radius+b.Radius) {
+			playerHitRadius := p.Radius + b.Radius
+			if b.Splash <= 0 && b.Kind != "spore" && b.Kind != "quantum" {
+				playerHitRadius += b.HitRadius
+			}
+			if !p.CanBulletHurt(b.PlayerId, b.Team) || !segmentHitsCircle(previousX, previousY, b.X, b.Y, p.X, p.Y, playerHitRadius) {
 				continue
 			}
 			if b.HitPlayers[p.PlayerId] {
@@ -670,6 +720,10 @@ func (gs *GameState) updateBullets() {
 			attacker := gs.Players[b.PlayerId]
 			if gs.dealPlayerDamage(attacker, p, dmg) <= 0 {
 				continue
+			}
+			if b.HitRadius > 0 && b.Splash <= 0 && b.Kind != "spore" && b.Kind != "quantum" {
+				gs.radialDamageExcept(b.PlayerId, p.X, p.Y, b.HitRadius, dmg, p.PlayerId)
+				b.HitRadius = 0
 			}
 			if b.Knockback > 0 {
 				geometry.MoveCircleWithBlockingWalls(
@@ -716,7 +770,14 @@ func (gs *GameState) updateBullets() {
 		}
 
 		for mid, m := range gs.Monsters {
-			if m == nil || !m.IsAlive() || !segmentHitsCircle(previousX, previousY, b.X, b.Y, m.X, m.Y, m.Radius+b.Radius) {
+			if m == nil || !m.IsAlive() {
+				continue
+			}
+			monsterHitRadius := m.Radius + b.Radius
+			if b.Splash <= 0 && b.Kind != "spore" && b.Kind != "quantum" {
+				monsterHitRadius += b.HitRadius
+			}
+			if !segmentHitsCircle(previousX, previousY, b.X, b.Y, m.X, m.Y, monsterHitRadius) {
 				continue
 			}
 			b.Active = false
@@ -991,13 +1052,19 @@ func EffectiveMovementSpeed(p *player.Player, now int64) float64 {
 	return speed
 }
 
-func (gs *GameState) updatePlayerMovement() {
+func (gs *GameState) updatePlayerMovement(elapsed ...time.Duration) {
 	now := time.Now().UnixMilli()
+	step := (time.Second / 60).Seconds()
+	if len(elapsed) > 0 && elapsed[0] > 0 {
+		// A long pause should not teleport players across the arena after a
+		// suspended process resumes, but normal missed ticks must be paid back.
+		step = math.Min(elapsed[0].Seconds(), 100*time.Millisecond.Seconds())
+	}
 	for _, p := range gs.Players {
 		if !p.IsAlive() || p.StunUntil > now || p.ChannelUntil > now || (p.MoveX == 0 && p.MoveY == 0) {
 			continue
 		}
-		speed := EffectiveMovementSpeed(p, now) / 60
+		speed := EffectiveMovementSpeed(p, now) * step
 		magnitude := math.Hypot(p.MoveX, p.MoveY)
 		geometry.MoveCircleWithBlockingWalls(
 			&p.CircleBody,
@@ -1122,7 +1189,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 	}
 	if !primary {
 		switch p.HeroName {
-		case "Needle", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi":
+		case "Needle", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi", "Katty":
 			p.LastAbilityOK = gs.useNewHeroGadget(p, ts)
 			if p.LastAbilityOK {
 				p.GadgetPulse++
@@ -1241,6 +1308,8 @@ func AbilityCooldownMs(heroName, slot string) int64 {
 		return 11000
 	case "Persephone Lumi":
 		return 13000
+	case "Katty":
+		return 12000
 	case "Viper":
 		return 5800
 	case "Titan":
@@ -1263,10 +1332,14 @@ func (gs *GameState) playerRotate(id string, ts int64, rotation float64, aimDist
 }
 
 func (gs *GameState) playerShoot(id string, ts int64, screenAngle float64, aimDistance ...float64) {
-	gs.playerShootWithCommand(id, ts, screenAngle, "", aimDistance...)
+	gs.playerShootWithMode(id, ts, screenAngle, "", false, aimDistance...)
 }
 
 func (gs *GameState) playerShootWithCommand(id string, ts int64, screenAngle float64, commandID string, aimDistance ...float64) {
+	gs.playerShootWithMode(id, ts, screenAngle, commandID, false, aimDistance...)
+}
+
+func (gs *GameState) playerShootWithMode(id string, ts int64, screenAngle float64, commandID string, autoAim bool, aimDistance ...float64) {
 	emitResult := func(accepted, resolved bool) {
 		gs.emitCombatEvent(CombatEvent{Kind: "attack", CommandID: commandID, SourceID: id, Accepted: accepted, Resolved: resolved})
 	}
@@ -1286,12 +1359,15 @@ func (gs *GameState) playerShootWithCommand(id string, ts int64, screenAngle flo
 	}
 	previousCommandID, previousSourceID, previousProjectileID := gs.activeCommandID, gs.activeSourceID, gs.activeProjectileID
 	previousPending := gs.commandHasProjectile
+	previousAutoAim := gs.activeAutoAim
 	gs.activeCommandID, gs.activeSourceID, gs.activeProjectileID = commandID, id, 0
 	gs.commandHasProjectile = false
+	gs.activeAutoAim = autoAim
 	defer func() {
 		resolved := !gs.commandHasProjectile
 		gs.activeCommandID, gs.activeSourceID, gs.activeProjectileID = previousCommandID, previousSourceID, previousProjectileID
 		gs.commandHasProjectile = previousPending
+		gs.activeAutoAim = previousAutoAim
 		emitResult(true, resolved)
 	}()
 	p.LastShootAt = ts
@@ -1433,6 +1509,10 @@ func (gs *GameState) spawnAttackBullet(p *player.Player, angle float64, kind str
 		gs.Bullets = append(gs.Bullets, b)
 	}
 	b.Kind, b.Damage, b.Speed, b.MaxRange, b.Pierce, b.Returning, b.Poison = kind, int(math.Round(float64(damage)*gs.damageMultiplier(p))), speed, maxRange, pierce, returning, poison
+	b.HitRadius = 0
+	if gs.activeAutoAim && gs.hasAutoAimTarget {
+		b.HitRadius = AutoAimAssistRadius
+	}
 	b.CommandID = gs.activeCommandID
 	if gs.activeCommandID != "" {
 		gs.commandHasProjectile = true
@@ -1544,9 +1624,7 @@ func (gs *GameState) hitSectorWithDamage(source *player.Player, angle, reach, ha
 		if !target.CanBulletHurt(source.PlayerId, source.Team) {
 			continue
 		}
-		dx, dy := target.X-source.X, target.Y-source.Y
-		delta := math.Atan2(math.Sin(math.Atan2(dy, dx)-angle), math.Cos(math.Atan2(dy, dx)-angle))
-		if math.Hypot(dx, dy) > reach+target.Radius || math.Abs(delta) > halfArc {
+		if !gs.autoAimHitsTarget(source, target.X, target.Y, target.Radius, angle, reach, halfArc) {
 			continue
 		}
 		gs.dealPlayerDamage(source, target, damage)
@@ -1560,9 +1638,7 @@ func (gs *GameState) hitSectorWithDamage(source *player.Player, angle, reach, ha
 		if target == nil || !target.IsAlive() {
 			continue
 		}
-		dx, dy := target.X-source.X, target.Y-source.Y
-		delta := math.Atan2(math.Sin(math.Atan2(dy, dx)-angle), math.Cos(math.Atan2(dy, dx)-angle))
-		if math.Hypot(dx, dy) > reach+target.Radius || math.Abs(delta) > halfArc {
+		if !gs.autoAimHitsTarget(source, target.X, target.Y, target.Radius, angle, reach, halfArc) {
 			continue
 		}
 		gs.damageMonster(id, target, damage)

@@ -25,6 +25,7 @@ const localMatrix = node => {
 }
 
 for (const [heroName, asset] of Object.entries(HERO_ASSETS)) {
+  if (asset.procedural || asset.static) continue
   test(`${heroName} held equipment has a grip marker aligned with its weapon socket`, async t => {
     const document = await readGlbJson(asset.url)
     const nodes = document.nodes || []

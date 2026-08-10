@@ -39,8 +39,11 @@ const (
 	SpawnProtectionDuration = 3 * time.Second
 	BotCombatGraceDuration  = 5 * time.Second
 	BotNavigationProbe      = 28.0
+	BotStormSafetyMargin    = 80.0
 	BotVisionRange          = 620.0
 	BotRevealRange          = 900.0
+	BotRecentThreatDuration = 2 * time.Second
+	BotTargetStickDuration  = 1200 * time.Millisecond
 	BotPathRefreshInterval  = 240 * time.Millisecond
 	BotStuckTimeout         = 650 * time.Millisecond
 	BotProgressDistance     = 1.0
@@ -102,6 +105,8 @@ type GameState struct {
 	DamageZones             []*DamageZone
 	PendingMandySupers      []*PendingMandySuper
 	HeroZones               []*HeroZone
+	KattyPaintStacks        map[string]map[string]int
+	KattyPaintUntil         map[string]map[string]int64
 	DoomedUntil             map[string]int64
 	LightMarkedUntil        map[string]int64
 	AbilityTargets          map[string]string
@@ -117,6 +122,10 @@ type GameState struct {
 	activeSourceID          string
 	activeProjectileID      uint64
 	commandHasProjectile    bool
+	activeAutoAim           bool
+	autoAimTargetX          float64
+	autoAimTargetY          float64
+	hasAutoAimTarget        bool
 	botWallCacheRevision    int
 	botWallCache            map[string][]*geometry.WallTile
 	botTerrainCacheRevision int

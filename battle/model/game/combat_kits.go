@@ -22,6 +22,7 @@ type ColtKit struct{}
 type BarleyKit struct{}
 type MandyKit struct{}
 type NeedleKit struct{}
+type KattyKit struct{}
 
 type ScheduledShot struct {
 	Owner        string
@@ -60,6 +61,8 @@ type PendingMandySuper struct {
 	TriggerAt int64
 }
 
+const AutoAimAssistRadius = 34.0
+
 func CombatKitFor(hero string) CombatKit {
 	switch hero {
 	case "Needle":
@@ -82,6 +85,8 @@ func CombatKitFor(hero string) CombatKit {
 		return WukongMicoKit{}
 	case "Persephone Lumi":
 		return PersephoneLumiKit{}
+	case "Katty":
+		return KattyKit{}
 	default:
 		return nil
 	}
@@ -90,8 +95,10 @@ func CombatKitFor(hero string) CombatKit {
 func (gs *GameState) autoAimTarget(owner string) (float64, float64) {
 	source := gs.Players[owner]
 	if source == nil {
+		gs.hasAutoAimTarget = false
 		return 0, 0
 	}
+	gs.hasAutoAimTarget = false
 	reach := 700.0
 	if kit := CombatKitFor(source.HeroName); kit != nil {
 		reach = kit.AttackRange()
@@ -110,6 +117,7 @@ func (gs *GameState) autoAimTarget(owner string) (float64, float64) {
 		}
 	}
 	if best != nil {
+		gs.autoAimTargetX, gs.autoAimTargetY, gs.hasAutoAimTarget = best.X, best.Y, true
 		return screenAngleFromWorld(math.Atan2(best.Y-source.Y, best.X-source.X)), bestDistance
 	}
 	var bestMonsterX, bestMonsterY float64
@@ -127,12 +135,25 @@ func (gs *GameState) autoAimTarget(owner string) (float64, float64) {
 		}
 	}
 	if hasMonster {
+		gs.autoAimTargetX, gs.autoAimTargetY, gs.hasAutoAimTarget = bestMonsterX, bestMonsterY, true
 		return screenAngleFromWorld(math.Atan2(bestMonsterY-source.Y, bestMonsterX-source.X)), bestMonsterDistance
 	}
 	if math.Hypot(source.MoveX, source.MoveY) > .01 {
 		return screenAngleFromWorld(math.Atan2(source.MoveY, source.MoveX)), reach
 	}
 	return screenAngleFromWorld(source.Rotation), reach
+}
+
+func (gs *GameState) autoAimHitsTarget(source *player.Player, targetX, targetY, targetRadius, angle, reach, halfArc float64) bool {
+	dx, dy := targetX-source.X, targetY-source.Y
+	delta := math.Atan2(math.Sin(math.Atan2(dy, dx)-angle), math.Cos(math.Atan2(dy, dx)-angle))
+	if math.Hypot(dx, dy) <= reach+targetRadius && math.Abs(delta) <= halfArc {
+		return true
+	}
+	if !gs.activeAutoAim || !gs.hasAutoAimTarget || math.Hypot(targetX-gs.autoAimTargetX, targetY-gs.autoAimTargetY) > AutoAimAssistRadius+targetRadius {
+		return false
+	}
+	return math.Hypot(dx, dy) <= reach+targetRadius+AutoAimAssistRadius
 }
 
 func (ShellyKit) AimShape() string     { return "cone" }
@@ -157,7 +178,7 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 		source.GadgetArmed = false
 	}
 	for _, target := range gs.Players {
-		if !target.CanBulletHurt(source.PlayerId, source.Team) || !insideSector(source.X, source.Y, target.X, target.Y, target.Radius, angle, reach, halfArc) {
+		if !target.CanBulletHurt(source.PlayerId, source.Team) || !gs.autoAimHitsTarget(source, target.X, target.Y, target.Radius, angle, reach, halfArc) {
 			continue
 		}
 		damage := source.AttackDmg
@@ -174,7 +195,7 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 		}
 	}
 	for id, target := range gs.Monsters {
-		if target == nil || !target.IsAlive() || !insideSector(source.X, source.Y, target.X, target.Y, target.Radius, angle, reach, halfArc) {
+		if target == nil || !target.IsAlive() || !gs.autoAimHitsTarget(source, target.X, target.Y, target.Radius, angle, reach, halfArc) {
 			continue
 		}
 		damage := source.AttackDmg
@@ -384,6 +405,10 @@ func (gs *GameState) updateScheduledShots() {
 		}
 		source := gs.Players[scheduled.Owner]
 		if source == nil || !source.IsAlive() {
+			continue
+		}
+		if scheduled.Kind == "katty_paint" {
+			gs.executeKattyPaintShot(source, now, scheduled.Angle)
 			continue
 		}
 		previousCommandID, previousSourceID := gs.activeCommandID, gs.activeSourceID

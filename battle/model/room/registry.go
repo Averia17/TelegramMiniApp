@@ -31,6 +31,7 @@ func GetOrCreateRoom(roomId, roomName, mapName, mode string, maxPlayers int) *Ro
 		Broadcast:    make(chan []byte, 256),
 		Register:     make(chan *Client),
 		Unregister:   make(chan *Client),
+		TauntSpender: defaultTauntSpender,
 	}
 
 	gs := &game.GameState{

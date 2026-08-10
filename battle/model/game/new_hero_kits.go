@@ -38,6 +38,7 @@ func cappedSkillDuration(duration time.Duration) int64 {
 type HeroZone struct {
 	Owner, Kind                                 string
 	X, Y, Radius                                float64
+	ToX, ToY, Width                             float64
 	CreatedAt, ExpiresAt, NextTickAt, TriggerAt int64
 	Triggered                                   map[string]bool
 }
@@ -65,6 +66,101 @@ func (WukongMicoKit) AimShape() string         { return "cone" }
 func (WukongMicoKit) AttackRange() float64     { return 120 }
 func (PersephoneLumiKit) AimShape() string     { return "line" }
 func (PersephoneLumiKit) AttackRange() float64 { return 600 }
+func (KattyKit) AimShape() string              { return "cone" }
+func (KattyKit) AttackRange() float64          { return 240 }
+
+func (KattyKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64) {
+	for index := 0; index < 3; index++ {
+		gs.ScheduledShots = append(gs.ScheduledShots, &ScheduledShot{
+			Owner: p.PlayerId, CommandID: gs.activeCommandID, Angle: angle,
+			SpawnAt: ts + 200 + int64(index)*150, Damage: p.AttackDmg,
+			MaxRange: KattyKit{}.AttackRange(), Kind: "katty_paint",
+		})
+	}
+	gs.addEffect("katty_paint_queue", p.X, p.Y, 0, 0, KattyKit{}.AttackRange(), angle, KattyKit{}.AttackRange(), 22.5*math.Pi/180, p.Color, p.AttackDmg, 700)
+}
+
+func (KattyKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
+	distance = math.Max(80, math.Min(480, distance))
+	x, y := p.X+math.Cos(angle)*distance, p.Y+math.Sin(angle)*distance
+	if gs.Map != nil {
+		clamped := gs.Map.ClampCircle(&geometry.CircleBody{X: x, Y: y, Radius: 8})
+		x, y = clamped.X, clamped.Y
+	}
+	const duration = int64(7000)
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{
+		Owner: p.PlayerId, Kind: "katty_paint_puddle", X: x, Y: y, Radius: 200,
+		CreatedAt: ts, ExpiresAt: ts + duration, NextTickAt: ts, Triggered: map[string]bool{},
+	})
+	for _, target := range gs.Players {
+		if target.CanBulletHurt(p.PlayerId, p.Team) && math.Hypot(target.X-x, target.Y-y) <= 200+target.Radius {
+			gs.applyKattyPaint(p, target, ts, 3, true)
+		}
+	}
+	gs.addEffect("katty_paint_grenade", p.X, p.Y, x, y, 26, angle, distance, 0, p.Color, p.AttackDmg, 500)
+	gs.addEffect("katty_paint_puddle", x, y, 0, 0, 200, 0, 0, 0, p.Color, 0, duration)
+	return true
+}
+
+func (gs *GameState) kattyPaintStacks(owner, target string) int {
+	if gs == nil || gs.KattyPaintStacks == nil || gs.KattyPaintStacks[owner] == nil {
+		return 0
+	}
+	return gs.KattyPaintStacks[owner][target]
+}
+
+func (gs *GameState) applyKattyPaint(source, target *player.Player, ts int64, layers int, blind bool) {
+	if gs == nil || source == nil || target == nil || layers <= 0 || !target.IsAlive() {
+		return
+	}
+	if gs.KattyPaintStacks == nil {
+		gs.KattyPaintStacks = make(map[string]map[string]int)
+	}
+	if gs.KattyPaintUntil == nil {
+		gs.KattyPaintUntil = make(map[string]map[string]int64)
+	}
+	if gs.KattyPaintStacks[source.PlayerId] == nil {
+		gs.KattyPaintStacks[source.PlayerId] = make(map[string]int)
+	}
+	if gs.KattyPaintUntil[source.PlayerId] == nil {
+		gs.KattyPaintUntil[source.PlayerId] = make(map[string]int64)
+	}
+	stacks := gs.KattyPaintStacks[source.PlayerId][target.PlayerId] + layers
+	gs.KattyPaintUntil[source.PlayerId][target.PlayerId] = ts + 5000
+	if stacks < 3 {
+		gs.KattyPaintStacks[source.PlayerId][target.PlayerId] = stacks
+		return
+	}
+	gs.KattyPaintStacks[source.PlayerId][target.PlayerId] = 0
+	gs.KattyPaintUntil[source.PlayerId][target.PlayerId] = 0
+	if target.StunUntil < ts+800 {
+		target.StunUntil = ts + 800
+	}
+	if blind && target.BlindUntil < ts+2500 {
+		target.BlindUntil = ts + 2500
+	}
+	bonus := int(math.Round(float64(source.AttackDmg) * .24))
+	if bonus > 0 {
+		gs.dealPlayerDamage(source, target, bonus)
+	}
+	gs.addEffect("katty_paint_stick", target.X, target.Y, 0, 0, target.Radius+16, 0, 0, 0, source.Color, bonus, 800)
+}
+
+func (gs *GameState) executeKattyPaintShot(source *player.Player, ts int64, angle float64) {
+	if source == nil || !source.IsAlive() {
+		return
+	}
+	const halfArc = 22.5 * math.Pi / 180
+	gs.hitSector(source, angle, KattyKit{}.AttackRange(), halfArc, source.AttackDmg, false)
+	for _, target := range gs.Players {
+		if target.CanBulletHurt(source.PlayerId, source.Team) && insideSector(source.X, source.Y, target.X, target.Y, target.Radius, angle, KattyKit{}.AttackRange(), halfArc) {
+			gs.applyKattyPaint(source, target, ts, 1, false)
+		}
+	}
+	x, y := source.X+math.Cos(angle)*KattyKit{}.AttackRange(), source.Y+math.Sin(angle)*KattyKit{}.AttackRange()
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: source.PlayerId, Kind: "katty_paint_spot", X: x, Y: y, Radius: 30, CreatedAt: ts, ExpiresAt: ts + 4000, Triggered: map[string]bool{}})
+	gs.addEffect("katty_paint_spot", x, y, 0, 0, 30, 0, 0, 0, source.Color, 0, 4000)
+}
 
 func (MinaKit) Basic(gs *GameState, p *player.Player, _ int64, angle, _ float64) {
 	spawnConfiguredFan(gs, p, angle, heroAttackConfigs[p.HeroName])
@@ -251,6 +347,28 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 	case "Kaze":
 		p.StealthUntil = ts + cappedSkillDuration(3*time.Second)
 		gs.addEffect("kaze_veil_step", p.X, p.Y, 0, 0, 74, p.Rotation, 0, 0, "#d7b8ff", 0, 700)
+	case "Katty":
+		originX, originY := p.X, p.Y
+		// Paint Flight is the only Katty movement that phases through walls.
+		// Normal movement still goes through updatePlayerMovement and remains
+		// blocked by the map collision hash.
+		p.X += math.Cos(p.Rotation) * 320
+		p.Y += math.Sin(p.Rotation) * 320
+		if gs.Map != nil {
+			clamped := gs.Map.ClampCircle(&geometry.CircleBody{X: p.X, Y: p.Y, Radius: p.Radius})
+			p.X, p.Y = clamped.X, clamped.Y
+		}
+		for _, target := range gs.Players {
+			if target.CanBulletHurt(p.PlayerId, p.Team) && segmentHitsCircle(originX, originY, p.X, p.Y, target.X, target.Y, target.Radius+18) {
+				gs.applyKattyPaint(p, target, ts, 2, false)
+			}
+		}
+		gs.HeroZones = append(gs.HeroZones, &HeroZone{
+			Owner: p.PlayerId, Kind: "katty_paint_trail", X: originX, Y: originY,
+			ToX: p.X, ToY: p.Y, Radius: 34, Width: 34, CreatedAt: ts, ExpiresAt: ts + 4000,
+			Triggered: map[string]bool{},
+		})
+		gs.addEffect("katty_paint_trail", originX, originY, p.X, p.Y, 34, p.Rotation, 320, 0, p.Color, 0, 4000)
 	case "Persephone Lumi":
 		detonated := false
 		keptZones := gs.HeroZones[:0]
@@ -356,7 +474,51 @@ func (gs *GameState) updateNewHeroSystems() {
 				}
 			}
 		}
+		if z.Kind == "katty_paint_spot" {
+			owner := gs.Players[z.Owner]
+			for _, target := range gs.Players {
+				if owner != nil && target.CanBulletHurt(owner.PlayerId, owner.Team) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {
+					target.SlowUntil = now + 250
+					target.SlowMultiplier = .85
+				}
+			}
+		}
+		if z.Kind == "katty_paint_puddle" {
+			owner := gs.Players[z.Owner]
+			for _, target := range gs.Players {
+				if owner != nil && target.CanBulletHurt(owner.PlayerId, owner.Team) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {
+					target.SlowUntil = now + 250
+					target.SlowMultiplier = .80
+				}
+			}
+		}
+		if z.Kind == "katty_paint_trail" {
+			owner := gs.Players[z.Owner]
+			for _, target := range gs.Players {
+				if owner == nil || !segmentHitsCircle(z.X, z.Y, z.ToX, z.ToY, target.X, target.Y, z.Width+target.Radius) {
+					continue
+				}
+				if target.PlayerId == owner.PlayerId {
+					owner.HasteUntil = now + 250
+					continue
+				}
+				if target.CanBulletHurt(owner.PlayerId, owner.Team) {
+					target.SlowUntil = now + 250
+					target.SlowMultiplier = .75
+				}
+			}
+		}
 		zones = append(zones, z)
+	}
+	for owner, targets := range gs.KattyPaintUntil {
+		for target, expiresAt := range targets {
+			if expiresAt > 0 && expiresAt <= now {
+				delete(targets, target)
+				if gs.KattyPaintStacks[owner] != nil {
+					delete(gs.KattyPaintStacks[owner], target)
+				}
+			}
+		}
 	}
 	for _, p := range gs.Players {
 		if p != nil && p.StoneArmorUntil > 0 && p.StoneArmorUntil <= now {

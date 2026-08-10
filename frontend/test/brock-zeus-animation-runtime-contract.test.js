@@ -28,6 +28,12 @@ test("Brock Zeus publishes twelve actions and a separate companion cloud asset",
   const nodeNames = new Set((character.nodes || []).map(node => node.name).filter(Boolean))
   assert.equal([...nodeNames].some(name => /cloud|locator/i.test(name)), false)
   const armorNode = (character.nodes || []).find(node => node.name === "armor_GEO:PIV.001")
+  const rightArmRepairNode = (character.nodes || []).find(node => node.name === "BrockZeus_RightArm_Repair")
+  assert.equal(
+    rightArmRepairNode?.extras?.right_arm_visual_repair_version,
+    1,
+    "Brock Zeus must publish the mirrored right-arm hand repair as a separate skinned mesh",
+  )
   assert.equal(
     armorNode?.extras?.left_wrist_rest_repair_version,
     2,
@@ -35,8 +41,8 @@ test("Brock Zeus publishes twelve actions and a separate companion cloud asset",
   )
   assert.equal(
     armorNode?.extras?.left_arm_rest_attachment_version,
-    2,
-    "Brock Zeus lower left arm cluster must use the residual shoulder attachment repair",
+    3,
+    "Brock Zeus lower left arm cluster must use the overlapping shoulder attachment repair",
   )
   assert.equal(
     armorNode?.extras?.left_hand_skinning_version,
@@ -47,6 +53,11 @@ test("Brock Zeus publishes twelve actions and a separate companion cloud asset",
     armorNode?.extras?.left_hand_attachment_bone,
     "L_Elbow",
     "Brock Zeus left hand must follow the left forearm bone",
+  )
+  assert.equal(
+    armorNode?.extras?.right_forearm_attachment_bone,
+    "R_Elbow",
+    "Brock Zeus right forearm must follow the elbow bone before the wrist",
   )
   assert.equal(
     armorNode?.extras?.left_hand_geometry_version,

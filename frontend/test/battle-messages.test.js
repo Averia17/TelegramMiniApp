@@ -13,6 +13,13 @@ test("formats actionable server errors and death notifications", () => {
   assert.equal(formatBattleMessage({type: "you_died", params: {killerName: "Mandy"}}), "You died — Mandy got you")
 })
 
+test("formats a targeted clown taunt", () => {
+  assert.equal(
+    formatBattleMessage({type: "taunt", params: {playerName: "Alice", targetName: "Bob"}}),
+    "Alice 🤡 Bob",
+  )
+})
+
 test("does not return a renderable message for unknown or intentionally hidden events", () => {
   assert.equal(formatBattleMessage({type: "island_voice", params: {text: "Look around"}}), "")
   assert.equal(formatBattleMessage({type: "future_event", params: {}}), "")

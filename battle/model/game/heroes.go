@@ -62,6 +62,7 @@ var Heroes = withHeroKits(withAttackConfigs([]Hero{
 	{Name: "Kaze", Color: "#B88CFF", Radius: 12, MaxLives: 650, Speed: 16, AttackDamage: 40, AttackRate: 220, ReloadTime: 850, MaxAmmo: 3, AttackType: "kaze_cross_slash", Role: "Assassin", RegenRate: .011, Desc: "Rapid twin slash and an eight-tile piercing dash"},
 	{Name: "Wukong Mico", Color: "#FFB33E", Radius: 15, MaxLives: 900, Speed: 13, AttackDamage: 85, AttackRate: 650, ReloadTime: 1750, MaxAmmo: 3, AttackType: "mico_staff", Role: "Tank", RegenRate: .010, Desc: "Heavy close-range staff swings without forced movement"},
 	{Name: "Persephone Lumi", Color: "#D954A8", Radius: 13, MaxLives: 680, Speed: 13, AttackDamage: 70, AttackRate: 470, ReloadTime: 1600, MaxAmmo: 3, BulletSpeed: 28, BulletSize: 10, AttackType: "lumi_trail_orb", Role: "Controller", RegenRate: .010, Desc: "Slow trails and a rooting garden"},
+	{Name: "Katty", Color: "#FF5C9A", Radius: 13, MaxLives: 640, Speed: 14, AttackDamage: 34, AttackRate: 520, ReloadTime: 1700, MaxAmmo: 3, AttackType: "katty_paint_queue", Role: "Controller", RegenRate: .010, Desc: "Street artist who controls space with layered paint"},
 }))
 
 func RandomHero() Hero {
@@ -69,6 +70,11 @@ func RandomHero() Hero {
 }
 
 func withHeroKits(heroes []Hero) []Hero {
+	heroKits["Katty"] = HeroKit{
+		Basic:  AbilityDefinition{"paint_queue", "Краска-очередь", "Три выстрела краской накладывают слои. Третий слой обездвиживает цель.", "basic", "server"},
+		Super:  AbilityDefinition{"paint_grenade", "Баллон-граната", "Граната оставляет лужу краски, ослепляет и наносит третий слой.", "primary", "server"},
+		Gadget: AbilityDefinition{"paint_flight", "Красколёт", "Рывок оставляет след краски, замедляющий врагов и ускоряющий Кэтти.", "secondary", "server"},
+	}
 	for index := range heroes {
 		kit := heroKits[heroes[index].Name]
 		switch heroes[index].Name {

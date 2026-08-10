@@ -45,6 +45,7 @@ var heroAttackConfigs = map[string]AttackConfig{
 	"Kaze":            {Archetype: AttackMeleeCone, AimShape: "cone", Range: 105, HalfArcDegrees: 55, Modifier: "kaze_double"},
 	"Wukong Mico":     {Archetype: AttackMeleeCone, AimShape: "cone", Range: 120, HalfArcDegrees: 50, Modifier: "mico_staff"},
 	"Persephone Lumi": {Archetype: AttackProjectile, AimShape: "line", Range: 600, ProjectileKind: "lumi_orb", Modifier: "slow_trail"},
+	"Katty":           {Archetype: AttackBurst, AimShape: "cone", Range: 240, ProjectileKind: "katty_paint", ProjectileCount: 3, SpreadDegrees: 45, HalfArcDegrees: 22.5, Modifier: "katty_paint_layers"},
 }
 
 // GetAttackConfig returns the immutable wire-facing attack metadata without
@@ -87,6 +88,8 @@ func BasicCombatKitFor(hero string) BasicCombatKit {
 		return WukongMicoKit{}
 	case "Persephone Lumi":
 		return PersephoneLumiKit{}
+	case "Katty":
+		return KattyKit{}
 	}
 	config, ok := heroAttackConfigs[hero]
 	if !ok {

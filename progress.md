@@ -6,6 +6,14 @@ Original prompt: Сделать текущую карту более похож�
 - Проверено: `go test ./model/gamemap`, целевые `model/game`, `npm test`, `npm run build`; Playwright harness отрендерился без console errors.
 - TODO: полный `go test ./...` всё ещё содержит ранее существовавшие падения combat-тестов вне этого изменения.
 
+## Katty hero integration
+
+- Added Katty to the authoritative hero catalog with compact balanced stats: 640 HP, speed 14, 34 basic damage, 3 ammo, 240 range, and a 12-second Super cooldown.
+- Implemented the paint-layer contract: three delayed cone shots at 200/350/500 ms, third-layer stun plus bonus damage, a 7-second paint puddle with blind/slow control, and a 4-second Paint Flight trail.
+- Paint Flight phases through walls only during the gadget; ordinary movement remains collision-blocked. Added server tests for layers, effects, and wall traversal.
+- Added a local procedural runtime preview for Katty and documented the requested Sketchfab reference. The original GLB is intentionally not bundled until it is downloaded through an authenticated session and attribution is confirmed.
+- Verified targeted Go tests, frontend production build, and hero-catalog validation. Full existing frontend/Go suites still contain unrelated pre-existing failures noted in their output.
+
 ## Final phase HP drain
 
 - Added a separate 60-second beacon/final phase to the match clock (total match duration is now 3:30).
@@ -87,3 +95,121 @@ Original prompt: Сделать текущую карту более похож�
 - The battle loop was already simulating at 60 Hz but only serialized a state on every second tick. State broadcasts now use the existing 60 Hz simulation cadence; the client adaptive buffer has a 33 ms floor and still expands from observed jitter.
 - Low-quality map walls/props are grouped into a handful of instanced batches without contact shadows; constrained combat effects collapse to single low-segment rings and projectiles use simple spheres without shadows or burst fragments. High-quality visuals remain unchanged.
 - Random Kaze battle after the change: `stateHz:60`, 33 ms adaptive interpolation delay, 52 draw calls, 12 map objects, renderer p95 1.5 ms, game-loop p95 2.1 ms, reconciliation error p95 0.13 px, 0 long tasks and no console/page errors. The headless software-WebGL runner still shows compositor scheduling around 25-30 ms per frame, so visible hardware Chrome remains the final acceptance environment.
+
+## Isometric bush volume and radial concealment
+
+- Replaced battle-map bush GLB substitution with a shared instanced low-poly cluster: six varied icosahedron leaf volumes per collider, per-instance palette colors, flat-shaded high-quality lighting, and a cone fallback on constrained devices.
+- Added radial visibility: bushes use 42% opacity inside 120 world units, ease back to fully opaque by 260 units, and update from the interpolated local hero focus every frame. Materials are cached after mount and invalidated when a visual is replaced.
+- Added `frontend/test/bush-renderer.test.js` coverage for cluster volume, radius math, mounted map fading, and empty focus handling. Targeted bush tests pass; build and lint pass. The full suite still has unrelated pre-existing failures in animation/aim contract tests.
+## Attack range preview restoration
+
+- Restored the melee aiming preview sector; it remains visible while aiming and uses uniform world-space scaling so changing direction cannot squeeze its radius or width.
+- Removed the artificial `0.66` vertical-angle compression from screen-to-world aiming.
+- Added regression coverage for the visible sector, stable scale after rotation, hiding after aiming ends, and full-angle screen mapping.
+- Targeted rendering tests and the production build pass. The live harness screenshot shows the restored sector; its separate backend 500 is due to the local battle service not running.
+
+## Hero health badges
+
+- Added an HP badge above every hero with the current/max value and a proportional health bar.
+- Kept the badge on the constrained/low-quality renderer path and refresh it from interpolated display state so damage updates are visible immediately.
+- Added focused coverage for HP formatting and clamped bar fractions. `npm run build`, `npm run lint`, and the focused rendering test pass.
+- Full rendering test file still has the unrelated pre-existing map/bush failures in the dirty worktree.
+- The standard web-game Playwright harness passes on the fresh Vite server; full battle visual QA remains blocked by the unavailable nginx/auth route, while the direct Three.js GLB harness itself still renders normally.
+
+## Clown taunt prototype
+
+- Added a server-authoritative `taunt` WebSocket event with the shared `clown_laugh` contract and a 1.5-second per-player cooldown.
+- Added the in-battle taunt button, chat message, and a bright procedural 3D clown animation that pops, spins, floats, and fades above the sender's hero.
+- The exact Sketchfab clown-smiley model found is a paid asset; the free CC-BY alternative is a low-poly clown character, so the prototype keeps a self-contained fallback until a licensed asset is selected.
+- Targeted frontend tests, changed-file ESLint, and production build pass. Full Go game tests still contain unrelated pre-existing combat-contract failures; full-project lint still has an unrelated `AimRenderer.js` indentation failure.
+- The local Vite smoke runner could not be used for visual confirmation because the existing dev process returned HTTP 404 for `/`; the procedural taunt factory itself was instantiated successfully in Node with 18 Three.js child meshes.
+
+## Targeted taunts
+
+- Taunts now select the nearest visible living opponent on the client and render above that target.
+- The server validates that the target exists, is alive, and is not the sender before broadcasting the event.
+- Added target IDs/names to the protocol and regression coverage for target selection, invalid targets, command payloads, and chat formatting.
+- Targeted frontend tests, changed-file lint, production build, and `go test ./model/room` pass.
+
+## Taunt crystal economy and store rewards
+
+- Added a separate non-pay-to-win `crystals` balance to player wallets with a non-negative database constraint and Alembic migration `f1a4c7d8e9b0`.
+- Added server-owned `taunt_charges`: a 10-crystal purchase grants 10 uses, and each `clown_laugh` spends one charge. Account locks the wallet row and commits before battle broadcasts, so a direct WebSocket message cannot bypass payment.
+- Chests now cost 10/20/50 gold and can additionally roll crystals: 10% for 5-10, 20% for 15-20, and 50% for 40-50. The crystal roll is independent of energy capacity.
+- Battle forwards the authenticated access token to account over the internal `ACCOUNT_URL` service route; unavailable account service or insufficient balance prevents the visual/chat event.
+- Landing and store balances now display crystals. Economy tests, battle room/economy/handler tests, changed-file ESLint, and production build pass.
+- Full frontend suite remains at 255 passing, 3 skipped, and one unrelated pre-existing Blender export contract failure.
+
+## Solid volumetric bush fields (2026-08-10)
+
+- Battle `bush` and `half` concealment colliders now always use one shared procedural field, even when the authored bush GLB is already cached. This prevents visible seams between adjacent colliders.
+- Adjacent rectangles with matching rows or columns merge into one visual canopy. Each merged area has a rounded volumetric base plus a dense nine-piece scalloped crown with varied green instance colors; gameplay walls stay intact for collision and concealment queries.
+- Added regression coverage for contiguous fields, authored-GLB bypass, low-quality geometry, and nearby visibility fading.
+- Verified with 5 bush tests, 121 rendering-architecture tests, changed-file ESLint, and a production Vite build. Browser battle QA confirmed a local brawler inside the continuous field, the concealment HUD state, and a visible opponent. The final screenshot is `frontend/output/playwright/bush-battle-after.png`.
+- Full frontend suite currently has one unrelated pre-existing Blender export contract failure (`runtime hero export preserves authored Actions without NLA rebinding`); 264 tests pass and 3 are skipped.
+
+## Environment visuals: procedural map, GLB heroes only (2026-08-10)
+
+- Removed environment GLB instantiation and focus-triggered environment refreshes from `MapRenderer`.
+- Battle asset preloading/readiness now covers hero GLBs and companions only; environment registry utilities remain available for isolated tests/tools.
+- Solid map props use rounded procedural stone geometry and gray stone materials instead of orange rectangular fallbacks.
+- Added regression coverage proving battle map sync and focus movement make zero environment GLB requests.
+- Verified: rendering tests 121/121, changed-file ESLint, and `npm run build` pass.
+
+## Hero GLBs load at battle entry
+
+- Removed the runtime dynamic-quality downgrade from `ThreeBattleRenderer`; no FPS-triggered `lowQuality` switch or hero proxy path is used during combat.
+- `SceneRoot` no longer forces low quality for software WebGL, and `HeroView` no longer starts per-hero lazy GLB loads.
+- Removed the app-wide preload from `main.jsx`; `BattleGame` now owns the full hero+companion preload immediately before creating the battle renderer.
+- Browser QA was attempted, but the active local backend returned `501 Unsupported method ('POST')` / `Authentication failed` before the battle screen, so no gameplay screenshot could be captured.
+
+## Combat hitch requirement clarification (2026-08-10)
+
+- Battle presentation must start with ready authored GLB heroes. The proxy/deferred-GLB approach was discarded after this requirement was clarified.
+
+## Bush visual correction pass (2026-08-10)
+
+- Reworked the bush fallback after browser comparison showed the old result was a tiled grid of repeated hexagonal blobs, unlike the supplied Brawl Stars reference.
+- Connected bush colliders now merge across shared edges into one visual canopy. The canopy uses a dense deterministic scatter of varied broad leaf rosettes, a low-opacity support volume, and stronger layered green shading instead of nine fixed crown instances.
+- Raised the nearby-bush visibility floor from 0.42 to 0.58 so foliage remains readable around a concealed player while the brawler stays visible.
+- Added regression coverage for wide dense scatter and 2x2 adjacent collider merging. Verified 6 bush tests, 121 rendering-architecture tests, changed-file ESLint, and Vite production build.
+- Browser QA used the map harness and the real `/battle/mock-room` route with a mock WebSocket state. The final battle screenshot is `output/playwright/bush-battle-final.png`; the canvas rendered with no page errors or failed requests.
+- Full frontend suite currently reports 271 passing, 3 skipped, and 2 unrelated existing failures: Brock authored-action contract and Blender runtime export contract.
+
+## Bush canopy depth and local fade (2026-08-10)
+
+- Raised the procedural leaf ridges and support mound so bushes read as a standing canopy with height, not a flat layer under the hero.
+- Split same-type bush colliders into connected clearings. Each clearing now keeps its own focus-based opacity, so the nearby field fades while a separate field remains denser.
+- Tightened the fade band to 72–220 world units; browser evaluation measured the local field at `0.58` opacity and the nearby second field at `0.633`.
+- Added tests for vertical leaf volume, connected-field splitting, and independent local transparency. Targeted bush/rendering tests pass.
+- Direct battle QA passed with no page errors or failed requests. Screenshot: `output/playwright/bush-battle-volumetric-final.png`.
+- Full frontend suite: 270 passing, 3 skipped, and 5 unrelated existing asset/animation contract failures (Katty GLB contracts, authored-action export, and runtime hero export).
+
+## Faceted stone wall visuals (2026-08-10)
+
+- Replaced flat low-quality stone blocks with a shared faceted low-poly stone silhouette: chamfered footprint, raised top facet, flat shading, and lit side planes.
+- Added per-instance stone color variation for walls, destructible blocks, sacrificial stones, and menhirs while keeping instancing and collision geometry unchanged.
+- Reused the same `StoneBlockGeometry` for the high-quality procedural prop path so both render paths share the same visual language.
+- Added regression coverage for the faceted geometry in both high-quality and low-quality paths. Rendering architecture tests pass 122/122, changed-file ESLint passes, and Vite build passes.
+- Direct battle visual QA passed with no page errors or failed requests. Screenshot: `output/playwright/wall-style-battle-faceted-fixed.png`.
+
+## Map harness GLB cleanup (2026-08-10)
+
+- Removed the demo environment GLB pad, sample props, focus button, and environment preload from `test/map-environment-harness.html`; the map preview now shows only the procedural map renderer.
+- Added a regression contract that prevents the harness from mounting `instantiateEnvironment(...)` samples again.
+- Browser verification at `/test/map-environment-harness.html`: `environment.total = 0`, `environment.samples = 0`, no `/assets/environment/*.glb` requests, and no new console errors or warnings. Screenshot: `artifacts/map-environment-after.png`.
+
+## Detailed beacon landmark (2026-08-11)
+
+- Replaced the plain first-trial beacon with a layered stylized landmark: faceted pedestal, inset platform, metal collars, tower cap, emissive octahedral core, core glow, activation rings, and separate outer/inner beam volumes.
+- Preserved the existing island gating and `beaconOpen` behavior; the open state now increases beam/core/ground glow intensity and adds subtle rotation/pulse animation.
+- Restored the authored beacon scale after the detail pass accidentally made it tiny; the visual group now uses a uniform scale of 24 while remaining centered on the map.
+- Added regression coverage for the beacon hierarchy, faceted materials, transparent beam contracts, open-state intensity changes, and minimum world scale. Rendering architecture tests pass 125/125, changed-file ESLint passes, and Vite build passes.
+- Browser verification at `http://localhost/test/map-environment-harness.html`: status `Готово`, beacon scale `[24, 24, 24]`, 16 beacon children, no console/page errors. Screenshot: `output/playwright/beacon-user-localhost-final.png`.
+
+## Map depth and snapshot cadence check (2026-08-10)
+
+- Fixed radial foreground/z-fighting wedges in `MapRenderer.syncIslandTerrain`: island decoration now uses adjacent ring/circle surfaces with polygon offset instead of overlapping coplanar discs.
+- Added a rendering regression test for non-overlapping terrain surfaces and clean browser verification through the live map harness. Screenshot: `output/playwright/map-environment-after-offset-fix.png`.
+- Changed battle state publication from every second 60 Hz simulation frame to every frame, removing the avoidable 33 ms transport gap; added a room regression test for the 60 Hz contract.
+- Live movement QA measured the client using the server-authoritative `movementSpeed` (Needle: 144 px/s) with no independent speed multiplier observed. Backend logs still show occasional scheduler gaps up to ~1.3 s, which remain a separate runtime/container issue.

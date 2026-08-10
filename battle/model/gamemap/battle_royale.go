@@ -83,8 +83,9 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 	}
 
 	// Grass is non-blocking concealment, laid down in large irregular patches.
-	// The two noise scales prevent a repetitive checkerboard while keeping the
-	// centre readable for combat.
+	// The two noise scales prevent a repetitive checkerboard. Keep the threshold
+	// high enough that combat lanes and landmarks remain readable at the battle
+	// camera angle; the QA map preview consumes this same generator.
 	for y := 4; y < size-4; y++ {
 		for x := 4; x < size-4; x++ {
 			if occupied[[2]int{x, y}] {
@@ -93,7 +94,7 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 			distance := math.Hypot(float64(x)-center, float64(y)-center)
 			grassNoise := gradientNoise(seed+0x9e3779b9, float64(x)/5.8, float64(y)/5.8) +
 				gradientNoise(seed+0x243f6a88, float64(x)/13.0, float64(y)/13.0)*.5
-			if distance > 5 && grassNoise > -.04 {
+			if distance > 5 && grassNoise > .3 {
 				add(x, y, "bush")
 			}
 		}

@@ -5,13 +5,17 @@ from infrastructure.database.models.wallet import PlayerWallet, ProcessedBattle
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from .shop_catalog import ShopCatalogClient, shop_catalog_client
+
 MAX_ENERGY = 100
 ENERGY_REGEN_SECONDS = 300
 WIN_GOLD = 10
+TAUNT_COST = 10
+TAUNT_PACK_CHARGES = 10
 CHESTS = {
-    1001: {"price": 20, "reward": (5, 10)},
-    1002: {"price": 30, "reward": (15, 20)},
-    1003: {"price": 50, "reward": (30, 50)},
+    1001: {"reward": (5, 10), "crystal_chance": 10, "crystal_reward": (5, 10)},
+    1002: {"reward": (15, 20), "crystal_chance": 20, "crystal_reward": (15, 20)},
+    1003: {"reward": (30, 50), "crystal_chance": 50, "crystal_reward": (40, 50)},
 }
 
 
@@ -71,7 +75,13 @@ async def get_wallet(session, user_id, lock=False):
         stmt = stmt.with_for_update()
     wallet = (await session.execute(stmt)).scalar_one_or_none()
     if wallet is None:
-        wallet = PlayerWallet(user_id=user_id, gold=0, energy=MAX_ENERGY)
+        wallet = PlayerWallet(
+            user_id=user_id,
+            gold=0,
+            crystals=0,
+            taunt_charges=0,
+            energy=MAX_ENERGY,
+        )
         session.add(wallet)
         await session.flush()
     return wallet, _refill(wallet)
@@ -83,6 +93,10 @@ async def wallet_view(session, user_id):
     return {
         "user_id": user_id,
         "gold": wallet.gold,
+        "crystals": wallet.crystals,
+        "taunt_charges": wallet.taunt_charges,
+        "taunt_pack_cost": TAUNT_COST,
+        "taunt_pack_charges": TAUNT_PACK_CHARGES,
         "energy": wallet.energy,
         "max_energy": MAX_ENERGY,
         "next_energy_in": next_in,
@@ -100,16 +114,56 @@ async def spend_battle_energy(session, user_id):
     return await wallet_view(session, user_id)
 
 
-async def open_chest(session, user_id, product_id):
+async def spend_taunt(session, user_id, taunt_id):
+    if taunt_id != "clown_laugh":
+        raise LookupError("Насмешка не найдена")
+    wallet, _ = await get_wallet(session, user_id, True)
+    if wallet.taunt_charges < 1:
+        raise ValueError("Нет оплаченных насмешек")
+    wallet.taunt_charges -= 1
+    await session.commit()
+    return {
+        "taunt_id": taunt_id,
+        "charges": wallet.taunt_charges,
+        "crystals": wallet.crystals,
+    }
+
+
+async def purchase_taunt_pack(session, user_id):
+    wallet, _ = await get_wallet(session, user_id, True)
+    if wallet.crystals < TAUNT_COST:
+        raise ValueError("Недостаточно кристаллов")
+    wallet.crystals -= TAUNT_COST
+    wallet.taunt_charges += TAUNT_PACK_CHARGES
+    await session.commit()
+    return {
+        "cost": TAUNT_COST,
+        "charges_added": TAUNT_PACK_CHARGES,
+        "taunt_charges": wallet.taunt_charges,
+        "crystals": wallet.crystals,
+    }
+
+
+async def open_chest(
+    session,
+    user_id,
+    product_id,
+    catalog_client: ShopCatalogClient | None = None,
+):
     chest = CHESTS.get(product_id)
     if chest is None:
         raise LookupError("Сундук не найден")
+    price = await (catalog_client or shop_catalog_client).get_price(product_id)
     wallet, _ = await get_wallet(session, user_id, True)
-    if wallet.gold < chest["price"]:
+    if wallet.gold < price:
         raise ValueError("Недостаточно золота")
     rolled = random.randint(*chest["reward"])
+    crystal_reward = 0
+    if random.random() < chest["crystal_chance"] / 100:
+        crystal_reward = random.randint(*chest["crystal_reward"])
     before = wallet.energy
-    wallet.gold -= chest["price"]
+    wallet.gold -= price
+    wallet.crystals += crystal_reward
     wallet.energy = min(MAX_ENERGY, wallet.energy + rolled)
     if wallet.energy == MAX_ENERGY:
         wallet.energy_updated_at = datetime.now(timezone.utc)
@@ -119,6 +173,9 @@ async def open_chest(session, user_id, product_id):
         "energy_reward": wallet.energy - before,
         "rolled_energy": rolled,
         "gold": wallet.gold,
+        "crystals": wallet.crystals,
+        "crystals_reward": crystal_reward,
+        "taunt_charges": wallet.taunt_charges,
         "energy": wallet.energy,
         "max_energy": MAX_ENERGY,
     }

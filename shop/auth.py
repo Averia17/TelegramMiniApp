@@ -55,3 +55,14 @@ def service_token() -> str:
     if len(secret) < 32:
         raise RuntimeError("Service authentication is not configured")
     return hmac.new(secret.encode(), b"shop-payment-v1", hashlib.sha256).hexdigest()
+
+
+async def require_shop_service(x_service_token: str = Header(default="")) -> None:
+    try:
+        expected = service_token()
+    except RuntimeError as err:
+        raise HTTPException(
+            status_code=503, detail="Service authentication is not configured"
+        ) from err
+    if not hmac.compare_digest(expected, x_service_token):
+        raise HTTPException(status_code=401, detail="Service authentication required")

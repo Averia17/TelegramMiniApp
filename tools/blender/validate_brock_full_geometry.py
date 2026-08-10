@@ -48,6 +48,7 @@ JOINT_PAIRS = (
     ("Root", "R_UpperLeg"),
 )
 MAX_ALLOWED_GAP = 0.12
+MAX_ALLOWED_LEFT_ARM_GAP = 0.03
 
 
 def weight_owner(mesh, vertex_index):
@@ -121,8 +122,15 @@ def audit_clip(clip):
         for pair, gap in gaps.items():
             if math.isfinite(gap) and gap > max_gaps[pair][0]:
                 max_gaps[pair] = (gap, frame)
-            if math.isfinite(gap) and gap > MAX_ALLOWED_GAP:
+            allowed_gap = (
+                MAX_ALLOWED_LEFT_ARM_GAP
+                if pair == "L_Shoulder->L_Elbow"
+                else MAX_ALLOWED_GAP
+            )
+            if math.isfinite(gap) and gap > allowed_gap:
                 frame_failure[pair] = gap
+            if pair == "R_Elbow->R_Wrist" and not math.isfinite(gap):
+                frame_failure[pair] = "missing deform seam"
         if frame_failure:
             failing_frames.append({"frame": frame, "gaps": frame_failure})
 

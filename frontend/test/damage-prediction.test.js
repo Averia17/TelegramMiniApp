@@ -51,6 +51,27 @@ test("a missed prediction eases back to authoritative HP instead of snapping", (
   assert.equal(prediction.applyToState(state(), 1300).players.enemy.lives, 100)
 })
 
+test("presentation eases confirmed nonlethal damage while keeping lethal HP authoritative", () => {
+  const prediction = new DamagePrediction({rollbackMs: 120})
+  prediction.ingest(state(), 1000)
+  prediction.applyToState(state(), 1000, {smoothAuthoritativeDamage: true})
+  prediction.ingest(state(40), 1050)
+
+  const halfway = prediction.applyToState(state(40), 1110, {smoothAuthoritativeDamage: true})
+    .players.enemy.lives
+  assert.ok(40 < halfway && halfway < 100)
+  assert.equal(
+    prediction.applyToState(state(40), 1170, {smoothAuthoritativeDamage: true}).players.enemy.lives,
+    40,
+  )
+
+  prediction.ingest(state(0), 1200)
+  assert.equal(
+    prediction.applyToState(state(0), 1200, {smoothAuthoritativeDamage: true}).players.enemy.lives,
+    0,
+  )
+})
+
 test("multiple predictions consume only the authoritative damage observed", () => {
   const prediction = new DamagePrediction({ttlMs: 300, rollbackMs: 100})
   prediction.ingest(state(), 1000)

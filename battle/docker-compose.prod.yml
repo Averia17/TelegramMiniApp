@@ -11,8 +11,11 @@ services:
       - REDIS_ADDR=battle-redis:6379
       - APP_AUTH_SECRET=${APP_AUTH_SECRET}
       - APP_ENV=production
+      - ACCOUNT_URL=http://account:8000
     restart: unless-stopped
     depends_on:
+      account:
+        condition: service_healthy
       battle-redis:
         condition: service_healthy
       kafka:

@@ -29,6 +29,8 @@ export const formatBattleMessage = message => {
     return params.killerName ? `You died — ${params.killerName} got you` : "You died"
   case "island_phase":
     return params.phase ? `Island phase: ${params.phase}` : "Island phase changed"
+  case "taunt":
+    return `${params.playerName || "Боец"} 🤡${params.targetName ? ` ${params.targetName}` : ""}`
   default:
     return ""
   }

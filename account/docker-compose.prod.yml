@@ -10,6 +10,7 @@ services:
     env_file: ../.env
     environment:
       DB_HOST: db
+      SHOP_CATALOG_URL: "http://shop:8000/api/products"
       KAFKA_ADDR: kafka:9092
       APP_ENV: "production"
     restart: always

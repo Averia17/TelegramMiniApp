@@ -1,12 +1,15 @@
 import * as THREE from "three"
-import {createBushField} from "./BushRenderer.js"
+import {
+  createBushField,
+  getBushVisibilityOpacity,
+  setBushVisibilityOpacity,
+  splitBushWallComponents,
+} from "./BushRenderer.js"
 import {GroundRenderer, createWaterTexture} from "./GroundRenderer.js"
-import {createEnvironmentModel, createProp} from "./PropRenderer.js"
+import {createProp} from "./PropRenderer.js"
+import {createStoneBlockGeometry} from "./StoneBlockGeometry.js"
 import {disposeObjectTree} from "../shared/disposal.js"
 import {WORLD_SCALE} from "../shared/coordinates.js"
-import {assetRegistry} from "../assets/AssetRegistry.js"
-import {resolveEnvironmentVisual} from "../assets/assetManifest.js"
-import {replaceFallbackWithEnvironment} from "./environmentPlacement.js"
 import {createMapSignature} from "./mapSignature.js"
 import {flatMaterial} from "../shared/materials.js"
 import {ISLAND_PHASE_ATMOSPHERES} from "../../phaseVisuals.js"
@@ -14,17 +17,22 @@ import {ISLAND_PHASE_ATMOSPHERES} from "../../phaseVisuals.js"
 const ISLAND_TERRAIN_LAYER_HEIGHTS = [0.003, 0.006, 0.009]
 const STORM_SEGMENTS = 96
 const REPEATED_BUSH_BATCH_THRESHOLD = 64
-const LOW_QUALITY_ENVIRONMENT_BUDGET = 64
-const LOW_QUALITY_ENVIRONMENT_RADIUS = 520
+const LOW_QUALITY_ENVIRONMENT_BUDGET = 32
+// The isometric camera exposes slightly more than 520 world units on wide
+// battle screens, so keep the authored window just beyond the visible area.
+const LOW_QUALITY_ENVIRONMENT_RADIUS = 600
+// Rebuilds dispose and recreate instanced environment batches. Keep this
+// coarse so ordinary movement never turns into a stream of scene rebuilds.
 const ENVIRONMENT_FOCUS_REBUILD_DISTANCE = 256
 const LOW_QUALITY_PROP_COLORS = Object.freeze({
+  wall: 0x4d5a5b,
   fence: 0x8b5436,
   crates: 0xb86f31,
   barrels: 0xa6463c,
   cactus: 0x2f9b52,
   crystal: 0x7653dc,
   bones: 0xe7d9b7,
-  destructible: 0xd6854d,
+  destructible: 0x64635f,
   tree: 0x4f352b,
   dead_tree: 0x77736a,
   shipwreck: 0x6f4b35,
@@ -32,6 +40,227 @@ const LOW_QUALITY_PROP_COLORS = Object.freeze({
   sacrificial_stone: 0x8e394c,
   menhir: 0x626879,
 })
+const STONE_PROP_TYPES = new Set(["wall", "destructible", "sacrificial_stone", "menhir"])
+const LOW_QUALITY_STONE_PALETTES = Object.freeze({
+  wall: [0x46595b, 0x53686a, 0x607678],
+  destructible: [0x5c5d58, 0x6b6a64, 0x77766e],
+  sacrificial_stone: [0x783746, 0x8e4655, 0x9d5362],
+  menhir: [0x555b69, 0x626879, 0x70778a],
+})
+const BEACON_VISUAL_SCALE = 24
+
+const createBeaconVisual = () => {
+  const group = new THREE.Group()
+  group.userData.role = "beacon"
+  group.scale.setScalar(BEACON_VISUAL_SCALE)
+
+  const pedestalMaterial = new THREE.MeshStandardMaterial({
+    color: 0x59686d,
+    roughness: .9,
+    metalness: .04,
+    flatShading: true,
+  })
+  const stoneMaterial = new THREE.MeshStandardMaterial({
+    color: 0x778487,
+    roughness: .84,
+    metalness: .02,
+    flatShading: true,
+  })
+  const towerMaterial = new THREE.MeshStandardMaterial({
+    color: 0xd9dbd4,
+    roughness: .7,
+    metalness: .03,
+    flatShading: true,
+  })
+  const metalMaterial = new THREE.MeshStandardMaterial({
+    color: 0xc49b45,
+    roughness: .35,
+    metalness: .7,
+    flatShading: true,
+  })
+  const darkMetalMaterial = new THREE.MeshStandardMaterial({
+    color: 0x4d5d60,
+    roughness: .42,
+    metalness: .72,
+    flatShading: true,
+  })
+
+  const pedestal = new THREE.Mesh(
+    new THREE.CylinderGeometry(5.5 * WORLD_SCALE, 5.95 * WORLD_SCALE, .28 * WORLD_SCALE, 16),
+    pedestalMaterial,
+  )
+  pedestal.name = "beacon-pedestal"
+  pedestal.position.y = .14 * WORLD_SCALE
+
+  const pedestalInset = new THREE.Mesh(
+    new THREE.CylinderGeometry(4.55 * WORLD_SCALE, 4.8 * WORLD_SCALE, .12 * WORLD_SCALE, 12),
+    new THREE.MeshStandardMaterial({color: 0x6e7d7e, roughness: .82, flatShading: true}),
+  )
+  pedestalInset.name = "beacon-pedestal-inset"
+  pedestalInset.position.y = .32 * WORLD_SCALE
+
+  const activationRing = new THREE.Mesh(
+    new THREE.TorusGeometry(4.1 * WORLD_SCALE, .18 * WORLD_SCALE, 8, 40),
+    new THREE.MeshBasicMaterial({color: 0xffdc72, transparent: true, opacity: .22, depthWrite: false}),
+  )
+  activationRing.name = "beacon-activation-ring"
+  activationRing.rotation.x = Math.PI / 2
+  activationRing.position.y = .38 * WORLD_SCALE
+
+  const pedestalRing = new THREE.Mesh(
+    new THREE.TorusGeometry(2.18 * WORLD_SCALE, .13 * WORLD_SCALE, 8, 24),
+    darkMetalMaterial,
+  )
+  pedestalRing.name = "beacon-pedestal-ring"
+  pedestalRing.rotation.x = Math.PI / 2
+  pedestalRing.position.y = .56 * WORLD_SCALE
+
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.68 * WORLD_SCALE, 2.02 * WORLD_SCALE, .62 * WORLD_SCALE, 8),
+    stoneMaterial,
+  )
+  base.name = "beacon-base"
+  base.position.y = .83 * WORLD_SCALE
+
+  const tower = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.18 * WORLD_SCALE, 1.52 * WORLD_SCALE, 2.5 * WORLD_SCALE, 8),
+    towerMaterial,
+  )
+  tower.name = "beacon-tower"
+  tower.position.y = 2.35 * WORLD_SCALE
+
+  const towerShadowBand = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.23 * WORLD_SCALE, 1.4 * WORLD_SCALE, .18 * WORLD_SCALE, 8),
+    darkMetalMaterial,
+  )
+  towerShadowBand.name = "beacon-shadow-band"
+  towerShadowBand.position.y = 1.32 * WORLD_SCALE
+
+  const lowerCollar = new THREE.Mesh(
+    new THREE.TorusGeometry(1.32 * WORLD_SCALE, .12 * WORLD_SCALE, 8, 24),
+    metalMaterial,
+  )
+  lowerCollar.name = "beacon-lower-collar"
+  lowerCollar.rotation.x = Math.PI / 2
+  lowerCollar.position.y = 1.47 * WORLD_SCALE
+
+  const upperCollar = new THREE.Mesh(
+    new THREE.TorusGeometry(1.2 * WORLD_SCALE, .15 * WORLD_SCALE, 8, 24),
+    metalMaterial,
+  )
+  upperCollar.name = "beacon-upper-collar"
+  upperCollar.rotation.x = Math.PI / 2
+  upperCollar.position.y = 3.57 * WORLD_SCALE
+
+  const cap = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.22 * WORLD_SCALE, 1.02 * WORLD_SCALE, .24 * WORLD_SCALE, 8),
+    towerMaterial,
+  )
+  cap.name = "beacon-cap"
+  cap.position.y = 3.48 * WORLD_SCALE
+
+  const core = new THREE.Mesh(
+    new THREE.OctahedronGeometry(.72 * WORLD_SCALE, 1),
+    new THREE.MeshStandardMaterial({
+      color: 0xffc33f,
+      emissive: 0xff9d20,
+      emissiveIntensity: .72,
+      roughness: .24,
+      metalness: .12,
+      flatShading: true,
+    }),
+  )
+  core.name = "beacon-core"
+  core.position.y = 4.15 * WORLD_SCALE
+
+  const coreGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(.48 * WORLD_SCALE, 16, 10),
+    new THREE.MeshBasicMaterial({
+      color: 0xfff1a6,
+      transparent: true,
+      opacity: .48,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  )
+  coreGlow.name = "beacon-core-glow"
+  coreGlow.position.copy(core.position)
+
+  const topRing = new THREE.Mesh(
+    new THREE.TorusGeometry(1.02 * WORLD_SCALE, .08 * WORLD_SCALE, 8, 28),
+    new THREE.MeshBasicMaterial({color: 0xffe58b, transparent: true, opacity: .48, depthWrite: false}),
+  )
+  topRing.name = "beacon-top-ring"
+  topRing.rotation.x = Math.PI / 2
+  topRing.position.y = 4.15 * WORLD_SCALE
+
+  const beam = new THREE.Mesh(
+    new THREE.ConeGeometry(1.95 * WORLD_SCALE, 9.2 * WORLD_SCALE, 32, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0xffdf67,
+      transparent: true,
+      opacity: .1,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  )
+  beam.name = "beacon-beam"
+  beam.position.y = 8.75 * WORLD_SCALE
+
+  const beamCore = new THREE.Mesh(
+    new THREE.ConeGeometry(.88 * WORLD_SCALE, 8.6 * WORLD_SCALE, 24, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0xfff2a3,
+      transparent: true,
+      opacity: .04,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    }),
+  )
+  beamCore.name = "beacon-beam-core"
+  beamCore.position.y = 8.55 * WORLD_SCALE
+
+  const groundGlow = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.6 * WORLD_SCALE, 2.15 * WORLD_SCALE, .08 * WORLD_SCALE, 24),
+    new THREE.MeshBasicMaterial({
+      color: 0xffd447,
+      transparent: true,
+      opacity: .34,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  )
+  groundGlow.name = "beacon-ground-glow"
+  groundGlow.position.y = .48 * WORLD_SCALE
+
+  group.add(
+    beam,
+    beamCore,
+    groundGlow,
+    pedestal,
+    pedestalInset,
+    activationRing,
+    pedestalRing,
+    base,
+    tower,
+    towerShadowBand,
+    lowerCollar,
+    upperCollar,
+    cap,
+    core,
+    coreGlow,
+    topRing,
+  )
+  group.userData.beam = beam
+  group.userData.beamCore = beamCore
+  group.userData.glow = coreGlow
+  group.userData.groundGlow = groundGlow
+  group.userData.core = core
+  group.userData.crown = core
+  group.userData.activationRing = activationRing
+  return group
+}
 
 const lowQualityPropHeight = type =>
   type === "fence" ? .9 : type === "crates" ? 1.65 : type === "tree" ? 2.8 :
@@ -39,16 +268,38 @@ const lowQualityPropHeight = type =>
 
 const createLowQualityPropBatch = (walls, type, waterTexture) => {
   const isWater = type === "water"
-  const geometry = isWater ? new THREE.PlaneGeometry(1, 1) : new THREE.BoxGeometry(1, 1, 1)
+  const isStone = STONE_PROP_TYPES.has(type)
+  const geometry = isWater
+    ? new THREE.PlaneGeometry(1, 1)
+    : isStone && walls.length <= 128
+      ? createStoneBlockGeometry()
+      : new THREE.BoxGeometry(1, 1, 1)
+  if (isStone) {
+    geometry.userData.stylizedStoneBlock = true
+    const colors = new Float32Array(geometry.attributes.position.count * 3)
+    colors.fill(1)
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3))
+  }
   const material = isWater
     ? flatMaterial(0xffffff, {map: waterTexture, transparent: true, opacity: .88})
-    : new THREE.MeshBasicMaterial({color: LOW_QUALITY_PROP_COLORS[type] || 0xd2764f})
+    : isStone
+      ? new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        vertexColors: true,
+        roughness: .94,
+        metalness: 0,
+        flatShading: true,
+        side: THREE.DoubleSide,
+      })
+      : new THREE.MeshBasicMaterial({color: LOW_QUALITY_PROP_COLORS[type] || LOW_QUALITY_PROP_COLORS.wall})
   const mesh = new THREE.InstancedMesh(geometry, material, walls.length)
   const matrix = new THREE.Matrix4()
   const position = new THREE.Vector3()
   const scale = new THREE.Vector3()
   const rotation = new THREE.Quaternion()
   const identity = new THREE.Quaternion()
+  const instanceColor = new THREE.Color()
+  const palette = LOW_QUALITY_STONE_PALETTES[type] || []
   if (isWater) rotation.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0))
 
   walls.forEach((wall, index) => {
@@ -63,8 +314,13 @@ const createLowQualityPropBatch = (walls, type, waterTexture) => {
     scale.set(width, isWater ? depth : height, isWater ? 1 : depth)
     matrix.compose(position, isWater ? rotation : identity, scale)
     mesh.setMatrixAt(index, matrix)
+    if (isStone) {
+      instanceColor.setHex(palette[index % palette.length])
+      mesh.setColorAt(index, instanceColor)
+    }
   })
   mesh.instanceMatrix.needsUpdate = true
+  if (isStone) mesh.instanceColor.needsUpdate = true
   mesh.computeBoundingSphere()
   return mesh
 }
@@ -87,8 +343,12 @@ export const selectEnvironmentUpgradeWalls = (
   const focusY = Number.isFinite(Number(focus?.y)) ? Number(focus.y) : 0
   const maxDistanceSquared = Math.max(0, Number(maxDistance) || 0) ** 2
   const ranked = candidates.map((wall, index) => {
-    const x = (Number(wall.minX) + Number(wall.maxX)) * .5
-    const y = (Number(wall.minY) + Number(wall.maxY)) * .5
+    const minX = Number(wall.minX)
+    const maxX = Number(wall.maxX)
+    const minY = Number(wall.minY)
+    const maxY = Number(wall.maxY)
+    const x = Math.max(minX, Math.min(maxX, focusX))
+    const y = Math.max(minY, Math.min(maxY, focusY))
     return {wall, index, distanceSquared: (x - focusX) ** 2 + (y - focusY) ** 2}
   }).sort((a, b) => a.distanceSquared - b.distanceSquared || a.index - b.index)
   const nearby = ranked.filter(item => item.distanceSquared <= maxDistanceSquared)
@@ -156,6 +416,18 @@ const mergeWalls = walls => [...walls]
     return merged
   }, [])
 
+const mapWallKey = wall =>
+  `${wall.minX}:${wall.minY}:${wall.maxX}:${wall.maxY}:${wall.type}:${wall.visual || ""}`
+
+export const shouldRefreshEnvironmentFocus = (previous, next, distance = ENVIRONMENT_FOCUS_REBUILD_DISTANCE) => {
+  if (!previous) return true
+  const dx = Number(next?.x) - Number(previous.x)
+  const dy = Number(next?.y) - Number(previous.y)
+  const threshold = Number(distance)
+  return Number.isFinite(dx) && Number.isFinite(dy) && Number.isFinite(threshold) &&
+    Math.hypot(dx, dy) >= Math.max(0, threshold)
+}
+
 export class MapRenderer {
   constructor(root, {waterTexture = null, lowQuality = false} = {}) {
     this.root = root
@@ -173,6 +445,7 @@ export class MapRenderer {
     this.islandTerrain = null
     this.mapState = null
     this.focus = null
+    this.bushVisuals = new Map()
   }
 
   syncIsland(game, width, height) {
@@ -212,31 +485,26 @@ export class MapRenderer {
 
     if (isFirstTrial) {
       if (!this.beaconGroup) {
-        const group = new THREE.Group()
-        const tower = new THREE.Mesh(new THREE.CylinderGeometry(38 * WORLD_SCALE, 48 * WORLD_SCALE, 118 * WORLD_SCALE, 8), flatMaterial(0xe7edf0))
-        tower.position.y = 59 * WORLD_SCALE
-        const crown = new THREE.Mesh(new THREE.SphereGeometry(23 * WORLD_SCALE, 16, 10), new THREE.MeshBasicMaterial({color: 0xffd447}))
-        crown.position.y = 130 * WORLD_SCALE
-        const beam = new THREE.Mesh(new THREE.ConeGeometry(94 * WORLD_SCALE, 220 * WORLD_SCALE, 32, 1, true), new THREE.MeshBasicMaterial({color: 0xffdf67, transparent: true, opacity: .18, depthWrite: false, side: THREE.DoubleSide}))
-        beam.position.y = 115 * WORLD_SCALE
-        const halo = new THREE.Mesh(new THREE.TorusGeometry(54 * WORLD_SCALE, 2.2 * WORLD_SCALE, 8, 48), new THREE.MeshBasicMaterial({color: 0xfff2a2, transparent: true, opacity: .72}))
-        halo.rotation.x = Math.PI / 2
-        halo.position.y = 3 * WORLD_SCALE
-        const glow = new THREE.Mesh(new THREE.CylinderGeometry(32 * WORLD_SCALE, 44 * WORLD_SCALE, 4 * WORLD_SCALE, 20), new THREE.MeshBasicMaterial({color: 0xffd447, transparent: true, opacity: .6}))
-        glow.position.y = 2 * WORLD_SCALE
-        group.add(tower, crown, beam, glow, halo)
-        group.userData.beam = beam
-        group.userData.crown = crown
+        const group = createBeaconVisual()
         group.userData.open = false
         group.position.set(width * WORLD_SCALE * .5, 0, height * WORLD_SCALE * .5)
         this.beaconGroup = group
         this.root.add(group)
       }
+      this.beaconGroup.position.set(width * WORLD_SCALE * .5, this.beaconGroup.position.y, height * WORLD_SCALE * .5)
       this.beaconGroup.visible = true
       const open = Boolean(game?.beaconOpen)
-      this.beaconGroup.userData.open = open
-      if (this.beaconGroup.userData.beam) this.beaconGroup.userData.beam.material.opacity = open ? .42 : .13
-      if (this.beaconGroup.userData.crown) this.beaconGroup.userData.crown.scale.setScalar(open ? 1.22 : 1)
+      const data = this.beaconGroup.userData
+      data.open = open
+      if (data.beam) data.beam.material.opacity = open ? .32 : .1
+      if (data.beamCore) data.beamCore.material.opacity = open ? .16 : .04
+      if (data.glow) data.glow.material.opacity = open ? .78 : .48
+      if (data.groundGlow) data.groundGlow.material.opacity = open ? .58 : .34
+      if (data.core) {
+        data.core.material.emissiveIntensity = open ? 1.8 : .72
+        data.core.scale.setScalar(open ? 1.12 : 1)
+      }
+      if (data.activationRing) data.activationRing.material.opacity = open ? .66 : .22
     } else if (this.beaconGroup) {
       this.beaconGroup.visible = false
     }
@@ -284,9 +552,21 @@ export class MapRenderer {
     }
     if (!this.islandTerrain) {
       const group = new THREE.Group()
-      const waterRing = new THREE.Mesh(new THREE.CircleGeometry(width * .5 * WORLD_SCALE * .9, 96), new THREE.MeshBasicMaterial({color: 0x4f9b50}))
-      const forest = new THREE.Mesh(new THREE.CircleGeometry(width * .5 * WORLD_SCALE * .68, 96), new THREE.MeshBasicMaterial({color: 0x438e48}))
-      const plaza = new THREE.Mesh(new THREE.CircleGeometry(205 * WORLD_SCALE, 64), new THREE.MeshBasicMaterial({color: 0x57616a}))
+      const outerIslandRadius = width * .5 * WORLD_SCALE * .9
+      const forestRadius = width * .5 * WORLD_SCALE * .68
+      const plazaRadius = 205 * WORLD_SCALE
+      const terrainMaterial = color => new THREE.MeshBasicMaterial({
+        color,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      })
+      // Keep the decorative terrain surfaces adjacent instead of stacking
+      // full discs. Overlapping coplanar CircleGeometry faces depth-fight and
+      // show radial wedges across the playable map.
+      const waterRing = new THREE.Mesh(new THREE.RingGeometry(forestRadius, outerIslandRadius, 96), terrainMaterial(0x4f9b50))
+      const forest = new THREE.Mesh(new THREE.RingGeometry(plazaRadius, forestRadius, 96), terrainMaterial(0x438e48))
+      const plaza = new THREE.Mesh(new THREE.CircleGeometry(plazaRadius, 64), terrainMaterial(0x57616a))
       ;[waterRing, forest, plaza].forEach((mesh, index) => {
         mesh.rotation.x = -Math.PI / 2
         mesh.position.y = ISLAND_TERRAIN_LAYER_HEIGHTS[index]
@@ -318,44 +598,35 @@ export class MapRenderer {
         disposeObjectTree(object)
       })
       this.objects.clear()
+      this.bushVisuals.clear()
     }
     this.ground.sync(map.width, map.height, this.ground.theme, walls.filter(wall => wall.type === "water"))
 
     const active = new Set()
     const bushWalls = walls.filter(wall => wall.type === "bush" || wall.type === "half" || wall.type === "moon_mist")
-    const glbBushWalls = bushWalls.filter(wall => assetRegistry.hasEnvironment(resolveEnvironmentVisual(wall)))
-    const fallbackBushWalls = bushWalls.filter(wall => !assetRegistry.hasEnvironment(resolveEnvironmentVisual(wall)))
-    // Large repeated fields stay instanced, but low-quality rendering must not
-    // disable authored environment assets for ordinary colliders.
-    const batchBushes = shouldBatchEnvironmentVisual("bush_a", glbBushWalls.length)
-    const batchedBushWalls = batchBushes ? [...fallbackBushWalls, ...glbBushWalls] : fallbackBushWalls
-    const fallbackBushGroups = batchedBushWalls.reduce((groups, wall) => {
+    // Gameplay bushes stay in one shared procedural field. Environment GLBs
+    // are intentionally reserved for heroes and are never mounted here.
+    const bushGroups = bushWalls.reduce((groups, wall) => {
       const kind = wall.type === "moon_mist" ? "moon_mist" : "bush"
       groups[kind] = groups[kind] || []
-       groups[kind].push(wall)
+      groups[kind].push(wall)
       return groups
     }, {})
-    Object.entries(fallbackBushGroups).forEach(([kind, kindWalls]) => {
-      const key = `${kind}:${kindWalls.map(wall =>
-        `${wall.minX}:${wall.minY}:${wall.maxX}:${wall.maxY}:${wall.visual || ""}`).join("|")}`
-      active.add(key)
-      if (!this.objects.has(key)) this.add(key, createBushField(kindWalls, kind, {lowQuality: this.lowQuality}))
+    Object.entries(bushGroups).forEach(([kind, kindWalls]) => {
+      splitBushWallComponents(kindWalls).forEach(component => {
+        const key = `${kind}:${component.map(wall =>
+          `${wall.minX}:${wall.minY}:${wall.maxX}:${wall.maxY}:${wall.visual || ""}`).join("|")}`
+        active.add(key)
+        if (!this.objects.has(key)) {
+          this.add(key, createBushField(component, kind, {lowQuality: this.lowQuality}), component)
+        }
+      })
     })
     const mergedWalls = mergeWalls(walls.filter(wall => wall.type !== "bush" && wall.type !== "half" && wall.type !== "moon_mist"))
-    const renderWalls = [...(batchBushes ? [] : glbBushWalls), ...mergedWalls]
-    const environmentWalls = renderWalls.filter(wall => assetRegistry.hasEnvironment(resolveEnvironmentVisual(wall)))
-    const upgradeWalls = this.lowQuality
-      ? selectEnvironmentUpgradeWalls(
-        environmentWalls,
-        true,
-        this.focus || {x: map.width * .5, y: map.height * .5},
-      )
-      : renderWalls
-    const upgradeWallSet = new Set(upgradeWalls)
+    const renderWalls = mergedWalls
     if (this.lowQuality) {
-      const fallbackWalls = renderWalls.filter(wall => !upgradeWallSet.has(wall))
       const batches = new Map()
-      fallbackWalls.forEach(wall => {
+      renderWalls.forEach(wall => {
         const type = wall.type || "wall"
         const group = batches.get(type) || []
         group.push(wall)
@@ -367,20 +638,17 @@ export class MapRenderer {
         if (!this.objects.has(key)) this.add(key, createLowQualityPropBatch(batch, type, this.waterTexture))
       })
     }
-    upgradeWalls.forEach((wall, index) => {
-      const key = `${wall.minX}:${wall.minY}:${wall.maxX}:${wall.maxY}:${wall.type}:${wall.visual || ""}`
+    if (!this.lowQuality) renderWalls.forEach((wall, index) => {
+      const key = mapWallKey(wall)
       active.add(key)
       if (!this.objects.has(key)) {
-        const fallback = wall.type === "bush" || wall.type === "half" || wall.type === "moon_mist"
-          ? this.createBushFallback(wall)
-          : createProp(wall, index, this.waterTexture)
-        this.add(key, fallback)
-        this.upgradeToEnvironment(key, fallback, wall)
+        this.add(key, createProp(wall, index, this.waterTexture))
       }
     })
     this.objects.forEach((object, key) => {
       if (active.has(key)) return
       this.objects.delete(key)
+      this.bushVisuals.delete(key)
       this.debris.push({object, age: 0, life: 0.28, baseY: object.position.y})
     })
   }
@@ -393,27 +661,31 @@ export class MapRenderer {
       disposeObjectTree(object)
     })
     this.objects.clear()
+    this.bushVisuals.clear()
     this.debris.forEach(piece => disposeObjectTree(piece.object))
     this.debris = []
     this.signature = ""
     if (this.mapState) this.sync(this.mapState)
   }
 
-  add(key, object) {
+  add(key, object, bushWalls = null) {
     this.objects.set(key, object)
     this.root.add(object)
+    const walls = bushWalls || object?.userData?.bushWalls
+    if (Array.isArray(walls) && walls.length) {
+      object.userData.bushWalls = walls
+      this.bushVisuals.set(key, {object, walls})
+    }
   }
 
   setFocus(x, y) {
     const next = {x: Number(x), y: Number(y)}
     if (!Number.isFinite(next.x) || !Number.isFinite(next.y)) return
-    if (this.focus && Math.hypot(next.x - this.focus.x, next.y - this.focus.y) < ENVIRONMENT_FOCUS_REBUILD_DISTANCE) return
     this.focus = next
-    // The focus chooses the authored GLB window only when the map is first
-    // built. Rebuilding while the player moves would remove a mounted GLB,
-    // show its primitive fallback for at least one frame, and then replace it
-    // again asynchronously. Keep the current scene stable until the map
-    // itself changes; the next full sync uses the latest focus.
+  }
+
+  isReady() {
+    return true
   }
 
   createBushFallback(wall) {
@@ -426,32 +698,19 @@ export class MapRenderer {
       (wall.minY + wall.maxY) * 0.5 * WORLD_SCALE,
     )
     group.add(createBushField([{minX: -width / 2, minY: -depth / 2, maxX: width / 2, maxY: depth / 2}], wall.type))
+    group.userData.bushWalls = [wall]
     return group
-  }
-
-  async upgradeToEnvironment(key, fallback, wall) {
-    const visual = resolveEnvironmentVisual(wall)
-    if (!visual || !assetRegistry.hasEnvironment(visual)) return
-    try {
-      await replaceFallbackWithEnvironment(
-        fallback,
-        [...fallback.children],
-        wall,
-        async () => {
-          const instance = await assetRegistry.instantiateEnvironment(visual)
-          return instance ? createEnvironmentModel(instance, wall) : null
-        },
-        () => this.objects.get(key) === fallback,
-        object => disposeObjectTree(object),
-        object => disposeObjectTree(object),
-      )
-    } catch (error) {
-      if (typeof window !== "undefined") console.warn(`Could not load environment GLB: ${visual}`, error)
-    }
   }
 
   update(delta) {
     this.waterTexture.offset.add({x: delta * 0.035, y: delta * 0.018})
+    for (const [key, entry] of this.bushVisuals) {
+      if (this.objects.get(key) !== entry.object) {
+        this.bushVisuals.delete(key)
+        continue
+      }
+      setBushVisibilityOpacity(entry.object, getBushVisibilityOpacity(this.focus, entry.walls))
+    }
     if (this.stormMesh) {
       this.stormRadius = smoothStormRadius(this.stormRadius, this.stormTargetRadius, delta)
       updateStormRingGeometry(this.stormMesh.geometry, this.stormRadius * WORLD_SCALE, this.stormMesh.geometry.userData.outerRadius)
@@ -459,6 +718,15 @@ export class MapRenderer {
     if (this.beaconGroup) {
       this.beaconGroup.rotation.y += delta * 1.5
       this.beaconGroup.position.y = Math.sin(performance.now() / 300) * .015
+      const data = this.beaconGroup.userData
+      const pulse = Math.sin(performance.now() / 180) * (data.open ? .08 : .025)
+      if (data.core) {
+        data.core.rotation.y += delta * 1.8
+        data.core.rotation.x += delta * .45
+        data.core.scale.setScalar((data.open ? 1.12 : 1) + pulse)
+      }
+      if (data.glow) data.glow.scale.setScalar(1 + pulse * 1.8)
+      if (data.activationRing) data.activationRing.rotation.z += delta * (data.open ? .7 : .25)
     }
     for (const piece of this.debris) {
       piece.age += delta
@@ -479,6 +747,7 @@ export class MapRenderer {
     if (this.phaseAtmosphere) disposeObjectTree(this.phaseAtmosphere)
     if (this.beaconGroup) disposeObjectTree(this.beaconGroup)
     if (this.islandTerrain) disposeObjectTree(this.islandTerrain)
+    this.bushVisuals.clear()
     this.waterTexture.dispose()
   }
 }

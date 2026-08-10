@@ -15,12 +15,14 @@ const HERO_DISPLAY_NAMES = {
   Kaze: "KAZE",
   "Wukong Mico": "WUKONG MICO",
   "Persephone Lumi": "PERSEPHONE LUMI",
+  Katty: "KATTY",
 }
 const heroDisplay = hero => HERO_DISPLAY_NAMES[hero?.name] || hero?.name
 
 const HERO_DETAILS = {
   Needle:{title:"Био-стрелок",attack:"65 урона и 6 осколков при разрыве",super:"Q: замедляющая лиана · E: лечение 145",passive:"Контролирует проходы и кусты"},
   Mandy:{title:"Сахарный боец ближнего боя",attack:"60 урона конусным ударом посоха",super:"Q: волна через всю карту · E: Карамелизация",passive:"Стоя 1 секунду, получает +35% к дальности"},
+  Katty:{title:"Уличная художница",attack:"34 урона × 3 выстрела в конусе; третий слой оглушает",super:"Баллон-граната: лужа на 7 секунд, ослепление и третий слой",passive:"Краска замедляет врагов и усиливает контроль территории"},
 }
 
 const FALLBACK_HEROES = HEROES_CONFIG

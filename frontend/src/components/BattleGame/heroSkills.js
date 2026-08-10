@@ -31,6 +31,10 @@ export const HERO_SKILLS = Object.freeze({
     primary: skill("САД ЭРЕБА", "Выращивает сад, который один раз опутывает каждого вошедшего врага.", "lumi_erebus_garden"),
     secondary: skill("РАЗРЫВ СЕМЯН", "Взрывает все активные сады и ранит врагов внутри.", "lumi_seedburst"),
   }),
+  Katty: Object.freeze({
+    primary: skill("Баллон-граната", "Оставляет лужу краски, ослепляет врагов и наносит третий слой.", "paint_grenade"),
+    secondary: skill("Красколёт", "Проходит сквозь стены во время рывка и оставляет замедляющий след.", "paint_flight"),
+  }),
 })
 
 const FALLBACK = Object.freeze({

@@ -38,6 +38,30 @@ test("a long suspended frame is capped to avoid a huge prediction jump", () => {
   assert.ok(Math.abs(simulation.predicted.x - 101.5) < 0.001)
 })
 
+test("a direction change after a capped frame is not replayed as the old direction", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    map: {width: 2000, height: 2000, walls: []},
+    monsters: {},
+    bullets: [],
+  }
+  simulation.ingest({...base, ts: 1000, players: {
+    local: {x: 500, y: 500, radius: 14, speed: 120, movementSpeed: 120, lives: 100, ack: 0, moveX: 0, moveY: 0},
+  }}, 0, 1000)
+  simulation.setLocalPlayerId("local")
+  simulation.setInput(0, -1, 1001)
+  simulation.advance(0.5)
+  simulation.setInput(-1, 0, 1501)
+  simulation.advance(0.1)
+
+  simulation.ingest({...base, ts: 1100, players: {
+    local: {x: 500, y: 488, radius: 14, speed: 120, movementSpeed: 120, lives: 100, ack: 1001, moveX: 0, moveY: -1},
+  }}, 0, 1600)
+
+  assert.ok(Math.abs(simulation.correction.x) < 1, `unexpected horizontal correction: ${simulation.correction.x}`)
+})
+
 test("local prediction uses the authoritative effective movement speed", () => {
   const simulation = movingSimulation()
   simulation.latestState.players.local.movementSpeed = 23
@@ -56,6 +80,38 @@ test("local prediction keeps moving through a 180-degree direction change", () =
   simulation.advance(0.1)
 
   assert.ok(simulation.predicted.x < beforeTurn)
+})
+
+test("delayed authoritative reversal does not make the rendered hero move backward", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    map: {width: 2000, height: 2000, walls: []},
+    monsters: {},
+    bullets: [],
+  }
+
+  simulation.ingest({...base, ts: 1000, players: {
+    local: {x: 1000, y: 1000, radius: 14, movementSpeed: 120, lives: 100, ack: 1000, moveX: 1, moveY: 0},
+  }}, 0, 1000)
+  simulation.setLocalPlayerId("local")
+  simulation.setInput(1, 0, 1000)
+  simulation.advance(0.001)
+
+  // The client turns immediately, while the server's delayed tick still
+  // contains most of the old-direction movement.
+  simulation.setInput(-1, 0, 1001)
+  simulation.advance(0.099)
+  const beforeSnapshot = simulation.getDisplayState(1100).players.local.x
+
+  simulation.ingest({...base, ts: 1100, players: {
+    local: {x: 1008, y: 1000, radius: 14, movementSpeed: 120, lives: 100, ack: 1001, moveX: -1, moveY: 0},
+  }}, 0, 1100)
+  simulation.advance(1 / 60)
+
+  const afterTurn = simulation.getDisplayState(1116).players.local.x
+  assert.ok(afterTurn < beforeSnapshot,
+    `rendered reversal moved backward in time: ${beforeSnapshot} -> ${afterTurn}`)
 })
 
 test("diagonal direction changes never insert a stop frame", () => {
@@ -183,6 +239,34 @@ test("large alive-player corrections are eased instead of snapped", () => {
   assert.ok(displayed.players.local.x < 300)
 })
 
+test("stopping does not decay an older snapshot into a backward visual kick", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    map: {width: 1000, height: 1000, walls: []},
+    monsters: {},
+    bullets: [],
+  }
+  simulation.ingest({...base, ts: 1000, players: {
+    local: {x: 100, y: 100, radius: 14, movementSpeed: 120, lives: 100, ack: 0, moveX: 1, moveY: 0},
+  }}, 0, 1000)
+  simulation.setLocalPlayerId("local")
+  simulation.setInput(1, 0, 1000)
+  simulation.advance(0.1)
+  simulation.setInput(0, 0, 1100)
+
+  simulation.ingest({...base, ts: 1050, players: {
+    local: {x: 100, y: 100, radius: 14, movementSpeed: 120, lives: 100, ack: 1100, moveX: 0, moveY: 0},
+  }}, 50, 1100)
+
+  const displayedBeforeStop = simulation.getDisplayState(1100).players.local.x
+  simulation.advance(1 / 60)
+  const displayedAfterStop = simulation.getDisplayState(1116).players.local.x
+
+  assert.ok(displayedAfterStop >= displayedBeforeStop - 0.001,
+    `stopping moved the rendered player backward: ${displayedBeforeStop} -> ${displayedAfterStop}`)
+})
+
 test("local prediction allows movement through moon mist concealment", () => {
   const simulation = new NetworkSimulation()
   simulation.ingest({
@@ -234,6 +318,57 @@ test("display interpolation reuses entity objects between render frames", () => 
   const uiSnapshot = simulation.getDisplayState(1070, {copyEntities: true})
   const renderSnapshot = simulation.getDisplayState(1080)
   assert.notStrictEqual(uiSnapshot.players.local, renderSnapshot.players.local)
+})
+
+test("lethal HP waits for the interpolated snapshot instead of appearing early", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    map: {width: 1000, height: 1000, walls: []},
+    monsters: {},
+    bullets: [],
+  }
+  simulation.ingest({...base, ts: 1000, players: {enemy: {x: 0, y: 0, lives: 100, maxLives: 100}}}, 0, 1000)
+  simulation.ingest({...base, ts: 1100, players: {enemy: {x: 100, y: 0, lives: 0, maxLives: 100}}}, 0, 1100)
+
+  assert.equal(simulation.getDisplayState(1050).players.enemy.lives, 100)
+  assert.equal(simulation.getDisplayState(1100).players.enemy.lives, 0)
+})
+
+test("projectile lifecycle follows the interpolated snapshot boundary", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    map: {width: 1000, height: 1000, walls: []},
+    players: {},
+    monsters: {},
+  }
+  simulation.ingest({...base, ts: 1000, bullets: []}, 0, 1000)
+  simulation.ingest({...base, ts: 1100, bullets: [{id: 7, x: 0, y: 0, radius: 5}]}, 0, 1100)
+  assert.equal(simulation.getDisplayState(1050).bullets.length, 0)
+  assert.equal(simulation.getDisplayState(1100).bullets.length, 1)
+
+  simulation.ingest({...base, ts: 1200, bullets: []}, 0, 1200)
+  assert.equal(simulation.getDisplayState(1150).bullets.length, 1)
+  assert.equal(simulation.getDisplayState(1200).bullets.length, 0)
+})
+
+test("entity visibility follows the interpolated snapshot boundary", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    map: {width: 1000, height: 1000, walls: []},
+    monsters: {},
+    bullets: [],
+  }
+  simulation.ingest({...base, ts: 1000, players: {enemy: {x: 0, y: 0, lives: 100}}}, 0, 1000)
+  simulation.ingest({...base, ts: 1100, players: {}}, 0, 1100)
+  assert.ok(simulation.getDisplayState(1050).players.enemy)
+  assert.equal(simulation.getDisplayState(1100).players.enemy, undefined)
+
+  simulation.ingest({...base, ts: 1200, players: {enemy: {x: 120, y: 0, lives: 100}}}, 0, 1200)
+  assert.equal(simulation.getDisplayState(1150).players.enemy, undefined)
+  assert.ok(simulation.getDisplayState(1200).players.enemy)
 })
 
 test("display sampling publishes presentation buffer telemetry", () => {
@@ -425,4 +560,21 @@ test("adaptive interpolation follows delivery jitter instead of only server tick
   })
 
   assert.ok(simulation.interpolationDelay > 66)
+})
+
+test("adaptive interpolation can buffer sustained delivery gaps above the old ceiling", () => {
+  const simulation = new NetworkSimulation()
+  const arrivals = [1000, 1140, 1280, 1420, 1560, 1700, 1840, 1980]
+  arrivals.forEach((receivedAt, index) => {
+    simulation.ingest({
+      type: "state",
+      ts: 1000 + index * 16,
+      players: {},
+      monsters: {},
+      bullets: [],
+    }, 0, receivedAt)
+  })
+
+  assert.ok(simulation.interpolationDelay > 120)
+  assert.ok(simulation.interpolationDelay <= 220)
 })

@@ -117,6 +117,13 @@ async def require_shop_service(x_service_token: str = Header(default="")) -> Non
         raise HTTPException(status_code=401, detail="Service authentication required")
 
 
+def service_token() -> str:
+    secret = _auth_secret()
+    if len(secret) < 32:
+        raise RuntimeError("Service authentication is not configured")
+    return hmac.new(secret.encode(), b"shop-payment-v1", hashlib.sha256).hexdigest()
+
+
 def _auth_secret() -> str:
     secret = os.getenv("APP_AUTH_SECRET", "")
     if not secret and os.getenv("APP_ENV", "development").lower() != "production":

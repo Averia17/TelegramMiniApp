@@ -63,6 +63,9 @@ func TestGenerateBattleRoyaleUsesDenseNaturalTerrain(t *testing.T) {
 	if counts["bush"] < 100 {
 		t.Fatalf("grass cover = %d tiles, want at least 100", counts["bush"])
 	}
+	if counts["bush"] >= 700 {
+		t.Fatalf("grass cover = %d tiles, want a readable combat map below 700", counts["bush"])
+	}
 	if counts["water"] < 1450 {
 		t.Fatalf("water = %d tiles, want at least 1450", counts["water"])
 	}

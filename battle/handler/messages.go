@@ -64,6 +64,7 @@ func (h *Handler) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/ws", h.HandleWebSocket)
 	mux.HandleFunc("/health", h.HandleHealth)
 	mux.HandleFunc("/heroes", h.HandleHeroes)
+	mux.HandleFunc("/map-preview", h.HandleMapPreview)
 	mux.Handle("/metrics", observability.Default)
 }
 
@@ -151,6 +152,7 @@ func clientReadPump(c *mroom.Client) {
 				return
 			}
 			c.Id = userID
+			c.AccessToken = request.Token
 			c.Authenticated = true
 			_ = c.Conn.SetReadDeadline(time.Time{})
 		case "join":

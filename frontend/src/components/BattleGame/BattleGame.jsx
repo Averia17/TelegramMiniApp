@@ -5,13 +5,15 @@ import {Renderer} from "./Renderer"
 import {Input} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
 import {getHeroSkill} from "./heroSkills.js"
-import {getBattlePlayerCount, getPlayerBattleStats, getStateBattleResult, getSynchronizedBattleView} from "./battleOutcome"
-import {AbilityButton, ActiveStatusEffects, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TouchStick} from "./BattleGameUI.jsx"
+import {getBattlePlayerCount, getPlayerBattleStats, getPresentedBattleResult, getSynchronizedBattleView} from "./battleOutcome"
+import {AbilityButton, ActiveStatusEffects, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TauntButton, TouchStick} from "./BattleGameUI.jsx"
 import {getActiveStatusEffects} from "./statusEffects.js"
 import {formatBattleMessage} from "./battleMessages.js"
+import {chooseTauntTarget} from "./tauntTarget.js"
 import {releaseAllPreviewContexts} from "./rendering/shared/previewContextRegistry.js"
 import {getBattlePerformanceSnapshot, recordBattleMetric} from "./rendering/shared/performance.js"
 import {isInsideConcealment} from "./rendering/shared/concealment.js"
+import {assetRegistry} from "./rendering/assets/AssetRegistry.js"
 import {WS_URL} from "../../utils/urls.js"
 import {getAccessToken} from "../../utils/auth.js"
 import {BattleLoading} from "../BattleLoading/BattleLoading.jsx"
@@ -31,7 +33,7 @@ const profileBattleUi = (_id, phase, actualDuration) => {
   if (import.meta.env.DEV) recordBattleMetric("ui.commit", actualDuration, {phase})
 }
 
-export const BattleGame = ({playerId, roomId, heroName}) => {
+export const BattleGame = ({playerId, roomId, heroName, tauntCharges = 0}) => {
   const navigate = useNavigate()
   const canvasRef = useRef(null)
   const clientRef = useRef(null)
@@ -44,8 +46,14 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const simulationRef = useRef(null)
   const lastUiUpdateRef = useRef(0)
   const savedResultRef = useRef(false)
+  const pendingDeathInfoRef = useRef(null)
+  const deathRevealTimerRef = useRef(null)
+  const deathRevealStartedRef = useRef(false)
   const [mobileMode, setMobileMode] = useState(() => window.matchMedia("(pointer: coarse), (max-width: 700px)").matches)
   const [touchControls, setTouchControls] = useState({move: null, aim: null})
+  const [tauntCooldown, setTauntCooldown] = useState(0)
+  const [availableTaunts, setAvailableTaunts] = useState(() => Math.max(0, Number(tauntCharges) || 0))
+  const tauntTimerRef = useRef(null)
 
   const [gameState, setGameState] = useState(null)
   const [connected, setConnected] = useState(false)
@@ -56,6 +64,12 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const [deathInfo, setDeathInfo] = useState(null)
   const [battleResult, setBattleResult] = useState(null)
   const [sceneReady, setSceneReady] = useState(false)
+  const [assetsReady, setAssetsReady] = useState(false)
+  const [assetLoadError, setAssetLoadError] = useState(false)
+
+  useEffect(() => {
+    setAvailableTaunts(Math.max(0, Number(tauntCharges) || 0))
+  }, [tauntCharges])
 
   const setView = useCallback((v) => {
     viewRef.current = v
@@ -83,6 +97,17 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
       console.warn("Could not play battle outcome animation", error)
     }
   }, [setView])
+
+  const revealPresentedDeath = useCallback(result => {
+    if (!result || deathRevealStartedRef.current) return
+    deathRevealStartedRef.current = true
+    // Let the interpolated lethal frame and the authored death pose be visible
+    // before the result overlay takes over the arena.
+    deathRevealTimerRef.current = window.setTimeout(() => {
+      deathRevealTimerRef.current = null
+      finishBattle({...result, ...pendingDeathInfoRef.current})
+    }, 420)
+  }, [finishBattle])
 
   const debugPlayerId = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("debugPlayer") : null
   const effectivePlayerId = debugPlayerId || playerId
@@ -125,8 +150,22 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
     let simulation = null
     let client = null
     let input = null
+    let disposed = false
 
-    const startBattle = () => {
+    const startBattle = async () => {
+      try {
+        await assetRegistry.preloadBattleAssets()
+      } catch (error) {
+        console.error("Could not preload battle GLBs:", error)
+        if (!disposed) setAssetLoadError(true)
+        return
+      }
+      if (!assetRegistry.areBattleAssetsReady()) {
+        if (!disposed) setAssetLoadError(true)
+        return
+      }
+      if (disposed) return
+      setAssetsReady(true)
       releaseAllPreviewContexts()
       renderer = new Renderer(canvas)
       simulation = new NetworkSimulation()
@@ -153,13 +192,14 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
           const v = viewRef.current
           const synchronizedView = getSynchronizedBattleView(state?.game?.state, v)
           if (synchronizedView && synchronizedView !== v) setView(synchronizedView)
-          const stateResult = getStateBattleResult(state, clientRef.current?.playerId, v)
-          if (stateResult) finishBattle(stateResult)
         },
         (msg) => {
           addMessage(msg)
           if (msg.type === "island_voice") {
             setIslandVoice({text: msg.params?.text || "Остров смотрит.", trigger: msg.params?.trigger || "unknown"})
+          }
+          if (msg.type === "taunt") {
+            rendererRef.current?.showTaunt(msg.params?.targetId || msg.params?.playerId, msg.params?.tauntId)
           }
           if (msg.type === "room_joined") {
             setRoomInfo(msg.params)
@@ -192,12 +232,14 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
             finishBattle({won:msg.params?.name === playerName,winner:msg.params?.name,duration:Math.round((msg.params?.duration || 0) / 1000)})
           }
           if (msg.type === "you_died") {
-            setDeathInfo({killerName: msg.params?.killerName || "Unknown"})
-            finishBattle({won:false,killerName:msg.params?.killerName || "Unknown"})
+            const info = {killerName: msg.params?.killerName || "Unknown"}
+            pendingDeathInfoRef.current = info
+            setDeathInfo(info)
           }
           if (msg.type === "killed" && msg.params?.killedName === playerName) {
-            setDeathInfo({killerName: msg.params?.killerName || "Unknown"})
-            finishBattle({won:false,killerName:msg.params?.killerName || "Unknown"})
+            const info = {killerName: msg.params?.killerName || "Unknown"}
+            pendingDeathInfoRef.current = info
+            setDeathInfo(info)
           }
           if (msg.type === "error" && roomId && msg.params?.message === "Room not found") {
             joinedRef.current = false
@@ -299,9 +341,9 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
         }
         try {
           renderer.render()
-          if (renderedStateThisFrame && !sceneFrameReady) {
+          if (renderedStateThisFrame && !sceneFrameReady && renderer.isReady()) {
             sceneFrameReady = true
-            setSceneReady(true)
+            setSceneReady(renderer.isReady())
           }
           rendererFailed = false
         } catch (error) {
@@ -310,6 +352,13 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
             rendererFailed = true
           }
         }
+        const presentedDeath = getPresentedBattleResult(
+          latestStateRef.current,
+          displayState,
+          client.playerId,
+          viewRef.current,
+        )
+        revealPresentedDeath(presentedDeath)
         recordBattleMetric("game.loop", performance.now() - loopStartedAt)
         animFrameRef.current = requestAnimationFrame(gameLoop)
       }
@@ -319,9 +368,14 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
     const startupTimer = window.setTimeout(startBattle, 0)
 
     return () => {
+      disposed = true
       window.removeEventListener("resize", resize)
       window.visualViewport?.removeEventListener("resize", resize)
       window.clearTimeout(startupTimer)
+      if (deathRevealTimerRef.current) window.clearTimeout(deathRevealTimerRef.current)
+      deathRevealTimerRef.current = null
+      if (tauntTimerRef.current) window.clearInterval(tauntTimerRef.current)
+      tauntTimerRef.current = null
       cancelAnimationFrame(animFrameRef.current)
       input?.destroy()
       client?.disconnect()
@@ -390,9 +444,37 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
   const health = localPlayer?.lives ?? 0
   const maxHealth = localPlayer?.maxLives ?? 1
   const healthPercent = Math.max(0, Math.min(100, (health / maxHealth) * 100))
+  const tauntTargetId = chooseTauntTarget({
+    players: gameState?.players,
+    localId: clientRef.current?.playerId,
+    isVisible: id => rendererRef.current?.isPlayerVisible(id) ?? false,
+  })
+  const sendTaunt = () => {
+    if (tauntCooldown > 0 || availableTaunts < 1 || !tauntTargetId) return
+    clientRef.current?.taunt("clown_laugh", tauntTargetId)
+    setAvailableTaunts(value => Math.max(0, value - 1))
+    setTauntCooldown(1.5)
+    if (tauntTimerRef.current) window.clearInterval(tauntTimerRef.current)
+    tauntTimerRef.current = window.setInterval(() => {
+      setTauntCooldown(value => {
+        const next = Math.max(0, value - .1)
+        if (next === 0 && tauntTimerRef.current) {
+          window.clearInterval(tauntTimerRef.current)
+          tauntTimerRef.current = null
+        }
+        return next
+      })
+    }, 100)
+  }
   const localPlayerInBush = isInsideConcealment(localPlayer, gameState?.map?.walls)
   const activeStatusEffects = getActiveStatusEffects(localPlayer || {}, {inBush: localPlayerInBush})
   const islandPhase = gameState?.game?.phase || "none"
+  const loadingStatus = assetLoadError
+    ? "Не удалось загрузить 3D-модели. Обновите страницу."
+    : !assetsReady
+      ? "Загружаем 3D-модели арены..."
+      : connected ? "Получаем карту арены..." : "Подключаемся к арене..."
+  const loadingProgress = assetLoadError ? 100 : !assetsReady ? 68 : connected ? 62 : 42
 
   return (
     <Profiler id="battle-ui" onRender={profileBattleUi}>
@@ -426,10 +508,10 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
         })}</output>}
         <canvas ref={canvasRef} className="battle-canvas"/>
 
-        {(!sceneReady || view === "connecting") && (
+        {(!assetsReady || !sceneReady || view === "connecting" || assetLoadError) && (
           <BattleLoading
-            progress={connected ? 62 : 42}
-            status={connected ? "Получаем карту арены..." : "Подключаемся к арене..."}
+            progress={loadingProgress}
+            status={loadingStatus}
           />
 
         )}
@@ -492,6 +574,11 @@ export const BattleGame = ({playerId, roomId, heroName}) => {
               <div className="battle-abilities">
                 <AbilityButton slot="primary" keyName="Q" label={getHeroSkill(localPlayer.hero, "primary").name} description={getHeroSkill(localPlayer.hero, "primary").description} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper onUse={() => clientRef.current?.ability?.("primary")}/>
                 <AbilityButton slot="secondary" keyName="E" label={`${getHeroSkill(localPlayer.hero, "secondary").name} · ${localPlayer.gadgetCharges || 0}`} description={getHeroSkill(localPlayer.hero, "secondary").description} cooldown={localPlayer.cooldowns?.secondary} disabled={!localPlayer.gadgetCharges || localPlayer.gadgetArmed} onUse={() => clientRef.current?.ability?.("secondary")}/>
+              </div>
+            )}
+            {localPlayer && availableTaunts > 0 && (
+              <div className="battle-taunt-slot">
+                <TauntButton cooldown={tauntCooldown} disabled={!tauntTargetId} onUse={sendTaunt}/>
               </div>
             )}
           </>

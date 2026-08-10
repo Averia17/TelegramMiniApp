@@ -21,6 +21,7 @@ export const HEROES_CONFIG = Object.freeze([
   {name:"Kaze",color:"#B88CFF",maxLives:650,speed:16,attackDamage:40,attackType:"kaze_cross_slash",role:"Assassin",attack:{archetype:"melee_cone",aimShape:"cone",range:105,halfArcDegrees:55}},
   {name:"Wukong Mico",color:"#FFB33E",maxLives:900,speed:13,attackDamage:85,attackType:"mico_staff",role:"Tank",attack:{archetype:"melee_cone",aimShape:"cone",range:120,halfArcDegrees:50}},
   {name:"Persephone Lumi",color:"#D954A8",maxLives:680,speed:13,attackDamage:70,bulletSpeed:28,attackType:"lumi_trail_orb",role:"Controller",attack:{archetype:"projectile",aimShape:"line",range:600}},
+  {name:"Katty",color:"#FF5C9A",maxLives:640,speed:14,attackDamage:34,attackType:"katty_paint_queue",role:"Controller",attack:{archetype:"burst",aimShape:"cone",range:240,projectileCount:3,spreadDegrees:45,halfArcDegrees:22.5,modifier:"katty_paint_layers"}},
 ])
 
 // Fallback contract used before /heroes arrives. The server payload has the
@@ -33,6 +34,7 @@ export const HERO_KITS = Object.freeze({
   Kaze: {basic:{id:"cross_slash",name:"Косые удары",description:"Два попадания открывают усиленный третий удар."},super:{id:"piercing_dash",name:"Пронзающий рывок",description:"Рывок помечает врагов и усиливает получаемый ими урон.",slot:"primary",prediction:"server"},gadget:{id:"vanish",name:"Исчезновение",description:"Невидимость гарантирует критический первый удар.",slot:"secondary",prediction:"server"}},
   "Wukong Mico": {basic:{id:"heavy_staff",name:"Тяжёлый посох",description:"Попадания накапливают Ярость."},super:{id:"vengeance_vortex",name:"Вихрь возмездия",description:"Вихрь расходует Ярость и наносит урон вокруг.",slot:"primary",prediction:"server"},gadget:{id:"stone_armor",name:"Каменная броня",description:"Щит накапливает урон и взрывается после окончания.",slot:"secondary",prediction:"server"}},
   "Persephone Lumi": {basic:{id:"luminous_trail",name:"Световой след",description:"След замедляет и раскрывает врагов."},super:{id:"root_garden",name:"Сад корней",description:"Поле корней обездвиживает вошедших врагов.",slot:"primary",prediction:"server"},gadget:{id:"flower_burst",name:"Цветочный взрыв",description:"Взрывает активный след или сад.",slot:"secondary",prediction:"server"}},
+  Katty: {basic:{id:"paint_queue",name:"Краска-очередь",description:"Три выстрела краской накладывают слои. Третий слой обездвиживает цель."},super:{id:"paint_grenade",name:"Баллон-граната",description:"Граната оставляет лужу краски, ослепляет и наносит третий слой.",slot:"primary",prediction:"server"},gadget:{id:"paint_flight",name:"Красколёт",description:"Рывок оставляет след краски, замедляющий врагов и ускоряющий Кэтти.",slot:"secondary",prediction:"server"}},
 })
 
 export const TIMED_KIT_DESCRIPTIONS = Object.freeze({

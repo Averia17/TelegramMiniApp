@@ -1,17 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "schemaVersion": 1,
-  "catalogRevision": "2026-08-02",
+  "catalogRevision": "2026-08-10",
   "purpose": "Единый источник контекста по героям для gameplay, frontend, Blender и ИИ.",
   "maintenance": {
     "owner": "AI + game team",
     "updatePolicy": "docs/hero-catalog-maintenance.md",
     "lastReviewedBy": "Codex",
-    "lastReviewedAt": "2026-08-02"
+    "lastReviewedAt": "2026-08-10"
   },
   "sourceFingerprints": {
-    "battle/model/game/heroes.go": "E6DE7F605E392035BC1CB4D8092CE83655604D1996AA63E6D4ADDFD97800564A",
-    "battle/model/game/attack_config.go": "8A7627A26D66A7F27EABF0214068EA388348D75340F8344A2345BF90BBB8996D",
+    "battle/model/game/heroes.go": "C09AB8255C17CCE9A8483B863C0D9714F59537D9C5A636B09B33BB83FA6BFE58",
+    "battle/model/game/attack_config.go": "B919C0F74F2F0A49D492E315A8965AAFB3785E8EDC79E96EDAFC9737186C67CA",
     "tools/blender/hero_animation_scene_manifest.json": "6229C8EE8D96C46B14CC909407C53BF92B2079E011F93945BD564A6BBB75C862"
   },
   "contracts": {
@@ -162,6 +162,24 @@
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
       "assets": {"sourceMaster": "frontend/assets-source/heroes/persephone-lumi/persephone-lumi.blend", "sceneDirectory": "frontend/assets-source/heroes/persephone-lumi/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/persephone-lumi_base.glb", "status": "runtime_ready"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
+    },
+    {
+      "id": "katty",
+      "slug": "katty",
+      "name": "Katty",
+      "status": "active",
+      "identity": {"role": "Controller", "color": "#FF5C9A", "radius": 13},
+      "description": "Уличная художница, которая контролирует пространство слоями краски.",
+      "balance": {"maxLives": 640, "speed": 14, "attackDamage": 34, "attackRateMs": 520, "reloadTimeMs": 1700, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "katty_paint_queue"},
+      "basicAttack": {"archetype": "burst", "aimShape": "cone", "range": 240, "projectileKind": "katty_paint", "projectileCount": 3, "spreadDegrees": 45, "halfArcDegrees": 22.5, "modifier": "katty_paint_layers"},
+      "abilities": {
+        "basic": {"id": "paint_queue", "name": "Краска-очередь", "description": "Три выстрела краской накладывают слои. Третий слой обездвиживает цель.", "slot": "basic", "prediction": "server", "mechanics": ["3 выстрела с интервалом 150 мс", "конус 45°", "третий слой: оглушение 800 мс"]},
+        "super": {"id": "paint_grenade", "name": "Баллон-граната", "description": "Граната оставляет лужу краски, ослепляет врагов и наносит третий слой.", "slot": "primary", "prediction": "server", "mechanics": ["лужа радиусом 200", "длительность 7 секунд", "ослепление 2.5 секунды"]},
+        "gadget": {"id": "paint_flight", "name": "Красколёт", "description": "Рывок проходит сквозь стены только во время способности и оставляет замедляющий след.", "slot": "secondary", "prediction": "server", "mechanics": ["фазовый рывок на 320", "след на 4 секунды", "2 слоя за пересечение врага"]}
+      },
+      "animations": {"available": [], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "static_import"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/katty/source/jacky_tricky_geo.fbx", "sceneDirectory": "frontend/assets-source/heroes/katty/source", "runtimeHero": "frontend/public/assets/heroes/output_heroes/katty_base.glb", "sourceUrl": "https://sketchfab.com/3d-models/tricky-janet-86283dbe8ca54428a26b6b9033d624a1", "status": "runtime_ready_static"},
+      "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go", "frontend/src/components/BattleGame/heroesConfig.js", "frontend/src/components/BattleGame/rendering/assets/assetManifest.js"]
     }
   ],
   "pipelineNotes": {

@@ -13,6 +13,23 @@ var Store provider.Store
 var Kafka *provider.KafkaProducer
 
 const reconnectGracePeriod = 2 * time.Minute
+const snapshotEveryFrames = 1
+const nominalTickDuration = time.Second / 60
+const tauntCooldown = 1500 * time.Millisecond
+
+func shouldPublishState(frame int) bool {
+	return frame > 0 && frame%snapshotEveryFrames == 0
+}
+
+func battleTickElapsed(previous, current time.Time) time.Duration {
+	if previous.IsZero() {
+		return nominalTickDuration
+	}
+	if elapsed := current.Sub(previous); elapsed > 0 {
+		return elapsed
+	}
+	return nominalTickDuration
+}
 
 type preparedStateUpdate struct {
 	client      *Client
@@ -35,6 +52,7 @@ func (r *Room) Run() {
 	defer ticker.Stop()
 	defer redisTicker.Stop()
 
+	frame := 0
 	var emptySince time.Time
 	var previousTickAt time.Time
 	var metricsWindowAt time.Time
@@ -125,11 +143,13 @@ func (r *Room) Run() {
 
 		case <-ticker.C:
 			var updates []preparedStateUpdate
+			snapshotDuration := time.Duration(0)
 			tickStarted := time.Now()
 			tickGap := time.Duration(0)
 			if !previousTickAt.IsZero() {
 				tickGap = tickStarted.Sub(previousTickAt)
 			}
+			elapsed := battleTickElapsed(previousTickAt, tickStarted)
 			previousTickAt = tickStarted
 			r.mu.Lock()
 			r.expireDisconnectedPlayers()
@@ -148,14 +168,17 @@ func (r *Room) Run() {
 			if metricsWindowAt.IsZero() {
 				metricsWindowAt = tickStarted
 			}
-			r.State.Update()
+			frame++
+			r.State.UpdateWithDelta(elapsed)
 			updateDuration := time.Since(tickStarted)
-			// The simulation already advances at 60 Hz. Keep the transport at
-			// the same cadence so client prediction only bridges real network
-			// delay instead of an avoidable extra server frame.
-			snapshotStarted := time.Now()
-			updates = r.prepareStateUpdates()
-			snapshotDuration := time.Since(snapshotStarted)
+			// Simulate and publish at 60 Hz so movement and combat presentation
+			// do not inherit an avoidable 33 ms transport gap.
+			if shouldPublishState(frame) {
+				snapshotStarted := time.Now()
+				updates = r.prepareStateUpdates()
+				snapshotDuration = time.Since(snapshotStarted)
+				metricsMaxSnapshot = maxDuration(metricsMaxSnapshot, snapshotDuration)
+			}
 			r.mu.Unlock()
 			queueStarted := time.Now()
 			queuedUpdates, stateBytes, queueDrops := r.queueStateUpdates(updates)
@@ -164,15 +187,14 @@ func (r *Room) Run() {
 			metricsTicks++
 			metricsMaxGap = maxDuration(metricsMaxGap, tickGap)
 			metricsMaxUpdate = maxDuration(metricsMaxUpdate, updateDuration)
-			metricsMaxSnapshot = maxDuration(metricsMaxSnapshot, snapshotDuration)
 			metricsMaxQueue = maxDuration(metricsMaxQueue, queueDuration)
-			if tickGap > 20*time.Millisecond || updateDuration > 10*time.Millisecond || snapshotDuration > 10*time.Millisecond || queueDuration > 10*time.Millisecond {
+			if tickGap > 20*time.Millisecond || updateDuration > 10*time.Millisecond || queueDuration > 10*time.Millisecond {
 				metricsSlowTicks++
 			}
 			observability.RecordBattleTick(observability.Default, observability.BattleTickSample{
 				Gap: tickGap, Update: updateDuration, Snapshot: snapshotDuration, Queue: queueDuration,
 				Updates: queuedUpdates, Bytes: stateBytes, Dropped: queueDrops,
-				Slow: tickGap > 20*time.Millisecond || updateDuration > 10*time.Millisecond || snapshotDuration > 10*time.Millisecond || queueDuration > 10*time.Millisecond,
+				Slow: tickGap > 20*time.Millisecond || updateDuration > 10*time.Millisecond || queueDuration > 10*time.Millisecond,
 			})
 			if time.Since(metricsWindowAt) >= 2*time.Second {
 				log.Printf("battle tick metrics room=%s ticks=%d hz=%.1f slow=%d gap_max=%s update_max=%s snapshot_max=%s queue_max=%s players=%d bots=%d bullets=%d effects=%d", r.Id, metricsTicks, float64(metricsTicks)/time.Since(metricsWindowAt).Seconds(), metricsSlowTicks, metricsMaxGap, metricsMaxUpdate, metricsMaxSnapshot, metricsMaxQueue, len(r.State.Players), countBots(r.State), len(r.State.Bullets), len(r.State.Effects))
@@ -247,6 +269,10 @@ func (r *Room) HandleMessage(client *Client, data []byte) {
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return
 	}
+	if msg.Type == "taunt" {
+		r.handleTaunt(client, msg.Value)
+		return
+	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -311,6 +337,76 @@ func (r *Room) HandleMessage(client *Client, data []byte) {
 			}
 		}
 	}
+}
+
+func (r *Room) handleTaunt(client *Client, data []byte) {
+	var v game.TauntValue
+	if err := json.Unmarshal(data, &v); err != nil || v.TauntID != "clown_laugh" {
+		return
+	}
+
+	r.mu.Lock()
+	if r.State == nil || r.State.State != game.GameStateGame || r.Clients[client.Id] != client {
+		r.mu.Unlock()
+		return
+	}
+	now := time.Now().UnixMilli()
+	if client.LastTauntAt > 0 && now-client.LastTauntAt < tauntCooldown.Milliseconds() {
+		r.mu.Unlock()
+		return
+	}
+	if player := r.State.Players[client.Id]; player != nil && !player.IsAlive() {
+		r.mu.Unlock()
+		return
+	}
+	target := r.State.Players[v.TargetID]
+	if v.TargetID == "" || v.TargetID == client.Id || target == nil || !target.IsAlive() {
+		r.mu.Unlock()
+		return
+	}
+	spender := r.TauntSpender
+	if spender == nil {
+		spender = defaultTauntSpender
+	}
+	if spender == nil || client.AccessToken == "" {
+		r.mu.Unlock()
+		r.SendToPlayer(client.Id, "error", game.ErrorParams{Message: "Насмешка временно недоступна"})
+		return
+	}
+	client.LastTauntAt = now
+	targetName := target.Name
+	r.mu.Unlock()
+
+	if err := spender.SpendTaunt(client.AccessToken, v.TauntID); err != nil {
+		r.mu.Lock()
+		if client.LastTauntAt == now {
+			client.LastTauntAt = 0
+		}
+		r.mu.Unlock()
+		message := "Насмешка временно недоступна"
+		if err.Error() == "not enough taunt charges" {
+			message = "Нет оплаченных насмешек"
+		}
+		r.SendToPlayer(client.Id, "error", game.ErrorParams{Message: message})
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.State == nil || r.State.State != game.GameStateGame || r.Clients[client.Id] != client {
+		return
+	}
+	target = r.State.Players[v.TargetID]
+	if target == nil || !target.IsAlive() {
+		return
+	}
+	r.BroadcastMsg("taunt", game.TauntParams{
+		PlayerID:   client.Id,
+		PlayerName: client.Name,
+		TauntID:    v.TauntID,
+		TargetID:   v.TargetID,
+		TargetName: targetName,
+	})
 }
 
 func maxDuration(current, candidate time.Duration) time.Duration {

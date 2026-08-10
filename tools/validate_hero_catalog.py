@@ -214,34 +214,41 @@ def validate() -> list[str]:
                     errors, f"{name}: {slot} ability must have id and description"
                 )
 
-        animation = hero.get("animations", {})
-        manifest_slug = animation.get("manifestSlug", hero.get("slug"))
-        expected_animation_clips = list(contracts.get("runtimeAnimationClips", []))
-        expected_animation_clips.extend(
-            manifest.get("hero_animation_extras", {}).get(manifest_slug, [])
-        )
-        if animation.get("available") != expected_animation_clips:
-            add_error(
-                errors,
-                f"{name}: per-hero animation list differs from the runtime contract",
+        asset_status = hero.get("assets", {}).get("status")
+        runtime_without_authored_animation = asset_status in {
+            "procedural_runtime",
+            "runtime_ready_static",
+        }
+        if not runtime_without_authored_animation:
+            animation = hero.get("animations", {})
+            manifest_slug = animation.get("manifestSlug", hero.get("slug"))
+            expected_animation_clips = list(contracts.get("runtimeAnimationClips", []))
+            expected_animation_clips.extend(
+                manifest.get("hero_animation_extras", {}).get(manifest_slug, [])
             )
-        if animation.get("abilityClips", {}).get("basic") != contracts.get(
-            "abilityAnimationClips", {}
-        ).get("basic"):
-            add_error(errors, f"{name}: basic ability animation mapping is stale")
-        if animation.get("abilityClips", {}).get("super") != contracts.get(
-            "abilityAnimationClips", {}
-        ).get("super"):
-            add_error(errors, f"{name}: super ability animation mapping is stale")
-        if animation.get("abilityClips", {}).get("gadget") != contracts.get(
-            "abilityAnimationClips", {}
-        ).get("gadget"):
-            add_error(errors, f"{name}: gadget ability animation mapping is stale")
+            if animation.get("available") != expected_animation_clips:
+                add_error(
+                    errors,
+                    f"{name}: per-hero animation list differs from the runtime contract",
+                )
+            if animation.get("abilityClips", {}).get("basic") != contracts.get(
+                "abilityAnimationClips", {}
+            ).get("basic"):
+                add_error(errors, f"{name}: basic ability animation mapping is stale")
+            if animation.get("abilityClips", {}).get("super") != contracts.get(
+                "abilityAnimationClips", {}
+            ).get("super"):
+                add_error(errors, f"{name}: super ability animation mapping is stale")
+            if animation.get("abilityClips", {}).get("gadget") != contracts.get(
+                "abilityAnimationClips", {}
+            ).get("gadget"):
+                add_error(errors, f"{name}: gadget ability animation mapping is stale")
 
-        if manifest_slug and manifest_slug not in manifest.get("heroes", []):
-            add_error(
-                errors, f"{name}: animation manifest has no hero slug {manifest_slug!r}"
-            )
+            if manifest_slug and manifest_slug not in manifest.get("heroes", []):
+                add_error(
+                    errors,
+                    f"{name}: animation manifest has no hero slug {manifest_slug!r}",
+                )
 
         for asset_key in (
             "sourceMaster",

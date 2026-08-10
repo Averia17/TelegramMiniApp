@@ -6,7 +6,6 @@ import {EffectRenderer} from "../combat/EffectRenderer"
 import {ProjectileRenderer} from "../combat/ProjectileRenderer"
 import {CameraRig} from "../CameraRig"
 import {SceneRoot} from "../SceneRoot"
-import {detectLowQualityDevice} from "../shared/quality"
 import {MonsterRenderer} from "../monsters/MonsterRenderer.js"
 import {PickupRenderer} from "../map/PickupRenderer.js"
 import {endBattlePerformance, recordBattleMetric, startBattlePerformance} from "../shared/performance.js"
@@ -16,8 +15,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 export class ThreeBattleRenderer {
   constructor(canvas) {
     this.canvas = canvas
-    const requestedLowQuality = detectLowQualityDevice()
-    this.sceneRoot = new SceneRoot(canvas, requestedLowQuality)
+    this.sceneRoot = new SceneRoot(canvas, false)
     this.lowQuality = this.sceneRoot.lowQuality
     this.renderer = this.sceneRoot.renderer
     this.scene = this.sceneRoot.scene
@@ -41,10 +39,6 @@ export class ThreeBattleRenderer {
     this.mapRenderer = new MapRenderer(this.mapRoot, {lowQuality: this.lowQuality})
     this.time = 0
     this.lastRenderAt = performance.now()
-    this.performanceWindowAt = this.lastRenderAt
-    this.performanceFrames = 0
-    this.slowFrameCount = 0
-    this.fps = 60
     this.resize(window.innerWidth, window.innerHeight)
   }
 
@@ -55,7 +49,23 @@ export class ThreeBattleRenderer {
     this.cameraRig.resize(this.width, this.height)
   }
 
-  setLocalPlayerId(id) { this.localPlayerId = String(id) }
+  setLocalPlayerId(id) {
+    this.localPlayerId = String(id)
+    this.players.forEach((view, playerId) => view.setShadowCasting?.(playerId === this.localPlayerId))
+  }
+
+  showTaunt(playerId, tauntId = "clown_laugh") {
+    this.players.get(String(playerId))?.showTaunt(tauntId)
+  }
+
+  isReady() {
+    return Boolean(
+      this.state &&
+      this.mapRenderer.isReady() &&
+      this.players.size > 0 &&
+      [...this.players.values()].every(view => view.isReady()),
+    )
+  }
 
   setOutcome(outcome) {
     const result = outcome === "victory" ? "victory" : "defeat"
@@ -83,15 +93,21 @@ export class ThreeBattleRenderer {
     endBattlePerformance(islandSyncToken)
     const active = new Set()
     Object.entries(state.players || {}).forEach(([id, player]) => {
-      if (!isAlivePlayerState(player)) return
+      const existingView = this.players.get(String(id))
+      // Keep an already-rendered hero for the authoritative death frame so
+      // GLBHeroController can show its authored defeat pose. A player that was
+      // never visible is still ignored while dead.
+      if (!isAlivePlayerState(player) && !existingView) return
       active.add(String(id))
-      let view = this.players.get(String(id))
+      let view = existingView
       if (!view || String(view.state.hero) !== String(player.hero)) {
+        if (!isAlivePlayerState(player)) return
         if (view) { this.actorRoot.remove(view.group); view.dispose() }
         view = new HeroView(String(id), player, this.lowQuality)
         this.players.set(String(id), view)
         this.actorRoot.add(view.group)
       }
+      view.setShadowCasting?.(String(id) === this.localPlayerId)
       view.setState(player, Boolean(state.networkSmoothed))
     })
     this.players.forEach((view, id) => {
@@ -115,8 +131,11 @@ export class ThreeBattleRenderer {
     const perfToken = startBattlePerformance("renderer.setDisplayState")
     this.state = state
     Object.entries(state.players || {}).forEach(([id, player]) => {
-      if (!isAlivePlayerState(player)) return
       const view = this.players.get(String(id))
+      if (!isAlivePlayerState(player)) {
+        if (view) view.setState(player, Boolean(state.networkSmoothed))
+        return
+      }
       // Entity creation/removal stays on the authoritative full-sync path.
       // During the frames between snapshots, only feed existing views their
       // interpolated target so the visual path stays cheap and allocation-free.
@@ -139,12 +158,14 @@ export class ThreeBattleRenderer {
     const sceneUpdateStartedAt = performance.now()
     const walls=this.state?.map?.walls||[]
     this.players.forEach((view,id)=>view.update(delta,this.time,(id===this.localPlayerId||Boolean(this.state?.players?.[id]?.team&&this.state.players[id].team===this.state?.players?.[this.localPlayerId]?.team))&&isInsideBush(view.state,walls)))
+    const local=this.players.get(this.localPlayerId)
+    // Map focus is updated on snapshot/state boundaries; procedural props do
+    // not trigger asset work from inside RAF.
     this.mapRenderer.update(delta)
     this.projectiles.update(delta,this.time)
     this.monsters.update(delta,this.time)
     this.pickups.update(delta)
     this.aim.update(this.state?.players?.[this.localPlayerId], delta)
-    const local=this.players.get(this.localPlayerId)
     const map=this.state?.map||{width:1024,height:768}
     this.cameraRig.follow(local, map, delta)
     recordBattleMetric("renderer.scene_update", performance.now() - sceneUpdateStartedAt, {
@@ -165,26 +186,7 @@ export class ThreeBattleRenderer {
       drawCalls: this.renderer.info.render.calls,
       triangles: this.renderer.info.render.triangles,
     })
-    if (!this.lowQuality) {
-      this.slowFrameCount = frameElapsed >= 22 ? this.slowFrameCount + 1 : 0
-      if (this.slowFrameCount >= 10) this.enableLowQuality()
-    }
-    this.performanceFrames++
-    const elapsed=now-this.performanceWindowAt
-    if(elapsed>=2000){
-      this.fps=Math.round(this.performanceFrames*1000/elapsed);this.performanceFrames=0;this.performanceWindowAt=now
-      if(this.fps<50&&!this.lowQuality)this.enableLowQuality()
-    }
     endBattlePerformance(perfToken)
-  }
-
-  enableLowQuality() {
-    if (this.lowQuality) return
-    this.sceneRoot.setLowQuality()
-    this.players.forEach(view => view.setLowQuality?.())
-    this.mapRenderer.setLowQuality?.()
-    this.lowQuality=true
-    this.resize(this.width,this.height)
   }
 
   worldToScreen(x,y) {

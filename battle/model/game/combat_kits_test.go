@@ -191,6 +191,61 @@ func TestTapAutoAimSelectsNearestEnemyInsideAttackRange(t *testing.T) {
 	}
 }
 
+func TestTapAutoAimHitsNearbyEnemiesAroundTheSelectedTarget(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.Map.Collisions = nil
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("lumi", "Lumi", "Persephone Lumi")
+	gs.PlayerAdd("near", "Near", "Persephone Lumi")
+	gs.PlayerAdd("nearby", "Nearby", "Persephone Lumi")
+	source := gs.Players["lumi"]
+	source.X, source.Y = 400, 400
+	gs.Players["near"].X, gs.Players["near"].Y = 600, 400
+	// This target is close to the selected target, but outside the projectile's
+	// normal hitbox, so auto-aim must supply the forgiving assist radius.
+	gs.Players["nearby"].X, gs.Players["nearby"].Y = 600, 440
+	gs.PlayerPushAction(Action{PlayerId: "lumi", Type: "shoot", Ts: 1_000, Value: &ShootValue{Angle: math.Pi, AutoAim: true}})
+
+	gs.updatePlayers()
+	for index := 0; index < 30; index++ {
+		gs.updateBullets()
+	}
+
+	if got := gs.Players["near"].MaxLives - gs.Players["near"].Lives; got != source.AttackDmg {
+		t.Fatalf("selected target damage = %d, want one attack damage %d", got, source.AttackDmg)
+	}
+	if got := gs.Players["nearby"].MaxLives - gs.Players["nearby"].Lives; got != source.AttackDmg {
+		t.Fatalf("nearby target damage = %d, want one auto-aim area hit %d", got, source.AttackDmg)
+	}
+}
+
+func TestManualAimDoesNotGainTheAutoAimArea(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.Map.Collisions = nil
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("lumi", "Lumi", "Persephone Lumi")
+	gs.PlayerAdd("near", "Near", "Persephone Lumi")
+	gs.PlayerAdd("nearby", "Nearby", "Persephone Lumi")
+	source := gs.Players["lumi"]
+	source.X, source.Y = 400, 400
+	gs.Players["near"].X, gs.Players["near"].Y = 600, 400
+	gs.Players["nearby"].X, gs.Players["nearby"].Y = 600, 440
+
+	gs.playerShoot("lumi", 1_000, 0)
+	for index := 0; index < 30; index++ {
+		gs.updateBullets()
+	}
+
+	if got := gs.Players["near"].MaxLives - gs.Players["near"].Lives; got != source.AttackDmg {
+		t.Fatalf("manually aimed target damage = %d, want %d", got, source.AttackDmg)
+	}
+	if got := gs.Players["nearby"].MaxLives - gs.Players["nearby"].Lives; got != 0 {
+		t.Fatalf("nearby target took %d manual-aim damage, want 0", got)
+	}
+}
+
 func TestCoreCombatSuperChargeDoesNotUsePvPDamage(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
