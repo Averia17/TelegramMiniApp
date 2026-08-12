@@ -11,8 +11,11 @@ const ORBITAL_KINDS = new Set([
   "mico_staff_spin", "mico_ruyi_bind",
   "lumi_roots", "lumi_seedburst", "zeus_thunderbrand",
   "needle_root_cast", "needle_spore_cloud", "zeus_burning_ground", "mico_suppressed_rage",
+  "kaze_doom_mark", "katty_paint_puddle", "katty_paint_spot", "lumi_slow_trail",
 ])
-const TRAIL_KINDS = new Set(["kaze_dash"])
+const TRAIL_KINDS = new Set(["kaze_dash", "zeus_beam_hole"])
+const TELEGRAPH_KINDS = new Set(["zeus_strike_warning"])
+const IMPACT_KINDS = new Set(["mina_mark_burst", "mina_mark_break", "needle_root_burst"])
 
 const createSwingArc = (radius, arc, material, innerRadius = .62) => {
   const mesh = new THREE.Mesh(
@@ -44,17 +47,47 @@ const createOrbitalEffect = (radius, material, kind) => {
   return group
 }
 
-const createLowQualityEffect = (radius, material, kind) => {
-  const mesh = new THREE.Mesh(new THREE.RingGeometry(radius * .78, radius, 16), material)
-  mesh.rotation.x = -Math.PI / 2
-  mesh.userData.kind = kind
-  return mesh
+const createTelegraphEffect = (radius, material, kind) => {
+  const group = new THREE.Group()
+  group.userData.kind = kind
+  const ring = new THREE.Mesh(new THREE.RingGeometry(radius * .76, radius, 36), material)
+  ring.rotation.x = -Math.PI / 2
+  ring.userData.role = "telegraph-ring"
+  group.add(ring)
+  for (let index = 0; index < 4; index++) {
+    const tick = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * .36, radius * .06, radius * .08),
+      material.clone(),
+    )
+    const angle = index * Math.PI / 2
+    tick.position.set(Math.cos(angle) * radius * .82, .03, Math.sin(angle) * radius * .82)
+    tick.rotation.y = -angle
+    tick.userData.role = "telegraph-tick"
+    group.add(tick)
+  }
+  return group
+}
+
+const createImpactBurst = (radius, material, kind) => {
+  const group = new THREE.Group()
+  group.userData.kind = kind
+  for (let index = 0; index < 8; index++) {
+    const shard = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * .54, radius * .09, radius * .09),
+      material.clone(),
+    )
+    const angle = index / 8 * Math.PI * 2
+    shard.position.set(Math.cos(angle) * radius * .62, radius * .16, Math.sin(angle) * radius * .62)
+    shard.rotation.y = -angle
+    shard.userData.role = "impact-shard"
+    group.add(shard)
+  }
+  return group
 }
 
 export class EffectRenderer {
-  constructor(root, {lowQuality = false} = {}) {
+  constructor(root) {
     this.root = root
-    this.lowQuality = lowQuality
     this.meshes = new Map()
   }
 
@@ -73,9 +106,7 @@ export class EffectRenderer {
           side: THREE.DoubleSide,
           depthWrite: false,
         })
-        if (this.lowQuality && !TRAIL_KINDS.has(effect.kind) && effect.kind !== "mandy_super_wave") {
-          mesh = createLowQualityEffect(radius, material, effect.kind)
-        } else if (effect.kind === "heal") {
+        if (effect.kind === "heal") {
           mesh = new THREE.Group()
           mesh.userData.kind = "heal"
           const ring = new THREE.Mesh(
@@ -102,7 +133,7 @@ export class EffectRenderer {
           vertical.position.y = radius * 1.15
           mesh.add(ring, horizontal, vertical)
         } else if (effect.kind === "mandy_super_wave") {
-          mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, this.lowQuality ? 1 : 24, 1), material)
+          mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 24, 1), material)
           mesh.userData.kind = effect.kind
         } else if (TRAIL_KINDS.has(effect.kind)) {
           mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material)
@@ -110,6 +141,10 @@ export class EffectRenderer {
           mesh.userData.kind = effect.kind
         } else if (ORBITAL_KINDS.has(effect.kind)) {
           mesh = createOrbitalEffect(radius, material, effect.kind)
+        } else if (TELEGRAPH_KINDS.has(effect.kind)) {
+          mesh = createTelegraphEffect(radius, material, effect.kind)
+        } else if (IMPACT_KINDS.has(effect.kind)) {
+          mesh = createImpactBurst(radius, material, effect.kind)
         } else if (MELEE_SWING_KINDS.has(effect.kind)) {
           mesh = createSwingArc(radius, effect.arc || Math.PI * .35, material)
           mesh.userData.kind = effect.kind
@@ -129,7 +164,8 @@ export class EffectRenderer {
           mesh.userData.kind = effect.kind
         }
         if (!["heal", "kaze_cross_slash"].includes(effect.kind) &&
-            !ORBITAL_KINDS.has(effect.kind) && !TRAIL_KINDS.has(effect.kind)) {
+            !ORBITAL_KINDS.has(effect.kind) && !TRAIL_KINDS.has(effect.kind) &&
+            !TELEGRAPH_KINDS.has(effect.kind) && !IMPACT_KINDS.has(effect.kind)) {
           mesh.rotation.x = -Math.PI / 2
         }
         this.meshes.set(id, mesh)
@@ -171,6 +207,16 @@ export class EffectRenderer {
               child.rotation.y += .12
             }
           })
+        }
+        if (TELEGRAPH_KINDS.has(mesh.userData.kind)) {
+          const progress = 1 - clamp(effect.life / (effect.maxLife || .52))
+          const pulse = .92 + progress * .12 + Math.sin(progress * Math.PI * 8) * .04
+          mesh.scale.setScalar(pulse)
+        }
+        if (IMPACT_KINDS.has(mesh.userData.kind)) {
+          const progress = 1 - clamp(effect.life / (effect.maxLife || .42))
+          mesh.scale.setScalar(.7 + progress * .7)
+          mesh.rotation.y = progress * Math.PI * .45
         }
       }
       const opacity = clamp(effect.life / (effect.maxLife || 0.5))

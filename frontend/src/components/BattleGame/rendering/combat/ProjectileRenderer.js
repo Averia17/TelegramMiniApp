@@ -149,9 +149,8 @@ const createSporeBurst = position => {
 }
 
 export class ProjectileRenderer {
-  constructor(root, {lowQuality = false} = {}) {
+  constructor(root) {
     this.root = root
-    this.lowQuality = lowQuality
     this.meshes = new Map()
     this.bursts = []
   }
@@ -172,7 +171,7 @@ export class ProjectileRenderer {
     })
     this.meshes.forEach((mesh, id) => {
       if (active.has(id)) return
-      if (!this.lowQuality && mesh.userData.vfxType === "needle-spore") {
+      if (mesh.userData.vfxType === "needle-spore") {
         const burst = createSporeBurst(mesh.position)
         this.bursts.push(burst)
         this.root.add(burst)
@@ -206,11 +205,8 @@ export class ProjectileRenderer {
   }
 
   create(projectile) {
-    const radius = clamp((projectile.radius || 5) * WORLD_SCALE, 0.12, 0.32)
-    const mesh = this.lowQuality
-      ? new THREE.Mesh(new THREE.SphereGeometry(radius, 6, 4), flatMaterial(projectile.color || 0xffdf66))
-      : createProjectileVisual(projectile)
-    mesh.userData.shadow = this.lowQuality ? new THREE.Object3D() : createContactShadow(0.45)
+    const mesh = createProjectileVisual(projectile)
+    mesh.userData.shadow = createContactShadow(0.45)
     return mesh
   }
 

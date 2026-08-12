@@ -45,13 +45,13 @@ type HeroKit struct {
 }
 
 var heroKits = map[string]HeroKit{
-	"Needle":          {Basic: AbilityDefinition{"spore_thorn", "Споровый шип", "Самонаводящийся шип накладывает Споры.", "basic", "projectile"}, Super: AbilityDefinition{"hunter_root", "Ловчий корень", "Корень подбрасывает врагов и оставляет замедляющую зону.", "primary", "server"}, Gadget: AbilityDefinition{"spore_dash", "Споровый рывок", "Рывок оставляет облако спор.", "secondary", "server"}},
-	"Mandy":           {Basic: AbilityDefinition{"staff_strike", "Удар посохом", "Неподвижность усиливает удар и оглушает.", "basic", "melee"}, Super: AbilityDefinition{"devastation_wave", "Волна опустошения", "Дальняя волна разрушает стены.", "primary", "server"}, Gadget: AbilityDefinition{"unyielding_stance", "Нерушимая стойка", "Стойка защищает от контроля и снижает урон.", "secondary", "server"}},
-	"Fairy Mina":      {Basic: AbilityDefinition{"star_fan", "Звёздный веер", "Звёзды лечат союзников и метят врагов.", "basic", "projectile"}, Super: AbilityDefinition{"star_cocoon", "Звёздный кокон", "Щит создаёт лечащую ауру.", "primary", "server"}, Gadget: AbilityDefinition{"repelling_wave", "Отталкивающая волна", "Отбрасывает врагов и оглушает отмеченных.", "secondary", "server"}},
-	"Brock Zeus":      {Basic: AbilityDefinition{"thunder_projectile", "Грозовой снаряд", "Взрывной снаряд разрушает стены.", "basic", "projectile"}, Super: AbilityDefinition{"gods_hammer", "Молот богов", "Три удара молнии создают горящую зону.", "primary", "server"}, Gadget: AbilityDefinition{"discharge_cable", "Разрядный кабель", "Следующий выстрел становится пробивающим лучом.", "secondary", "server"}},
-	"Kaze":            {Basic: AbilityDefinition{"cross_slash", "Косые удары", "Два попадания открывают усиленный третий удар.", "basic", "melee"}, Super: AbilityDefinition{"piercing_dash", "Пронзающий рывок", "Рывок помечает врагов и усиливает получаемый ими урон.", "primary", "server"}, Gadget: AbilityDefinition{"vanish", "Исчезновение", "Невидимость гарантирует критический первый удар.", "secondary", "server"}},
-	"Wukong Mico":     {Basic: AbilityDefinition{"heavy_staff", "Тяжёлый посох", "Попадания накапливают Ярость.", "basic", "melee"}, Super: AbilityDefinition{"vengeance_vortex", "Вихрь возмездия", "Вихрь расходует Ярость и наносит урон вокруг.", "primary", "server"}, Gadget: AbilityDefinition{"stone_armor", "Каменная броня", "Щит накапливает урон и взрывается после окончания.", "secondary", "server"}},
-	"Persephone Lumi": {Basic: AbilityDefinition{"luminous_trail", "Световой след", "След замедляет и раскрывает врагов.", "basic", "projectile"}, Super: AbilityDefinition{"root_garden", "Сад корней", "Поле корней обездвиживает вошедших врагов.", "primary", "server"}, Gadget: AbilityDefinition{"flower_burst", "Цветочный взрыв", "Взрывает активный след или сад.", "secondary", "server"}},
+	"Needle":          {Basic: AbilityDefinition{"spore_thorn", "Споровый шип", "Спора раскрывается шестью ищущими шипами сразу при попадании или в конце полёта.", "basic", "projectile"}, Super: AbilityDefinition{"hunter_root", "Ловчий корень", "Корень оглушает врагов и оставляет замедляющую зону.", "primary", "server"}, Gadget: AbilityDefinition{"spore_dash", "Споровый рывок", "Рывок оставляет ослепляющее облако спор в точке приземления.", "secondary", "server"}},
+	"Mandy":           {Basic: AbilityDefinition{"staff_strike", "Удар посохом", "Неподвижность усиливает удар и оглушает.", "basic", "melee"}, Super: AbilityDefinition{"devastation_wave", "Волна опустошения", "После подготовки выпускает волну через всю карту, разрушая стены; во время подготовки Mandy может двигаться.", "primary", "server"}, Gadget: AbilityDefinition{"unyielding_stance", "Нерушимая стойка", "Стойка защищает от контроля и снижает урон.", "secondary", "server"}},
+	"Fairy Mina":      {Basic: AbilityDefinition{"star_fan", "Звёздный веер", "Первая звезда метит врага, следующая взрывает метку; союзников звёзды лечат.", "basic", "projectile"}, Super: AbilityDefinition{"star_cocoon", "Звёздный кокон", "Выбирает самого раненого союзника рядом; щит и лечащая аура следуют за ним.", "primary", "server"}, Gadget: AbilityDefinition{"repelling_wave", "Отталкивающая волна", "Отбрасывает врагов и оглушает отмеченных.", "secondary", "server"}},
+	"Brock Zeus":      {Basic: AbilityDefinition{"thunder_projectile", "Грозовой снаряд", "Взрывной снаряд разрушает стены.", "basic", "projectile"}, Super: AbilityDefinition{"gods_hammer", "Молот богов", "Показывает три точки удара молнии; последний удар создаёт горящую зону.", "primary", "server"}, Gadget: AbilityDefinition{"discharge_cable", "Разрядный кабель", "Следующий выстрел становится пробивающим лучом.", "secondary", "server"}},
+	"Kaze":            {Basic: AbilityDefinition{"cross_slash", "Косые удары", "Два попадания открывают усиленный третий удар.", "basic", "melee"}, Super: AbilityDefinition{"piercing_dash", "Пронзающий рывок", "Попадание рывком помечает врага и сразу подготавливает усиленный удар.", "primary", "server"}, Gadget: AbilityDefinition{"vanish", "Исчезновение", "Невидимость гарантирует критический первый удар.", "secondary", "server"}},
+	"Wukong Mico":     {Basic: AbilityDefinition{"heavy_staff", "Тяжёлый посох", "Попадания накапливают до 5 зарядов Ярости.", "basic", "melee"}, Super: AbilityDefinition{"vengeance_vortex", "Вихрь возмездия", "Расходует Ярость, увеличивая радиус, длительность и урон вихря; вихрь лечит Mico по тикам.", "primary", "server"}, Gadget: AbilityDefinition{"stone_armor", "Каменная броня", "Броня копит ограниченный ответный урон и превращает его в Ярость после взрыва.", "secondary", "server"}},
+	"Persephone Lumi": {Basic: AbilityDefinition{"luminous_trail", "Световой след", "След замедляет и раскрывает врагов.", "basic", "projectile"}, Super: AbilityDefinition{"root_garden", "Сад корней", "Поле корней обездвиживает вошедших врагов.", "primary", "server"}, Gadget: AbilityDefinition{"flower_burst", "Цветочный взрыв", "Взрывает все следы и сады, но наносит каждой цели один общий всплеск.", "secondary", "server"}},
 }
 
 var Heroes = withHeroKits(withAttackConfigs([]Hero{
@@ -71,21 +71,12 @@ func RandomHero() Hero {
 
 func withHeroKits(heroes []Hero) []Hero {
 	heroKits["Katty"] = HeroKit{
-		Basic:  AbilityDefinition{"paint_queue", "Краска-очередь", "Три выстрела краской накладывают слои. Третий слой обездвиживает цель.", "basic", "server"},
-		Super:  AbilityDefinition{"paint_grenade", "Баллон-граната", "Граната оставляет лужу краски, ослепляет и наносит третий слой.", "primary", "server"},
+		Basic:  AbilityDefinition{"paint_queue", "Краска-очередь", "Три выстрела накладывают слои и оставляют краску в фактических точках попадания.", "basic", "server"},
+		Super:  AbilityDefinition{"paint_grenade", "Баллон-граната", "После приземления лужа однократно ослепляет каждого вошедшего врага и наносит третий слой.", "primary", "server"},
 		Gadget: AbilityDefinition{"paint_flight", "Красколёт", "Рывок оставляет след краски, замедляющий врагов и ускоряющий Кэтти.", "secondary", "server"},
 	}
 	for index := range heroes {
 		kit := heroKits[heroes[index].Name]
-		switch heroes[index].Name {
-		case "Needle":
-			kit.Basic.Description = "Споровый шип сразу замедляет поражённых врагов на 2 секунды."
-		case "Kaze":
-			kit.Basic.Description = "Косые удары: усиленный удар доступен раз в 3 секунды."
-		case "Wukong Mico":
-			kit.Basic.Description = "Тяжёлый удар посохом наносит стабильный урон без накопления ярости."
-			kit.Super.Description = "Вихрь возмездия длится 5 секунд и наносит урон вокруг героя."
-		}
 		heroes[index].Kit = kit
 	}
 	return heroes

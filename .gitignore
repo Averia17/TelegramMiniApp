@@ -107,3 +107,8 @@ output/
 
 # Blender automatic backup files
 *.blend1
+*.tmp.glb
+*.before_*.glb
+*.latest.glb
+*.err
+/frontend/artifacts/

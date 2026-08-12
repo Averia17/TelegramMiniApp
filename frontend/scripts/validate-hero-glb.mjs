@@ -6,7 +6,6 @@ const expectedClips = new Set([
   "idle", "run", "hit", "death", "super", "Aim", "AimSuper", "Attack", "Gadget", "Spawn", "Victory",
 ])
 const extraClipsByHero = Object.freeze({"brock-zeus": ["AimGadget"], "fairy-mina": ["AimGadget"], kaze: ["AimGadget"], mandy: ["AimGadget"], needle: ["AimGadget"]})
-const staticHeroes = new Set(["katty"])
 const heldRoles = new Set(["held-weapon", "throwable-weapon"])
 const readGlbJson = async file => {
   const buffer = await readFile(file)
@@ -26,16 +25,6 @@ const validateHero = async (directory, slug) => {
   })
 
   const animationNames = new Set((document.animations || []).map(animation => animation.name))
-  if (staticHeroes.has(slug)) {
-    assert.equal(animationNames.size, 0, `${slug} static import unexpectedly contains animation clips`)
-    assert.ok((document.skins || []).length > 0, `${slug} static import has no skeleton`)
-    assert.ok((document.meshes || []).length > 0, `${slug} static import has no mesh geometry`)
-    assert.ok(
-      (document.images || []).some(image => image.bufferView !== undefined),
-      `${slug} static import must pack its texture into the GLB`,
-    )
-    return
-  }
   const requiredClips = new Set([...expectedClips, ...(extraClipsByHero[slug] || [])])
   for (const clip of requiredClips) {
     assert.ok(animationNames.has(clip), `${slug} is missing required ${clip} clip`)

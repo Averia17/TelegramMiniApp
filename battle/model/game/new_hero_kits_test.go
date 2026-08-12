@@ -38,7 +38,7 @@ func TestNeedleSporeSlowUsesItsDurationOnTheFirstHit(t *testing.T) {
 	}
 }
 
-func TestKazeEmpoweredSlashUsesTimeWindowInsteadOfHitCount(t *testing.T) {
+func TestKazeEmpowersThirdSuccessfulSlashWithoutDoubleHitting(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("kaze", "Kaze", "Kaze")
@@ -47,35 +47,47 @@ func TestKazeEmpoweredSlashUsesTimeWindowInsteadOfHitCount(t *testing.T) {
 	p.X, p.Y, enemy.X, enemy.Y = 500, 500, 570, 500
 	now := time.Now().UnixMilli()
 
-	KazeKit{}.Basic(gs, p, now, 0, 0)
-	firstDamage := enemy.MaxLives - enemy.Lives
-	if firstDamage != int(math.Round(float64(p.AttackDmg)*KazeEmpoweredDamageMultiplier))*2 {
-		t.Fatalf("first slash damage=%d, want empowered damage", firstDamage)
+	for hit := 1; hit <= 3; hit++ {
+		enemy.Lives = enemy.MaxLives
+		KazeKit{}.Basic(gs, p, now+int64(hit)*300, 0, 0)
+		got := enemy.MaxLives - enemy.Lives
+		want := p.AttackDmg
+		if hit == 3 {
+			want = int(math.Round(float64(p.AttackDmg) * KazeEmpoweredDamageMultiplier))
+		}
+		if got != want {
+			t.Fatalf("slash %d damage=%d, want %d", hit, got, want)
+		}
 	}
-	if p.KazeNextEmpoweredAt != now+KazeEmpowerInterval.Milliseconds() {
-		t.Fatalf("next empowered slash=%d, want %d", p.KazeNextEmpoweredAt, now+KazeEmpowerInterval.Milliseconds())
-	}
-
-	enemy.Lives = enemy.MaxLives
-	KazeKit{}.Basic(gs, p, now+KazeEmpowerInterval.Milliseconds()/2, 0, 0)
-	if got := enemy.MaxLives - enemy.Lives; got != p.AttackDmg*2 {
-		t.Fatalf("slash inside cooldown damage=%d, want normal damage=%d", got, p.AttackDmg*2)
+	if p.KazeCombo != 0 {
+		t.Fatalf("combo after empowered third slash=%d, want 0", p.KazeCombo)
 	}
 }
 
-func TestMicoVortexUsesFixedTimedDuration(t *testing.T) {
+func TestMicoStaffBuildsRageAndSuperConsumesItForLargerVortex(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("mico", "Mico", "Wukong Mico")
-	p := gs.Players["mico"]
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	p, enemy := gs.Players["mico"], gs.Players["enemy"]
+	p.X, p.Y, enemy.X, enemy.Y = 500, 500, 570, 500
 	now := time.Now().UnixMilli()
 
-	WukongMicoKit{}.Super(gs, p, now, 0, 0)
-	if p.VortexUntil != now+MicoVortexDuration.Milliseconds() {
-		t.Fatalf("vortex until=%d, want %d", p.VortexUntil, now+MicoVortexDuration.Milliseconds())
+	WukongMicoKit{}.Basic(gs, p, now, 0, 0)
+	enemy.Lives = enemy.MaxLives
+	WukongMicoKit{}.Basic(gs, p, now+700, 0, 0)
+	if p.MicoRage != 2 {
+		t.Fatalf("rage after two hits=%d, want 2", p.MicoRage)
 	}
-	if len(gs.Effects) == 0 || gs.Effects[len(gs.Effects)-1].ExpiresAt-gs.Effects[len(gs.Effects)-1].CreatedAt != MicoVortexDuration.Milliseconds() {
-		t.Fatalf("vortex effect duration=%d, want %d", gs.Effects[len(gs.Effects)-1].ExpiresAt-gs.Effects[len(gs.Effects)-1].CreatedAt, MicoVortexDuration.Milliseconds())
+	WukongMicoKit{}.Super(gs, p, now, 0, 0)
+	if p.MicoRage != 0 {
+		t.Fatalf("rage after Super=%d, want 0", p.MicoRage)
+	}
+	if p.VortexUntil != now+MicoVortexBaseDuration.Milliseconds()+2*MicoVortexDurationPerRage.Milliseconds() {
+		t.Fatalf("vortex until=%d, want rage-scaled duration", p.VortexUntil)
+	}
+	if p.VortexRadius != MicoVortexBaseRadius+2*MicoVortexRadiusPerRage {
+		t.Fatalf("vortex radius=%.0f, want rage-scaled radius", p.VortexRadius)
 	}
 }
 
@@ -132,8 +144,57 @@ func TestNeedleSuperDelaysRootsAndGadgetLeavesSporeCloud(t *testing.T) {
 	if len(gs.HeroZones) != 1 || gs.HeroZones[0].TriggerAt != now+800 {
 		t.Fatalf("roots=%#v, want delayed cast", gs.HeroZones)
 	}
+	startX, startY := needle.X, needle.Y
 	if !gs.useNewHeroGadget(needle, now+1) || len(gs.HeroZones) != 2 || gs.HeroZones[1].Kind != "needle_spore_cloud" {
 		t.Fatalf("needle gadget zones=%#v, want spore cloud", gs.HeroZones)
+	}
+	cloud := gs.HeroZones[1]
+	if math.Abs(cloud.X-needle.X) > .01 || math.Abs(cloud.Y-needle.Y) > .01 || (cloud.X == startX && cloud.Y == startY) {
+		t.Fatalf("spore cloud=(%.1f,%.1f), landing=(%.1f,%.1f), start=(%.1f,%.1f)", cloud.X, cloud.Y, needle.X, needle.Y, startX, startY)
+	}
+}
+
+func TestNeedleSporeSplitsIntoSixDamagingHomingThorns(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("needle", "Needle", "Needle")
+	gs.PlayerAdd("enemy", "Enemy", "Mandy")
+	p, enemy := gs.Players["needle"], gs.Players["enemy"]
+	p.X, p.Y, enemy.X, enemy.Y = 400, 400, 620, 400
+
+	NeedleKit{}.Basic(gs, p, time.Now().UnixMilli(), 0, 0)
+	parent := gs.Bullets[0]
+	gs.splitProjectile(parent)
+	if len(gs.Bullets) != 7 {
+		t.Fatalf("spore split bullets=%d, want parent plus six thorns", len(gs.Bullets))
+	}
+	for _, thorn := range gs.Bullets[1:] {
+		if thorn.Kind != "spike" || !thorn.Homing || thorn.TargetID != enemy.PlayerId || thorn.Damage <= 1 {
+			t.Fatalf("invalid seeking thorn: %#v", thorn)
+		}
+	}
+}
+
+func TestNeedleSporeSplitsImmediatelyOnDirectHit(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("needle", "Needle", "Needle")
+	gs.PlayerAdd("enemy", "Enemy", "Mandy")
+	p, enemy := gs.Players["needle"], gs.Players["enemy"]
+	p.X, p.Y, enemy.X, enemy.Y = 400, 400, 500, 400
+
+	NeedleKit{}.Basic(gs, p, time.Now().UnixMilli(), 0, 0)
+	gs.Bullets[0].X, gs.Bullets[0].Y = enemy.X-4, enemy.Y
+	gs.updateBullets()
+
+	spikes := 0
+	for _, shot := range gs.Bullets {
+		if shot != nil && shot.Kind == "spike" {
+			spikes++
+		}
+	}
+	if spikes != 6 {
+		t.Fatalf("direct spore hit spawned %d spikes, want 6", spikes)
 	}
 }
 
@@ -155,6 +216,89 @@ func TestFairyMinaSuperHealsAlliesButNotEnemies(t *testing.T) {
 	}
 }
 
+func TestFairyMinaSuperSelectsWoundedAllyAndAuraFollowsThem(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mina", "Mina", "Fairy Mina")
+	gs.PlayerAdd("ally", "Ally", "Needle")
+	mina, ally := gs.Players["mina"], gs.Players["ally"]
+	mina.Team, ally.Team = "pink", "pink"
+	mina.X, mina.Y, ally.X, ally.Y = 500, 500, 650, 500
+	ally.Lives = ally.MaxLives / 3
+	now := time.Now().UnixMilli()
+
+	MinaKit{}.Super(gs, mina, now, 0, 0)
+	if ally.ShieldHP != 400 || mina.ShieldHP != 0 {
+		t.Fatalf("shield target ally=%d mina=%d, want 400 and 0", ally.ShieldHP, mina.ShieldHP)
+	}
+	ally.X, ally.Y = 900, 500
+	livesBefore := ally.Lives
+	gs.updateNewHeroSystems()
+
+	if ally.Lives <= livesBefore {
+		t.Fatalf("moving aura did not follow and heal ally: lives=%d, want > %d", ally.Lives, livesBefore)
+	}
+	zone := gs.HeroZones[0]
+	if math.Abs(zone.X-ally.X) > .01 || math.Abs(zone.Y-ally.Y) > .01 {
+		t.Fatalf("aura center=(%.1f,%.1f), want ally=(%.1f,%.1f)", zone.X, zone.Y, ally.X, ally.Y)
+	}
+}
+
+func TestFairyMinaStarDetonatesAnExistingLightMark(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mina", "Mina", "Fairy Mina")
+	gs.PlayerAdd("enemy", "Enemy", "Mandy")
+	mina, enemy := gs.Players["mina"], gs.Players["enemy"]
+	mina.X, mina.Y, enemy.X, enemy.Y = 400, 400, 500, 400
+	gs.LightMarkedUntil[enemy.PlayerId] = time.Now().Add(time.Second).UnixMilli()
+	shot := gs.spawnAttackBullet(mina, 0, "mina_star", mina.AttackDmg, mina.BulletSpd, mina.BulletSz, 510, 0, false, false)
+	shot.X, shot.Y = enemy.X-4, enemy.Y
+	before := enemy.Lives
+
+	gs.updateBullets()
+
+	if dealt := before - enemy.Lives; dealt <= mina.AttackDmg {
+		t.Fatalf("marked star damage=%d, want more than base %d", dealt, mina.AttackDmg)
+	}
+	if gs.LightMarkedUntil[enemy.PlayerId] != 0 {
+		t.Fatalf("light mark remains until %d, want consumed", gs.LightMarkedUntil[enemy.PlayerId])
+	}
+	foundBurst := false
+	for _, effect := range gs.Effects {
+		foundBurst = foundBurst || effect.Kind == "mina_mark_burst"
+	}
+	if !foundBurst {
+		t.Fatal("marked star did not emit mina_mark_burst feedback")
+	}
+}
+
+func TestFairyMinaGadgetConsumesMarkedEnemyAndShowsBreak(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mina", "Mina", "Fairy Mina")
+	gs.PlayerAdd("enemy", "Enemy", "Mandy")
+	mina, enemy := gs.Players["mina"], gs.Players["enemy"]
+	mina.X, mina.Y, enemy.X, enemy.Y = 400, 400, 500, 400
+	now := time.Now().UnixMilli()
+	gs.LightMarkedUntil[enemy.PlayerId] = now + 2000
+	enemy.Marks = 1
+
+	if !gs.useNewHeroGadget(mina, now) {
+		t.Fatal("Mina gadget was rejected")
+	}
+	if gs.LightMarkedUntil[enemy.PlayerId] != 0 || enemy.Marks != 0 {
+		t.Fatalf("mark after repelling wave until=%d stacks=%d, want consumed", gs.LightMarkedUntil[enemy.PlayerId], enemy.Marks)
+	}
+	foundBreak := false
+	for _, effect := range gs.Effects {
+		foundBreak = foundBreak || effect.Kind == "mina_mark_break"
+	}
+	if !foundBreak {
+		t.Fatal("consumed Mina mark did not emit break feedback")
+	}
+}
+
 func TestBrockSuperSchedulesThreeTimedStrikes(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
@@ -165,6 +309,28 @@ func TestBrockSuperSchedulesThreeTimedStrikes(t *testing.T) {
 	BrockZeusKit{}.Super(gs, p, now, 0, 300)
 	if len(gs.LightningStrikes) != 3 || p.ChannelUntil != now+1000 {
 		t.Fatalf("strikes=%d channel=%d", len(gs.LightningStrikes), p.ChannelUntil)
+	}
+	warnings := 0
+	for _, effect := range gs.Effects {
+		if effect.Kind == "zeus_strike_warning" {
+			warnings++
+		}
+	}
+	if warnings != 3 {
+		t.Fatalf("strike warnings=%d, want 3", warnings)
+	}
+}
+
+func TestBrockBasicProjectileCanDestroyWalls(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("brock", "Brock", "Brock Zeus")
+	p := gs.Players["brock"]
+	p.X, p.Y = 400, 400
+
+	BrockZeusKit{}.Basic(gs, p, time.Now().UnixMilli(), 0, 0)
+	if len(gs.Bullets) != 1 || !gs.Bullets[0].DestroyWalls {
+		t.Fatalf("Brock projectile=%#v, want one wall-breaking projectile", gs.Bullets)
 	}
 }
 
@@ -196,6 +362,37 @@ func TestKazeSuperCrossesAndStunsEnemy(t *testing.T) {
 	if enemy.Lives != enemy.MaxLives-160 || enemy.StunUntil != now+500 {
 		t.Fatalf("enemy lives=%d stun=%d", enemy.Lives, enemy.StunUntil)
 	}
+	if p.KazeCombo != 2 {
+		t.Fatalf("combo after crossing enemy=%d, want empowered follow-up at 2", p.KazeCombo)
+	}
+	marked := false
+	for _, effect := range gs.Effects {
+		marked = marked || effect.Kind == "kaze_doom_mark"
+	}
+	if !marked {
+		t.Fatal("dash hit did not emit a visible doom mark")
+	}
+}
+
+func TestMicoStoneArmorCapsStoredDamageAndConvertsItIntoRage(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mico", "Mico", "Wukong Mico")
+	gs.PlayerAdd("enemy", "Enemy", "Mandy")
+	mico, enemy := gs.Players["mico"], gs.Players["enemy"]
+	now := time.Now().UnixMilli()
+	if !gs.useNewHeroGadget(mico, now) {
+		t.Fatal("stone armor was rejected")
+	}
+	gs.dealPlayerDamage(enemy, mico, 1000)
+	if mico.SuppressedRage > 240 {
+		t.Fatalf("stored damage=%d, want safety cap 240", mico.SuppressedRage)
+	}
+	mico.StoneArmorUntil = time.Now().UnixMilli() - 1
+	gs.updateNewHeroSystems()
+	if mico.MicoRage == 0 {
+		t.Fatal("stone armor explosion did not convert absorbed damage into rage")
+	}
 }
 
 func TestMicoStaffAttackDamagesInFrontWithoutMovingOrGrantingInvulnerability(t *testing.T) {
@@ -226,6 +423,110 @@ func TestLumiRootTriggersOnceForTwoSeconds(t *testing.T) {
 	gs.updateNewHeroSystems()
 	if enemy.StunUntil < now+1900 {
 		t.Fatalf("root until=%d want about %d", enemy.StunUntil, now+2000)
+	}
+	if enemy.SlowUntil <= time.Now().UnixMilli() {
+		t.Fatalf("root zone did not keep slowing the enemy while it remained inside")
+	}
+}
+
+func TestLumiGadgetDetonatesEveryOwnedGardenAtItsPosition(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("lumi", "Lumi", "Persephone Lumi")
+	gs.PlayerAdd("first", "First", "Needle")
+	gs.PlayerAdd("second", "Second", "Needle")
+	lumi, first, second := gs.Players["lumi"], gs.Players["first"], gs.Players["second"]
+	lumi.Team, first.Team, second.Team = "pink", "blue", "blue"
+	first.X, first.Y, second.X, second.Y = 300, 300, 700, 300
+	now := time.Now().UnixMilli()
+	gs.HeroZones = append(gs.HeroZones,
+		&HeroZone{Owner: lumi.PlayerId, Kind: "lumi_roots", X: 300, Y: 300, Radius: 100, ExpiresAt: now + 5000},
+		&HeroZone{Owner: lumi.PlayerId, Kind: "lumi_trail", X: 700, Y: 300, Radius: 100, ExpiresAt: now + 5000},
+	)
+	firstBefore, secondBefore := first.Lives, second.Lives
+
+	if !gs.useNewHeroGadget(lumi, now) {
+		t.Fatal("Lumi gadget was rejected with two active gardens")
+	}
+	if first.Lives >= firstBefore || second.Lives >= secondBefore {
+		t.Fatalf("garden damage first=%d/%d second=%d/%d", first.Lives, firstBefore, second.Lives, secondBefore)
+	}
+	if len(gs.HeroZones) != 0 {
+		t.Fatalf("Lumi gadget left %d owned zones, want 0", len(gs.HeroZones))
+	}
+	positions := map[[2]float64]bool{}
+	for _, effect := range gs.Effects {
+		if effect.Kind == "lumi_seedburst" {
+			positions[[2]float64{effect.X, effect.Y}] = true
+		}
+	}
+	if !positions[[2]float64{300, 300}] || !positions[[2]float64{700, 300}] {
+		t.Fatalf("detonation effects=%v, want both garden positions", positions)
+	}
+}
+
+func TestLumiGadgetDamagesAnEnemyOnlyOnceAcrossOverlappingGardens(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("lumi", "Lumi", "Persephone Lumi")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	lumi, enemy := gs.Players["lumi"], gs.Players["enemy"]
+	lumi.Team, enemy.Team = "pink", "blue"
+	enemy.X, enemy.Y = 500, 500
+	now := time.Now().UnixMilli()
+	gs.HeroZones = append(gs.HeroZones,
+		&HeroZone{Owner: lumi.PlayerId, Kind: "lumi_trail", X: 500, Y: 500, Radius: 100, ExpiresAt: now + 5000},
+		&HeroZone{Owner: lumi.PlayerId, Kind: "lumi_roots", X: 520, Y: 500, Radius: 100, ExpiresAt: now + 5000},
+	)
+	before := enemy.Lives
+
+	if !gs.useNewHeroGadget(lumi, now) {
+		t.Fatal("Lumi gadget was rejected")
+	}
+	if dealt := before - enemy.Lives; dealt != 55 {
+		t.Fatalf("overlapping garden damage=%d, want one capped burst of 55", dealt)
+	}
+}
+
+func TestLumiTrailRevealsEnemiesWhileSlowingThem(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("lumi", "Lumi", "Persephone Lumi")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	lumi, enemy := gs.Players["lumi"], gs.Players["enemy"]
+	lumi.Team, enemy.Team = "pink", "blue"
+	now := time.Now().UnixMilli()
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: lumi.PlayerId, Kind: "lumi_trail", X: enemy.X, Y: enemy.Y, Radius: 70, ExpiresAt: now + 5000})
+
+	gs.updateNewHeroSystems()
+
+	if enemy.RevealedUntil <= now || enemy.SlowUntil <= now {
+		t.Fatalf("trail reveal=%d slow=%d, want both active after entering", enemy.RevealedUntil, enemy.SlowUntil)
+	}
+}
+
+func TestNeedleRootZoneKeepsSlowingEnemiesAfterInitialRoot(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("needle", "Needle", "Needle")
+	gs.PlayerAdd("enemy", "Enemy", "Mandy")
+	needle, enemy := gs.Players["needle"], gs.Players["enemy"]
+	needle.Team, enemy.Team = "green", "blue"
+	enemy.X, enemy.Y = 500, 400
+	now := time.Now().UnixMilli()
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: needle.PlayerId, Kind: "needle_roots", X: 500, Y: 400, Radius: 120, TriggerAt: now - 1, ExpiresAt: now + 4000, Triggered: map[string]bool{}})
+
+	gs.updateNewHeroSystems()
+
+	if enemy.SlowUntil <= now || enemy.SlowMultiplier >= .70 {
+		t.Fatalf("root slow until=%d multiplier=%.2f, want refreshed persistent slow", enemy.SlowUntil, enemy.SlowMultiplier)
+	}
+	foundBurst := false
+	for _, effect := range gs.Effects {
+		foundBurst = foundBurst || effect.Kind == "needle_root_burst"
+	}
+	if !foundBurst {
+		t.Fatal("root zone did not emit a readable control burst")
 	}
 }
 

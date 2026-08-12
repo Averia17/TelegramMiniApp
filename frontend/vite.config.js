@@ -7,9 +7,28 @@ const usePolling = process.env.VITE_USE_POLLING === 'true'
 // Windows-hosted dev server to the unreachable Docker hostname `battle`.
 const battleProxyTarget = process.env.VITE_BATTLE_PROXY_TARGET || 'http://localhost:8000'
 
+const mapHarnessRoute = () => {
+    const rewrite = (request, _response, next) => {
+        const [pathname, query = ''] = (request.url || '').split('?')
+        const routes = {
+            '/test/map-environment-harness': '/test/map-environment-harness.html',
+            '/test/glb-hero-harness': '/test/glb-hero-harness.html',
+        }
+        if (routes[pathname]) {
+            request.url = `${routes[pathname]}${query ? `?${query}` : ''}`
+        }
+        next()
+    }
+    return {
+        name: 'map-harness-extensionless-route',
+        configureServer(server) { server.middlewares.use(rewrite) },
+        configurePreviewServer(server) { server.middlewares.use(rewrite) },
+    }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
-    plugins: [react()],
+    plugins: [mapHarnessRoute(), react()],
     server: {
         watch: {
             // Native filesystem events are much cheaper than polling. Polling

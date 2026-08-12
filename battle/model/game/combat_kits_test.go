@@ -278,8 +278,8 @@ func TestMandyFocusExtendsMeleeConeAfterOneSecondStill(t *testing.T) {
 	gs.updateMandyFocus()
 	gs.playerShoot("mandy", time.Now().UnixMilli(), 0)
 
-	if source.FocusCharge != 100 {
-		t.Fatalf("focus charge = %d, want 100", source.FocusCharge)
+	if source.FocusCharge != 0 {
+		t.Fatalf("focus charge = %d, want 0 after empowered strike", source.FocusCharge)
 	}
 	if target.Lives != target.MaxLives-int(float64(source.AttackDmg)*1.4) || target.StunUntil <= time.Now().UnixMilli() {
 		t.Fatalf("focused target lives = %d stun=%d", target.Lives, target.StunUntil)
@@ -289,6 +289,33 @@ func TestMandyFocusExtendsMeleeConeAfterOneSecondStill(t *testing.T) {
 	gs.updateMandyFocus()
 	if source.FocusCharge != 0 || source.FocusStartedAt != 0 {
 		t.Fatalf("moving focus = (%d, %d), want reset", source.FocusCharge, source.FocusStartedAt)
+	}
+}
+
+func TestMandyFocusIsSpentAndNextStrikeNeedsAnotherStillWindow(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mandy", "Mandy", "Mandy")
+	gs.PlayerAdd("target", "Target", "Shelly")
+	source, target := gs.Players["mandy"], gs.Players["target"]
+	source.X, source.Y = 500, 500
+	target.X, target.Y = 600, 500
+	source.FocusCharge = 100
+	now := time.Now().UnixMilli()
+
+	MandyKit{}.Basic(gs, source, now, 0, 0)
+	firstLives := target.Lives
+	if source.FocusCharge != 0 {
+		t.Fatalf("focus charge after empowered strike=%d, want 0", source.FocusCharge)
+	}
+	if firstLives >= target.MaxLives {
+		t.Fatal("focused strike did not hit the extended range target")
+	}
+
+	target.Lives = target.MaxLives
+	MandyKit{}.Basic(gs, source, now+1, 0, 0)
+	if target.Lives != target.MaxLives {
+		t.Fatalf("unfocused follow-up hit target outside base reach for %d damage", target.MaxLives-target.Lives)
 	}
 }
 
@@ -337,7 +364,7 @@ func TestMandyStanceLocksMovementAndSlowsNearbyEnemies(t *testing.T) {
 	}
 }
 
-func TestMandySuperWaits750msThenHitsFullMapRectangleAndBreaksWalls(t *testing.T) {
+func TestMandySuperWaitsForWindupThenHitsFullMapRectangleAndBreaksWalls(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("mandy", "Mandy", "Mandy")
@@ -353,8 +380,8 @@ func TestMandySuperWaits750msThenHitsFullMapRectangleAndBreaksWalls(t *testing.T
 	now := time.Now().UnixMilli()
 
 	gs.playerAbility("mandy", now, "primary")
-	if len(gs.PendingMandySupers) != 1 || source.ChannelUntil != now+1200 {
-		t.Fatalf("pending supers=%d channelUntil=%d, want one cast ending at %d", len(gs.PendingMandySupers), source.ChannelUntil, now+1200)
+	if len(gs.PendingMandySupers) != 1 || source.CastUntil != now+1200 {
+		t.Fatalf("pending supers=%d castUntil=%d, want one cast ending at %d", len(gs.PendingMandySupers), source.CastUntil, now+1200)
 	}
 	if gs.Players["inside"].Lives != gs.Players["inside"].MaxLives {
 		t.Fatal("Mandy Super dealt damage before its wind-up finished")
@@ -373,5 +400,87 @@ func TestMandySuperWaits750msThenHitsFullMapRectangleAndBreaksWalls(t *testing.T
 		if candidate == wall {
 			t.Fatal("Mandy Super did not destroy intersecting wall")
 		}
+	}
+}
+
+func TestHeroWindupsDoNotRunLegacyBeamDamage(t *testing.T) {
+	for _, hero := range []string{"Mandy", "Brock Zeus"} {
+		gs := newTestGameState()
+		gs.State = GameStateGame
+		gs.PlayerAdd("caster", "Caster", hero)
+		gs.PlayerAdd("target", "Target", "Mandy")
+		caster, target := gs.Players["caster"], gs.Players["target"]
+		caster.X, caster.Y, caster.Rotation = 500, 500, 0
+		target.X, target.Y = 650, 500
+		now := time.Now().UnixMilli()
+
+		if !CombatKitFor(hero).Super(gs, caster, now, 0, 150) {
+			t.Fatalf("%s Super was rejected", hero)
+		}
+		livesBefore := target.Lives
+		gs.updateActiveAbilities()
+
+		if target.Lives != livesBefore {
+			t.Fatalf("%s wind-up dealt legacy beam damage: lives=%d, want %d", hero, target.Lives, livesBefore)
+		}
+		for _, effect := range gs.Effects {
+			if effect.Kind == "beam" {
+				t.Fatalf("%s wind-up emitted legacy beam effect", hero)
+			}
+		}
+	}
+}
+
+func TestMandyCanMoveButCannotAttackDuringSuperWindup(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.Map.Collisions = nil
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("mandy", "Mandy", "Mandy")
+	source := gs.Players["mandy"]
+	source.X, source.Y = 500, 500
+	now := time.Now().UnixMilli()
+
+	MandyKit{}.Super(gs, source, now, 0, 0)
+	gs.playerMove(source.PlayerId, now+1, 1, 0)
+	gs.updatePlayerMovement(time.Second)
+
+	if source.X <= 500 {
+		t.Fatalf("Mandy did not move during Super wind-up: x=%.1f", source.X)
+	}
+	ammoBefore := source.Ammo
+	gs.playerShoot(source.PlayerId, now+2, 0)
+	if source.Ammo != ammoBefore {
+		t.Fatalf("Mandy attacked during Super wind-up: ammo=%d, want %d", source.Ammo, ammoBefore)
+	}
+
+	gs.PendingMandySupers[0].TriggerAt = time.Now().UnixMilli()
+	gs.updatePendingMandySupers()
+	wave := gs.Effects[len(gs.Effects)-1]
+	if wave.Kind != "mandy_super_wave" || math.Abs(wave.X-source.X) > .01 || math.Abs(wave.Y-source.Y) > .01 {
+		t.Fatalf("Mandy wave origin=(%.1f,%.1f), want current position=(%.1f,%.1f)", wave.X, wave.Y, source.X, source.Y)
+	}
+}
+
+func TestMandySuperChargeVisualFollowsHerDuringWindup(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mandy", "Mandy", "Mandy")
+	p := gs.Players["mandy"]
+	p.X, p.Y = 400, 400
+	now := time.Now().UnixMilli()
+	MandyKit{}.Super(gs, p, now, 0, 0)
+	p.X, p.Y = 520, 460
+
+	gs.updatePendingMandySupers()
+
+	var charge *BattleEffect
+	for _, effect := range gs.Effects {
+		if effect.Kind == "mandy_super_charge" {
+			charge = effect
+		}
+	}
+	if charge == nil || charge.X != p.X || charge.Y != p.Y {
+		t.Fatalf("charge=%#v, want it at Mandy=(%.1f,%.1f)", charge, p.X, p.Y)
 	}
 }

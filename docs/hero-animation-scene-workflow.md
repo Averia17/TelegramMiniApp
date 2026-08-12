@@ -18,12 +18,9 @@ hit -> hit         death -> death      spawn -> Spawn
 victory -> Victory gadget -> Gadget
 ```
 
-Авторинг и проверки работают непосредственно с focused-сценами:
-
-```powershell
-blender --background --python tools/blender/author_full_animation_scenes.py
-blender --background --python tools/blender/audit_authored_animation_scenes.py
-```
+Авторинг и проверки работают непосредственно с focused-сценами. Каждая такая
+сцена редактируется как самостоятельный исходник; отдельные legacy master-файлы
+не поддерживаются.
 
 Runtime GLB собирается единственным exporter-ом:
 
@@ -31,9 +28,16 @@ Runtime GLB собирается единственным exporter-ом:
 blender --background --python tools/blender/export_runtime_heroes_from_scenes.py
 ```
 
+После экспорта runtime-контракт проверяется из `frontend`:
+
+```powershell
+npm run validate:heroes
+npm run validate:hero-catalog
+```
+
 Exporter открывает `scenes/idle.blend` как источник полной модели и rig, затем
-берёт ровно один Action из каждой focused-сцены. Он не читает legacy master,
-старые clip-файлы, не создаёт ключи, не сохраняет `.blend` и не делает
+берёт ровно один Action из каждой focused-сцены. Он не создаёт ключи, не
+сохраняет `.blend` и не делает
 последующее слияние отдельных GLB.
 
 Результат — один самодостаточный файл на героя:

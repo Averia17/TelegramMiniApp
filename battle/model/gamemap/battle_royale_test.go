@@ -2,6 +2,23 @@ package gamemap
 
 import "testing"
 
+func TestBattleRoyaleLoaderUsesCanonicalArena(t *testing.T) {
+	loaded, err := LoadMap("battle-royale")
+	if err != nil {
+		t.Fatalf("load battle royale: %v", err)
+	}
+	want := GenerateBattleRoyale(CanonicalBattleRoyaleSeed)
+	if len(loaded.Collisions) != len(want.Collisions) {
+		t.Fatalf("loaded collisions = %d, want canonical %d", len(loaded.Collisions), len(want.Collisions))
+	}
+	for index := range want.Collisions {
+		gotWall, wantWall := loaded.Collisions[index], want.Collisions[index]
+		if gotWall.MinX != wantWall.MinX || gotWall.MinY != wantWall.MinY || gotWall.Type != wantWall.Type {
+			t.Fatalf("wall %d = %.0f,%.0f,%s; want %.0f,%.0f,%s", index, gotWall.MinX, gotWall.MinY, gotWall.Type, wantWall.MinX, wantWall.MinY, wantWall.Type)
+		}
+	}
+}
+
 func TestGenerateBattleRoyaleProducesPlayableArena(t *testing.T) {
 	gameMap := GenerateBattleRoyale(42)
 	if gameMap.WidthInPixels != 2400 || gameMap.HeightInPixels != 2400 {

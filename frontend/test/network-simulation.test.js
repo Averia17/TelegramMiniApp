@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import {createCollisionIndex, NetworkSimulation, queryCollisionWalls} from "../src/components/BattleGame/NetworkSimulation.js"
+import {createCollisionIndex, movePosition, NetworkSimulation, queryCollisionWalls} from "../src/components/BattleGame/NetworkSimulation.js"
 import {getBattlePerformanceSnapshot, resetBattlePerformance} from "../src/components/BattleGame/rendering/shared/performance.js"
 
 const movingSimulation = () => {
@@ -149,6 +149,79 @@ test("network correction cannot push the predicted player through a blocking wal
   assert.equal(simulation.predicted.y, 80)
 })
 
+test("local prediction sweeps through the same blocking wall geometry as the backend", () => {
+  const wall = {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "wall", blocking: true}
+  const map = {width: 500, height: 500, walls: [wall]}
+  const index = createCollisionIndex(map.walls)
+
+  const next = movePosition(
+    {x: 50, y: 80},
+    {x: 1, y: 0},
+    {radius: 10, movementSpeed: 320},
+    1,
+    map,
+    index,
+  )
+
+  assert.equal(next.x, 90)
+  assert.equal(next.y, 80)
+})
+
+test("compact snapshots cannot make water walkable after the full map was received", () => {
+  const water = {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "water"}
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    game: {state: "game"},
+    monsters: {},
+    bullets: [],
+    players: {
+      local: {x: 90, y: 80, radius: 10, movementSpeed: 60, lives: 100, ack: 0, moveX: 1, moveY: 0},
+    },
+  }
+
+  simulation.ingest({...base, ts: 1000, map: {width: 500, height: 500, walls: [water]}}, 0, 1000)
+  simulation.setLocalPlayerId("local")
+  simulation.setInput(1, 0)
+  simulation.ingest({...base, ts: 1016, map: {width: 500, height: 500, walls: null}}, 0, 1016)
+  simulation.advance(.5)
+
+  assert.equal(simulation.predicted.x, 90)
+  assert.equal(simulation.predicted.y, 80)
+})
+
+test("visible moon mist is solid while ordinary grass remains walkable", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    ts: 1000,
+    game: {state: "game"},
+    monsters: {},
+    bullets: [],
+    players: {
+      local: {x: 80, y: 80, radius: 10, movementSpeed: 120, lives: 100, ack: 0, moveX: 1, moveY: 0},
+    },
+  }
+
+  simulation.ingest({...base, map: {width: 500, height: 500, walls: [
+    {minX: 100, minY: 60, maxX: 140, maxY: 100, type: "moon_mist"},
+  ]}}, 0, 1000)
+  simulation.setLocalPlayerId("local")
+  simulation.setInput(1, 0)
+  simulation.advance(.8)
+
+  assert.equal(simulation.predicted.x, 90)
+  assert.equal(simulation.predicted.y, 80)
+})
+
+test("client collision follows the backend blocking flag instead of guessing from the visual type", () => {
+  const backendSolid = {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "bush", blocking: true}
+  const backendWalkable = {minX: 200, minY: 0, maxX: 240, maxY: 200, type: "wall", blocking: false}
+  const index = createCollisionIndex([backendSolid, backendWalkable])
+
+  assert.deepEqual(index.blockingWalls, [backendSolid])
+})
+
 test("prediction reuses the filtered collision wall list until the map revision changes", () => {
   const walls = [
     {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "wall"},
@@ -267,7 +340,7 @@ test("stopping does not decay an older snapshot into a backward visual kick", ()
     `stopping moved the rendered player backward: ${displayedBeforeStop} -> ${displayedAfterStop}`)
 })
 
-test("local prediction allows movement through moon mist concealment", () => {
+test("local prediction allows movement through ordinary grass concealment", () => {
   const simulation = new NetworkSimulation()
   simulation.ingest({
     type: "state",
@@ -275,7 +348,7 @@ test("local prediction allows movement through moon mist concealment", () => {
     map: {
       width: 500,
       height: 500,
-      walls: [{minX: 100, minY: 0, maxX: 140, maxY: 200, type: "moon_mist"}],
+      walls: [{minX: 100, minY: 0, maxX: 140, maxY: 200, type: "bush"}],
     },
     players: {
       local: {x: 90, y: 80, radius: 10, speed: 60, lives: 100, ack: 0},

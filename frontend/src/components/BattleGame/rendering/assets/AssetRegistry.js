@@ -2,7 +2,7 @@ import * as THREE from "three"
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js"
 import {clone} from "three/addons/utils/SkeletonUtils.js"
 import {mergeGeometries} from "three/addons/utils/BufferGeometryUtils.js"
-import {ENVIRONMENT_ASSETS, HERO_ASSETS, getHeroAsset, resolveHeroName} from "./assetManifest.js"
+import {HERO_ASSETS, getHeroAsset, resolveHeroName} from "./assetManifest.js"
 
 const loadWith = loader => url => loader.loadAsync(url)
 
@@ -185,53 +185,7 @@ export const normalizeHeroHeight = (root, targetHeight = 2.45) => {
   return root
 }
 
-export const normalizeEnvironmentRoot = (root, targetHeight = null) => {
-  root.updateMatrixWorld(true)
-  const bounds = new THREE.Box3().setFromObject(root, true)
-  if (bounds.isEmpty()) return root
-  const size = bounds.getSize(new THREE.Vector3())
-  if (targetHeight && Number.isFinite(targetHeight) && size.y > 0.0001) {
-    root.scale.multiplyScalar(targetHeight / size.y)
-    root.updateMatrixWorld(true)
-  }
-  const normalized = new THREE.Box3().setFromObject(root, true)
-  const center = normalized.getCenter(new THREE.Vector3())
-  root.position.x -= center.x
-  root.position.y -= normalized.min.y
-  root.position.z -= center.z
-  root.updateMatrixWorld(true)
-  return root
-}
-
-const applyEnvironmentMaterial = (root, asset) => {
-  if (!asset.unlit && asset.materialColor == null) return
-  root.traverse(node => {
-    if (!node.isMesh || !node.material) return
-    const wasArray = Array.isArray(node.material)
-    const materials = wasArray ? node.material : [node.material]
-    const nextMaterials = materials.map(material => {
-      if (!asset.unlit) {
-        const cloned = material.clone()
-        if (asset.materialColor != null && cloned.color) cloned.color.set(asset.materialColor)
-        return cloned
-      }
-      return new THREE.MeshBasicMaterial({
-        alphaTest: material.alphaTest,
-        color: asset.materialColor ?? material.color,
-        depthTest: material.depthTest,
-        depthWrite: material.depthWrite,
-        map: material.map,
-        opacity: material.opacity,
-        side: THREE.DoubleSide,
-        transparent: material.transparent,
-        vertexColors: material.vertexColors,
-      })
-    })
-    node.material = wasArray ? nextMaterials : nextMaterials[0]
-  })
-}
-
-export const attachCompanionCloud = (heroRoot, cloudScene) => {
+const attachCompanionCloud = (heroRoot, cloudScene) => {
   if (!heroRoot || !cloudScene) return null
   const target = heroRoot.getObjectByName("Root") || heroRoot
   const cloud = cloudScene
@@ -259,9 +213,8 @@ export const attachCompanionCloud = (heroRoot, cloudScene) => {
 }
 
 export class AssetRegistry {
-  constructor({manifest = HERO_ASSETS, environmentManifest = ENVIRONMENT_ASSETS, load = null} = {}) {
+  constructor({manifest = HERO_ASSETS, load = null} = {}) {
     this.manifest = manifest
-    this.environmentManifest = environmentManifest
     this.load = load || loadWith(new GLTFLoader())
     this.heroLoads = new Map()
     this.companionLoads = new Map()
@@ -269,17 +222,10 @@ export class AssetRegistry {
     this.readyCompanions = new Set()
     this.heroAssets = new Map()
     this.companionAssets = new Map()
-    this.environmentLoads = new Map()
-    this.readyEnvironments = new Set()
-    this.environmentAssets = new Map()
   }
 
   hasHero(name) {
     return Boolean(this.manifest[name]?.available)
-  }
-
-  hasEnvironment(visual) {
-    return Boolean(this.environmentManifest[visual]?.available)
   }
 
   loadHero(name) {
@@ -337,11 +283,6 @@ export class AssetRegistry {
       (!asset.companionUrl || this.readyCompanions.has(asset.id)))
   }
 
-  isEnvironmentReady(visual) {
-    const asset = this.environmentManifest[visual]
-    return Boolean(asset?.available && this.readyEnvironments.has(visual))
-  }
-
   areBattleAssetsReady() {
     const heroesReady = Object.keys(this.manifest)
       .filter(name => this.hasHero(name))
@@ -374,24 +315,6 @@ export class AssetRegistry {
     return this.preloadHeroes(Object.keys(this.manifest), concurrency)
   }
 
-  async preloadEnvironments(names = Object.keys(this.environmentManifest), concurrency = 3) {
-    const queue = [...new Set(names)]
-      .filter(visual => this.hasEnvironment(visual))
-      .map(visual => ({label: `${visual} environment`, load: () => this.loadEnvironment(visual)}))
-    const worker = async () => {
-      while (queue.length) {
-        const task = queue.shift()
-        try {
-          await task.load()
-        } catch (error) {
-          console.warn(`Could not preload environment GLB: ${task.label}`, error)
-        }
-      }
-    }
-    const workerCount = Math.min(Math.max(1, concurrency), queue.length)
-    await Promise.all(Array.from({length: workerCount}, worker))
-  }
-
   preloadBattleAssets(concurrency = 3) {
     return this.preloadHeroes(Object.keys(this.manifest), concurrency)
   }
@@ -411,7 +334,10 @@ export class AssetRegistry {
       if (Array.isArray(child.material)) child.material = child.material.map(material => material.clone())
       else if (child.material) child.material = child.material.clone()
       if (child.isMesh) {
-        child.castShadow = true
+        // Heroes already have a compact, texture-backed contact shadow in
+        // HeroView. A second directional shadow follows the local player and
+        // reads as a large moving dark patch on the ground.
+        child.castShadow = false
         child.receiveShadow = true
       }
     })
@@ -421,7 +347,7 @@ export class AssetRegistry {
         if (Array.isArray(child.material)) child.material = child.material.map(material => material.clone())
         else if (child.material) child.material = child.material.clone()
         if (child.isMesh) {
-          child.castShadow = true
+          child.castShadow = false
           child.receiveShadow = true
         }
       })
@@ -455,71 +381,6 @@ export class AssetRegistry {
     return this.createHeroInstance(resolvedName, gltf, companionGltf)
   }
 
-  loadEnvironment(visual) {
-    const asset = this.environmentManifest[visual]
-    if (!asset?.available) return Promise.resolve(null)
-    if (!this.environmentLoads.has(visual)) {
-      const pending = this.load(asset.url)
-        .then(gltf => {
-          this.readyEnvironments.add(visual)
-          this.environmentAssets.set(visual, gltf)
-          return gltf
-        })
-        .catch(error => {
-          this.environmentLoads.delete(visual)
-          this.readyEnvironments.delete(visual)
-          this.environmentAssets.delete(visual)
-          throw error
-        })
-      this.environmentLoads.set(visual, pending)
-    }
-    return this.environmentLoads.get(visual)
-  }
-
-  createEnvironmentInstance(visual, gltf) {
-    const asset = this.environmentManifest[visual]
-    if (!asset || !gltf) return null
-    const sourceRoot = clone(gltf.scene)
-    const root = asset.includeNodes?.length
-      ? this.extractEnvironmentNodes(sourceRoot, asset.includeNodes)
-      : sourceRoot
-    root.scale.setScalar(asset.scale)
-    root.rotation.y = asset.rotationOffset
-    normalizeEnvironmentRoot(root, asset.targetHeight)
-    applyEnvironmentMaterial(root, asset)
-    return {root, animations: gltf.animations || [], asset}
-  }
-
-  instantiateReadyEnvironment(visual) {
-    if (!this.isEnvironmentReady(visual)) return null
-    return this.createEnvironmentInstance(visual, this.environmentAssets.get(visual))
-  }
-
-  async instantiateEnvironment(visual) {
-    const gltf = await this.loadEnvironment(visual)
-    return this.createEnvironmentInstance(visual, gltf)
-  }
-
-  extractEnvironmentNodes(root, names) {
-    root.updateMatrixWorld(true)
-    const selected = new THREE.Group()
-    selected.name = `${root.name}:selected`
-    names.forEach(name => {
-      const node = root.getObjectByName(name)
-      if (!node) return
-      const nodeClone = clone(node)
-      const position = new THREE.Vector3()
-      const quaternion = new THREE.Quaternion()
-      const scale = new THREE.Vector3()
-      node.matrixWorld.decompose(position, quaternion, scale)
-      nodeClone.position.copy(position)
-      nodeClone.quaternion.copy(quaternion)
-      nodeClone.scale.copy(scale)
-      selected.add(nodeClone)
-    })
-    return selected
-  }
-
   clear() {
     this.heroLoads.clear()
     this.companionLoads.clear()
@@ -527,9 +388,6 @@ export class AssetRegistry {
     this.readyCompanions.clear()
     this.heroAssets.clear()
     this.companionAssets.clear()
-    this.environmentLoads.clear()
-    this.readyEnvironments.clear()
-    this.environmentAssets.clear()
   }
 }
 

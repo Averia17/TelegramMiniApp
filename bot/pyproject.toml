@@ -14,8 +14,6 @@ dependencies = [
     "betterlogging~=0.2",
     "aiogram~=3.0",
     "redis~=5.0",
-    "aiogram-dialog~=2.0",
-    "faker",
 ]
 
 [tool.setuptools]

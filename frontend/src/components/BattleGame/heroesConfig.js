@@ -1,16 +1,6 @@
-export const ATTACK_ARCHETYPES = Object.freeze({
-  PROJECTILE: "projectile",
-  BURST: "burst",
-  SHOTGUN: "shotgun",
-  PIERCING_AREA: "piercing_area",
-  THROWER: "thrower",
-  DASH: "dash",
-  RETURNING: "returning",
-})
-
 // Combat configs use their final compact stat values directly.
 export const ANIMATION_REFERENCE_SPEED = 12
-export const RUNTIME_MOVEMENT_SPEED_SCALE = 12
+const RUNTIME_MOVEMENT_SPEED_SCALE = 12
 export const RUNTIME_ANIMATION_REFERENCE_SPEED = ANIMATION_REFERENCE_SPEED * RUNTIME_MOVEMENT_SPEED_SCALE
 
 export const HEROES_CONFIG = Object.freeze([
@@ -27,24 +17,17 @@ export const HEROES_CONFIG = Object.freeze([
 // Fallback contract used before /heroes arrives. The server payload has the
 // same shape and replaces these values through normalizeHeroConfig.
 export const HERO_KITS = Object.freeze({
-  Needle: {basic:{id:"spore_thorn",name:"Споровый шип",description:"Самонаводящийся шип накладывает Споры."},super:{id:"hunter_root",name:"Ловчий корень",description:"Корень подбрасывает врагов и оставляет замедляющую зону.",slot:"primary",prediction:"server"},gadget:{id:"spore_dash",name:"Споровый рывок",description:"Рывок оставляет облако спор.",slot:"secondary",prediction:"server"}},
-  Mandy: {basic:{id:"staff_strike",name:"Удар посохом",description:"Неподвижность усиливает удар и оглушает."},super:{id:"devastation_wave",name:"Волна опустошения",description:"Дальняя волна разрушает стены.",slot:"primary",prediction:"server"},gadget:{id:"unyielding_stance",name:"Нерушимая стойка",description:"Стойка защищает от контроля и снижает урон.",slot:"secondary",prediction:"server"}},
-  "Fairy Mina": {basic:{id:"star_fan",name:"Звёздный веер",description:"Звёзды лечат союзников и метят врагов."},super:{id:"star_cocoon",name:"Звёздный кокон",description:"Щит создаёт лечащую ауру.",slot:"primary",prediction:"server"},gadget:{id:"repelling_wave",name:"Отталкивающая волна",description:"Отбрасывает врагов и оглушает отмеченных.",slot:"secondary",prediction:"server"}},
-  "Brock Zeus": {basic:{id:"thunder_projectile",name:"Грозовой снаряд",description:"Взрывной снаряд разрушает стены."},super:{id:"gods_hammer",name:"Молот богов",description:"Три удара молнии создают горящую зону.",slot:"primary",prediction:"server"},gadget:{id:"discharge_cable",name:"Разрядный кабель",description:"Следующий выстрел становится пробивающим лучом.",slot:"secondary",prediction:"server"}},
-  Kaze: {basic:{id:"cross_slash",name:"Косые удары",description:"Два попадания открывают усиленный третий удар."},super:{id:"piercing_dash",name:"Пронзающий рывок",description:"Рывок помечает врагов и усиливает получаемый ими урон.",slot:"primary",prediction:"server"},gadget:{id:"vanish",name:"Исчезновение",description:"Невидимость гарантирует критический первый удар.",slot:"secondary",prediction:"server"}},
-  "Wukong Mico": {basic:{id:"heavy_staff",name:"Тяжёлый посох",description:"Попадания накапливают Ярость."},super:{id:"vengeance_vortex",name:"Вихрь возмездия",description:"Вихрь расходует Ярость и наносит урон вокруг.",slot:"primary",prediction:"server"},gadget:{id:"stone_armor",name:"Каменная броня",description:"Щит накапливает урон и взрывается после окончания.",slot:"secondary",prediction:"server"}},
-  "Persephone Lumi": {basic:{id:"luminous_trail",name:"Световой след",description:"След замедляет и раскрывает врагов."},super:{id:"root_garden",name:"Сад корней",description:"Поле корней обездвиживает вошедших врагов.",slot:"primary",prediction:"server"},gadget:{id:"flower_burst",name:"Цветочный взрыв",description:"Взрывает активный след или сад.",slot:"secondary",prediction:"server"}},
-  Katty: {basic:{id:"paint_queue",name:"Краска-очередь",description:"Три выстрела краской накладывают слои. Третий слой обездвиживает цель."},super:{id:"paint_grenade",name:"Баллон-граната",description:"Граната оставляет лужу краски, ослепляет и наносит третий слой.",slot:"primary",prediction:"server"},gadget:{id:"paint_flight",name:"Красколёт",description:"Рывок оставляет след краски, замедляющий врагов и ускоряющий Кэтти.",slot:"secondary",prediction:"server"}},
+  Needle: {basic:{id:"spore_thorn",name:"Споровый шип",description:"Спора раскрывается шестью ищущими шипами сразу при попадании или в конце полёта."},super:{id:"hunter_root",name:"Ловчий корень",description:"Корень оглушает врагов и оставляет замедляющую зону.",slot:"primary",prediction:"server"},gadget:{id:"spore_dash",name:"Споровый рывок",description:"Рывок оставляет ослепляющее облако спор в точке приземления.",slot:"secondary",prediction:"server"}},
+  Mandy: {basic:{id:"staff_strike",name:"Удар посохом",description:"Неподвижность усиливает удар и оглушает."},super:{id:"devastation_wave",name:"Волна опустошения",description:"После подготовки выпускает волну через всю карту, разрушая стены; во время подготовки Mandy может двигаться.",slot:"primary",prediction:"server"},gadget:{id:"unyielding_stance",name:"Нерушимая стойка",description:"Стойка защищает от контроля и снижает урон.",slot:"secondary",prediction:"server"}},
+  "Fairy Mina": {basic:{id:"star_fan",name:"Звёздный веер",description:"Первая звезда метит врага, следующая взрывает метку; союзников звёзды лечат."},super:{id:"star_cocoon",name:"Звёздный кокон",description:"Выбирает самого раненого союзника рядом; щит и лечащая аура следуют за ним.",slot:"primary",prediction:"server"},gadget:{id:"repelling_wave",name:"Отталкивающая волна",description:"Отбрасывает врагов и оглушает отмеченных.",slot:"secondary",prediction:"server"}},
+  "Brock Zeus": {basic:{id:"thunder_projectile",name:"Грозовой снаряд",description:"Взрывной снаряд разрушает стены."},super:{id:"gods_hammer",name:"Молот богов",description:"Показывает три точки удара молнии; последний удар создаёт горящую зону.",slot:"primary",prediction:"server"},gadget:{id:"discharge_cable",name:"Разрядный кабель",description:"Следующий выстрел становится пробивающим лучом.",slot:"secondary",prediction:"server"}},
+  Kaze: {basic:{id:"cross_slash",name:"Косые удары",description:"Два попадания открывают усиленный третий удар."},super:{id:"piercing_dash",name:"Пронзающий рывок",description:"Попадание рывком помечает врага и сразу подготавливает усиленный удар.",slot:"primary",prediction:"server"},gadget:{id:"vanish",name:"Исчезновение",description:"Невидимость гарантирует критический первый удар.",slot:"secondary",prediction:"server"}},
+  "Wukong Mico": {basic:{id:"heavy_staff",name:"Тяжёлый посох",description:"Попадания накапливают до 5 зарядов Ярости."},super:{id:"vengeance_vortex",name:"Вихрь возмездия",description:"Расходует Ярость, увеличивая радиус, длительность и урон вихря; вихрь лечит Mico по тикам.",slot:"primary",prediction:"server"},gadget:{id:"stone_armor",name:"Каменная броня",description:"Броня копит ограниченный ответный урон и превращает его в Ярость после взрыва.",slot:"secondary",prediction:"server"}},
+  "Persephone Lumi": {basic:{id:"luminous_trail",name:"Световой след",description:"След замедляет и раскрывает врагов."},super:{id:"root_garden",name:"Сад корней",description:"Поле корней обездвиживает вошедших врагов.",slot:"primary",prediction:"server"},gadget:{id:"flower_burst",name:"Цветочный взрыв",description:"Взрывает все следы и сады, но наносит каждой цели один общий всплеск.",slot:"secondary",prediction:"server"}},
+  Katty: {basic:{id:"paint_queue",name:"Краска-очередь",description:"Три выстрела накладывают слои и оставляют краску в фактических точках попадания."},super:{id:"paint_grenade",name:"Баллон-граната",description:"После приземления лужа однократно ослепляет каждого вошедшего врага и наносит третий слой.",slot:"primary",prediction:"server"},gadget:{id:"paint_flight",name:"Красколёт",description:"Рывок оставляет след краски, замедляющий врагов и ускоряющий Кэтти.",slot:"secondary",prediction:"server"}},
 })
 
-export const TIMED_KIT_DESCRIPTIONS = Object.freeze({
-  Needle: {basic: "Споровый шип сразу замедляет поражённых врагов на 2 секунды."},
-  Kaze: {basic: "Косые удары: усиленный удар доступен раз в 3 секунды."},
-  "Wukong Mico": {
-    basic: "Тяжёлый удар посохом наносит стабильный урон без накопления ярости.",
-    super: "Вихрь возмездия длится 5 секунд и наносит урон вокруг героя.",
-  },
-})
+export const TIMED_KIT_DESCRIPTIONS = Object.freeze({})
 
 export const HERO_AIM_DEFAULTS = Object.freeze({
   projectile: {shape: "line", color: "#ffffff"},
@@ -82,10 +65,3 @@ export const normalizeHeroConfig = hero => {
     aim: {shape: attack.aimShape || visual.shape, color: hero?.color || visual.color},
   }
 }
-
-export const indexHeroConfigs = heroes => Object.fromEntries(
-  (heroes || []).map(hero => {
-    const normalized = normalizeHeroConfig(hero)
-    return [normalized.name, normalized]
-  }),
-)

@@ -59,6 +59,7 @@ type PendingMandySuper struct {
 	X, Y      float64
 	Angle     float64
 	TriggerAt int64
+	Visual    *BattleEffect
 }
 
 const AutoAimAssistRadius = 34.0
@@ -170,6 +171,10 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 	focused := source.FocusCharge >= 100
 	if focused {
 		reach *= 1.35
+		// A focused strike is a payoff, not a permanent stance. Restart the
+		// stillness timer so Mandy must hold position again for the next one.
+		source.FocusCharge = 0
+		source.FocusStartedAt = ts
 	}
 	halfArc := 60.0 * math.Pi / 180
 	slowUntil := int64(0)
@@ -209,12 +214,12 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 
 func (MandyKit) Super(gs *GameState, source *player.Player, ts int64, angle, _ float64) bool {
 	const windup = int64(1200)
-	source.MoveX, source.MoveY = 0, 0
-	source.ChannelUntil = ts + windup
-	gs.PendingMandySupers = append(gs.PendingMandySupers, &PendingMandySuper{
+	source.CastUntil = ts + windup
+	cast := &PendingMandySuper{
 		Owner: source.PlayerId, X: source.X, Y: source.Y, Angle: angle, TriggerAt: ts + windup,
-	})
-	gs.addEffect("mandy_super_charge", source.X, source.Y, 0, 0, 80, angle, 0, 0, "#ffd84d", 0, windup)
+	}
+	cast.Visual = gs.addEffect("mandy_super_charge", source.X, source.Y, 0, 0, 80, angle, 0, 0, "#ffd84d", 0, windup)
+	gs.PendingMandySupers = append(gs.PendingMandySupers, cast)
 	return true
 }
 
@@ -230,7 +235,7 @@ func (gs *GameState) updateMandyFocus() {
 		if source == nil || source.HeroName != "Mandy" || !source.IsAlive() {
 			continue
 		}
-		if math.Hypot(source.MoveX, source.MoveY) > .01 || source.ChannelUntil > now {
+		if math.Hypot(source.MoveX, source.MoveY) > .01 || source.CastUntil > now {
 			source.FocusStartedAt, source.FocusCharge = 0, 0
 			continue
 		}
@@ -248,12 +253,16 @@ func (gs *GameState) updatePendingMandySupers() {
 		if cast == nil {
 			continue
 		}
-		if cast.TriggerAt > now {
-			kept = append(kept, cast)
-			continue
-		}
 		source := gs.Players[cast.Owner]
 		if source == nil || !source.IsAlive() {
+			continue
+		}
+		cast.X, cast.Y = source.X, source.Y
+		if cast.Visual != nil {
+			cast.Visual.X, cast.Visual.Y = cast.X, cast.Y
+		}
+		if cast.TriggerAt > now {
+			kept = append(kept, cast)
 			continue
 		}
 		source.SuperPulse++

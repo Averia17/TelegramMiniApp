@@ -31,18 +31,18 @@ export class AimRenderer {
   }
 
   update(player) {
+    const mandy = player?.hero === "Mandy"
+    const superAiming = mandy && Number(player?.channel) > 0
     if (!player?.aiming) {
       this.root.visible = false
       return
     }
 
-    const mandy = player.hero === "Mandy"
-    const superAiming = mandy && Number(player.channel) > 0
     const melee = player.attackArchetype === "melee_cone"
     const configuredRange = Number(player.attackRange)
     const range = superAiming ? 1800
-        : mandy && player.focusCharge >= 100 ? (configuredRange || 430) * 1.35
-          : configuredRange || 430
+      : mandy && player.focusCharge >= 100 ? (configuredRange || 430) * 1.35
+        : configuredRange || 430
     const angle = Number(player.rotation) || 0
 
     const points = [0, 1].map(progress => worldToScene(

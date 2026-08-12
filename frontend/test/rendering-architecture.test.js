@@ -4,17 +4,14 @@ import {readFile} from "node:fs/promises"
 import {fileURLToPath} from "node:url"
 
 import {
-  ENVIRONMENT_ASSETS,
   HERO_ASSETS,
   getHeroAsset,
   resolveHeroName,
-  resolveEnvironmentVisual,
 } from "../src/components/BattleGame/rendering/assets/assetManifest.js"
 import {
   AssetRegistry,
   assetRegistry,
   mergeHeroRenderParts,
-  normalizeEnvironmentRoot,
   normalizeHeroHeight,
 } from "../src/components/BattleGame/rendering/assets/AssetRegistry.js"
 import {GLBHeroController} from "../src/components/BattleGame/rendering/heroes/GLBHeroController.js"
@@ -30,7 +27,6 @@ import {
   formatHealthLabel,
 } from "../src/components/BattleGame/rendering/monsters/MonsterRenderer.js"
 import {getBattleWebGLContext} from "../src/components/BattleGame/rendering/SceneRoot.js"
-import {isSoftwareWebGLRenderer} from "../src/components/BattleGame/rendering/shared/quality.js"
 import {
   acquirePreviewSlot,
   previewRendererCount,
@@ -45,13 +41,12 @@ import {createMapSignature} from "../src/components/BattleGame/rendering/map/map
 import {
   MapRenderer,
   createStormRingGeometry,
-  selectEnvironmentUpgradeWalls,
   shouldRefreshEnvironmentFocus,
-  shouldBatchEnvironmentVisual,
   smoothStormRadius,
 } from "../src/components/BattleGame/rendering/map/MapRenderer.js"
 import {GroundRenderer} from "../src/components/BattleGame/rendering/map/GroundRenderer.js"
 import {createProp} from "../src/components/BattleGame/rendering/map/PropRenderer.js"
+import {createBushField} from "../src/components/BattleGame/rendering/map/BushRenderer.js"
 import {PickupRenderer} from "../src/components/BattleGame/rendering/map/PickupRenderer.js"
 import {EffectRenderer} from "../src/components/BattleGame/rendering/combat/EffectRenderer.js"
 import {getIslandPhaseIndex, getIslandPhaseProgress} from "../src/components/BattleGame/phaseVisuals.js"
@@ -66,11 +61,6 @@ import {
 import {isAlivePlayerState} from "../src/components/BattleGame/rendering/heroes/playerVisibility.js"
 import {formatHeroHealthLabel, getHeroHealthFraction} from "../src/components/BattleGame/rendering/heroes/healthBadge.js"
 import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG, RUNTIME_ANIMATION_REFERENCE_SPEED} from "../src/components/BattleGame/heroesConfig.js"
-import {
-  createEnvironmentModel,
-  getEnvironmentPlacements,
-  replaceFallbackWithEnvironment,
-} from "../src/components/BattleGame/rendering/map/environmentPlacement.js"
 import {WORLD_SCALE, worldToScene, sceneToWorld} from "../src/components/BattleGame/rendering/shared/coordinates.js"
 import * as THREE from "three"
 
@@ -133,7 +123,7 @@ test("hero turning follows the shortest arc through intermediate directions", ()
 })
 
 test("bush concealment softly fades the brawler without adding hero-bound foliage", () => {
-  assert.equal(BUSH_HERO_OPACITY >= .7, true)
+  assert.equal(BUSH_HERO_OPACITY >= .84, true)
   assert.equal(getBushConcealmentMix(0, true, .1) > 0, true)
   assert.equal(getBushConcealmentMix(1, false, .1) < 1, true)
 })
@@ -392,7 +382,7 @@ test("entering battle immediately releases every hero-preview WebGL context", ()
   assert.equal(lost, 2)
 })
 
-test("queued hero-card previews receive a slot after an earlier snapshot releases it", async () => {
+test("queued hero-card previews receive a slot after an earlier card releases it", async () => {
   const releaseFirst = await acquirePreviewSlot(1)
   let secondStarted = false
   const secondSlot = acquirePreviewSlot(1).then(release => {
@@ -489,7 +479,7 @@ test("the battle map stays populated across full and compact server snapshots", 
   mapRenderer.sync(display.map)
 
   assert.equal(display.map.walls, walls)
-  assert.equal(mapRenderer.objects.size, 2)
+  assert.equal(mapRenderer.objects.size, 3)
   assert.ok(root.children.length >= 3)
   mapRenderer.dispose()
 })
@@ -563,6 +553,24 @@ test("the hero manifest uses self-contained base GLBs", () => {
   for (const name of Object.keys(HERO_ASSETS)) assert.equal(HERO_ASSETS[name].available, true)
   assert.equal(HERO_ASSETS.Needle.url, "/assets/heroes/output_heroes/needle_base.glb")
   assert.deepEqual(HEROES_CONFIG.map(hero => hero.name), Object.keys(HERO_ASSETS))
+})
+
+test("camera punch decays without changing the tracked gameplay target", () => {
+  const camera = new CameraRig()
+  const player = {x: 512, y: 384}
+  const map = {width: 1024, height: 768}
+  camera.resize(1000, 700)
+  camera.follow(player, map, 1 / 60)
+  const target = camera.target.clone()
+  const basePosition = camera.camera.position.clone()
+  camera.addShake(.2)
+  camera.follow(player, map, 1 / 60)
+  assert.ok(camera.shake > 0)
+  assert.deepEqual(camera.target.toArray(), target.toArray())
+  assert.notDeepEqual(camera.camera.position.toArray(), basePosition.toArray())
+  for (let index = 0; index < 60; index++) camera.follow(player, map, 1 / 60)
+  assert.equal(camera.shake, 0)
+  assert.deepEqual(camera.target.toArray(), target.toArray())
 })
 
 test("hero asset resolution keeps canonical names and handles unknown names safely", () => {
@@ -787,43 +795,39 @@ test("the result popup is committed before an optional renderer outcome animatio
   assert.match(finishBattle, /try\s*\{[\s\S]*setOutcome/)
 })
 
-test("the battle scene provides PBR lighting and soft shadows for GLB heroes", async () => {
+test("the battle scene keeps PBR lighting without a camera-following shadow pool", async () => {
   const source = await readFile(projectFile("src/components/BattleGame/rendering/SceneRoot.js"), "utf8")
   assert.match(source, /HemisphereLight/)
   assert.match(source, /DirectionalLight/)
-  assert.match(source, /PCFSoftShadowMap/)
+  assert.match(source, /shadowMap\.enabled = false/)
+  assert.match(source, /keyLight\.castShadow = false/)
+  assert.doesNotMatch(source, /lightFocus|getWorldDirection/)
 })
 
 test("battle renderer keeps the full-quality path throughout combat", async () => {
   const source = await readFile(projectFile("src/components/BattleGame/rendering/three/ThreeBattleRenderer.js"), "utf8")
 
-  assert.match(source, /new SceneRoot\(canvas, false\)/)
-  assert.doesNotMatch(source, /detectLowQualityDevice|slowFrameCount|enableLowQuality|setLowQuality/) 
-  assert.match(source, /new MapRenderer\(this\.mapRoot, \{lowQuality: this\.lowQuality\}\)/)
+  assert.match(source, /new SceneRoot\(canvas\)/)
+  assert.doesNotMatch(source, /Quality|quality|detectLowQualityDevice|slowFrameCount|enableLowQuality/)
+  assert.match(source, /new MapRenderer\(this\.mapRoot\)/)
 })
 
-test("software WebGL renderers select the constrained battle path before asset upgrades", () => {
-  assert.equal(isSoftwareWebGLRenderer("Google SwiftShader"), true)
-  assert.equal(isSoftwareWebGLRenderer("Mesa llvmpipe (LLVM 15.0.7, 256 bits)"), true)
-  assert.equal(isSoftwareWebGLRenderer("ANGLE (NVIDIA, NVIDIA GeForce RTX 4070, OpenGL 4.6)"), false)
-})
-
-test("battle keeps authored hero assets without a dynamic quality fallback", async () => {
+test("battle keeps authored hero assets on the single visual path", async () => {
   const heroSource = await readFile(projectFile("src/components/BattleGame/rendering/heroes/HeroView.js"), "utf8")
   const mapSource = await readFile(projectFile("src/components/BattleGame/rendering/map/MapRenderer.js"), "utf8")
   const sceneSource = await readFile(projectFile("src/components/BattleGame/rendering/SceneRoot.js"), "utf8")
   const rendererSource = await readFile(projectFile("src/components/BattleGame/rendering/three/ThreeBattleRenderer.js"), "utf8")
   assert.doesNotMatch(heroSource, /async loadGlb\(/)
-  assert.doesNotMatch(rendererSource, /enableLowQuality|setLowQuality/) 
+  assert.doesNotMatch(rendererSource, /Quality|quality|enableLowQuality|setLowQuality/)
   assert.match(heroSource, /const updateLabel = \(sprite, state\) => \{\s*if \(!sprite\) return/)
   assert.match(mapSource, /createProp\(wall, index, this\.waterTexture\)/)
-  assert.match(sceneSource, /isSoftwareWebGLContext/)
-  assert.match(sceneSource, /this\.lowQuality = Boolean\(lowQuality\)/)
-  assert.doesNotMatch(sceneSource, /Boolean\(lowQuality\) \|\| this\.softwareWebGL/)
+  assert.match(sceneSource, /antialias: true/)
+  assert.match(sceneSource, /shadowMap\.enabled = false/)
+  assert.doesNotMatch(sceneSource, /Quality|quality|softwareWebGL/)
   assert.doesNotMatch(heroSource, /HeroModelFactory|createHeroModel/)
 })
 
-test("constrained rendering keeps authored GLB heroes and procedural environment enabled", async () => {
+test("battle keeps authored GLB heroes and procedural environment enabled", async () => {
   const heroSource = await readFile(projectFile("src/components/BattleGame/rendering/heroes/HeroView.js"), "utf8")
   const mapSource = await readFile(projectFile("src/components/BattleGame/rendering/map/MapRenderer.js"), "utf8")
 
@@ -831,7 +835,7 @@ test("constrained rendering keeps authored GLB heroes and procedural environment
   assert.match(heroSource, /if \(readyInstance\) this\.installGlbInstance\(readyInstance, state\.hero\)/)
   assert.doesNotMatch(mapSource, /assetRegistry\.instantiate(?:Ready)?Environment/)
   assert.doesNotMatch(mapSource, /upgradeToEnvironment/)
-  assert.match(mapSource, /createLowQualityPropBatch/)
+  assert.doesNotMatch(mapSource, /Quality|quality|InstancedMesh/)
 })
 
 test("authored hero parts merge without breaking shared skeleton skinning", () => {
@@ -901,6 +905,37 @@ test("AssetRegistry loads each GLB once and returns independent clones", async (
   assert.notEqual(first.root, second.root)
   assert.equal(first.animations[0].name, "Idle")
   assert.equal(second.animations[0].name, "Idle")
+})
+
+test("GLB heroes keep only their compact contact shadow", async () => {
+  const template = new THREE.Group()
+  template.add(new THREE.Mesh(
+    new THREE.BoxGeometry(1, 2, 1),
+    new THREE.MeshStandardMaterial(),
+  ))
+  const registry = new AssetRegistry({
+    manifest: {
+      TestHero: {
+        id: "TestHero",
+        url: "/test.glb",
+        available: true,
+        scale: 1,
+        rotationOffset: 0,
+        clips: {},
+      },
+    },
+    load: async () => ({scene: template, animations: []}),
+  })
+
+  const instance = await registry.instantiateHero("TestHero")
+  const heroMesh = instance.root.children.find(child => child.isMesh)
+
+  assert.ok(heroMesh)
+  assert.equal(heroMesh.castShadow, false)
+  instance.root.traverse(node => {
+    node.geometry?.dispose?.()
+    node.material?.dispose?.()
+  })
 })
 
 test("AssetRegistry keeps embedded weapon geometry and loads only the hero GLB", async () => {
@@ -1037,7 +1072,7 @@ test("AssetRegistry preloads only the canonical hero GLB through the shared cach
   assert.deepEqual(loads, ["/alpha.glb"])
 })
 
-test("AssetRegistry preloads battle heroes and companions, not environment GLBs", async () => {
+test("AssetRegistry preloads battle heroes and companions through the shared cache", async () => {
   const loads = []
   const template = new THREE.Group()
   const registry = new AssetRegistry({
@@ -1052,17 +1087,6 @@ test("AssetRegistry preloads battle heroes and companions, not environment GLBs"
         clips: {},
       },
     },
-    environmentManifest: {
-      bush_a: {
-        id: "bush_a",
-        url: "/bush.glb",
-        available: true,
-        placement: "repeat",
-        footprint: 40,
-        scale: 1,
-        rotationOffset: 0,
-      },
-    },
     load: async url => {
       loads.push(url)
       return {scene: template, animations: []}
@@ -1073,10 +1097,8 @@ test("AssetRegistry preloads battle heroes and companions, not environment GLBs"
 
   assert.deepEqual(loads.sort(), ["/alpha-cloud.glb", "/alpha.glb"])
   assert.equal(registry.isHeroReady("Alpha"), true)
-  assert.equal(registry.isEnvironmentReady("bush_a"), false)
   assert.equal(registry.areBattleAssetsReady(), true)
   assert.ok(registry.instantiateReadyHero("Alpha"))
-  assert.equal(registry.instantiateReadyEnvironment("bush_a"), null)
 })
 
 test("the app does not preload battle GLBs outside the battle flow", async () => {
@@ -1303,7 +1325,7 @@ test("GLBHeroController can skip Spawn for asynchronously loaded lobby previews"
   controller.dispose()
 })
 
-test("hero selection replaces the WebGL canvas when the selected GLB changes", async () => {
+test("hero selection keeps roster previews live for their idle animation", async () => {
   const source = await readFile(projectFile("src/components/HeroSelect/HeroModelPreview.jsx"), "utf8")
   assert.match(source, /key=\{hero\?\.name\}/)
   assert.match(source, /MAX_CARD_PREVIEW_RENDERERS/)
@@ -1311,10 +1333,9 @@ test("hero selection replaces the WebGL canvas when the selected GLB changes", a
   assert.match(source, /unregisterPreviewRenderer\(renderer\)/)
   assert.match(source, /if\s*\(disposed\s*\|\|[^)]*renderer\.getContext\(\)\?\.isContextLost\(\)\)\s*return/)
   assert.match(source, /renderer\.forceContextLoss\(\)/)
-  assert.match(source, /previewSnapshots/)
-  assert.match(source, /canvas\.toDataURL/)
   assert.match(source, /acquirePreviewSlot/)
-  assert.match(source, /hero-model-snapshot/)
+  assert.match(source, /animation\?\.update\(delta, \{alive: true, moving: false\}\)/)
+  assert.doesNotMatch(source, /canvas\.toDataURL/)
   assert.doesNotMatch(source, /createHeroModel/)
   assert.match(source, /hero-model-preview--loading/)
 })
@@ -1323,16 +1344,6 @@ test("mobile roster cards anchor scaled hero previews above their footer", async
   const css = await readFile(new URL("../src/components/HeroSelect/HeroSelect.css", import.meta.url), "utf8")
   assert.match(css, /\.hero-card \.hero-portrait:has\(\.hero-model-canvas\)[^{]*\{[^}]*transform-origin:50% 0/)
   assert.match(css, /@media \(max-width:430px\)[^{]*\{[^{}]*\.hero-card \.hero-portrait:has\(\.hero-model-canvas\)[^{]*\{[^}]*scale\(\.58\)/)
-})
-
-test("a transparent hero snapshot hides the released WebGL canvas underneath it", async () => {
-  const css = await readFile(new URL("../src/components/HeroSelect/HeroSelect.css", import.meta.url), "utf8")
-  assert.match(css, /\.hero-model-preview:has\(\.hero-model-snapshot\) \.hero-model-canvas\s*\{[^}]*visibility:\s*hidden/)
-})
-
-test("hero-card snapshots wait for the GLB skeleton to settle before capture", async () => {
-  const source = await readFile(projectFile("src/components/HeroSelect/HeroModelPreview.jsx"), "utf8")
-  assert.match(source, /renderedModelFrames\s*>=\s*8/)
 })
 
 test("authored skeletal attacks are not distorted by a second procedural bone pose", () => {
@@ -1524,24 +1535,6 @@ test("Needle spore attacks use a layered 3D projectile instead of a primitive ba
   assert.equal(visual.userData.vfxType, "needle-spore")
 })
 
-test("map visuals are optional and never replace semantic collision types", () => {
-  assert.equal(resolveEnvironmentVisual({type: "crates"}), "desert_wall_a")
-  assert.equal(resolveEnvironmentVisual({type: "crates", visual: "crate_a"}), "desert_wall_a")
-  assert.equal(resolveEnvironmentVisual({type: "destructible", visual: "desert_wall_b"}), "desert_wall_b")
-  assert.equal(resolveEnvironmentVisual({type: "altar_three_moons"}), "altar_three_moons")
-  assert.equal(resolveEnvironmentVisual({type: "sacrificial_stone"}), "sacrificial_stone")
-  assert.equal(resolveEnvironmentVisual({type: "menhir"}), "menhir")
-  assert.equal(resolveEnvironmentVisual({type: "bush"}), "bush_a")
-  assert.equal(resolveEnvironmentVisual({type: "half"}), "bush_a")
-  assert.equal(resolveEnvironmentVisual({type: "unknown"}), null)
-})
-
-test("all solid map blocks use the authored stone GLB instead of primitive cubes", () => {
-  for (const type of ["wall", "destructible", "tree", "dead_tree", "shipwreck", "crates", "barrels"]) {
-    assert.equal(resolveEnvironmentVisual({type}), "desert_wall_a", type)
-  }
-})
-
 test("high-quality stone props use the shared faceted block silhouette", () => {
   const prop = createProp(
     {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
@@ -1551,15 +1544,325 @@ test("high-quality stone props use the shared faceted block silhouette", () => {
   const block = prop.children.find(child => child.geometry?.userData?.stylizedStoneBlock)
   assert.ok(block)
   assert.equal(block.geometry.userData.stoneFacets, true)
+  assert.equal(block.material.vertexColors, true)
   prop.traverse(node => {
     if (node.geometry) node.geometry.dispose()
     if (node.material) node.material.dispose()
   })
 })
 
-test("low-quality combat effects collapse to lightweight visuals", () => {
+test("stone props use subtle deterministic color variation without changing their footprint", () => {
+  const first = createProp(
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
+    0,
+    new THREE.Texture(),
+  )
+  const second = createProp(
+    {minX: 60, minY: 20, maxX: 100, maxY: 60, type: "wall"},
+    1,
+    new THREE.Texture(),
+  )
+  const firstBlock = first.children.find(child => child.geometry?.userData?.stylizedStoneBlock)
+  const secondBlock = second.children.find(child => child.geometry?.userData?.stylizedStoneBlock)
+
+  assert.notEqual(firstBlock.material.color.getHex(), secondBlock.material.color.getHex())
+  firstBlock.geometry.computeBoundingBox()
+  secondBlock.geometry.computeBoundingBox()
+  assert.deepEqual(
+    firstBlock.geometry.boundingBox.getSize(new THREE.Vector3()).toArray(),
+    secondBlock.geometry.boundingBox.getSize(new THREE.Vector3()).toArray(),
+  )
+
+  for (const prop of [first, second]) {
+    prop.traverse(node => {
+      if (node.geometry) node.geometry.dispose()
+      if (node.material) node.material.dispose()
+    })
+  }
+})
+
+test("adjacent stone cells stay fixed-size and form a continuous wall", () => {
   const root = new THREE.Group()
-  const renderer = new EffectRenderer(root, {lowQuality: true})
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+
+  mapRenderer.sync({
+    width: 160,
+    height: 120,
+    tileSize: 40,
+    walls: [
+      {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
+      {minX: 60, minY: 20, maxX: 100, maxY: 60, type: "wall"},
+    ],
+  })
+
+  const props = [...mapRenderer.objects.values()]
+  const blocks = props.map(prop => prop.children.find(child => child.geometry?.userData?.stylizedStoneBlock))
+  assert.equal(blocks.length, 2)
+  blocks.forEach(block => block.geometry.computeBoundingBox())
+  const firstSize = blocks[0].geometry.boundingBox.getSize(new THREE.Vector3())
+  const secondSize = blocks[1].geometry.boundingBox.getSize(new THREE.Vector3())
+  assert.ok(Math.abs(firstSize.x - 40 * WORLD_SCALE) < 1e-6)
+  assert.ok(Math.abs(firstSize.z - 40 * WORLD_SCALE) < 1e-6)
+  assert.ok(Math.abs(secondSize.x - firstSize.x) < 1e-6)
+  assert.ok(Math.abs(secondSize.z - firstSize.z) < 1e-6)
+  assert.equal(Math.abs(props[1].position.x - props[0].position.x), 40 * WORLD_SCALE)
+  assert.equal(props[1].position.z, props[0].position.z)
+
+  mapRenderer.dispose()
+})
+
+test("stone props cast real shadows with soft contact grounding", () => {
+  const prop = createProp(
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
+    0,
+    new THREE.Texture(),
+  )
+  const block = prop.children.find(child => child.geometry?.userData?.stylizedStoneBlock)
+  const contactShadow = prop.children.find(child => child.userData?.role === "contact-shadow")
+
+  assert.equal(block.castShadow, true)
+  assert.equal(block.receiveShadow, true)
+  assert.ok(contactShadow)
+  assert.equal(contactShadow.material.map?.isTexture, true)
+
+  prop.traverse(node => {
+    if (node.geometry) node.geometry.dispose()
+    if (node.material) node.material.dispose()
+  })
+})
+
+test("decorative props stay at authored cell size instead of merging into slabs", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+
+  mapRenderer.sync({
+    width: 160,
+    height: 120,
+    walls: [
+      {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "crates"},
+      {minX: 60, minY: 20, maxX: 100, maxY: 60, type: "crates"},
+    ],
+  })
+
+  const props = [...mapRenderer.objects.values()]
+  assert.equal(props.length, 2)
+  assert.equal(props.every(prop => prop.userData.visualType === "crates"), true)
+  assert.equal(props.every(prop => {
+    let hasLog = false
+    prop.traverse(child => { if (child.userData.role === "log-pile-log") hasLog = true })
+    return hasLog
+  }), true)
+  assert.equal(Math.abs(props[1].position.x - props[0].position.x), 40 * WORLD_SCALE)
+  mapRenderer.dispose()
+})
+
+test("map crate cells render as natural log piles instead of default box planks", () => {
+  const prop = createProp(
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "crates"},
+    0,
+    new THREE.Texture(),
+  )
+  const roles = new Set()
+  prop.traverse(child => {
+    if (child.userData?.role) roles.add(child.userData.role)
+  })
+
+  assert.equal(roles.has("log-pile-log"), true)
+  assert.equal(roles.has("log-pile-moss"), true)
+  assert.equal(roles.has("crate-plank"), false)
+
+  prop.traverse(node => {
+    node.geometry?.dispose?.()
+    node.material?.dispose?.()
+  })
+})
+
+test("solid map props receive a low-profile grounding bed", () => {
+  const prop = createProp(
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
+    0,
+    new THREE.Texture(),
+  )
+  const bed = prop.getObjectByName("prop-grounding-bed")
+
+  assert.ok(bed)
+  assert.equal(bed.userData.role, "grounding-bed")
+  assert.equal(bed.material.roughness, 1)
+  assert.ok(bed.position.y > 0)
+
+  prop.traverse(node => {
+    node.geometry?.dispose?.()
+    node.material?.dispose?.()
+  })
+})
+
+test("shipwreck blockers render as volumetric natural root clusters", () => {
+  const prop = createProp(
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "shipwreck"},
+    0,
+    new THREE.Texture(),
+  )
+  const roles = new Set()
+  const visual = prop.children.find(child => child.userData?.role !== "contact-shadow")
+  visual.traverse(child => {
+    if (child.userData?.role) roles.add(child.userData.role)
+  })
+  const size = new THREE.Box3().setFromObject(visual, true).getSize(new THREE.Vector3())
+
+  assert.equal(roles.has("root-log"), true)
+  assert.equal(roles.has("root-end"), true)
+  assert.equal(roles.has("moss-clump"), true)
+  assert.equal(roles.has("shipwreck-plank"), false)
+  assert.ok(size.x >= 40 * WORLD_SCALE * .9)
+  assert.ok(size.z >= 40 * WORLD_SCALE * .9)
+
+  prop.traverse(node => {
+    node.geometry?.dispose?.()
+    node.material?.dispose?.()
+  })
+})
+
+test("trees rise slightly above the stone wall silhouette", () => {
+  const wall = createProp(
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
+    0,
+    new THREE.Texture(),
+  )
+  const wallVisual = wall.children.find(child => child.geometry?.userData?.stylizedStoneBlock)
+  const wallTop = new THREE.Box3().setFromObject(wallVisual, true).max.y
+
+  for (const type of ["tree", "dead_tree"]) {
+    const prop = createProp(
+      {minX: 20, minY: 20, maxX: 60, maxY: 60, type},
+      0,
+      new THREE.Texture(),
+    )
+    const visual = prop.children.find(child => child.userData?.role !== "contact-shadow")
+    const treeTop = new THREE.Box3().setFromObject(visual, true).max.y
+    assert.ok(treeTop > wallTop * 1.05, `${type} should rise above the wall silhouette`)
+
+    prop.traverse(node => {
+      node.geometry?.dispose?.()
+      node.material?.dispose?.()
+    })
+  }
+
+  wall.traverse(node => {
+    node.geometry?.dispose?.()
+    node.material?.dispose?.()
+  })
+})
+
+test("small blocking props visually fill the collider footprint", () => {
+  const colliderSize = 40 * WORLD_SCALE
+
+  for (const type of ["crates", "barrels", "cactus", "crystal"]) {
+    const prop = createProp(
+      {minX: 20, minY: 20, maxX: 60, maxY: 60, type},
+      0,
+      new THREE.Texture(),
+    )
+    const visual = prop.children.find(child => child.userData?.role !== "contact-shadow")
+    const size = new THREE.Box3().setFromObject(visual, true).getSize(new THREE.Vector3())
+
+    assert.ok(size.x >= colliderSize * .92, `${type} leaves a visible horizontal collision gap`)
+    assert.ok(size.z >= colliderSize * .92, `${type} leaves a visible depth collision gap`)
+
+    prop.traverse(node => {
+      node.geometry?.dispose?.()
+      node.material?.dispose?.()
+    })
+  }
+})
+
+test("blocking map props visibly cover their authoritative collision tile", () => {
+  const colliderSize = 40 * WORLD_SCALE
+  const blockingTypes = [
+    "destructible",
+    "wall",
+    "tree",
+    "dead_tree",
+    "shipwreck",
+    "crates",
+    "altar_three_moons",
+    "sacrificial_stone",
+    "menhir",
+  ]
+
+  for (const type of blockingTypes) {
+    const prop = createProp(
+      {minX: 20, minY: 20, maxX: 60, maxY: 60, type},
+      0,
+      new THREE.Texture(),
+    )
+    const visual = prop.children.find(child => child.userData?.role !== "contact-shadow")
+    const size = new THREE.Box3().setFromObject(visual, true).getSize(new THREE.Vector3())
+
+    assert.ok(size.x >= colliderSize * .92, `${type} leaves a visible horizontal collision gap`)
+    assert.ok(size.z >= colliderSize * .92, `${type} leaves a visible depth collision gap`)
+
+    prop.traverse(node => {
+      node.geometry?.dispose?.()
+      node.material?.dispose?.()
+    })
+  }
+})
+
+test("grass ground uses a subtle repeated natural texture", () => {
+  const root = new THREE.Group()
+  const ground = new GroundRenderer(root)
+
+  ground.sync(1024, 768)
+
+  assert.equal(ground.mesh.material.map?.isTexture, true)
+  assert.ok(ground.mesh.material.map?.userData.meadowPatchCount >= 32)
+  assert.equal(ground.mesh.material.map?.userData.grassBladeCount, 520)
+  assert.equal(ground.mesh.material.roughness, 1)
+  ground.mesh.geometry.dispose()
+  ground.mesh.material.map.dispose()
+  ground.mesh.material.dispose()
+})
+
+test("procedural bush foliage stays unlit and does not cast noisy shadows", () => {
+  const field = createBushField([
+    {minX: 20, minY: 20, maxX: 100, maxY: 60, type: "bush"},
+  ])
+  const base = field.getObjectByName("bush-field-base")
+  const crown = field.getObjectByName("bush-field-crown")
+
+  assert.equal(base.material.type, "MeshBasicMaterial")
+  assert.equal(crown.material.type, "MeshBasicMaterial")
+  assert.equal(base.castShadow, false)
+  assert.equal(base.receiveShadow, false)
+  assert.equal(crown.castShadow, false)
+  assert.equal(crown.receiveShadow, false)
+
+  field.traverse(node => {
+    if (node.geometry) node.geometry.dispose()
+    if (node.material) node.material.dispose()
+  })
+})
+
+test("bush support volume reads as grass instead of a dark fake shadow", () => {
+  const field = createBushField([
+    {minX: 20, minY: 20, maxX: 100, maxY: 60, type: "bush"},
+  ])
+  const base = field.getObjectByName("bush-field-base")
+
+  assert.equal(base.material.color.getHex(), 0xffffff)
+  assert.ok(base.material.opacity > .8)
+  assert.equal(base.material.depthWrite, false)
+  assert.equal(field.getObjectByName("bush-field-foreground").material.depthWrite, false)
+
+  field.traverse(node => {
+    if (node.geometry) node.geometry.dispose()
+    if (node.material) node.material.dispose()
+  })
+})
+
+test("combat effects keep the full orbital visual on the shared path", () => {
+  const root = new THREE.Group()
+  const renderer = new EffectRenderer(root)
   renderer.sync([{
     id: "orbital-1",
     kind: "lumi_roots",
@@ -1571,12 +1874,72 @@ test("low-quality combat effects collapse to lightweight visuals", () => {
   }])
 
   assert.equal(root.children.length, 1)
-  assert.equal(root.children[0].isMesh, true)
-  assert.equal(root.children[0].children.length, 0)
-  assert.ok(root.children[0].geometry.parameters?.thetaLength <= Math.PI * 2)
+  assert.equal(root.children[0].isGroup, true)
+  assert.equal(root.children[0].children.length, 9)
 })
 
-test("un-authored concealment fields use one compact volumetric field per clearing", () => {
+test("Brock armed beam renders as a directional lane instead of a ring", () => {
+  const root = new THREE.Group()
+  const renderer = new EffectRenderer(root)
+  renderer.sync([{
+    id: "zeus-beam",
+    kind: "zeus_beam_hole",
+    x: 100,
+    y: 200,
+    toX: 900,
+    toY: 200,
+    radius: 20,
+    life: .4,
+    maxLife: .5,
+  }])
+
+  const beam = root.children[0]
+  assert.equal(beam.geometry.type, "PlaneGeometry")
+  assert.ok(Math.abs(beam.scale.x - 800 * WORLD_SCALE) < .001)
+})
+
+test("Brock strike warnings render as readable target reticles", () => {
+  const root = new THREE.Group()
+  const renderer = new EffectRenderer(root)
+  renderer.sync([{
+    id: "zeus-warning",
+    kind: "zeus_strike_warning",
+    x: 300,
+    y: 300,
+    radius: 62,
+    life: .8,
+    maxLife: 1,
+  }])
+
+  const roles = []
+  root.traverse(child => {
+    if (child.userData.role) roles.push(child.userData.role)
+  })
+  assert.ok(roles.includes("telegraph-ring"))
+  assert.equal(roles.filter(role => role === "telegraph-tick").length, 4)
+})
+
+test("Mina mark detonation renders as a short radial impact burst", () => {
+  const root = new THREE.Group()
+  const renderer = new EffectRenderer(root)
+  renderer.sync([{
+    id: "mina-burst",
+    kind: "mina_mark_burst",
+    x: 300,
+    y: 300,
+    radius: 36,
+    life: .3,
+    maxLife: .42,
+  }])
+
+  const shards = []
+  root.traverse(child => {
+    if (child.userData.role === "impact-shard") shards.push(child)
+  })
+  assert.equal(shards.length, 8)
+})
+
+test("un-authored concealment fields use one instanced square-tile field per clearing", () => {
   const root = new THREE.Group()
   const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
 
@@ -1592,77 +1955,14 @@ test("un-authored concealment fields use one compact volumetric field per cleari
   assert.equal(mapRenderer.objects.size, 2)
   const fallback = [...mapRenderer.objects.values()][0]
   assert.equal(fallback.isGroup, true)
-  assert.equal(fallback.getObjectByName("bush-field-base").count, 1)
+  assert.equal(fallback.getObjectByName("bush-field-base").count, 2)
   assert.ok(fallback.getObjectByName("bush-field-crown").count >= 25)
   mapRenderer.dispose()
 })
 
-test("battle bushes keep one contiguous procedural field even when an authored GLB is ready", () => {
-  const originalInstantiateReadyEnvironment = assetRegistry.instantiateReadyEnvironment
-  assetRegistry.instantiateReadyEnvironment = visual => {
-    if (visual !== "bush_a") return null
-    const model = new THREE.Group()
-    model.userData.authoredEnvironmentVisual = visual
-    model.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial()))
-    return {
-      root: model,
-      animations: [],
-      asset: {placement: "repeat", footprint: 40, fitToCell: true},
-    }
-  }
-
-  try {
-    const root = new THREE.Group()
-    const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
-    mapRenderer.sync({
-      width: 240,
-      height: 180,
-      walls: [
-        {minX: 20, minY: 20, maxX: 100, maxY: 60, type: "bush"},
-        {minX: 100, minY: 20, maxX: 180, maxY: 60, type: "bush"},
-      ],
-    })
-
-    const mountedAuthoredBush = [...mapRenderer.objects.values()].some(object => {
-      let found = false
-      object.traverse(child => {
-        if (child.userData.authoredEnvironmentVisual === "bush_a") found = true
-      })
-      return found
-    })
-    const mountedField = [...mapRenderer.objects.values()].find(object => object.name === "bush-field")
-    assert.equal(mountedAuthoredBush, false)
-    assert.ok(mountedField)
-    assert.equal(mountedField.getObjectByName("bush-field-base").count, 1)
-    mapRenderer.dispose()
-  } finally {
-    assetRegistry.instantiateReadyEnvironment = originalInstantiateReadyEnvironment
-  }
-})
-
-test("low-quality map props without authored GLBs use instanced batches without contact shadows", () => {
+test("concealment fields use a dense procedural leaf field on the shared path", () => {
   const root = new THREE.Group()
-  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture(), lowQuality: true})
-
-  mapRenderer.sync({
-    width: 240,
-    height: 180,
-    walls: [
-      {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "fence"},
-      {minX: 80, minY: 20, maxX: 120, maxY: 60, type: "fence"},
-      {minX: 140, minY: 20, maxX: 180, maxY: 60, type: "crystal"},
-    ],
-  })
-
-  assert.equal(mapRenderer.objects.size, 2)
-  assert.equal([...mapRenderer.objects.values()].every(object => object.isInstancedMesh), true)
-  assert.equal([...mapRenderer.objects.values()].some(object => object.children?.length > 0), false)
-  mapRenderer.dispose()
-})
-
-test("low-quality concealment fields without authored GLBs use a dense procedural leaf field", () => {
-  const root = new THREE.Group()
-  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture(), lowQuality: true})
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
 
   mapRenderer.sync({
     width: 240,
@@ -1678,240 +1978,53 @@ test("low-quality concealment fields without authored GLBs use a dense procedura
   mapRenderer.dispose()
 })
 
-test("low-quality combat renders a rounded procedural stone batch without environment GLBs", () => {
-  const originalInstantiateEnvironment = assetRegistry.instantiateEnvironment
-  let loadCount = 0
-  assetRegistry.instantiateEnvironment = async () => {
-    loadCount += 1
-    return null
-  }
+test("stone walls keep fixed cells and can form contiguous barriers", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
 
-  try {
-    const root = new THREE.Group()
-    const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture(), lowQuality: true})
-    mapRenderer.sync({
-      width: 240,
-      height: 180,
-      walls: [{minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"}],
-    })
+  mapRenderer.sync({
+    width: 160,
+    height: 120,
+    tileSize: 40,
+    walls: [
+      {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
+      {minX: 60, minY: 20, maxX: 100, maxY: 60, type: "wall"},
+    ],
+  })
 
-    const wallObject = [...mapRenderer.objects.values()][0]
-    assert.equal(loadCount, 0)
-    assert.equal(wallObject.isInstancedMesh, true)
-    assert.equal(wallObject.geometry.type, "BufferGeometry")
-    assert.equal(wallObject.geometry.userData.stylizedStoneBlock, true)
-    assert.equal(wallObject.geometry.userData.stoneFacets, true)
-    assert.equal(wallObject.material.type, "MeshStandardMaterial")
-    assert.equal(wallObject.material.vertexColors, true)
-    assert.ok(wallObject.instanceColor)
-    mapRenderer.dispose()
-  } finally {
-    assetRegistry.instantiateEnvironment = originalInstantiateEnvironment
-  }
+  const wallObjects = [...mapRenderer.objects.values()]
+  assert.equal(wallObjects.length, 2)
+  assert.equal(wallObjects.every(object => object.children.length >= 3), true)
+  assert.equal(wallObjects.every(object => object.children.some(child => child.userData?.role === "contact-shadow")), true)
+  assert.equal(wallObjects.every(object => object.children.some(child => child.userData?.role === "grounding-bed")), true)
+  assert.ok(wallObjects.every(object => object.children[0].castShadow))
+  assert.ok(Math.abs(Math.abs(wallObjects[1].position.x - wallObjects[0].position.x) - 40 * WORLD_SCALE) < 1e-5)
+
+  mapRenderer.dispose()
 })
 
-test("moving the environment focus keeps the procedural map batch mounted", () => {
-  const originalInstantiateEnvironment = assetRegistry.instantiateEnvironment
-  let loadCount = 0
-  assetRegistry.instantiateEnvironment = async () => {
-    loadCount += 1
-    return null
-  }
+test("moving the environment focus keeps the procedural map object mounted", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  mapRenderer.setFocus(40, 40)
+  mapRenderer.sync({
+    width: 2400,
+    height: 2400,
+    walls: [{minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"}],
+  })
+  const proceduralWall = [...mapRenderer.objects.values()][0]
 
-  try {
-    const root = new THREE.Group()
-    const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture(), lowQuality: true})
-    mapRenderer.setFocus(40, 40)
-    mapRenderer.sync({
-      width: 2400,
-      height: 2400,
-      walls: [{minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"}],
-    })
-    const proceduralWall = [...mapRenderer.objects.values()][0]
+  mapRenderer.setFocus(2000, 2000)
 
-    mapRenderer.setFocus(2000, 2000)
-
-    assert.equal(loadCount, 0)
-    assert.equal([...mapRenderer.objects.values()][0], proceduralWall)
-    assert.equal(proceduralWall.parent, root)
-    mapRenderer.dispose()
-  } finally {
-    assetRegistry.instantiateEnvironment = originalInstantiateEnvironment
-  }
-})
-
-test("moving the environment focus never starts environment GLB requests", async () => {
-  const originalInstantiateReadyEnvironment = assetRegistry.instantiateReadyEnvironment
-  const originalInstantiateEnvironment = assetRegistry.instantiateEnvironment
-  const loadedVisuals = []
-  assetRegistry.instantiateReadyEnvironment = () => null
-  assetRegistry.instantiateEnvironment = async visual => {
-    loadedVisuals.push(visual)
-    const root = new THREE.Group()
-    root.userData.authoredEnvironmentVisual = visual
-    root.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial()))
-    return {root, asset: {placement: "single", footprint: 40, fitToCell: false}}
-  }
-
-  try {
-    const root = new THREE.Group()
-    const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture(), lowQuality: true})
-    const map = {
-      width: 2400,
-      height: 2400,
-      walls: [
-        {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
-        {minX: 1960, minY: 1960, maxX: 2000, maxY: 2000, type: "wall"},
-      ],
-    }
-
-    mapRenderer.setFocus(40, 40)
-    mapRenderer.sync(map)
-    await new Promise(resolve => setTimeout(resolve, 0))
-    assert.deepEqual(loadedVisuals, [])
-
-    mapRenderer.setFocus(2000, 2000)
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    assert.deepEqual(loadedVisuals, [])
-    assert.equal([...mapRenderer.objects.values()][0].parent, root)
-    mapRenderer.dispose()
-  } finally {
-    assetRegistry.instantiateReadyEnvironment = originalInstantiateReadyEnvironment
-    assetRegistry.instantiateEnvironment = originalInstantiateEnvironment
-  }
-})
-
-test("focus movement does not rebuild procedural environment batches", async () => {
-  const originalInstantiateReadyEnvironment = assetRegistry.instantiateReadyEnvironment
-  const originalInstantiateEnvironment = assetRegistry.instantiateEnvironment
-  const loadedVisuals = []
-  assetRegistry.instantiateReadyEnvironment = () => null
-  assetRegistry.instantiateEnvironment = async visual => {
-    loadedVisuals.push(visual)
-    const root = new THREE.Group()
-    root.userData.authoredEnvironmentVisual = visual
-    root.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial()))
-    return {root, asset: {placement: "single", footprint: 40, fitToCell: false}}
-  }
-
-  try {
-    const root = new THREE.Group()
-    const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture(), lowQuality: true})
-    const blockers = Array.from({length: 64}, (_, index) => ({
-      minX: -620,
-      minY: index * 4 - 128,
-      maxX: -580,
-      maxY: index * 4 - 124,
-      type: "wall",
-    }))
-    const map = {
-      width: 2400,
-      height: 2400,
-      walls: [...blockers, {minX: 760, minY: -20, maxX: 800, maxY: 20, type: "wall"}],
-    }
-
-    mapRenderer.setFocus(0, 0)
-    mapRenderer.sync(map)
-    await new Promise(resolve => setTimeout(resolve, 0))
-    const firstBatch = [...mapRenderer.objects.values()][0]
-    assert.equal(loadedVisuals.length, 0)
-
-    mapRenderer.setFocus(200, 0)
-    await new Promise(resolve => setTimeout(resolve, 0))
-
-    assert.equal(loadedVisuals.length, 0)
-    assert.equal([...mapRenderer.objects.values()][0], firstBatch)
-    mapRenderer.dispose()
-  } finally {
-    assetRegistry.instantiateReadyEnvironment = originalInstantiateReadyEnvironment
-    assetRegistry.instantiateEnvironment = originalInstantiateEnvironment
-  }
+  assert.equal([...mapRenderer.objects.values()][0], proceduralWall)
+  assert.equal(proceduralWall.parent, root)
+  mapRenderer.dispose()
 })
 
 test("environment focus refreshes only after a coarse world-space transition", () => {
   assert.equal(shouldRefreshEnvironmentFocus(null, {x: 0, y: 0}), true)
   assert.equal(shouldRefreshEnvironmentFocus({x: 0, y: 0}, {x: 255, y: 0}), false)
   assert.equal(shouldRefreshEnvironmentFocus({x: 0, y: 0}, {x: 256, y: 0}), true)
-})
-
-test("low-quality environment upgrades stay bounded and prefer the focused battle area", () => {
-  const walls = [
-    {minX: 960, minY: 960, maxX: 1000, maxY: 1000, type: "wall"},
-    {minX: 120, minY: 120, maxX: 160, maxY: 160, type: "wall"},
-    {minX: 1800, minY: 1800, maxX: 1840, maxY: 1840, type: "wall"},
-  ]
-
-  const selected = selectEnvironmentUpgradeWalls(walls, true, {x: 1000, y: 1000}, 1, 300)
-  assert.deepEqual(selected, [walls[0]])
-  assert.deepEqual(selectEnvironmentUpgradeWalls(walls, false, {x: 1000, y: 1000}, 1, 300), walls)
-})
-
-test("nearby authored environment colliders are prioritized over distant budget candidates", () => {
-  const walls = [
-    {minX: 0, minY: 0, maxX: 40, maxY: 40, type: "wall"},
-    {minX: 80, minY: 0, maxX: 120, maxY: 40, type: "wall"},
-    {minX: 1600, minY: 1600, maxX: 1640, maxY: 1640, type: "wall"},
-  ]
-
-  assert.deepEqual(selectEnvironmentUpgradeWalls(walls, true, {x: 0, y: 0}, 2, 720), walls.slice(0, 2))
-})
-
-test("environment proximity uses the collider edge instead of a long wall center", () => {
-  const wall = {minX: -500, minY: 0, maxX: 500, maxY: 40, type: "wall"}
-
-  assert.deepEqual(selectEnvironmentUpgradeWalls([wall], true, {x: 800, y: 20}, 1, 600), [wall])
-})
-
-test("selected environment GLBs are published and normalized to their authored height", async () => {
-  for (const [visual, filename] of [
-    ["desert_wall_a", "stylized_low_poly_stone_block.glb"],
-    ["bush_a", "stylized_bush.glb"],
-    ["altar_three_moons", "elf_lord_temple.glb"],
-  ]) {
-    assert.equal(ENVIRONMENT_ASSETS[visual].available, true)
-    assert.equal(await readFile(projectFile(`public/assets/environment/${filename}`)).then(() => true), true)
-  }
-  assert.equal(Object.hasOwn(ENVIRONMENT_ASSETS, "grass_a"), false)
-  assert.equal(Object.hasOwn(ENVIRONMENT_ASSETS, "bush_a"), true)
-  assert.equal(ENVIRONMENT_ASSETS.bush_a.unlit, true)
-
-  const root = new THREE.Group()
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(4, 8, 2), new THREE.MeshBasicMaterial())
-  mesh.position.set(3, 4, -2)
-  root.add(mesh)
-  normalizeEnvironmentRoot(root, 2)
-  const bounds = new THREE.Box3().setFromObject(root, true)
-  assert.ok(Math.abs(bounds.max.y - bounds.min.y - 2) < 0.001)
-  assert.ok(Math.abs((bounds.min.x + bounds.max.x) / 2) < 0.001)
-  assert.ok(Math.abs((bounds.min.z + bounds.max.z) / 2) < 0.001)
-  assert.ok(Math.abs(bounds.min.y) < 0.001)
-})
-
-test("bush GLBs can use an unlit green material without changing ordinary ground rendering", async () => {
-  const source = new THREE.Group()
-  source.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({color: 0x18d8b8, metalness: 1})))
-  const registry = new AssetRegistry({
-    environmentManifest: {
-      bush_a: {
-        url: "/bush.glb",
-        available: true,
-        scale: 1,
-        rotationOffset: 0,
-        placement: "repeat",
-        footprint: 32,
-        targetHeight: 1.55,
-        unlit: true,
-        materialColor: 0x3d9949,
-      },
-    },
-    load: async () => ({scene: source, animations: []}),
-  })
-
-  const instance = await registry.instantiateEnvironment("bush_a")
-  const mesh = instance.root.children[0]
-  assert.equal(mesh.material.isMeshBasicMaterial, true)
-  assert.equal(mesh.material.color.getHex(), 0x3d9949)
 })
 
 test("island decoration stays below impassable map surfaces", () => {
@@ -1938,6 +2051,24 @@ test("island decoration uses non-overlapping surfaces to avoid depth-fighting fa
   assert.equal(layers.every(layer => layer.material.polygonOffset), true)
   assert.equal(layers[0].geometry.parameters.innerRadius, layers[1].geometry.parameters.outerRadius)
   assert.equal(layers[1].geometry.parameters.innerRadius, layers[2].geometry.parameters.radius)
+  mapRenderer.dispose()
+})
+
+test("island approach bridges use faceted stone stepping slabs", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+
+  mapRenderer.syncIslandTerrain(true, 2400, 2400)
+
+  const bridges = []
+  root.traverse(node => {
+    if (node.name === "island-bridge") bridges.push(node)
+  })
+  assert.equal(bridges.length, 2)
+  assert.ok(bridges.every(bridge => bridge.children.length >= 5))
+  assert.ok(bridges.every(bridge => bridge.children.every(child => child.userData.role === "bridge-stone" || child.userData.role === "bridge-moss")))
+  assert.ok(bridges.every(bridge => bridge.children.some(child => child.userData.role === "bridge-moss")))
+
   mapRenderer.dispose()
 })
 
@@ -1974,6 +2105,12 @@ test("first-trial beacon is a layered faceted landmark with animated energy deta
   assert.equal(beam.material.side, THREE.DoubleSide)
   assert.equal(beamCore.material.depthWrite, false)
   assert.ok(core.material.emissiveIntensity > 0)
+
+  const beaconRotation = beacon.rotation.y
+  const coreRotation = core.rotation.y
+  mapRenderer.update(.5)
+  assert.equal(beacon.rotation.y, beaconRotation)
+  assert.ok(core.rotation.y > coreRotation)
 
   const closedBeamOpacity = beam.material.opacity
   const closedCoreIntensity = core.material.emissiveIntensity
@@ -2033,12 +2170,6 @@ test("storm overlay keeps one continuous, unobstructed ring while shrinking", ()
   mapRenderer.dispose()
 })
 
-test("large repeated bush fields use instancing instead of one GLB per collider", () => {
-  assert.equal(shouldBatchEnvironmentVisual("bush_a", 63), false)
-  assert.equal(shouldBatchEnvironmentVisual("bush_a", 64), true)
-  assert.equal(shouldBatchEnvironmentVisual("desert_wall_a", 1000), false)
-})
-
 test("ordinary grass is a single flat green ground without dense black-prone instances", () => {
   const root = new THREE.Group()
   const ground = new GroundRenderer(root)
@@ -2051,155 +2182,20 @@ test("ordinary grass is a single flat green ground without dense black-prone ins
   assert.equal(ground.mesh.material.color.getHex(), 0x4f9b50)
 })
 
-test("environment manifest defines an explicit placement contract", () => {
-  for (const asset of Object.values(ENVIRONMENT_ASSETS)) {
-    assert.equal(asset.scale > 0, true)
-    assert.equal(Number.isFinite(asset.rotationOffset), true)
-    assert.equal(["single", "repeat"].includes(asset.placement), true)
-    assert.equal(asset.footprint > 0, true)
-  }
-})
+test("grass ground receives directional prop shadows", () => {
+  const root = new THREE.Group()
+  const ground = new GroundRenderer(root)
 
-test("AssetRegistry caches environment loads and returns transformed independent clones", async () => {
-  let loads = 0
-  const template = new THREE.Group()
-  const registry = new AssetRegistry({
-    environmentManifest: {
-      crate_a: {
-        url: "/crate.glb",
-        available: true,
-        scale: 1.5,
-        rotationOffset: Math.PI / 2,
-        placement: "single",
-        footprint: 40,
-      },
-    },
-    load: async () => {
-      loads++
-      return {scene: template, animations: []}
-    },
-  })
+  ground.sync(1024, 768)
 
-  const [first, second] = await Promise.all([
-    registry.instantiateEnvironment("crate_a"),
-    registry.instantiateEnvironment("crate_a"),
-  ])
-
-  assert.equal(loads, 1)
-  assert.notEqual(first.root, second.root)
-  assert.equal(first.root.scale.x, 1.5)
-  assert.equal(first.root.rotation.y, Math.PI / 2)
-})
-
-test("environment wall modules fill each authored collider cell", () => {
-  const source = new THREE.Group()
-  source.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial()))
-  const wall = {minX: 0, minY: 0, maxX: 80, maxY: 40}
-  const environment = createEnvironmentModel(
-    {root: source, asset: {placement: "repeat", footprint: 40, fitToCell: true}},
-    wall,
-  )
-
-  assert.equal(environment.root.children.length, 2)
-  const bounds = new THREE.Box3().setFromObject(environment.root.children[0], true)
-  const size = bounds.getSize(new THREE.Vector3())
-  assert.ok(Math.abs(size.x - 40 * WORLD_SCALE) < .001)
-  assert.ok(Math.abs(size.z - 40 * WORLD_SCALE) < .001)
-  environment.root.traverse(child => {
-    child.geometry?.dispose?.()
-    child.material?.dispose?.()
-  })
-})
-
-test("environment altar extraction keeps only the authored centerpiece nodes", async () => {
-  const template = new THREE.Group()
-  const altar = new THREE.Group()
-  altar.name = "StatueDeity2"
-  const base = new THREE.Group()
-  base.name = "Circularbase"
-  const pillars = new THREE.Group()
-  pillars.name = "Pillars"
-  template.add(altar, base, pillars)
-  const registry = new AssetRegistry({
-    environmentManifest: {
-      altar: {
-        id: "altar",
-        url: "/altar.glb",
-        available: true,
-        placement: "single",
-        footprint: 40,
-        scale: 1,
-        rotationOffset: 0,
-        targetHeight: 2.6,
-        includeNodes: ["StatueDeity2", "Circularbase"],
-      },
-    },
-    load: async () => ({scene: template, animations: []}),
-  })
-
-  const instance = await registry.instantiateEnvironment("altar")
-  assert.ok(instance.root.getObjectByName("StatueDeity2"))
-  assert.ok(instance.root.getObjectByName("Circularbase"))
-  assert.equal(instance.root.getObjectByName("Pillars"), undefined)
+  assert.equal(ground.mesh.receiveShadow, true)
+  assert.equal(ground.mesh.material.type, "MeshStandardMaterial")
+  ground.mesh.geometry.dispose()
+  ground.mesh.material.dispose()
 })
 
 test("map signature changes when only a wall visual changes", () => {
   const first = {width: 100, height: 100, walls: [{minX: 0, minY: 0, maxX: 40, maxY: 40, type: "crates", visual: "desert_wall_a"}]}
   const second = {width: 100, height: 100, walls: [{...first.walls[0], visual: "barrel_a"}]}
   assert.notEqual(createMapSignature(first), createMapSignature(second))
-})
-
-test("an environment GLB replaces its fallback without moving the map container", async () => {
-  const container = new THREE.Group()
-  container.position.set(4, 0, 7)
-  const fallback = new THREE.Group()
-  const glb = new THREE.Group()
-  container.add(fallback)
-
-  const replaced = await replaceFallbackWithEnvironment(
-    container,
-    fallback,
-    {type: "crates"},
-    async () => ({root: glb, asset: {placement: "single", footprint: 40}}),
-  )
-
-  assert.equal(replaced, true)
-  assert.deepEqual(container.position.toArray(), [4, 0, 7])
-  assert.equal(container.children.includes(fallback), false)
-  assert.equal(container.children.includes(glb), true)
-})
-
-test("repeat placement fills a rectangular collider in world-space footprint cells", () => {
-  const placements = getEnvironmentPlacements(
-    {minX: 0, minY: 0, maxX: 80, maxY: 40},
-    {placement: "repeat", footprint: 40},
-    0.065,
-  )
-  assert.deepEqual(placements, [
-    {x: -1.3, z: 0},
-    {x: 1.3, z: 0},
-  ])
-})
-
-test("a stale environment load is discarded instead of entering the scene", async () => {
-  const container = new THREE.Group()
-  const fallback = new THREE.Group()
-  const staleRoot = new THREE.Group()
-  let discarded = null
-  container.add(fallback)
-
-  const replaced = await replaceFallbackWithEnvironment(
-    container,
-    fallback,
-    {type: "crates"},
-    async () => ({root: staleRoot}),
-    () => false,
-    undefined,
-    root => { discarded = root },
-  )
-
-  assert.equal(replaced, false)
-  assert.equal(container.children.includes(fallback), true)
-  assert.equal(container.children.includes(staleRoot), false)
-  assert.equal(discarded, staleRoot)
 })

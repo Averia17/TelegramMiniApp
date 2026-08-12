@@ -35,15 +35,8 @@ const createWingGeometry = side => {
   return new THREE.ShapeGeometry(shape)
 }
 
-const createHealthBar = (lowQuality = false) => {
+const createHealthBar = () => {
   const group = new THREE.Group()
-  if (lowQuality) {
-    const fill = new THREE.Object3D()
-    const damageFill = new THREE.Object3D()
-    fill.userData.fullWidth = .8
-    damageFill.userData.fullWidth = .8
-    return {group, fill, damageFill, label: null}
-  }
   group.scale.set(2.2, 2.2, 1)
   const background = new THREE.Sprite(new THREE.SpriteMaterial({
     color: 0x28172f,
@@ -114,15 +107,13 @@ const updateHealthLabel = (label, state) => {
   texture.needsUpdate = true
 }
 
-const createBat = (state, lowQuality = false) => {
+const createBat = state => {
   const group = new THREE.Group()
   group.userData.kind = "bat"
   group.userData.tier = Number(state.tier) || 1
 
   const tier = group.userData.tier
-  const bodyMaterial = lowQuality ? new THREE.MeshBasicMaterial({
-    color: tier >= 2 ? 0x7227a8 : 0x48206f,
-  }) : new THREE.MeshStandardMaterial({
+  const bodyMaterial = new THREE.MeshStandardMaterial({
     color: tier >= 2 ? 0x7227a8 : 0x48206f,
     roughness: .66,
     emissive: tier >= 2 ? 0x26003d : 0x130021,
@@ -153,9 +144,7 @@ const createBat = (state, lowQuality = false) => {
     group.add(eye)
   }
 
-  const wingMaterial = lowQuality ? new THREE.MeshBasicMaterial({
-    color: tier >= 2 ? 0x9437c7 : 0x62318c,
-  }) : new THREE.MeshStandardMaterial({
+  const wingMaterial = new THREE.MeshStandardMaterial({
     color: tier >= 2 ? 0x9437c7 : 0x62318c,
     roughness: .78,
     side: THREE.DoubleSide,
@@ -166,9 +155,9 @@ const createBat = (state, lowQuality = false) => {
   rightWing.position.set(.22, .2, 0)
   leftWing.castShadow = rightWing.castShadow = true
 
-  const shadow = lowQuality ? new THREE.Object3D() : createContactShadow(.72)
+  const shadow = createContactShadow(.72)
   shadow.position.y = -BAT_HEIGHT * WORLD_SCALE + .02
-  const health = createHealthBar(lowQuality)
+  const health = createHealthBar()
   updateHealthLabel(health.label, state)
   group.add(shadow, leftWing, rightWing, body, head, leftEar, rightEar, health.group)
 
@@ -193,11 +182,10 @@ const createBat = (state, lowQuality = false) => {
 }
 
 export class MonsterRenderer {
-  constructor(parent, {lowQuality = false} = {}) {
+  constructor(parent) {
     this.root = new THREE.Group()
     this.root.name = "MonsterRoot"
     this.views = new Map()
-    this.lowQuality = lowQuality
     parent.add(this.root)
   }
 
@@ -209,7 +197,7 @@ export class MonsterRenderer {
       active.add(String(id))
       let view = this.views.get(String(id))
       if (!view) {
-        view = createBat(state, this.lowQuality)
+        view = createBat(state)
         this.views.set(String(id), view)
         this.root.add(view.group)
       }

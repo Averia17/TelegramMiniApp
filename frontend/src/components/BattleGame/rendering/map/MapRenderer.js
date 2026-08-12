@@ -11,42 +11,15 @@ import {createStoneBlockGeometry} from "./StoneBlockGeometry.js"
 import {disposeObjectTree} from "../shared/disposal.js"
 import {WORLD_SCALE} from "../shared/coordinates.js"
 import {createMapSignature} from "./mapSignature.js"
-import {flatMaterial} from "../shared/materials.js"
 import {ISLAND_PHASE_ATMOSPHERES} from "../../phaseVisuals.js"
 
 const ISLAND_TERRAIN_LAYER_HEIGHTS = [0.003, 0.006, 0.009]
 const STORM_SEGMENTS = 96
-const REPEATED_BUSH_BATCH_THRESHOLD = 64
-const LOW_QUALITY_ENVIRONMENT_BUDGET = 32
-// The isometric camera exposes slightly more than 520 world units on wide
-// battle screens, so keep the authored window just beyond the visible area.
-const LOW_QUALITY_ENVIRONMENT_RADIUS = 600
 // Rebuilds dispose and recreate instanced environment batches. Keep this
 // coarse so ordinary movement never turns into a stream of scene rebuilds.
 const ENVIRONMENT_FOCUS_REBUILD_DISTANCE = 256
-const LOW_QUALITY_PROP_COLORS = Object.freeze({
-  wall: 0x4d5a5b,
-  fence: 0x8b5436,
-  crates: 0xb86f31,
-  barrels: 0xa6463c,
-  cactus: 0x2f9b52,
-  crystal: 0x7653dc,
-  bones: 0xe7d9b7,
-  destructible: 0x64635f,
-  tree: 0x4f352b,
-  dead_tree: 0x77736a,
-  shipwreck: 0x6f4b35,
-  altar_three_moons: 0x5079b4,
-  sacrificial_stone: 0x8e394c,
-  menhir: 0x626879,
-})
 const STONE_PROP_TYPES = new Set(["wall", "destructible", "sacrificial_stone", "menhir"])
-const LOW_QUALITY_STONE_PALETTES = Object.freeze({
-  wall: [0x46595b, 0x53686a, 0x607678],
-  destructible: [0x5c5d58, 0x6b6a64, 0x77766e],
-  sacrificial_stone: [0x783746, 0x8e4655, 0x9d5362],
-  menhir: [0x555b69, 0x626879, 0x70778a],
-})
+const DEFAULT_MAP_TILE_SIZE = 40
 const BEACON_VISUAL_SCALE = 24
 
 const createBeaconVisual = () => {
@@ -262,99 +235,74 @@ const createBeaconVisual = () => {
   return group
 }
 
-const lowQualityPropHeight = type =>
-  type === "fence" ? .9 : type === "crates" ? 1.65 : type === "tree" ? 2.8 :
-    type === "shipwreck" ? 1.9 : type === "menhir" ? 1.45 : 2.15
-
-const createLowQualityPropBatch = (walls, type, waterTexture) => {
-  const isWater = type === "water"
-  const isStone = STONE_PROP_TYPES.has(type)
-  const geometry = isWater
-    ? new THREE.PlaneGeometry(1, 1)
-    : isStone && walls.length <= 128
-      ? createStoneBlockGeometry()
-      : new THREE.BoxGeometry(1, 1, 1)
-  if (isStone) {
-    geometry.userData.stylizedStoneBlock = true
-    const colors = new Float32Array(geometry.attributes.position.count * 3)
-    colors.fill(1)
-    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3))
-  }
-  const material = isWater
-    ? flatMaterial(0xffffff, {map: waterTexture, transparent: true, opacity: .88})
-    : isStone
-      ? new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        vertexColors: true,
-        roughness: .94,
-        metalness: 0,
-        flatShading: true,
-        side: THREE.DoubleSide,
-      })
-      : new THREE.MeshBasicMaterial({color: LOW_QUALITY_PROP_COLORS[type] || LOW_QUALITY_PROP_COLORS.wall})
-  const mesh = new THREE.InstancedMesh(geometry, material, walls.length)
-  const matrix = new THREE.Matrix4()
-  const position = new THREE.Vector3()
-  const scale = new THREE.Vector3()
-  const rotation = new THREE.Quaternion()
-  const identity = new THREE.Quaternion()
-  const instanceColor = new THREE.Color()
-  const palette = LOW_QUALITY_STONE_PALETTES[type] || []
-  if (isWater) rotation.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0))
-
-  walls.forEach((wall, index) => {
-    const width = Math.max(2, wall.maxX - wall.minX) * WORLD_SCALE
-    const depth = Math.max(2, wall.maxY - wall.minY) * WORLD_SCALE
-    const height = lowQualityPropHeight(type)
-    position.set(
-      (wall.minX + wall.maxX) * .5 * WORLD_SCALE,
-      isWater ? .015 : height * .5,
-      (wall.minY + wall.maxY) * .5 * WORLD_SCALE,
-    )
-    scale.set(width, isWater ? depth : height, isWater ? 1 : depth)
-    matrix.compose(position, isWater ? rotation : identity, scale)
-    mesh.setMatrixAt(index, matrix)
-    if (isStone) {
-      instanceColor.setHex(palette[index % palette.length])
-      mesh.setColorAt(index, instanceColor)
-    }
+const createIslandBridge = () => {
+  const group = new THREE.Group()
+  group.name = "island-bridge"
+  const stone = new THREE.MeshStandardMaterial({
+    color: 0x7d8981,
+    vertexColors: true,
+    roughness: .9,
+    metalness: 0,
+    flatShading: true,
   })
-  mesh.instanceMatrix.needsUpdate = true
-  if (isStone) mesh.instanceColor.needsUpdate = true
-  mesh.computeBoundingSphere()
-  return mesh
+  const moss = new THREE.MeshStandardMaterial({
+    color: 0x5e8e4d,
+    roughness: 1,
+    flatShading: true,
+  })
+
+  for (let index = 0; index < 5; index += 1) {
+    const stoneBlock = new THREE.Mesh(
+      createStoneBlockGeometry().scale(28 * WORLD_SCALE, .22, 34 * WORLD_SCALE),
+      stone,
+    )
+    stoneBlock.position.set((index - 2) * 29 * WORLD_SCALE, .12, 0)
+    stoneBlock.rotation.y = (index - 2) * .025
+    stoneBlock.userData.role = "bridge-stone"
+    stoneBlock.castShadow = true
+    stoneBlock.receiveShadow = true
+
+    const mossPatch = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(2.8 * WORLD_SCALE, 0),
+      moss,
+    )
+    mossPatch.position.set((index - 2) * 29 * WORLD_SCALE + (index % 2 ? 1 : -1) * WORLD_SCALE, .28, (index % 2 ? 5 : -5) * WORLD_SCALE)
+    mossPatch.scale.set(1.5, .34, .72)
+    mossPatch.userData.role = "bridge-moss"
+    mossPatch.castShadow = true
+    mossPatch.receiveShadow = true
+
+    group.add(stoneBlock, mossPatch)
+  }
+  return group
 }
 
-export const shouldBatchEnvironmentVisual = (visual, count) =>
-  visual === "bush_a" && Number(count) >= REPEATED_BUSH_BATCH_THRESHOLD
+const splitStoneWall = (wall, tileSize) => {
+  const cellSize = Math.max(1, Number(tileSize) || DEFAULT_MAP_TILE_SIZE)
+  const width = Math.max(0, Number(wall.maxX) - Number(wall.minX))
+  const depth = Math.max(0, Number(wall.maxY) - Number(wall.minY))
+  const columns = Math.max(1, Math.ceil(width / cellSize))
+  const rows = Math.max(1, Math.ceil(depth / cellSize))
+  const blocks = []
 
-export const selectEnvironmentUpgradeWalls = (
-  walls,
-  lowQuality,
-  focus = null,
-  budget = LOW_QUALITY_ENVIRONMENT_BUDGET,
-  maxDistance = LOW_QUALITY_ENVIRONMENT_RADIUS,
-) => {
-  const candidates = Array.isArray(walls) ? walls : []
-  if (!lowQuality) return candidates
-  const limit = Math.max(0, Math.floor(Number(budget) || 0))
-  if (!limit || !candidates.length) return []
-  const focusX = Number.isFinite(Number(focus?.x)) ? Number(focus.x) : 0
-  const focusY = Number.isFinite(Number(focus?.y)) ? Number(focus.y) : 0
-  const maxDistanceSquared = Math.max(0, Number(maxDistance) || 0) ** 2
-  const ranked = candidates.map((wall, index) => {
-    const minX = Number(wall.minX)
-    const maxX = Number(wall.maxX)
-    const minY = Number(wall.minY)
-    const maxY = Number(wall.maxY)
-    const x = Math.max(minX, Math.min(maxX, focusX))
-    const y = Math.max(minY, Math.min(maxY, focusY))
-    return {wall, index, distanceSquared: (x - focusX) ** 2 + (y - focusY) ** 2}
-  }).sort((a, b) => a.distanceSquared - b.distanceSquared || a.index - b.index)
-  const nearby = ranked.filter(item => item.distanceSquared <= maxDistanceSquared)
-  const selected = nearby.length ? nearby : ranked
-  return selected.slice(0, limit).map(item => item.wall)
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      const minX = Number(wall.minX) + column * cellSize
+      const minY = Number(wall.minY) + row * cellSize
+      blocks.push({
+        ...wall,
+        minX,
+        minY,
+        maxX: Math.min(Number(wall.maxX), minX + cellSize),
+        maxY: Math.min(Number(wall.maxY), minY + cellSize),
+      })
+    }
+  }
+  return blocks
 }
+
+const expandStoneWalls = (walls, tileSize) =>
+  walls.flatMap(wall => splitStoneWall(wall, tileSize))
 
 export const smoothStormRadius = (current, target, delta, speed = 9) => {
   const currentRadius = Number(current)
@@ -407,7 +355,7 @@ const mergeWalls = walls => [...walls]
   .sort((a, b) => a.type.localeCompare(b.type) || a.minY - b.minY || a.maxY - b.maxY || a.minX - b.minX)
   .reduce((merged, wall) => {
     const previous = merged.at(-1)
-    if (previous && previous.type === wall.type && previous.visual === wall.visual && previous.minY === wall.minY &&
+    if (previous && wall.type === "water" && previous.type === wall.type && previous.visual === wall.visual && previous.minY === wall.minY &&
       previous.maxY === wall.maxY && Math.abs(previous.maxX - wall.minX) < 0.01) {
       previous.maxX = wall.maxX
     } else {
@@ -429,9 +377,8 @@ export const shouldRefreshEnvironmentFocus = (previous, next, distance = ENVIRON
 }
 
 export class MapRenderer {
-  constructor(root, {waterTexture = null, lowQuality = false} = {}) {
+  constructor(root, {waterTexture = null} = {}) {
     this.root = root
-    this.lowQuality = lowQuality
     this.ground = new GroundRenderer(root)
     this.waterTexture = waterTexture || createWaterTexture()
     this.objects = new Map()
@@ -555,8 +502,11 @@ export class MapRenderer {
       const outerIslandRadius = width * .5 * WORLD_SCALE * .9
       const forestRadius = width * .5 * WORLD_SCALE * .68
       const plazaRadius = 205 * WORLD_SCALE
-      const terrainMaterial = color => new THREE.MeshBasicMaterial({
+      const terrainMaterial = color => new THREE.MeshStandardMaterial({
         color,
+        map: this.ground.texture,
+        roughness: 1,
+        metalness: 0,
         polygonOffset: true,
         polygonOffsetFactor: -1,
         polygonOffsetUnits: -1,
@@ -570,13 +520,13 @@ export class MapRenderer {
       ;[waterRing, forest, plaza].forEach((mesh, index) => {
         mesh.rotation.x = -Math.PI / 2
         mesh.position.y = ISLAND_TERRAIN_LAYER_HEIGHTS[index]
+        mesh.receiveShadow = true
         group.add(mesh)
       })
-      const bridgeMaterial = flatMaterial(0x6d5237)
-      const bridgeNorth = new THREE.Mesh(new THREE.BoxGeometry(150 * WORLD_SCALE, 5 * WORLD_SCALE, 38 * WORLD_SCALE), bridgeMaterial)
-      const bridgeSouth = bridgeNorth.clone()
-      bridgeNorth.position.set(0, .08, -205 * WORLD_SCALE)
-      bridgeSouth.position.set(0, .08, 205 * WORLD_SCALE)
+      const bridgeNorth = createIslandBridge()
+      const bridgeSouth = createIslandBridge()
+      bridgeNorth.position.set(0, 0, -205 * WORLD_SCALE)
+      bridgeSouth.position.set(0, 0, 205 * WORLD_SCALE)
       group.add(bridgeNorth, bridgeSouth)
       group.position.set(width * WORLD_SCALE * .5, 0, height * WORLD_SCALE * .5)
       this.islandTerrain = group
@@ -592,14 +542,6 @@ export class MapRenderer {
     const signature = createMapSignature(map)
     if (signature === this.signature) return
     this.signature = signature
-    if (this.lowQuality) {
-      this.objects.forEach(object => {
-        this.root.remove(object)
-        disposeObjectTree(object)
-      })
-      this.objects.clear()
-      this.bushVisuals.clear()
-    }
     this.ground.sync(map.width, map.height, this.ground.theme, walls.filter(wall => wall.type === "water"))
 
     const active = new Set()
@@ -618,27 +560,17 @@ export class MapRenderer {
           `${wall.minX}:${wall.minY}:${wall.maxX}:${wall.maxY}:${wall.visual || ""}`).join("|")}`
         active.add(key)
         if (!this.objects.has(key)) {
-          this.add(key, createBushField(component, kind, {lowQuality: this.lowQuality}), component)
+          this.add(key, createBushField(component, kind), component)
         }
       })
     })
-    const mergedWalls = mergeWalls(walls.filter(wall => wall.type !== "bush" && wall.type !== "half" && wall.type !== "moon_mist"))
-    const renderWalls = mergedWalls
-    if (this.lowQuality) {
-      const batches = new Map()
-      renderWalls.forEach(wall => {
-        const type = wall.type || "wall"
-        const group = batches.get(type) || []
-        group.push(wall)
-        batches.set(type, group)
-      })
-      batches.forEach((batch, type) => {
-        const key = `low-quality:${type}`
-        active.add(key)
-        if (!this.objects.has(key)) this.add(key, createLowQualityPropBatch(batch, type, this.waterTexture))
-      })
-    }
-    if (!this.lowQuality) renderWalls.forEach((wall, index) => {
+    const nonBushWalls = walls.filter(wall => wall.type !== "bush" && wall.type !== "half" && wall.type !== "moon_mist")
+    const renderWalls = [
+      ...mergeWalls(nonBushWalls.filter(wall => wall.type === "water")),
+      ...nonBushWalls.filter(wall => wall.type !== "water" && !STONE_PROP_TYPES.has(wall.type)),
+      ...expandStoneWalls(nonBushWalls.filter(wall => STONE_PROP_TYPES.has(wall.type)), map.tileSize),
+    ]
+    renderWalls.forEach((wall, index) => {
       const key = mapWallKey(wall)
       active.add(key)
       if (!this.objects.has(key)) {
@@ -651,21 +583,6 @@ export class MapRenderer {
       this.bushVisuals.delete(key)
       this.debris.push({object, age: 0, life: 0.28, baseY: object.position.y})
     })
-  }
-
-  setLowQuality() {
-    if (this.lowQuality) return
-    this.lowQuality = true
-    this.objects.forEach(object => {
-      this.root.remove(object)
-      disposeObjectTree(object)
-    })
-    this.objects.clear()
-    this.bushVisuals.clear()
-    this.debris.forEach(piece => disposeObjectTree(piece.object))
-    this.debris = []
-    this.signature = ""
-    if (this.mapState) this.sync(this.mapState)
   }
 
   add(key, object, bushWalls = null) {
@@ -709,14 +626,17 @@ export class MapRenderer {
         this.bushVisuals.delete(key)
         continue
       }
-      setBushVisibilityOpacity(entry.object, getBushVisibilityOpacity(this.focus, entry.walls))
+      setBushVisibilityOpacity(
+        entry.object,
+        getBushVisibilityOpacity(this.focus, entry.walls),
+        this.focus,
+      )
     }
     if (this.stormMesh) {
       this.stormRadius = smoothStormRadius(this.stormRadius, this.stormTargetRadius, delta)
       updateStormRingGeometry(this.stormMesh.geometry, this.stormRadius * WORLD_SCALE, this.stormMesh.geometry.userData.outerRadius)
     }
     if (this.beaconGroup) {
-      this.beaconGroup.rotation.y += delta * 1.5
       this.beaconGroup.position.y = Math.sin(performance.now() / 300) * .015
       const data = this.beaconGroup.userData
       const pulse = Math.sin(performance.now() / 180) * (data.open ? .08 : .025)

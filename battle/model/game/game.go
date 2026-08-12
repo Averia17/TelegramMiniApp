@@ -451,7 +451,7 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 	}
 	if target.ShieldUntil > time.Now().UnixMilli() {
 		if target.StoneArmorUntil > time.Now().UnixMilli() {
-			target.SuppressedRage += amount
+			target.SuppressedRage = int(math.Min(240, float64(target.SuppressedRage+amount)))
 		}
 		amount = int(math.Round(float64(amount) * .6))
 	}
@@ -532,9 +532,11 @@ func (gs *GameState) updateDelayedEffects() {
 	gs.DelayedEffects = kept
 }
 
-func (gs *GameState) addEffect(kind string, x, y, toX, toY, radius, angle, reach, arc float64, color string, damage int, duration int64) {
+func (gs *GameState) addEffect(kind string, x, y, toX, toY, radius, angle, reach, arc float64, color string, damage int, duration int64) *BattleEffect {
 	now := time.Now().UnixMilli()
-	gs.Effects = append(gs.Effects, &BattleEffect{Kind: kind, X: x, Y: y, ToX: toX, ToY: toY, Radius: radius, Angle: angle, Range: reach, Arc: arc, Color: color, Damage: damage, CreatedAt: now, ExpiresAt: now + duration})
+	effect := &BattleEffect{Kind: kind, X: x, Y: y, ToX: toX, ToY: toY, Radius: radius, Angle: angle, Range: reach, Arc: arc, Color: color, Damage: damage, CreatedAt: now, ExpiresAt: now + duration}
+	gs.Effects = append(gs.Effects, effect)
+	return effect
 }
 
 func (gs *GameState) expireEffects() {
@@ -555,14 +557,18 @@ func (gs *GameState) updateActiveAbilities() {
 			continue
 		}
 		source.LastAbilityTick = now
-		if source.ChannelUntil > now {
-			gs.addEffect("beam", source.X, source.Y, source.X+math.Cos(source.Rotation)*840, source.Y+math.Sin(source.Rotation)*840, 0, 0, 0, 0, source.Color, 0, 90)
-			gs.beamDamage(source, source.Rotation, 840, 15)
-		}
 		if source.VortexUntil > now && now >= source.VortexTickAt {
 			source.VortexTickAt = now + 250
-			gs.addEffect("vortex", source.X, source.Y, 0, 0, 125, 0, 0, 0, source.Color, 0, 100)
-			gs.radialDamage(source.PlayerId, source.X, source.Y, 125, 4)
+			radius := source.VortexRadius
+			if radius <= 0 {
+				radius = MicoVortexBaseRadius
+			}
+			damage := source.VortexDamage
+			if damage <= 0 {
+				damage = 4
+			}
+			gs.addEffect("vortex", source.X, source.Y, 0, 0, radius, 0, 0, 0, source.Color, damage, 100)
+			gs.radialDamage(source.PlayerId, source.X, source.Y, radius, damage)
 			source.Lives = int(math.Min(float64(source.MaxLives), float64(source.Lives+1)))
 		}
 		if source.VineUntil > now && (source.VineUntil-now)%500 < 20 {
@@ -744,8 +750,17 @@ func (gs *GameState) updateBullets() {
 				p.Marks++
 			}
 			if b.Kind == "mina_star" {
-				p.Marks = 1
-				gs.LightMarkedUntil[p.PlayerId] = time.Now().UnixMilli() + 4000
+				now := time.Now().UnixMilli()
+				if gs.LightMarkedUntil[p.PlayerId] > now {
+					bonus := int(math.Round(float64(b.Damage) * .45))
+					gs.dealPlayerDamage(attacker, p, bonus)
+					gs.LightMarkedUntil[p.PlayerId] = 0
+					p.Marks = 0
+					gs.addEffect("mina_mark_burst", p.X, p.Y, 0, 0, p.Radius+22, 0, 0, 0, "#ffb5f2", bonus, 420)
+				} else {
+					p.Marks = 1
+					gs.LightMarkedUntil[p.PlayerId] = now + 4000
+				}
 			}
 			if b.Kind == "spore" {
 				slowUntil := time.Now().UnixMilli() + cappedSkillDuration(NeedleSporeSlowDuration)
@@ -755,6 +770,9 @@ func (gs *GameState) updateBullets() {
 			}
 			if b.Kind == "spore" || b.Kind == "quantum" {
 				gs.radialDamageExcept(b.PlayerId, b.X, b.Y, map[string]float64{"spore": 115, "quantum": 75}[b.Kind], b.Damage, p.PlayerId)
+			}
+			if b.Kind == "spore" {
+				gs.splitProjectile(b)
 			}
 			if b.Splash > 0 && b.Kind != "spore" && b.Kind != "quantum" {
 				gs.radialDamageExcept(b.PlayerId, b.X, b.Y, b.Splash, b.Damage, p.PlayerId)
@@ -849,9 +867,19 @@ func (gs *GameState) splitProjectile(parent *bullet.Bullet) {
 	}
 	angles := []float64{}
 	kind, damage, speed, size, distance := "spike", 1, 0.3*RuntimeProjectileSpeedScale, 3.5, 240.0
+	targetID := ""
 	if parent.Kind == "spore" {
+		damage = int(math.Max(2, math.Round(float64(parent.Damage)*.25)))
 		for i := 0; i < 6; i++ {
 			angles = append(angles, float64(i)*math.Pi/3)
+		}
+		bestDistance := math.MaxFloat64
+		for id, target := range gs.Players {
+			if target != nil && target.CanBulletHurt(parent.PlayerId, parent.Team) {
+				if candidateDistance := math.Hypot(target.X-parent.X, target.Y-parent.Y); candidateDistance < bestDistance {
+					targetID, bestDistance = id, candidateDistance
+				}
+			}
 		}
 	} else {
 		kind, damage, speed, size, distance = "quantum_shard", int(math.Max(1, float64(parent.Damage)/2)), 0.275*RuntimeProjectileSpeedScale, 4.5, parent.MaxRange*.5
@@ -861,6 +889,7 @@ func (gs *GameState) splitProjectile(parent *bullet.Bullet) {
 	for _, angle := range angles {
 		child := bullet.NewBullet(parent.PlayerId, parent.Team, parent.X, parent.Y, size, angle, parent.Color)
 		child.Kind, child.Damage, child.Speed, child.MaxRange, child.CommandID = kind, damage, speed, distance, parent.CommandID
+		child.TargetID, child.Homing = targetID, targetID != ""
 		gs.Bullets = append(gs.Bullets, child)
 	}
 }
@@ -1175,7 +1204,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 		p.LastAbilityID = ackID
 		p.LastAbilityOK = false
 	}
-	if p == nil || !p.IsAlive() || p.StunUntil > ts || !gs.CombatEnabled() {
+	if p == nil || !p.IsAlive() || p.StunUntil > ts || p.CastUntil > ts || !gs.CombatEnabled() {
 		return
 	}
 	primary := slot == "primary"
@@ -1344,7 +1373,7 @@ func (gs *GameState) playerShootWithMode(id string, ts int64, screenAngle float6
 		gs.emitCombatEvent(CombatEvent{Kind: "attack", CommandID: commandID, SourceID: id, Accepted: accepted, Resolved: resolved})
 	}
 	p := gs.Players[id]
-	if p == nil || !p.IsAlive() || p.StunUntil > ts || p.ChannelUntil > ts || !gs.CombatEnabled() || p.Ammo <= 0 {
+	if p == nil || !p.IsAlive() || p.StunUntil > ts || p.CastUntil > ts || p.ChannelUntil > ts || !gs.CombatEnabled() || p.Ammo <= 0 {
 		emitResult(false, true)
 		return
 	}
@@ -2074,37 +2103,19 @@ func (gs *GameState) getWinningTeam() string {
 }
 
 func (gs *GameState) monstersAdd(count int) {
-	candidates := make([][2]float64, 0, len(gs.Map.Spawners)+1)
-	candidates = append(candidates, [2]float64{gs.Map.WidthInPixels / 2, gs.Map.HeightInPixels / 2})
-	for _, spawn := range gs.Map.Spawners {
-		candidates = append(candidates, [2]float64{spawn.CenterX(), spawn.CenterY()})
+	if gs.Map == nil || count <= 0 {
+		return
 	}
+
+	regions := monsterSpawnRegions()
 	placed := make([][2]float64, 0, count)
 	for i := 0; i < count; i++ {
 		tier := 1
 		if i == 0 {
 			tier = 2
 		}
-		bestIndex, bestDistance := 0, -1.0
-		for index, point := range candidates {
-			nearest := math.MaxFloat64
-			for _, p := range gs.Players {
-				if d := math.Hypot(point[0]-p.X, point[1]-p.Y); d < nearest {
-					nearest = d
-				}
-			}
-			for _, other := range placed {
-				if d := math.Hypot(point[0]-other[0], point[1]-other[1]); d < nearest {
-					nearest = d
-				}
-			}
-			if nearest > bestDistance {
-				bestIndex, bestDistance = index, nearest
-			}
-		}
-		x, y := candidates[bestIndex][0], candidates[bestIndex][1]
-		placed = append(placed, candidates[bestIndex])
-		candidates = append(candidates[:bestIndex], candidates[bestIndex+1:]...)
+		x, y := gs.randomMonsterSpawn(regions[i%len(regions)], placed)
+		placed = append(placed, [2]float64{x, y})
 		lives := monster.MonsterLives
 		if tier == 2 {
 			lives = monster.EliteMonsterLives
@@ -2113,6 +2124,70 @@ func (gs *GameState) monstersAdd(count int) {
 		m.Tier, m.MaxLives = tier, lives
 		gs.Monsters[fmt.Sprintf("%d", geometry.GetRandomInt(0, 1000))] = m
 	}
+}
+
+const (
+	monsterSpawnColumns   = 4
+	monsterSpawnRows      = 2
+	monsterSpawnAttempts  = 32
+	monsterSpawnClearance = PlayerSize * 2
+)
+
+func monsterSpawnRegions() [][2]int {
+	regions := make([][2]int, 0, monsterSpawnColumns*monsterSpawnRows)
+	for row := 0; row < monsterSpawnRows; row++ {
+		for column := 0; column < monsterSpawnColumns; column++ {
+			regions = append(regions, [2]int{column, row})
+		}
+	}
+	for i := len(regions) - 1; i > 0; i-- {
+		j := geometry.GetRandomInt(0, i)
+		regions[i], regions[j] = regions[j], regions[i]
+	}
+	return regions
+}
+
+func (gs *GameState) randomMonsterSpawn(region [2]int, placed [][2]float64) (float64, float64) {
+	cellWidth := gs.Map.WidthInPixels / monsterSpawnColumns
+	cellHeight := gs.Map.HeightInPixels / monsterSpawnRows
+	minX := float64(region[0])*cellWidth + monsterSpawnClearance
+	maxX := float64(region[0]+1)*cellWidth - monsterSpawnClearance
+	minY := float64(region[1])*cellHeight + monsterSpawnClearance
+	maxY := float64(region[1]+1)*cellHeight - monsterSpawnClearance
+
+	for attempt := 0; attempt < monsterSpawnAttempts; attempt++ {
+		x := geometry.GetRandomFloat(minX, maxX)
+		y := geometry.GetRandomFloat(minY, maxY)
+		if gs.isMonsterSpawnFree(x, y, placed) {
+			return x, y
+		}
+	}
+
+	return (minX + maxX) / 2, (minY + maxY) / 2
+}
+
+func (gs *GameState) isMonsterSpawnFree(x, y float64, placed [][2]float64) bool {
+	body := &geometry.CircleBody{X: x, Y: y, Radius: PlayerSize / 2}
+	for _, wall := range gs.Map.Collisions {
+		if wall == nil || !geometry.IsBlockingWall(wall.Type) {
+			continue
+		}
+		wallBody := &geometry.RectangleBody{X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY}
+		if geometry.CircleToRectangle(body, wallBody) {
+			return false
+		}
+	}
+	for _, p := range gs.Players {
+		if p != nil && math.Hypot(x-p.X, y-p.Y) < monsterSpawnClearance {
+			return false
+		}
+	}
+	for _, other := range placed {
+		if math.Hypot(x-other[0], y-other[1]) < monsterSpawnClearance {
+			return false
+		}
+	}
+	return true
 }
 
 func (gs *GameState) monstersClear() {

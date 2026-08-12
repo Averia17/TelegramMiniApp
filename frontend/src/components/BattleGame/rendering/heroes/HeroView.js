@@ -103,18 +103,15 @@ const createDeathBurst = heroName => {
 }
 
 export class HeroView {
-  constructor(id, state, simpleMaterials = false) {
+  constructor(id, state) {
     this.id = id
-    this.simpleMaterials = simpleMaterials
     const readyInstance = assetRegistry.instantiateReadyHero(state.hero)
     this.group = new THREE.Group()
-    this.shadow = simpleMaterials ? null : createContactShadow(1.05)
+    this.shadow = createContactShadow(1.05)
     this.model = readyInstance ? readyInstance.root : new THREE.Group()
     this.modelMaterials = collectMaterials(this.model)
     this.hitMaterials = collectHitMaterials(this.modelMaterials)
     this.modelOpacity = 1
-    // HP is gameplay-critical information, so keep the badge visible even on
-    // the low-quality rendering path.
     this.label = createLabel(state)
     this.deathBurst = createDeathBurst(state.hero)
     this.taunt = createClownTaunt()
@@ -205,24 +202,6 @@ export class HeroView {
     this.targetX = state.x
     this.targetY = state.y
     updateLabel(this.label, state)
-  }
-
-  setLowQuality() {
-    this.simpleMaterials = true
-    if (this.shadow) {
-      this.group.remove(this.shadow)
-      disposeObjectTree(this.shadow)
-      this.shadow = null
-    }
-  }
-
-  setShadowCasting(enabled) {
-    const next = Boolean(enabled)
-    if (this.shadowCasting === next) return
-    this.shadowCasting = next
-    this.model.traverse(child => {
-      if (child.isMesh) child.castShadow = next
-    })
   }
 
   setResult(result) {

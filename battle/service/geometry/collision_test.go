@@ -152,6 +152,18 @@ func TestMoveCircleWithBlockingWallsAllowsBushes(t *testing.T) {
 	}
 }
 
+func TestMoveCircleWithBlockingWallsBlocksMoonMist(t *testing.T) {
+	sh := NewSpatialHash(40)
+	sh.Insert(&WallTile{MinX: 100, MinY: 0, MaxX: 140, MaxY: 200, Type: "moon_mist"})
+	body := &CircleBody{X: 50, Y: 80, Radius: 10}
+
+	MoveCircleWithBlockingWalls(body, sh, 120, 0)
+
+	if body.X != 90 || body.Y != 80 {
+		t.Fatalf("move through moon mist ended at %.2f,%.2f, want 90,80 before the object", body.X, body.Y)
+	}
+}
+
 func BenchmarkCollidesCircleWithBlockingWalls(b *testing.B) {
 	sh := NewSpatialHash(32)
 	for x := 0; x < 256; x += 32 {

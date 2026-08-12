@@ -2,9 +2,12 @@ import * as THREE from "three"
 import {WORLD_SCALE} from "../shared/coordinates.js"
 import {flatMaterial} from "../shared/materials.js"
 
-export const BUSH_NEAR_RADIUS = 72
-export const BUSH_FADE_RADIUS = 220
+export const BUSH_NEAR_RADIUS = 24
+export const BUSH_FADE_RADIUS = 72
 export const BUSH_NEAR_OPACITY = 0.58
+export const BUSH_CLUSTER_NEAR_RADIUS = 8
+export const BUSH_CLUSTER_FADE_RADIUS = 26
+export const BUSH_TILE_SIZE = 40
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 
@@ -12,6 +15,14 @@ const distanceToWall = (focus, wall) => {
   const dx = Math.max(wall.minX - focus.x, 0, focus.x - wall.maxX)
   const dy = Math.max(wall.minY - focus.y, 0, focus.y - wall.maxY)
   return Math.hypot(dx, dy)
+}
+
+const visibilityFromDistance = (distance, nearRadius, fadeRadius) => {
+  if (!Number.isFinite(distance) || distance <= nearRadius) return BUSH_NEAR_OPACITY
+  const range = Math.max(1, fadeRadius - nearRadius)
+  const progress = clamp((distance - nearRadius) / range, 0, 1)
+  const eased = progress * progress * (3 - 2 * progress)
+  return BUSH_NEAR_OPACITY + (1 - BUSH_NEAR_OPACITY) * eased
 }
 
 export const getBushVisibilityOpacity = (
@@ -22,16 +33,70 @@ export const getBushVisibilityOpacity = (
 ) => {
   if (!focus || !Array.isArray(walls) || !walls.length) return 1
   const distance = Math.min(...walls.map(wall => distanceToWall(focus, wall)))
-  if (!Number.isFinite(distance) || distance <= nearRadius) return BUSH_NEAR_OPACITY
-  const range = Math.max(1, fadeRadius - nearRadius)
-  const progress = clamp((distance - nearRadius) / range, 0, 1)
-  const eased = progress * progress * (3 - 2 * progress)
-  return BUSH_NEAR_OPACITY + (1 - BUSH_NEAR_OPACITY) * eased
+  return visibilityFromDistance(distance, nearRadius, fadeRadius)
 }
 
-export const setBushVisibilityOpacity = (object, visibilityOpacity) => {
+export const getBushTileVisibilityOpacity = (
+  focus,
+  tile,
+  nearRadius = BUSH_NEAR_RADIUS,
+  fadeRadius = BUSH_FADE_RADIUS,
+) => {
+  if (!focus || !tile) return 1
+  const insideTile = focus.x >= tile.minX && focus.x <= tile.maxX &&
+    focus.y >= tile.minY && focus.y <= tile.maxY
+  if (insideTile) return BUSH_NEAR_OPACITY
+  const centerX = (tile.minX + tile.maxX) * .5
+  const centerY = (tile.minY + tile.maxY) * .5
+  return visibilityFromDistance(Math.hypot(focus.x - centerX, focus.y - centerY), nearRadius, fadeRadius)
+}
+
+export const getBushClusterVisibilityOpacity = (
+  focus,
+  position,
+  nearRadius = BUSH_CLUSTER_NEAR_RADIUS,
+  fadeRadius = BUSH_CLUSTER_FADE_RADIUS,
+) => {
+  if (!focus || !position || !Number.isFinite(Number(focus.x)) || !Number.isFinite(Number(focus.y)) ||
+    !Number.isFinite(Number(position.x)) || !Number.isFinite(Number(position.y))) return 1
+  return visibilityFromDistance(
+    Math.hypot(Number(focus.x) - Number(position.x), Number(focus.y) - Number(position.y)),
+    nearRadius,
+    fadeRadius,
+  )
+}
+
+export const setBushVisibilityOpacity = (object, visibilityOpacity, focus = null) => {
   if (!object?.traverse) return
   const visibility = clamp(Number(visibilityOpacity), BUSH_NEAR_OPACITY, 1)
+  const tiles = Array.isArray(object.userData.bushTiles) ? object.userData.bushTiles : []
+  const opacityMeshes = []
+  object.traverse(node => {
+    if (node.userData?.bushOpacityAttribute) opacityMeshes.push(node)
+  })
+  if (tiles.length && opacityMeshes.length) {
+    const hasFocus = Number.isFinite(Number(focus?.x)) && Number.isFinite(Number(focus?.y))
+    const tileOpacities = tiles.map(tile => hasFocus
+      ? getBushTileVisibilityOpacity(focus, tile)
+      : visibility)
+    let currentOpacity = 1
+    opacityMeshes.forEach(mesh => {
+      const attribute = mesh.userData.bushOpacityAttribute
+      const tileIndices = mesh.userData.bushTileIndices || []
+      const visibilityPositions = mesh.userData.bushVisibilityPositions
+      for (let index = 0; index < attribute.count; index += 1) {
+        const tileIndex = tileIndices[index] ?? index
+        const opacity = hasFocus && Array.isArray(visibilityPositions) && visibilityPositions[index]
+          ? getBushClusterVisibilityOpacity(focus, visibilityPositions[index])
+          : tileOpacities[tileIndex] ?? visibility
+        attribute.setX(index, opacity)
+        currentOpacity = Math.min(currentOpacity, opacity)
+      }
+      attribute.needsUpdate = true
+    })
+    object.userData.currentBushOpacity = currentOpacity
+    return
+  }
   if (!Array.isArray(object.userData.bushMaterials)) {
     const materials = []
     object.traverse(node => {
@@ -127,7 +192,32 @@ const createLeafClusterGeometry = () => {
   return geometry
 }
 
-const createBushMaterial = (color, kind, lowQuality) => {
+const addBushTileOpacityShader = (material, opacityExponent = 3) => {
+  material.onBeforeCompile = shader => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nattribute float instanceOpacity;\nvarying float vInstanceOpacity;",
+      )
+      .replace(
+        "#include <begin_vertex>",
+        "#include <begin_vertex>\nvInstanceOpacity = instanceOpacity;",
+      )
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nvarying float vInstanceOpacity;",
+      )
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>\ndiffuseColor.a *= pow(vInstanceOpacity, ${Number(opacityExponent).toFixed(2)});`,
+      )
+  }
+  material.customProgramCacheKey = () => `bush-tile-opacity-v${Number(opacityExponent).toFixed(2)}`
+  return material
+}
+
+const createBushMaterial = (color, kind) => {
   const isMoonMist = kind === "moon_mist"
   const options = {
     vertexColors: true,
@@ -136,15 +226,7 @@ const createBushMaterial = (color, kind, lowQuality) => {
     depthWrite: !isMoonMist,
     side: THREE.DoubleSide,
   }
-  return lowQuality
-    ? flatMaterial(color, options)
-    : new THREE.MeshStandardMaterial({
-      color,
-      ...options,
-      roughness: .92,
-      metalness: 0,
-      flatShading: true,
-    })
+  return addBushTileOpacityShader(flatMaterial(color, options), 1.65)
 }
 
 const createInstanceColors = (mesh, walls, partsPerWall, palettes) => {
@@ -158,16 +240,24 @@ const createInstanceColors = (mesh, walls, partsPerWall, palettes) => {
   mesh.instanceColor.needsUpdate = true
 }
 
+const createInstanceOpacity = (mesh, tileIndices, visibilityPositions = null) => {
+  const attribute = new THREE.InstancedBufferAttribute(new Float32Array(mesh.count).fill(1), 1)
+  mesh.geometry.setAttribute("instanceOpacity", attribute)
+  mesh.userData.bushOpacityAttribute = attribute
+  mesh.userData.bushTileIndices = tileIndices
+  if (Array.isArray(visibilityPositions)) mesh.userData.bushVisibilityPositions = visibilityPositions
+}
+
 const hash = seed => {
   const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453
   return value - Math.floor(value)
 }
 
-const createLeafScatter = (wall, wallIndex, lowQuality) => {
+const createLeafScatter = (wall, wallIndex) => {
   const width = Math.max(.85, (wall.maxX - wall.minX) * WORLD_SCALE)
   const depth = Math.max(.85, (wall.maxY - wall.minY) * WORLD_SCALE)
-  const cellWidth = lowQuality ? .98 : .72
-  const cellDepth = lowQuality ? .8 : .58
+  const cellWidth = .72
+  const cellDepth = .58
   const columns = Math.max(5, Math.ceil(width / cellWidth))
   const rows = Math.max(5, Math.ceil(depth / cellDepth))
   const leaves = []
@@ -177,7 +267,7 @@ const createLeafScatter = (wall, wallIndex, lowQuality) => {
       const seed = wallIndex * 7919 + row * 131 + column * 17
       const normalizedX = Math.max(.035, Math.min(.965, (column + hash(seed + 1)) / columns))
       const normalizedZ = Math.max(.05, Math.min(.95, (row + hash(seed + 2)) / rows))
-      const size = (lowQuality ? .74 : .8) * (.82 + hash(seed + 3) * .34)
+      const size = .8 * (.82 + hash(seed + 3) * .34)
       leaves.push({
         x: wall.minX * WORLD_SCALE + normalizedX * width,
         z: wall.minY * WORLD_SCALE + normalizedZ * depth,
@@ -204,30 +294,34 @@ const wallsTouch = (first, second) => {
     (horizontalEdge && verticalOverlap) || (verticalEdge && horizontalOverlap)
 }
 
-const mergeAdjacentBushWalls = walls => {
-  const merged = walls.map(wall => ({...wall}))
-  let changed = true
-  while (changed) {
-    changed = false
-    for (let firstIndex = 0; firstIndex < merged.length && !changed; firstIndex++) {
-      for (let secondIndex = firstIndex + 1; secondIndex < merged.length; secondIndex++) {
-        const first = merged[firstIndex]
-        const second = merged[secondIndex]
-        if (!wallsTouch(first, second)) continue
-        merged[firstIndex] = {
-          ...first,
-          minX: Math.min(first.minX, second.minX),
-          minY: Math.min(first.minY, second.minY),
-          maxX: Math.max(first.maxX, second.maxX),
-          maxY: Math.max(first.maxY, second.maxY),
-        }
-        merged.splice(secondIndex, 1)
-        changed = true
-        break
+export const subdivideBushWalls = (walls, tileSize = BUSH_TILE_SIZE) => {
+  const size = Math.max(1, Number(tileSize) || BUSH_TILE_SIZE)
+  const tiles = new Map()
+  ;(Array.isArray(walls) ? walls : []).forEach(wall => {
+    const minX = Number(wall.minX)
+    const minY = Number(wall.minY)
+    const maxX = Number(wall.maxX)
+    const maxY = Number(wall.maxY)
+    if (![minX, minY, maxX, maxY].every(Number.isFinite) || maxX <= minX || maxY <= minY) return
+    const columns = Math.max(1, Math.ceil((maxX - minX) / size - 1e-9))
+    const rows = Math.max(1, Math.ceil((maxY - minY) / size - 1e-9))
+    for (let column = 0; column < columns; column += 1) {
+      for (let row = 0; row < rows; row += 1) {
+        const tileMinX = minX + column * size
+        const tileMinY = minY + row * size
+        const key = `${tileMinX}:${tileMinY}:${wall.type || "bush"}`
+        if (tiles.has(key)) continue
+        tiles.set(key, {
+          ...wall,
+          minX: tileMinX,
+          minY: tileMinY,
+          maxX: tileMinX + size,
+          maxY: tileMinY + size,
+        })
       }
     }
-  }
-  return merged
+  })
+  return [...tiles.values()]
 }
 
 export const splitBushWallComponents = walls => {
@@ -250,22 +344,91 @@ export const splitBushWallComponents = walls => {
   return components
 }
 
-export const createBushField = (walls, kind = "bush", {lowQuality = false} = {}) => {
+export const createBushField = (walls, kind = "bush") => {
   const isMoonMist = kind === "moon_mist"
-  const visualWalls = mergeAdjacentBushWalls(walls)
-  const baseGeometry = withWhiteVertexColors(new THREE.SphereGeometry(1, lowQuality ? 12 : 16, lowQuality ? 6 : 8))
-  const crownGeometry = createLeafClusterGeometry(lowQuality)
-  const baseMaterial = createBushMaterial(isMoonMist ? 0x7795c8 : 0x3d9949, kind, lowQuality)
-  const crownMaterial = createBushMaterial(0xffffff, kind, lowQuality)
+  const visualWalls = subdivideBushWalls(walls)
+  // Keep the support volume aligned to the gameplay tile. A sphere creates
+  // large circular patches when several transparent instances overlap.
+  const baseGeometry = withWhiteVertexColors(new THREE.BoxGeometry(1, 1, 1))
+  const crownGeometry = createLeafClusterGeometry()
+  // The instance palette carries the foliage tint. A white material avoids
+  // multiplying that palette by a second green and producing dark patches.
+  const baseMaterial = createBushMaterial(0xffffff, kind)
+  const crownMaterial = createBushMaterial(0xffffff, kind)
+  const foregroundMaterial = addBushTileOpacityShader(flatMaterial(0xffffff, {
+    vertexColors: true,
+    transparent: true,
+    opacity: isMoonMist ? .28 : .78,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  }), 1.25)
+  const bedMaterial = createBushMaterial(0xffffff, kind)
+  bedMaterial.opacity = isMoonMist ? .16 : .24
+  bedMaterial.depthWrite = false
+  foregroundMaterial.opacity = isMoonMist ? .28 : .78
+  foregroundMaterial.depthWrite = false
   if (!isMoonMist) {
-    baseMaterial.opacity = .16
+    // The support volume is foliage, not a baked shadow. Keep it close to
+    // the ground palette so it does not create a dark halo around every bush.
+    baseMaterial.opacity = .92
     baseMaterial.depthWrite = false
   }
-  const leaves = visualWalls.flatMap((wall, index) => createLeafScatter(wall, index, lowQuality))
+  const leaves = visualWalls.flatMap((wall, index) => createLeafScatter(wall, index)
+    .map(leaf => ({...leaf, tileIndex: index})))
+  // Keep a sparse set of blades in front of the hero. The full canopy is
+  // rendered behind the actor so the brawler reads as standing inside it,
+  // while this small layer preserves the occlusion cue at the silhouette.
+  const foregroundLeaves = visualWalls.flatMap((wall, tileIndex) => {
+    const width = Math.max(.85, (wall.maxX - wall.minX) * WORLD_SCALE)
+    // The battle camera is placed on the +Z side of the map. Keep this
+    // sparse fringe just beyond the near edge so it can actually overlap the
+    // hero's lower silhouette instead of being depth-tested behind it.
+    const frontZ = wall.maxY * WORLD_SCALE + .34
+    return [.14, .32, .5, .68, .86].map((normalizedX, index) => ({
+      x: wall.minX * WORLD_SCALE + (normalizedX + (hash(tileIndex * 67 + index + 17) - .5) * .06) * width,
+      z: frontZ + .04 + hash(tileIndex * 71 + index * 19) * .36,
+      size: .86 + hash(tileIndex * 31 + index) * .18,
+      rotation: hash(tileIndex * 43 + index + 7) * Math.PI * 2,
+      stretchX: .9 + hash(tileIndex * 53 + index + 11) * .2,
+      stretchZ: .88 + hash(tileIndex * 61 + index + 13) * .2,
+      tileIndex,
+    }))
+  })
+  // The bed is a tile footprint, not a radial decal. A circle here reads as
+  // a large mysterious ring whenever the player stands inside a field.
+  const bed = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), bedMaterial, visualWalls.length)
   const base = new THREE.InstancedMesh(baseGeometry, baseMaterial, visualWalls.length)
   const crown = new THREE.InstancedMesh(crownGeometry, crownMaterial, leaves.length)
+  const foreground = new THREE.InstancedMesh(crownGeometry.clone(), foregroundMaterial, foregroundLeaves.length)
+  bed.name = "bush-field-bed"
   base.name = "bush-field-base"
   crown.name = "bush-field-crown"
+  foreground.name = "bush-field-foreground"
+  bed.rotation.x = -Math.PI / 2
+  bed.castShadow = false
+  bed.receiveShadow = false
+  base.castShadow = false
+  base.receiveShadow = false
+  crown.castShadow = false
+  crown.receiveShadow = false
+  foreground.castShadow = false
+  foreground.receiveShadow = false
+  bed.renderOrder = 4
+  base.renderOrder = -2
+  crown.renderOrder = -1
+  foreground.renderOrder = 12
+  createInstanceOpacity(bed, visualWalls.map((_, index) => index))
+  createInstanceOpacity(base, visualWalls.map((_, index) => index))
+  createInstanceOpacity(
+    crown,
+    leaves.map(leaf => leaf.tileIndex),
+    leaves.map(leaf => ({x: leaf.x / WORLD_SCALE, y: leaf.z / WORLD_SCALE})),
+  )
+  createInstanceOpacity(
+    foreground,
+    foregroundLeaves.map(leaf => leaf.tileIndex),
+    foregroundLeaves.map(leaf => ({x: leaf.x / WORLD_SCALE, y: leaf.z / WORLD_SCALE})),
+  )
 
   const matrix = new THREE.Matrix4()
   const position = new THREE.Vector3()
@@ -281,9 +444,14 @@ export const createBushField = (walls, kind = "bush", {lowQuality = false} = {})
     const width = Math.max(.85, (wall.maxX - wall.minX) * WORLD_SCALE)
     const depth = Math.max(.85, (wall.maxY - wall.minY) * WORLD_SCALE)
 
-    position.set(centerX, .34, centerZ)
+    position.set(centerX, .018, centerZ)
     rotation.identity()
-    scale.set(width * .56, isMoonMist ? .28 : .42, depth * .56)
+    scale.set(width * .62, depth * .62, 1)
+    matrix.compose(position, rotation, scale)
+    bed.setMatrixAt(index, matrix)
+
+    position.set(centerX, .34, centerZ)
+    scale.set(width * .52, isMoonMist ? .28 : .14, depth * .52)
     matrix.compose(position, rotation, scale)
     base.setMatrixAt(index, matrix)
 
@@ -296,9 +464,19 @@ export const createBushField = (walls, kind = "bush", {lowQuality = false} = {})
     matrix.compose(position, rotation, scale)
     crown.setMatrixAt(index, matrix)
   })
+  foregroundLeaves.forEach((leaf, index) => {
+    position.set(leaf.x, .34, leaf.z)
+    rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), leaf.rotation)
+    scale.set(leaf.size * leaf.stretchX, leaf.size * 1.9, leaf.size * leaf.stretchZ)
+    matrix.compose(position, rotation, scale)
+    foreground.setMatrixAt(index, matrix)
+  })
 
+  bed.instanceMatrix.needsUpdate = true
   base.instanceMatrix.needsUpdate = true
   crown.instanceMatrix.needsUpdate = true
+  foreground.instanceMatrix.needsUpdate = true
+  createInstanceColors(bed, visualWalls, 1, isMoonMist ? [0x5269a2, 0x617bb8] : [0x347d42, 0x438e47, 0x2f713b])
   createInstanceColors(base, visualWalls, 1, isMoonMist ? [0x5f79b0, 0x6d88c0, 0x7795c8] : [0x347f43, 0x3d9949, 0x4eaa52])
   const color = new THREE.Color()
   leaves.forEach((_, index) => {
@@ -306,11 +484,17 @@ export const createBushField = (walls, kind = "bush", {lowQuality = false} = {})
     crown.setColorAt(index, color)
   })
   crown.instanceColor.needsUpdate = true
+  foregroundLeaves.forEach((_, index) => {
+    color.setHex(palettes[(index * 3 + 1) % palettes.length])
+    foreground.setColorAt(index, color)
+  })
+  foreground.instanceColor.needsUpdate = true
 
   const field = new THREE.Group()
   field.name = "bush-field"
-  field.add(base, crown)
+  field.add(bed, base, crown, foreground)
   field.userData.role = "concealment-bush"
   field.userData.bushWalls = walls
+  field.userData.bushTiles = visualWalls
   return field
 }

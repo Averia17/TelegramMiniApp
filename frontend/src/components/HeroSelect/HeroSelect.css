@@ -95,8 +95,6 @@
 .hero-portrait--stage:has(.hero-model-canvas) { width:300px; height:340px; transform:none; animation:model-stage-float 2.4s ease-in-out infinite; }
 .hero-model-canvas { display:block; width:100%; height:100%; }
 .hero-model-preview { position:relative; width:100%; height:100%; }
-.hero-model-snapshot { position:absolute; inset:0; z-index:2; width:100%; height:100%; object-fit:contain; pointer-events:none; }
-.hero-model-preview:has(.hero-model-snapshot) .hero-model-canvas { visibility:hidden; }
 .hero-model-preview--loading::before { content:""; position:absolute; z-index:1; left:50%; top:50%; width:24px; height:24px; margin:-16px 0 0 -16px; border:4px solid rgba(255,255,255,.3); border-top-color:#ffe143; border-radius:50%; animation:hero-spin .7s linear infinite; pointer-events:none; }
 .hero-model-preview--loading .hero-model-canvas { opacity:0; }
 .hero-portrait:has(.hero-model-canvas) .hp-shadow { display:none; }

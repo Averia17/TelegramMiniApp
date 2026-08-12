@@ -2,12 +2,26 @@ package room
 
 import (
 	"battle/model/game"
+	"battle/model/player"
 	"battle/observability"
+	"battle/service/geometry"
 	"encoding/json"
 	"fmt"
 	"math"
 	"time"
 )
+
+func attackCooldownSeconds(p *player.Player, now int64) float64 {
+	if p == nil || p.LastShootAt == 0 || p.AttackRate <= 0 {
+		return 0
+	}
+	return math.Max(0, float64(p.LastShootAt+p.AttackRate-now)/1000)
+}
+
+func attackReady(state *game.GameState, p *player.Player, now int64) bool {
+	return state != nil && state.CombatEnabled() && p != nil && p.IsAlive() && p.Ammo > 0 &&
+		p.StunUntil <= now && p.CastUntil <= now && p.ChannelUntil <= now && attackCooldownSeconds(p, now) <= 0
+}
 
 func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 	if len(r.Clients) == 0 {
@@ -28,6 +42,11 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 		if p.Ammo < p.MaxAmmo && p.ReloadTime > 0 && p.NextAmmoAt > 0 {
 			reloadProgress = math.Max(0, math.Min(1, 1-float64(p.NextAmmoAt-now)/float64(p.ReloadTime)))
 		}
+		presentedChannelUntil := p.ChannelUntil
+		if p.CastUntil > presentedChannelUntil {
+			presentedChannelUntil = p.CastUntil
+		}
+		readyToAttack := attackReady(r.State, p, now)
 		players[id] = game.PlayerJSON{
 			X:                p.X,
 			Y:                p.Y,
@@ -45,6 +64,9 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			Speed:            p.Speed,
 			MovementSpeed:    game.EffectiveMovementSpeed(p, now),
 			AttackDamage:     p.AttackDmg,
+			AttackRate:       p.AttackRate,
+			AttackCooldown:   attackCooldownSeconds(p, now),
+			AttackReady:      readyToAttack,
 			Ack:              p.Ack,
 			Hero:             p.HeroName,
 			AttackType:       p.AttackType,
@@ -62,6 +84,8 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			GadgetPulse:      p.GadgetPulse,
 			FocusCharge:      p.FocusCharge,
 			SuppressedRage:   p.SuppressedRage,
+			MicoRage:         p.MicoRage,
+			KazeCombo:        p.KazeCombo,
 			GadgetArmed:      p.GadgetArmed,
 			GadgetCharges:    p.GadgetCharges,
 			Ammo:             p.Ammo,
@@ -69,7 +93,7 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			ReloadProgress:   reloadProgress,
 			HitImpulseX:      p.HitImpulseX,
 			HitImpulseY:      p.HitImpulseY,
-			Aiming:           p.Aiming,
+			Aiming:           p.Aiming && (readyToAttack || presentedChannelUntil > now),
 			AimDistance:      p.AimDistance,
 			Shield:           secondsRemaining(p.ShieldUntil, now),
 			Haste:            secondsRemaining(p.HasteUntil, now),
@@ -81,7 +105,7 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			Blind:            secondsRemaining(p.BlindUntil, now),
 			Stun:             secondsRemaining(p.StunUntil, now),
 			Slow:             secondsRemaining(p.SlowUntil, now),
-			Channel:          secondsRemaining(p.ChannelUntil, now),
+			Channel:          secondsRemaining(presentedChannelUntil, now),
 			Vine:             secondsRemaining(p.VineUntil, now),
 			Vortex:           secondsRemaining(p.VortexUntil, now),
 			Flying:           secondsRemaining(p.FlyingUntil, now),
@@ -213,7 +237,8 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			walls := make([]game.WallJSON, 0, len(r.State.Map.Collisions))
 			for _, w := range r.State.Map.Collisions {
 				walls = append(walls, game.WallJSON{
-					MinX: w.MinX, MinY: w.MinY, MaxX: w.MaxX, MaxY: w.MaxY, Type: w.Type, BushGroup: w.BushGroup,
+					MinX: w.MinX, MinY: w.MinY, MaxX: w.MaxX, MaxY: w.MaxY,
+					Type: w.Type, Blocking: geometry.IsBlockingWall(w.Type), BushGroup: w.BushGroup,
 				})
 			}
 			fullMapJSON = compactMapJSON

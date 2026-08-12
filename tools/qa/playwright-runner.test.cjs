@@ -3,7 +3,7 @@ const assert = require("node:assert/strict")
 const {EventEmitter} = require("node:events")
 const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cjs")
 
-test("launches headless Chromium without the runaway GPU process", async () => {
+test("does not force headless Chromium to render WebGL on the CPU", async () => {
   let launchOptions
   const browser = {close: async () => {}}
   const chromium = {
@@ -20,9 +20,11 @@ test("launches headless Chromium without the runaway GPU process", async () => {
 
   assert.equal(result, browser)
   assert.deepEqual(launchOptions, {
+    channel: "chromium",
     headless: true,
-    args: ["--disable-gpu", "--disable-background-timer-throttling"],
+    args: ["--disable-background-timer-throttling"],
   })
+  assert.equal(launchOptions.args.includes("--disable-gpu"), false)
 })
 
 test("closes the browser when the Playwright task fails", async () => {
@@ -36,6 +38,25 @@ test("closes the browser when the Playwright task fails", async () => {
     /qa failed/,
   )
 
+  assert.equal(closeCalls, 1)
+})
+
+test("times out a stuck Playwright task and closes its browser", async () => {
+  let closeCalls = 0
+  const browser = {close: async () => { closeCalls += 1 }}
+  const stuckTask = runWithBrowser(
+    async () => browser,
+    async () => new Promise(() => {}),
+    {maxRuntimeMs: 10},
+  )
+
+  await assert.rejects(
+    Promise.race([
+      stuckTask,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("regression guard expired")), 100)),
+    ]),
+    /Playwright task exceeded 10ms/,
+  )
   assert.equal(closeCalls, 1)
 })
 

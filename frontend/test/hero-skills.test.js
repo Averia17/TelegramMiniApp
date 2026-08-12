@@ -30,3 +30,9 @@ test("known hero HUD skills use the authoritative kit contract", () => {
   assert.equal(getHeroSkill("Needle", "secondary").name, "Споровый рывок")
   assert.equal(getHeroSkill("Wukong Mico", "primary").name, "Вихрь возмездия")
 })
+
+test("Mandy Super explains its map-wide lane and mobile wind-up", () => {
+  const description = getHeroSkill("Mandy", "primary").description
+  assert.match(description, /через всю карту/i)
+  assert.match(description, /может двигаться/i)
+})

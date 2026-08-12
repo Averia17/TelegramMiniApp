@@ -4,206 +4,243 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="data:,">
-  <title>Map Environment Lab</title>
+  <title>Проверка боевой карты</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-    * { box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #132536; }
-    body { color: #eef5ff; }
-    canvas { display: block; width: 100%; height: 100%; }
-    #app { position: relative; width: 100%; height: 100%; }
-    #state { position: absolute; z-index: 2; left: 18px; top: 16px; max-width: min(520px, calc(100vw - 36px)); padding: 10px 13px; border: 1px solid #ffffff24; border-radius: 12px; background: #13203ddd; box-shadow: 0 10px 28px #0004; font-size: 13px; font-weight: 800; }
-    #hud { position: absolute; z-index: 2; right: 16px; top: 16px; display: grid; gap: 8px; width: min(300px, calc(100vw - 32px)); padding: 14px; border: 1px solid #ffffff1f; border-radius: 15px; background: #13203ddd; box-shadow: 0 10px 28px #0004; }
-    #hud h1 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
-    #hud p { margin: 0; color: #b6c7e6; font-size: 12px; line-height: 1.45; }
-    #stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 2px; }
-    .stat { padding: 8px; border-radius: 9px; background: #243653aa; }
-    .stat small, .stat strong { display: block; }
-    .stat small { color: #9eb2d5; font-size: 10px; }
-    .stat strong { margin-top: 2px; font-size: 14px; }
-    .actions { display: flex; gap: 7px; }
-    button, a { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 8px 10px; border: 1px solid #6881ae; border-radius: 9px; color: #fff; background: #263b63; font: 700 12px inherit; text-decoration: none; cursor: pointer; }
-    button:hover, a:hover { border-color: #ffdc65; background: #8f513d; }
-    #legend { display: flex; flex-wrap: wrap; gap: 5px; }
-    .chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; border-radius: 7px; color: #dce8ff; background: #ffffff12; font-size: 10px; }
-    .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--chip); }
-    #help { position: absolute; z-index: 2; left: 18px; bottom: 16px; padding: 8px 10px; border-radius: 9px; color: #d7e5ff; background: #13203dcc; font-size: 11px; }
-    @media (max-width: 720px) {
-      #hud { top: auto; bottom: 16px; width: min(320px, calc(100vw - 32px)); }
-      #help { display: none; }
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", sans-serif;
+      --panel: rgba(24, 29, 37, .94);
+      --line: rgba(227, 234, 237, .16);
+      --ink: #f5f1e8;
+      --muted: #aab4ba;
+      --signal: #ff9f43;
+      --active: #74d9c4;
     }
+    * { box-sizing: border-box; }
+    html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body { color: var(--ink); background: #1b2329; }
+    button { font: inherit; }
+    canvas { display: block; width: 100%; height: 100%; }
+    #app { position: relative; }
+    #status {
+      position: absolute;
+      z-index: 3;
+      top: max(14px, env(safe-area-inset-top));
+      left: max(14px, env(safe-area-inset-left));
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-height: 38px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(24, 29, 37, .88);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .28);
+      font: 700 12px/1 "Cascadia Mono", Consolas, monospace;
+      backdrop-filter: blur(12px);
+    }
+    #status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 4px rgba(255, 159, 67, .14); }
+    #status.is-ready::before { background: var(--active); box-shadow: 0 0 0 4px rgba(116, 217, 196, .14); }
+    #inspector {
+      position: absolute;
+      z-index: 4;
+      top: max(14px, env(safe-area-inset-top));
+      right: max(14px, env(safe-area-inset-right));
+      width: min(338px, calc(100vw - 28px));
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: 0 18px 56px rgba(0, 0, 0, .36);
+      backdrop-filter: blur(16px);
+      transition: transform .2s ease, opacity .2s ease;
+    }
+    #inspector.is-hidden { transform: translateX(calc(100% + 22px)); opacity: 0; pointer-events: none; }
+    .eyebrow { color: var(--signal); font: 800 10px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 8px 0 5px; font: 650 25px/1.05 Bahnschrift, "Arial Narrow", sans-serif; letter-spacing: -.025em; }
+    .intro { margin: 0 0 15px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); border-block: 1px solid var(--line); }
+    .stat { min-width: 0; padding: 12px 8px 11px; border-right: 1px solid var(--line); }
+    .stat:first-child { padding-left: 0; }
+    .stat:last-child { padding-right: 0; border-right: 0; }
+    .stat small { display: block; overflow: hidden; color: var(--muted); font: 700 9px/1.2 "Cascadia Mono", Consolas, monospace; text-overflow: ellipsis; text-transform: uppercase; }
+    .stat strong { display: block; margin-top: 5px; font: 700 16px/1 Bahnschrift, sans-serif; }
+    .section-title { margin: 15px 0 9px; color: #dce3e4; font-size: 11px; font-weight: 700; }
+    .navigator { display: grid; grid-template-columns: repeat(3, 42px); justify-content: center; gap: 5px; }
+    .zone {
+      width: 42px;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      color: var(--muted);
+      background: #2d353d;
+      cursor: pointer;
+      font: 800 11px/1 "Cascadia Mono", Consolas, monospace;
+    }
+    .zone:hover, .zone:focus-visible, .zone.is-active { outline: none; border-color: var(--active); color: var(--ink); background: #354b4b; }
+    .zone[data-zone="center"] { color: #171b20; background: var(--signal); border-color: var(--signal); }
+    .readout { display: flex; justify-content: space-between; gap: 10px; margin-top: 11px; color: var(--muted); font: 700 10px/1.3 "Cascadia Mono", Consolas, monospace; }
+    .readout strong { color: var(--ink); font-weight: 700; }
+    .zoom-row { display: grid; grid-template-columns: 38px 1fr 38px; gap: 5px; margin-top: 10px; }
+    .zoom-row button { margin: 0; min-height: 30px; padding: 0; }
+    .zoom-row output { display: grid; place-items: center; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font: 700 10px "Cascadia Mono", Consolas, monospace; }
+    .hint { margin: 13px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    kbd { padding: 2px 5px; border: 1px solid #59636a; border-bottom-width: 2px; border-radius: 4px; color: #e8ecec; background: #333b42; font: 700 9px/1 "Cascadia Mono", Consolas, monospace; }
+    #toggle-panel {
+      position: absolute;
+      z-index: 5;
+      right: max(14px, env(safe-area-inset-right));
+      bottom: max(14px, env(safe-area-inset-bottom));
+      min-height: 38px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--ink);
+      background: rgba(24, 29, 37, .9);
+      cursor: pointer;
+      font-weight: 700;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .24);
+    }
+    #toggle-panel:hover, #toggle-panel:focus-visible { outline: 2px solid var(--active); outline-offset: 2px; }
+    @media (max-width: 680px) {
+      #inspector { top: auto; bottom: max(62px, calc(env(safe-area-inset-bottom) + 52px)); padding: 15px; }
+      h1 { font-size: 21px; }
+      .intro { display: none; }
+      .section-title { margin-top: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) { #inspector { transition: none; } }
   </style>
 </head>
 <body>
-  <div id="app">
-    <div id="state">Загрузка настоящей battle-royale карты…</div>
-    <aside id="hud">
-      <h1>Map Environment Lab</h1>
-      <p>Каноническая battle-карта из API + настоящий <code>MapRenderer</code>: рельеф острова, вода, кусты и процедурные map-пропы без environment GLB.</p>
-      <div id="stats">
-        <div class="stat"><small>Размер</small><strong id="map-size">—</strong></div>
-        <div class="stat"><small>Коллизии</small><strong id="wall-count">—</strong></div>
-        <div class="stat"><small>Кусты</small><strong id="bush-count">—</strong></div>
-        <div class="stat"><small>Рендер-объекты</small><strong id="object-count">—</strong></div>
+  <main id="app">
+    <div id="status" role="status" aria-live="polite">Загрузка канонической карты…</div>
+    <aside id="inspector" aria-label="Панель проверки карты">
+      <div class="eyebrow">Battle map / live renderer</div>
+      <h1>Проверка карты</h1>
+      <p class="intro">Этот экран получает ту же карту и запускает тот же боевой рендерер, камеру, свет и героя, что и реальный матч.</p>
+      <div class="stats">
+        <div class="stat"><small>Seed</small><strong id="seed">—</strong></div>
+        <div class="stat"><small>Объекты</small><strong id="objects">—</strong></div>
+        <div class="stat"><small>Кусты</small><strong id="bushes">—</strong></div>
       </div>
-      <div class="actions">
-        <button id="reset-view" type="button">Сбросить вид</button>
-        <a href="./index.html">← QA hub</a>
+      <div class="section-title">Переместить героя в сектор</div>
+      <div class="navigator" aria-label="Секторы карты">
+        <button class="zone" data-zone="north-west" aria-label="Северо-запад">NW</button>
+        <button class="zone" data-zone="north" aria-label="Север">N</button>
+        <button class="zone" data-zone="north-east" aria-label="Северо-восток">NE</button>
+        <button class="zone" data-zone="west" aria-label="Запад">W</button>
+        <button class="zone is-active" data-zone="center" aria-label="Центр">●</button>
+        <button class="zone" data-zone="east" aria-label="Восток">E</button>
+        <button class="zone" data-zone="south-west" aria-label="Юго-запад">SW</button>
+        <button class="zone" data-zone="south" aria-label="Юг">S</button>
+        <button class="zone" data-zone="south-east" aria-label="Юго-восток">SE</button>
       </div>
-      <div id="legend"></div>
+      <div class="readout"><span>Позиция героя</span><strong id="position">—</strong></div>
+      <div class="zoom-row" aria-label="Масштаб камеры"><button id="zoom-out" type="button" aria-label="Отдалить">−</button><output id="zoom-value">100%</output><button id="zoom-in" type="button" aria-label="Приблизить">+</button></div>
+      <p class="hint"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> — двигать героя по одному тайлу. Камера следует за ним как в матче.</p>
     </aside>
-    <div id="help">ЛКМ — вращение · колесо — масштаб · ПКМ — панорама</div>
-    <canvas id="scene" aria-label="3D preview of the battle royale map"></canvas>
-  </div>
+    <button id="toggle-panel" type="button" aria-controls="inspector" aria-expanded="true">Скрыть панель</button>
+    <canvas id="scene" aria-label="Каноническая боевая карта"></canvas>
+  </main>
   <script type="module">
-    import * as THREE from "three"
-    import {OrbitControls} from "three/addons/controls/OrbitControls.js"
-    import {MapRenderer} from "/src/components/BattleGame/rendering/map/MapRenderer.js"
-    import {WORLD_SCALE} from "/src/components/BattleGame/rendering/shared/coordinates.js"
+    import {ThreeBattleRenderer} from "/src/components/BattleGame/rendering/three/ThreeBattleRenderer.js"
+    import {assetRegistry} from "/src/components/BattleGame/rendering/assets/AssetRegistry.js"
+    import {createCollisionIndex, movePosition} from "/src/components/BattleGame/NetworkSimulation.js"
 
     const canvas = document.querySelector("#scene")
-    const state = document.querySelector("#state")
-    const mapSize = document.querySelector("#map-size")
-    const wallCount = document.querySelector("#wall-count")
-    const bushCount = document.querySelector("#bush-count")
-    const objectCount = document.querySelector("#object-count")
+    const status = document.querySelector("#status")
+    const inspector = document.querySelector("#inspector")
+    const togglePanel = document.querySelector("#toggle-panel")
     const loadMap = async () => {
-      const response = await fetch("/api/battle/map-preview?seed=20260810")
+      const response = await fetch("/api/battle/map-preview", {cache: "no-store"})
       if (!response.ok) throw new Error(`Map API returned ${response.status}`)
       const payload = await response.json()
       return {...payload.map, seed: payload.seed, spawners: payload.spawners}
     }
-    const map = await loadMap()
-    const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0xd87850)
 
-    const renderer = new THREE.WebGLRenderer({canvas, antialias: true})
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
-    renderer.outputColorSpace = THREE.SRGBColorSpace
-    renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.08
-    renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    try {
+      const map = await loadMap()
+      status.textContent = "Загрузка боевого рендерера…"
+      await assetRegistry.preloadHeroes(["Kaze"])
 
-    const fill = new THREE.HemisphereLight(0xdaf1ff, 0x4c3528, 1.8)
-    const sun = new THREE.DirectionalLight(0xfff3df, 3.4)
-    sun.position.set(-90, 150, 105)
-    sun.castShadow = true
-    sun.shadow.mapSize.set(1024, 1024)
-    sun.shadow.camera.near = 1
-    sun.shadow.camera.far = 330
-    sun.shadow.camera.left = -145
-    sun.shadow.camera.right = 145
-    sun.shadow.camera.top = 145
-    sun.shadow.camera.bottom = -145
-    scene.add(fill, sun, sun.target)
-
-    const mapRoot = new THREE.Group()
-    scene.add(mapRoot)
-    const mapRenderer = new MapRenderer(mapRoot, {lowQuality: true})
-    const center = new THREE.Vector3(map.width * WORLD_SCALE / 2, 0, map.height * WORLD_SCALE / 2)
-    const BATTLE_CAMERA_ANGLE = THREE.MathUtils.degToRad(55)
-    const camera = new THREE.PerspectiveCamera(35, 1, .1, 360)
-    const controls = new OrbitControls(camera, canvas)
-    controls.enableDamping = true
-    controls.dampingFactor = .08
-    const battlePolarAngle = Math.PI / 2 - BATTLE_CAMERA_ANGLE
-    controls.minPolarAngle = battlePolarAngle
-    controls.maxPolarAngle = battlePolarAngle
-    controls.minDistance = 55
-    controls.maxDistance = 270
-    controls.target.copy(center)
-
-    const spawnOverlay = new THREE.Group()
-    map.spawners.forEach(spawn => {
-      const pad = new THREE.Mesh(
-        new THREE.PlaneGeometry(spawn.width * WORLD_SCALE, spawn.height * WORLD_SCALE),
-        new THREE.MeshBasicMaterial({color: 0x65eeff, transparent: true, opacity: .22, depthWrite: false}),
-      )
-      pad.rotation.x = -Math.PI / 2
-      pad.position.set((spawn.x + spawn.width / 2) * WORLD_SCALE, .055, (spawn.y + spawn.height / 2) * WORLD_SCALE)
-      spawnOverlay.add(pad)
-    })
-    scene.add(spawnOverlay)
-
-    const boundary = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(map.width * WORLD_SCALE, .08, map.height * WORLD_SCALE)),
-      new THREE.LineBasicMaterial({color: 0xb7ffbc, transparent: true, opacity: .35}),
-    )
-    boundary.position.copy(center)
-    boundary.position.y = .12
-    scene.add(boundary)
-
-    const colors = {
-      water: "#32bce8", bush: "#72d33e", wall: "#d8a24a", destructible: "#e17f54",
-      tree: "#4d9f67", "altar_three_moons": "#9a8cff", menhir: "#b9c7dc", "sacrificial_stone": "#e28da1",
-    }
-    Object.entries(colors).forEach(([type, color]) => {
-      const chip = document.createElement("span")
-      chip.className = "chip"
-      chip.style.setProperty("--chip", color)
-      chip.innerHTML = `<i></i>${type.replaceAll("_", " ")}`
-      document.querySelector("#legend").append(chip)
-    })
-
-    const setBattleView = (target, distance) => {
-      controls.target.copy(target)
-      camera.position.set(
-        target.x,
-        target.y + distance * Math.sin(BATTLE_CAMERA_ANGLE),
-        target.z + distance * Math.cos(BATTLE_CAMERA_ANGLE),
-      )
-      controls.update()
-    }
-    const resetView = () => {
-      setBattleView(center, 240)
-    }
-    document.querySelector("#reset-view").addEventListener("click", resetView)
-
-    const updateHud = () => {
-      mapSize.textContent = `${map.width} × ${map.height}`
-      wallCount.textContent = map.walls.length.toLocaleString("ru-RU")
-      bushCount.textContent = map.walls.filter(wall => wall.type === "bush").length.toLocaleString("ru-RU")
-      objectCount.textContent = mapRenderer.objects.size.toLocaleString("ru-RU")
-      state.textContent = mapRenderer.isReady() ? `Готово · battle-royale · seed ${map.seed}` : "Загрузка карты…"
-    }
-
-    mapRenderer.setFocus(map.width / 2, map.height / 2)
-    mapRenderer.sync(map)
-    mapRenderer.syncIsland({islandName: "Остров Первого Испытания", phase: "landing", stormRadius: 0}, map.width, map.height)
-    resetView()
-    updateHud()
-
-    const resize = () => {
-      renderer.setSize(innerWidth, innerHeight, false)
-      camera.aspect = innerWidth / innerHeight
-      camera.updateProjectionMatrix()
-    }
-    addEventListener("resize", resize)
-    resize()
-
-    const clock = new THREE.Clock()
-    let hudTimer = 0
-    renderer.setAnimationLoop(() => {
-      const delta = Math.min(.05, clock.getDelta())
-      controls.update()
-      mapRenderer.update(delta)
-      hudTimer += delta
-      if (hudTimer >= .25) {
-        hudTimer = 0
-        updateHud()
+      const player = {
+        hero: "Kaze", name: "Инспектор", x: map.width * .66, y: map.height * .66,
+        rotation: 0, lives: 720, maxLives: 720, speed: 0, movementSpeed: map.tileSize || 40, radius: 14, moveX: 0, moveY: 0,
+        aiming: false, attackPulse: 0, superPulse: 0, gadgetPulse: 0,
       }
-      renderer.render(scene, camera)
-    })
+      const collisionIndex = createCollisionIndex(map.walls)
+      const battleState = {
+        map,
+        game: {islandName: "Остров Первого Испытания", phase: "landing", stormRadius: 0},
+        players: {"map-inspector": player},
+        monsters: {}, props: [], bullets: [], effects: [],
+      }
+      const battleRenderer = new ThreeBattleRenderer(canvas)
+      battleRenderer.setLocalPlayerId("map-inspector")
+      battleRenderer.setState(battleState)
 
-    window.qa = {map, mapRenderer, scene, camera, controls, renderer}
-    window.render_game_to_text = () => JSON.stringify({
-      map: {width: map.width, height: map.height, seed: map.seed, walls: map.walls.length, spawners: map.spawners.length},
-      wallTypes: Object.fromEntries(map.walls.reduce((counts, wall) => counts.set(wall.type, (counts.get(wall.type) || 0) + 1), new Map())),
-      environment: {ready: mapRenderer.isReady(), total: 0, samples: 0, objects: mapRenderer.objects.size},
-      camera: {position: camera.position.toArray().map(value => Number(value.toFixed(2))), target: controls.target.toArray().map(value => Number(value.toFixed(2)))},
-      coordinateSystem: "world map origin top-left; Three.js scene +Y up, world Y maps to scene Z",
-    })
+      const zoneCoordinates = {
+        "north-west": [.25, .25], north: [.5, .16], "north-east": [.75, .25],
+        west: [.16, .5], center: [.5, .5], east: [.84, .5],
+        "south-west": [.25, .75], south: [.5, .84], "south-east": [.75, .75],
+      }
+      const updatePosition = (x, y, activeZone = null) => {
+        player.x = Math.max(map.tileSize, Math.min(map.width - map.tileSize, x))
+        player.y = Math.max(map.tileSize, Math.min(map.height - map.tileSize, y))
+        battleRenderer.setState(battleState)
+        document.querySelector("#position").textContent = `${Math.round(player.x)}, ${Math.round(player.y)}`
+        document.querySelectorAll(".zone").forEach(button => button.classList.toggle("is-active", button.dataset.zone === activeZone))
+      }
+      document.querySelectorAll(".zone").forEach(button => button.addEventListener("click", () => {
+        const [x, y] = zoneCoordinates[button.dataset.zone]
+        updatePosition(map.width * x, map.height * y, button.dataset.zone)
+      }))
+      addEventListener("keydown", event => {
+        if (!/[wasd]/i.test(event.key)) return
+        const offset = {w:[0,-1], a:[-1,0], s:[0,1], d:[1,0]}[event.key.toLowerCase()]
+        const next = movePosition(
+          {x: player.x, y: player.y},
+          {x: offset[0], y: offset[1]},
+          player,
+          1,
+          map,
+          collisionIndex,
+        )
+        updatePosition(next.x, next.y)
+      })
+      const resize = () => battleRenderer.resize(innerWidth, innerHeight)
+      addEventListener("resize", resize)
+      let zoom = 1
+      const applyZoom = () => { battleRenderer.cameraRig.preferredVertical = 31 / zoom; document.querySelector("#zoom-value").textContent = `${Math.round(zoom * 100)}%` }
+      document.querySelector("#zoom-out").addEventListener("click", () => { zoom = Math.max(.65, zoom - .1); applyZoom() })
+      document.querySelector("#zoom-in").addEventListener("click", () => { zoom = Math.min(1.8, zoom + .1); applyZoom() })
+      togglePanel.addEventListener("click", () => {
+        const hidden = inspector.classList.toggle("is-hidden")
+        togglePanel.textContent = hidden ? "Показать панель" : "Скрыть панель"
+        togglePanel.setAttribute("aria-expanded", String(!hidden))
+      })
+
+      document.querySelector("#seed").textContent = map.seed
+      document.querySelector("#objects").textContent = battleRenderer.mapRenderer.objects.size.toLocaleString("ru-RU")
+      document.querySelector("#bushes").textContent = map.walls.filter(wall => wall.type === "bush").length.toLocaleString("ru-RU")
+      updatePosition(player.x, player.y, "center")
+      status.textContent = `Готово · ${map.width} × ${map.height}`
+      status.classList.add("is-ready")
+
+      battleRenderer.renderer.setAnimationLoop(() => battleRenderer.render())
+      addEventListener("pagehide", () => battleRenderer.destroy(), {once: true})
+      window.qa = {map, battleRenderer, battleState, player, updatePosition}
+      window.render_game_to_text = () => JSON.stringify({
+        renderer: "ThreeBattleRenderer",
+        map: {width: map.width, height: map.height, seed: map.seed, walls: map.walls.length, spawners: map.spawners.length},
+        hero: {x: player.x, y: player.y},
+        environment: {ready: battleRenderer.mapRenderer.isReady(), objects: battleRenderer.mapRenderer.objects.size},
+        camera: {target: battleRenderer.cameraRig.target.toArray().map(value => Number(value.toFixed(2)))},
+      })
+    } catch (error) {
+      console.error("Map inspection failed:", error)
+      status.textContent = `Ошибка загрузки: ${error.message}`
+    }
   </script>
 </body>
 </html>

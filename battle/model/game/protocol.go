@@ -123,6 +123,9 @@ type PlayerJSON struct {
 	Speed            float64       `json:"speed"`
 	MovementSpeed    float64       `json:"movementSpeed"`
 	AttackDamage     int           `json:"attackDamage"`
+	AttackRate       int64         `json:"attackRateMs"`
+	AttackCooldown   float64       `json:"attackCooldown,omitempty"`
+	AttackReady      bool          `json:"attackReady"`
 	Ack              int64         `json:"ack"`
 	Hero             string        `json:"hero"`
 	AttackType       string        `json:"attackType,omitempty"`
@@ -140,6 +143,8 @@ type PlayerJSON struct {
 	GadgetPulse      int           `json:"gadgetPulse,omitempty"`
 	FocusCharge      int           `json:"focusCharge,omitempty"`
 	SuppressedRage   int           `json:"suppressedRage,omitempty"`
+	MicoRage         int           `json:"micoRage,omitempty"`
+	KazeCombo        int           `json:"kazeCombo,omitempty"`
 	GadgetArmed      bool          `json:"gadgetArmed,omitempty"`
 	GadgetCharges    int           `json:"gadgetCharges,omitempty"`
 	Ammo             int           `json:"ammo"`
@@ -241,6 +246,7 @@ type WallJSON struct {
 	MaxX      float64 `json:"maxX"`
 	MaxY      float64 `json:"maxY"`
 	Type      string  `json:"type"`
+	Blocking  bool    `json:"blocking"`
 	BushGroup int     `json:"bushGroup,omitempty"`
 }
 

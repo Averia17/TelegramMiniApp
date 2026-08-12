@@ -3,12 +3,10 @@ package handler
 import (
 	"battle/model/game"
 	"battle/model/gamemap"
+	"battle/service/geometry"
 	"encoding/json"
 	"net/http"
-	"strconv"
 )
-
-const defaultMapPreviewSeed int64 = 20260810
 
 type mapPreviewSpawnerJSON struct {
 	X      float64 `json:"x"`
@@ -28,22 +26,14 @@ func (h *Handler) HandleMapPreview(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	seed := defaultMapPreviewSeed
-	if raw := r.URL.Query().Get("seed"); raw != "" {
-		parsed, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			http.Error(w, "invalid seed", http.StatusBadRequest)
-			return
-		}
-		seed = parsed
-	}
+	seed := gamemap.CanonicalBattleRoyaleSeed
 
 	canonical := gamemap.GenerateBattleRoyale(seed)
 	walls := make([]game.WallJSON, 0, len(canonical.Collisions))
 	for _, wall := range canonical.Collisions {
 		walls = append(walls, game.WallJSON{
 			MinX: wall.MinX, MinY: wall.MinY, MaxX: wall.MaxX, MaxY: wall.MaxY,
-			Type: wall.Type, BushGroup: wall.BushGroup,
+			Type: wall.Type, Blocking: geometry.IsBlockingWall(wall.Type), BushGroup: wall.BushGroup,
 		})
 	}
 	spawners := make([]mapPreviewSpawnerJSON, 0, len(canonical.Spawners))

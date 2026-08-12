@@ -24,7 +24,7 @@ const (
 
 	FlasksCount      = 8
 	LunarCratesCount = 12
-	MonstersCount    = 5
+	MonstersCount    = 8
 
 	PlayerSize = 32.0
 

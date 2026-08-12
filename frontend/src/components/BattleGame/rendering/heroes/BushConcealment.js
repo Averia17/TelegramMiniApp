@@ -1,6 +1,6 @@
 import * as THREE from "three"
 
-export const BUSH_HERO_OPACITY = 0.72
+export const BUSH_HERO_OPACITY = 0.86
 
 export const getBushConcealmentMix = (current, concealed, delta) => {
   const target = concealed ? 1 : 0

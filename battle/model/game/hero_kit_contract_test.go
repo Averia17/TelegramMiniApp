@@ -20,16 +20,20 @@ func TestHeroKitContractIsIncludedInHeroesPayloadModel(t *testing.T) {
 	}
 }
 
-func TestHitThresholdDescriptionsAreReplacedWithTimedRules(t *testing.T) {
+func TestActiveHeroDescriptionsMatchTheirCurrentMechanics(t *testing.T) {
 	checks := map[string]string{
-		"Needle":      "Споровый шип сразу замедляет поражённых врагов на 2 секунды.",
-		"Kaze":        "Косые удары: усиленный удар доступен раз в 3 секунды.",
-		"Wukong Mico": "Тяжёлый удар посохом наносит стабильный урон без накопления ярости.",
+		"Needle":      "Спора раскрывается шестью ищущими шипами сразу при попадании или в конце полёта.",
+		"Kaze":        "Два попадания открывают усиленный третий удар.",
+		"Wukong Mico": "Попадания накапливают до 5 зарядов Ярости.",
 	}
 	for heroName, want := range checks {
 		hero := GetHeroByName(heroName)
 		if hero == nil || hero.Kit.Basic.Description != want {
 			t.Fatalf("%s basic description=%q, want %q", heroName, hero.Kit.Basic.Description, want)
 		}
+	}
+	needle := GetHeroByName("Needle")
+	if needle == nil || needle.Kit.Super.Description != "Корень оглушает врагов и оставляет замедляющую зону." {
+		t.Fatalf("Needle super description=%q, want an actual stun + slow zone", needle.Kit.Super.Description)
 	}
 }

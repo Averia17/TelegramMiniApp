@@ -9,13 +9,10 @@ requires-python = ">=3.12"
 dependencies = [
     "sqlalchemy~=2.0",
     "asyncpg",
-    "alembic~=1.0",
     "environs~=14.2.0",
-    "betterlogging~=0.2",
     "uvicorn[standard]~=0.34",
     "fastapi~=0.115",
     "httpx~=0.28.1",
-    "python-dateutil",
     "aiokafka~=0.12",
 ]
 

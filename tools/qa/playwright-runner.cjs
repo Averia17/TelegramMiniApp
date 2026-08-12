@@ -3,11 +3,12 @@ const SIGNAL_EXIT_CODES = {
   SIGTERM: 143,
 }
 
-const HEADLESS_CHROMIUM_ARGS = ["--disable-gpu"]
+const DEFAULT_MAX_RUNTIME_MS = 60_000
 
 const launchHeadlessChromium = (chromium, options = {}) => chromium.launch({
+  channel: "chromium",
   ...options,
-  args: [...HEADLESS_CHROMIUM_ARGS, ...(options.args || [])],
+  args: [...(options.args || [])],
 })
 
 /**
@@ -15,10 +16,18 @@ const launchHeadlessChromium = (chromium, options = {}) => chromium.launch({
  * interrupt signals. A single close promise prevents duplicate close calls
  * when a signal arrives while the task is unwinding its finally block.
  */
-async function runWithBrowser(launchBrowser, run, {processLike = process} = {}) {
+async function runWithBrowser(
+  launchBrowser,
+  run,
+  {
+    processLike = process,
+    maxRuntimeMs = Number(process.env.PLAYWRIGHT_QA_TIMEOUT_MS || DEFAULT_MAX_RUNTIME_MS),
+  } = {},
+) {
   let browser = null
   let closePromise = null
   let signalHandled = false
+  let runtimeTimer = null
 
   const closeBrowser = () => {
     if (!browser) return Promise.resolve()
@@ -44,8 +53,19 @@ async function runWithBrowser(launchBrowser, run, {processLike = process} = {}) 
 
   try {
     browser = await launchBrowser()
-    return await run(browser)
+    if (!Number.isFinite(maxRuntimeMs) || maxRuntimeMs <= 0) {
+      throw new TypeError("maxRuntimeMs must be a positive finite number")
+    }
+    const runtimeExpired = new Promise((_, reject) => {
+      runtimeTimer = setTimeout(
+        () => reject(new Error(`Playwright task exceeded ${maxRuntimeMs}ms`)),
+        maxRuntimeMs,
+      )
+      runtimeTimer.unref?.()
+    })
+    return await Promise.race([run(browser), runtimeExpired])
   } finally {
+    if (runtimeTimer) clearTimeout(runtimeTimer)
     processLike.removeListener("SIGINT", onSigint)
     processLike.removeListener("SIGTERM", onSigterm)
     await closeBrowser()

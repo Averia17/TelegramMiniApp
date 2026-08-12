@@ -4,11 +4,9 @@ import logging
 import betterlogging as bl
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import DefaultKeyBuilder, RedisStorage
-from aiogram_dialog import setup_dialogs
-
-from infrastructure.database.setup import create_engine, create_session_pool
 from config import load_config
 from handlers import routers_list
+from infrastructure.database.setup import create_engine, create_session_pool
 from middlewares.database import DatabaseMiddleware
 
 
@@ -54,7 +52,6 @@ async def main():
     dp.update.outer_middleware(DatabaseMiddleware(session_pool))
 
     dp.include_routers(*routers_list)
-    setup_dialogs(dp)
 
     await dp.start_polling(bot, config=config)
 

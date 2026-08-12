@@ -9,19 +9,15 @@ import {
   unregisterPreviewRenderer,
 } from "../BattleGame/rendering/shared/previewContextRegistry.js"
 
-const MAX_CARD_PREVIEW_RENDERERS = 6
-const previewSnapshots = new Map()
+const MAX_CARD_PREVIEW_RENDERERS = 8
 
 export const HeroModelPreview = ({hero, stage = false}) => {
   const canvasRef = useRef(null)
   const [active, setActive] = useState(stage)
-  const [snapshot, setSnapshot] = useState(() => stage ? null : previewSnapshots.get(hero?.name))
-  const [loaded, setLoaded] = useState(() => !stage && Boolean(previewSnapshots.get(hero?.name)))
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    const cached = stage ? null : previewSnapshots.get(hero?.name)
-    setSnapshot(cached)
-    setLoaded(Boolean(cached))
+    setLoaded(false)
   }, [hero?.name, stage])
 
   useEffect(() => {
@@ -45,7 +41,6 @@ export const HeroModelPreview = ({hero, stage = false}) => {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !hero || !active) return undefined
-    if (!stage && previewSnapshots.has(hero.name)) return undefined
 
     let disposed = false
     let disposeRuntime = () => {}
@@ -156,8 +151,6 @@ export const HeroModelPreview = ({hero, stage = false}) => {
       scene.add(shadow)
 
       let previous = performance.now()
-      let snapshotCaptured = Boolean(previewSnapshots.get(hero.name))
-      let renderedModelFrames = 0
       const draw = now => {
         if (disposed || runtimeDisposed || renderer.getContext()?.isContextLost()) return
         const time = now / 1000
@@ -165,20 +158,8 @@ export const HeroModelPreview = ({hero, stage = false}) => {
         previous = now
         model.userData.animate?.(time, stage ? .16 : .06, Math.max(0, Math.sin(time * .8 - 1.1) * 1.7 - .7))
         animation?.update(delta, {alive: true, moving: false})
-        if (animation) renderedModelFrames++
         model.rotation.y = .42 + Math.sin(time * .55) * .1
         renderer.render(scene, camera)
-        if (!stage && renderedModelFrames >= 8 && !snapshotCaptured) {
-          snapshotCaptured = true
-          try {
-            const image = canvas.toDataURL("image/webp", .78)
-            previewSnapshots.set(hero.name, image)
-            setSnapshot(image)
-            queueMicrotask(disposeRuntime)
-          } catch {
-            // The live renderer remains available if snapshot capture is unsupported.
-          }
-        }
         frame = requestAnimationFrame(draw)
       }
       frame = requestAnimationFrame(draw)
@@ -201,9 +182,6 @@ export const HeroModelPreview = ({hero, stage = false}) => {
         className="hero-model-canvas"
         aria-label={`Анимированная 3D-модель ${hero?.name || "героя"}`}
       />
-      {!stage && snapshot && (
-        <img className="hero-model-snapshot" src={snapshot} alt="" aria-hidden="true"/>
-      )}
     </div>
   )
 }

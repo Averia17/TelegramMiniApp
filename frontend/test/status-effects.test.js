@@ -39,3 +39,23 @@ test("keeps persistent effects visible without inventing a timer", () => {
     ["poisoned", null],
   ])
 })
+
+test("shows Wukong rage and Kaze combo progress", () => {
+  const effects = getActiveStatusEffects({micoRage: 4, kazeCombo: 2})
+
+  assert.deepEqual(effects.map(effect => [effect.id, effect.label]), [
+    ["micoRage", "ЯРОСТЬ 4/5"],
+    ["kazeCombo", "КОМБО 2/2"],
+  ])
+})
+
+test("shows Kaze doom mark with remaining duration", () => {
+  const effects = getActiveStatusEffects({doomed: 1.4})
+  assert.equal(effects.some(effect => effect.id === "doomed" && effect.remaining === 1.4), true)
+})
+
+test("shows Mina light mark as a pending detonation", () => {
+  const effects = getActiveStatusEffects({marks: 1})
+  assert.deepEqual(effects.map(effect => effect.id), ["minaMark"])
+  assert.equal(effects[0].remaining, null)
+})

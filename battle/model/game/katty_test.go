@@ -3,6 +3,7 @@ package game
 import (
 	"battle/model/gamemap"
 	"battle/service/geometry"
+	"math"
 	"testing"
 	"time"
 )
@@ -55,26 +56,56 @@ func TestKattyBasicSchedulesThreePaintConesAndThirdLayerStuns(t *testing.T) {
 	}
 }
 
-func TestKattySuperAppliesThreeLayersAndLeavesPaintPuddle(t *testing.T) {
+func TestKattyPaintSpotAppearsWhereTheConeActuallyHits(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("katty", "Katty", "Katty")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	katty, enemy := gs.Players["katty"], gs.Players["enemy"]
+	katty.X, katty.Y, enemy.X, enemy.Y = 500, 500, 570, 500
+
+	gs.executeKattyPaintShot(katty, time.Now().UnixMilli(), 0)
+
+	if len(gs.HeroZones) != 1 {
+		t.Fatalf("paint spots=%d, want 1", len(gs.HeroZones))
+	}
+	spot := gs.HeroZones[0]
+	if math.Hypot(spot.X-enemy.X, spot.Y-enemy.Y) > .01 {
+		t.Fatalf("paint spot=(%.1f,%.1f), want hit=(%.1f,%.1f)", spot.X, spot.Y, enemy.X, enemy.Y)
+	}
+}
+
+func TestKattySuperLandsThenPaintsEachEnemyEnteringThePuddle(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("katty", "Katty", "Katty")
 	gs.PlayerAdd("enemy", "Enemy", "Shelly")
-	source, target := gs.Players["katty"], gs.Players["enemy"]
+	gs.PlayerAdd("late", "Late", "Shelly")
+	source, target, late := gs.Players["katty"], gs.Players["enemy"], gs.Players["late"]
 	source.X, source.Y, target.X, target.Y, source.SuperCharge = 400, 400, 520, 400, 100
+	late.X, late.Y = 900, 900
 	now := time.Now().UnixMilli()
 
 	if !(KattyKit{}).Super(gs, source, now, 0, 120) {
 		t.Fatal("Katty super was not accepted")
 	}
-	if target.StunUntil != now+800 || target.BlindUntil != now+2500 {
-		t.Fatalf("super status stun=%d blind=%d, want %d/%d", target.StunUntil, target.BlindUntil, now+800, now+2500)
-	}
-	if got := gs.kattyPaintStacks(source.PlayerId, target.PlayerId); got != 0 {
-		t.Fatalf("paint stacks after super=%d, want reset after trigger", got)
+	if target.StunUntil != 0 || target.BlindUntil != 0 {
+		t.Fatalf("grenade applied before landing: stun=%d blind=%d", target.StunUntil, target.BlindUntil)
 	}
 	if len(gs.HeroZones) != 1 || gs.HeroZones[0].Kind != "katty_paint_puddle" || gs.HeroZones[0].Radius != 200 {
 		t.Fatalf("super zones=%#v, want one radius-200 puddle", gs.HeroZones)
+	}
+	zone := gs.HeroZones[0]
+	zone.TriggerAt = time.Now().UnixMilli()
+	gs.updateNewHeroSystems()
+	if target.StunUntil <= now || target.BlindUntil <= now {
+		t.Fatalf("enemy in landed puddle was not painted: stun=%d blind=%d", target.StunUntil, target.BlindUntil)
+	}
+
+	late.X, late.Y = zone.X, zone.Y
+	gs.updateNewHeroSystems()
+	if late.StunUntil <= now || late.BlindUntil <= now {
+		t.Fatalf("late entrant was not painted: stun=%d blind=%d", late.StunUntil, late.BlindUntil)
 	}
 }
 

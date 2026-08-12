@@ -2,6 +2,7 @@ package game
 
 import (
 	"battle/model/bullet"
+	"battle/model/gamemap"
 	"battle/model/monster"
 	"battle/model/player"
 	"battle/model/prop"
@@ -1039,6 +1040,54 @@ func TestMonstersAdd(t *testing.T) {
 	for _, m := range gs.Monsters {
 		if !m.IsAlive() {
 			t.Error("new monster should be alive")
+		}
+	}
+}
+
+func TestMonstersAddDistributesEightMonstersAcrossArenaRegions(t *testing.T) {
+	gs := newTestGameState()
+	mapData, err := gamemap.LoadMap("arena")
+	if err != nil {
+		t.Fatalf("load arena: %v", err)
+	}
+	gs.Map = mapData
+	gs.monstersAdd(8)
+
+	if len(gs.Monsters) != 8 {
+		t.Fatalf("monsters = %d, want 8", len(gs.Monsters))
+	}
+
+	regions := make(map[[2]int]bool)
+	for _, m := range gs.Monsters {
+		if m == nil {
+			t.Fatal("spawned nil monster")
+		}
+		region := [2]int{int(m.X / (gs.Map.WidthInPixels / 4)), int(m.Y / (gs.Map.HeightInPixels / 2))}
+		regions[region] = true
+	}
+	if len(regions) != 8 {
+		t.Fatalf("monster regions = %d, want 8 distinct regions", len(regions))
+	}
+}
+
+func TestMonstersAddKeepsMonstersSeparated(t *testing.T) {
+	gs := newTestGameState()
+	mapData, err := gamemap.LoadMap("arena")
+	if err != nil {
+		t.Fatalf("load arena: %v", err)
+	}
+	gs.Map = mapData
+	gs.monstersAdd(8)
+
+	monsters := make([]*monster.Monster, 0, len(gs.Monsters))
+	for _, m := range gs.Monsters {
+		monsters = append(monsters, m)
+	}
+	for i, first := range monsters {
+		for _, second := range monsters[i+1:] {
+			if distance := math.Hypot(first.X-second.X, first.Y-second.Y); distance < monsterSpawnClearance {
+				t.Fatalf("monsters spawned too close: %.1f, want at least %.1f", distance, monsterSpawnClearance)
+			}
 		}
 	}
 }

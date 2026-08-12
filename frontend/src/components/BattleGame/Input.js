@@ -1,9 +1,19 @@
 import {normalizeEightWayMove, quantizeAngleToSectors} from "./direction.js"
 
 const AUTO_AIM_GESTURE_DRAG_LIMIT = 10
+const MIN_ATTACK_INPUT_DEBOUNCE_MS = 90
 
 export const isAutoAimAttackGesture = (dragDistance) =>
   Number(dragDistance) < AUTO_AIM_GESTURE_DRAG_LIMIT
+
+export const canStartAttack = (player, now, lastShotAt, battleState = "game") => {
+  if (battleState !== "game" || !player || Number(player.lives) <= 0 || Number(player.ammo) <= 0) return false
+  if (player.attackReady === false) return false
+  if (Number(player?.attackCooldown) > 0) return false
+  if (Number(player?.stun) > 0 || Number(player?.channel) > 0) return false
+  const cadence = Math.max(MIN_ATTACK_INPUT_DEBOUNCE_MS, Number(player?.attackRateMs) || 0)
+  return !lastShotAt || Number(now) - Number(lastShotAt) >= cadence
+}
 
 export class Input {
   constructor(canvas, gameClient, onTouchControlsChange = null, onMove = null) {
@@ -21,8 +31,8 @@ export class Input {
     this.aimCurrent = null
     this.shooting = false
     this.lastShotAt = 0
-    // The battle engine owns each hero's real cadence. Input only debounces noisy pointers.
-    this.shootCooldown = 90
+    // The battle engine remains authoritative; this timestamp suppresses clicks
+    // that its published hero cadence cannot accept yet.
     this.localPlayerId = null
     this.getState = null
     this.getPlayerScreenPosition = null
@@ -35,6 +45,7 @@ export class Input {
     this.lastRotationSentAt = 0
     this.rotationSendInterval = 33
     this.attackPointerStart = null
+    this.attackAiming = false
     this.onTouchControlsChange = onTouchControlsChange
     this.onMove = onMove
 
@@ -71,6 +82,26 @@ export class Input {
       : {x: rect.width / 2, y: rect.height / 2}
   }
 
+  getAttackContext() {
+    const state = this.getState?.()
+    return {
+      state,
+      player: this.localPlayerId ? state?.players?.[this.localPlayerId] : null,
+    }
+  }
+
+  canAttack(now = Date.now()) {
+    const {state, player} = this.getAttackContext()
+    return canStartAttack(player, now, this.lastShotAt, state?.game?.state)
+  }
+
+  startAiming() {
+    if (this.attackAiming || !this.canAttack()) return false
+    this.attackAiming = true
+    this.client.setAiming?.(true)
+    return true
+  }
+
   setupKeyboard() {
     window.addEventListener("keydown", (e) => {
       this.keys[e.code] = true
@@ -98,13 +129,17 @@ export class Input {
       const rect = this.canvas.getBoundingClientRect()
       this.mouseX = e.clientX - rect.left
       this.mouseY = e.clientY - rect.top
+      if (this.attackPointerStart && !this.attackAiming) {
+        const drag = Math.hypot(this.mouseX - this.attackPointerStart.x, this.mouseY - this.attackPointerStart.y)
+        if (!isAutoAimAttackGesture(drag)) this.startAiming()
+      }
       this.sendRotation()
     }, {signal: this.events.signal})
 
     this.canvas.addEventListener("mousedown", (e) => {
       const rect = this.canvas.getBoundingClientRect()
       this.attackPointerStart = {x: e.clientX - rect.left, y: e.clientY - rect.top}
-      this.client.setAiming?.(true)
+      this.attackAiming = false
     }, {signal: this.events.signal})
 
     window.addEventListener("mouseup", (e) => {
@@ -117,7 +152,8 @@ export class Input {
       this.mouseY = end.y
       this.tryShoot(autoAim)
       this.attackPointerStart = null
-      this.client.setAiming?.(false)
+      if (this.attackAiming) this.client.setAiming?.(false)
+      this.attackAiming = false
     }, {signal: this.events.signal})
   }
 
@@ -139,7 +175,7 @@ export class Input {
           this.aimCurrent = {...point}
           this.mouseX = point.x
           this.mouseY = point.y
-          this.client.setAiming?.(true)
+          this.attackAiming = false
           this.sendRotation()
           this.emitTouchControls()
         }
@@ -158,7 +194,8 @@ export class Input {
           const dx = point.x - this.aimStart.x
           const dy = point.y - this.aimStart.y
           const distance = Math.hypot(dx, dy)
-          if (distance > 8) {
+          if (!isAutoAimAttackGesture(distance)) {
+            this.startAiming()
             const player = this.localPlayerId && this.getState?.()?.players?.[this.localPlayerId]
             const origin = this.getAimOrigin(rect, player)
             this.mouseX = origin.x + (dx / distance) * 100
@@ -191,7 +228,8 @@ export class Input {
           this.aimStart = null
           this.aimCurrent = null
           this.shooting = false
-          this.client.setAiming?.(false)
+          if (this.attackAiming) this.client.setAiming?.(false)
+          this.attackAiming = false
           this.emitTouchControls()
         }
       }
@@ -206,7 +244,8 @@ export class Input {
       this.aimStart = null
       this.aimCurrent = null
       this.shooting = false
-      this.client.setAiming?.(false)
+      if (this.attackAiming) this.client.setAiming?.(false)
+      this.attackAiming = false
       this.sendMove(0, 0)
       this.emitTouchControls()
     }, {passive: false, signal: this.events.signal})
@@ -271,11 +310,9 @@ export class Input {
   }
 
   tryShoot(autoAim = false) {
-    const player = this.localPlayerId && this.getState?.()?.players?.[this.localPlayerId]
-    if (player && Number(player.ammo) <= 0) return
+    const {state, player} = this.getAttackContext()
     const now = Date.now()
-    if (now - this.lastShotAt < this.shootCooldown) return
-    this.lastShotAt = now
+    if (!canStartAttack(player, now, this.lastShotAt, state?.game?.state)) return
 
     const rect = this.canvas.getBoundingClientRect()
     const screenX = this.mouseX
@@ -283,7 +320,8 @@ export class Input {
     const origin = this.getAimOrigin(rect, player)
 
     const angle = this.resolveAimAngle(screenX, screenY, player, origin)
-    this.client.shoot(angle, this.resolveAimDistance(screenX, screenY, origin), autoAim)
+    const sentAt = this.client.shoot(angle, this.resolveAimDistance(screenX, screenY, origin), autoAim)
+    if (sentAt !== null && sentAt !== undefined) this.lastShotAt = now
   }
 
   update() {
@@ -310,7 +348,8 @@ export class Input {
   destroy() {
     this.events.abort()
     this.shooting = false
-    this.client.setAiming?.(false)
+    if (this.attackAiming) this.client.setAiming?.(false)
+    this.attackAiming = false
     this.keys = {}
     this.sendMove(0, 0)
     this.onTouchControlsChange?.({move: null, aim: null})

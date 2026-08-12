@@ -58,7 +58,19 @@ const attackDamage = player => {
   return damage > 0 ? Math.max(1, Math.round(damage)) : 0
 }
 
-const blockingWall = wall => wall.type !== "half" && wall.type !== "bush" && wall.type !== "moon_mist"
+const blockingWall = wall => typeof wall?.blocking === "boolean"
+  ? wall.blocking
+  : wall?.type !== "half" && wall?.type !== "bush"
+
+const preserveMapWalls = (map, previousMap) => {
+  if (!map) return map
+  const previousWalls = previousMap?.walls
+  const incomingWalls = map.walls
+  if (!Array.isArray(previousWalls) || previousWalls.length === 0) return map
+  if (Array.isArray(incomingWalls) && incomingWalls.length > 0) return map
+  if (map.width !== previousMap.width || map.height !== previousMap.height) return map
+  return {...map, walls: previousWalls}
+}
 
 const cellCoordinate = value => Math.floor((Number(value) || 0) / COLLISION_CELL_SIZE)
 const collisionCellKey = (x, y) => `${x}:${y}`
@@ -164,21 +176,28 @@ const movementSpeed = player => {
   return speed
 }
 
-const movePosition = (position, input, player, delta, map, collisionIndex = null, collisionResult = null) => {
+export const movePosition = (position, input, player, delta, map, collisionIndex = null, collisionResult = null) => {
   const magnitude = Math.hypot(input.x, input.y)
   if (magnitude <= .001 || delta <= 0) return position
   const distance = movementSpeed(player) * delta
   const radius = Number(player.radius) || 14
-  const next = {
-    x: position.x + input.x / magnitude * distance,
-    y: position.y + input.y / magnitude * distance,
+  const maxStep = Math.max(1, radius * .5)
+  const steps = Math.max(1, Math.ceil(distance / maxStep))
+  const stepDistance = distance / steps
+  let next = {...position}
+  for (let step = 0; step < steps; step += 1) {
+    next = {
+      x: next.x + input.x / magnitude * stepDistance,
+      y: next.y + input.y / magnitude * stepDistance,
+    }
+    next.x = clamp(next.x, radius, Math.max(radius, (map.width || radius) - radius))
+    next.y = clamp(next.y, radius, Math.max(radius, (map.height || radius) - radius))
+    const collisionWalls = collisionIndex?.cells
+      ? queryCollisionWalls(collisionIndex, next, radius, collisionResult)
+      : map.walls
+    next = resolveWalls(next, radius, collisionWalls)
   }
-  next.x = clamp(next.x, radius, Math.max(radius, (map.width || radius) - radius))
-  next.y = clamp(next.y, radius, Math.max(radius, (map.height || radius) - radius))
-  const collisionWalls = collisionIndex?.cells
-    ? queryCollisionWalls(collisionIndex, next, radius, collisionResult)
-    : map.walls
-  return resolveWalls(next, radius, collisionWalls)
+  return next
 }
 
 const interpolateAngle = (a = 0, b = 0, t) =>
@@ -322,11 +341,13 @@ export class NetworkSimulation {
 
   ingest(state, clockOffset = null, receivedAt = Date.now()) {
     if (!state || state.type !== "state") return
+    const map = preserveMapWalls(state.map, this.latestState?.map)
+    const normalizedState = map === state.map ? state : {...state, map}
     const timestamp = Number(state.ts)
     const lastTimestamp = Number(this.snapshots.at(-1)?.ts)
     if (Number.isFinite(timestamp) && Number.isFinite(lastTimestamp) && timestamp < lastTimestamp) return
     if (Number.isFinite(timestamp) && Number.isFinite(lastTimestamp) && timestamp === lastTimestamp) {
-      this.latestState = state
+      this.latestState = normalizedState
       return
     }
     const perfToken = startBattlePerformance("simulation.ingest")
@@ -353,11 +374,11 @@ export class NetworkSimulation {
       // This is only an initial estimate; every later synced state replaces it.
       this.clockOffset = Date.now() - Number(state.ts || Date.now())
     }
-    this.latestState = state
+    this.latestState = normalizedState
     const predictionNow = Number.isFinite(receivedAt) ? receivedAt : Date.now()
-    this.damagePrediction.ingest(state, predictionNow)
-    this.damagePrediction.reconcileEvents(state.combatEvents, predictionNow)
-    this.snapshots.push(state)
+    this.damagePrediction.ingest(normalizedState, predictionNow)
+    this.damagePrediction.reconcileEvents(normalizedState.combatEvents, predictionNow)
+    this.snapshots.push(normalizedState)
     // Older timestamps are rejected above, so the accepted stream is already
     // ordered. Avoid sorting the whole 40-frame presentation buffer per state.
     if (this.snapshots.length > 40) this.snapshots.shift()

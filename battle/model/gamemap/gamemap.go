@@ -3,10 +3,12 @@ package gamemap
 import (
 	_ "embed"
 	"encoding/json"
-	"time"
 
 	"battle/service/geometry"
 )
+
+// CanonicalBattleRoyaleSeed keeps gameplay, map previews, and QA on one arena.
+const CanonicalBattleRoyaleSeed int64 = 20260810
 
 //go:embed assets/maps/small.json
 var smallMapJSON []byte
@@ -91,7 +93,7 @@ type TilesetEntry struct {
 
 func LoadMap(name string) (*GameMap, error) {
 	if name == "battle-royale" {
-		return GenerateBattleRoyale(time.Now().UnixNano()), nil
+		return GenerateBattleRoyale(CanonicalBattleRoyaleSeed), nil
 	}
 	data, ok := mapData[name]
 	if !ok {

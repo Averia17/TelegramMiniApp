@@ -7,6 +7,7 @@ const TIMED_EFFECTS = [
   {id: "invulnerable", property: "invulnerable", label: "НЕУЯЗВИМОСТЬ", icon: "✧", tone: "defense"},
   {id: "blind", property: "blind", label: "ОСЛЕПЛЕНИЕ", icon: "☀", tone: "negative"},
   {id: "stun", property: "stun", label: "СТАН", icon: "✹", tone: "negative"},
+  {id: "doomed", property: "doomed", label: "МЕТКА KAZE", icon: "◈", tone: "negative"},
   {id: "channel", property: "channel", label: "КАНАЛИЗАЦИЯ", icon: "◉", tone: "negative"},
   {id: "vine", property: "vine", label: "СВЯЗАН", icon: "⌁", tone: "negative"},
   {id: "vortex", property: "vortex", label: "ВОРОНКА", icon: "↻", tone: "negative"},
@@ -37,6 +38,21 @@ export const getActiveStatusEffects = (player = {}, {inBush = false} = {}) => {
 
   if (player.poisoned) {
     addEffect(effects, {id: "poisoned", label: "ОТРАВЛЕНИЕ", icon: "☠", tone: "negative"})
+  }
+
+  const micoRage = Math.max(0, Math.min(5, Number(player.micoRage) || 0))
+  if (micoRage > 0) {
+    addEffect(effects, {id: "micoRage", label: `ЯРОСТЬ ${micoRage}/5`, icon: "🔥", tone: "positive"})
+  }
+
+  const kazeCombo = Math.max(0, Math.min(2, Number(player.kazeCombo) || 0))
+  if (kazeCombo > 0) {
+    addEffect(effects, {id: "kazeCombo", label: `КОМБО ${kazeCombo}/2`, icon: "✕", tone: "positive"})
+  }
+
+  const minaMarks = Math.max(0, Math.min(1, Number(player.marks) || 0))
+  if (minaMarks > 0) {
+    addEffect(effects, {id: "minaMark", label: "МЕТКА MINA", icon: "✦", tone: "negative"})
   }
 
   return effects

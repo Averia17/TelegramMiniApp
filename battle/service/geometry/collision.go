@@ -227,7 +227,7 @@ func CollidesCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType
 }
 
 func IsBlockingWall(wallType string) bool {
-	return wallType != "half" && wallType != "bush" && wallType != "moon_mist"
+	return wallType != "half" && wallType != "bush"
 }
 
 func CorrectCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) {

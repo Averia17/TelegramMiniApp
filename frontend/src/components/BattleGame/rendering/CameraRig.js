@@ -23,6 +23,12 @@ export class CameraRig {
     this.preferredVertical = 27
     this.vertical = 0
     this.initialized = false
+    this.shake = 0
+    this.shakeTime = 0
+  }
+
+  addShake(amount = .08) {
+    this.shake = Math.min(.34, this.shake + Math.max(0, Number(amount) || 0))
   }
 
   resize(width, height) {
@@ -69,13 +75,19 @@ export class CameraRig {
     } else {
       this.target.lerp(desired, blend(7, delta))
     }
+    this.shake = Math.max(0, this.shake - delta * 1.15)
+    this.shakeTime += delta
+    const shake = this.shake * this.shake
+    const offsetX = Math.sin(this.shakeTime * 67) * shake
+    const offsetY = Math.cos(this.shakeTime * 79) * shake * .42
+    const offsetZ = Math.sin(this.shakeTime * 91) * shake
     const distance = 54
     this.camera.position.set(
-      this.target.x,
-      distance * Math.sin(CAMERA_ANGLE),
-      this.target.z + distance * Math.cos(CAMERA_ANGLE),
+      this.target.x + offsetX,
+      distance * Math.sin(CAMERA_ANGLE) + offsetY,
+      this.target.z + distance * Math.cos(CAMERA_ANGLE) + offsetZ,
     )
-    this.camera.lookAt(this.target)
+    this.camera.lookAt(this.target.x + offsetX * .26, this.target.y + offsetY * .26, this.target.z + offsetZ * .26)
   }
 
   worldToScreen(x, y) {

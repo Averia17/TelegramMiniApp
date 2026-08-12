@@ -101,6 +101,7 @@ func TestHandleHealth(t *testing.T) {
 
 func TestHandleMapPreviewReturnsCanonicalBattleMap(t *testing.T) {
 	h := NewHandler()
+	// A caller-provided seed must not drift QA away from the gameplay arena.
 	req := httptest.NewRequest(http.MethodGet, "/map-preview?seed=42", nil)
 	w := httptest.NewRecorder()
 
@@ -118,6 +119,7 @@ func TestHandleMapPreviewReturnsCanonicalBattleMap(t *testing.T) {
 			Walls    []struct {
 				MinX float64 `json:"minX"`
 				MinY float64 `json:"minY"`
+				Blocking bool `json:"blocking"`
 				Type string  `json:"type"`
 			} `json:"walls"`
 		} `json:"map"`
@@ -131,15 +133,18 @@ func TestHandleMapPreviewReturnsCanonicalBattleMap(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode map preview: %v", err)
 	}
-	canonical := gamemap.GenerateBattleRoyale(42)
-	if payload.Seed != 42 || payload.Map.Width != canonical.WidthInPixels || payload.Map.Height != canonical.HeightInPixels {
-		t.Fatalf("preview header = %#v, want seed 42 and %.0fx%.0f", payload, canonical.WidthInPixels, canonical.HeightInPixels)
+	canonical := gamemap.GenerateBattleRoyale(gamemap.CanonicalBattleRoyaleSeed)
+	if payload.Seed != gamemap.CanonicalBattleRoyaleSeed || payload.Map.Width != canonical.WidthInPixels || payload.Map.Height != canonical.HeightInPixels {
+		t.Fatalf("preview header = %#v, want canonical seed %d and %.0fx%.0f", payload, gamemap.CanonicalBattleRoyaleSeed, canonical.WidthInPixels, canonical.HeightInPixels)
 	}
 	if payload.Map.TileSize != 40 || len(payload.Map.Walls) != len(canonical.Collisions) || len(payload.Spawners) != len(canonical.Spawners) {
 		t.Fatalf("preview geometry = tile %.0f, walls %d, spawners %d; want tile 40, walls %d, spawners %d", payload.Map.TileSize, len(payload.Map.Walls), len(payload.Spawners), len(canonical.Collisions), len(canonical.Spawners))
 	}
 	if payload.Map.Walls[0].MinX != canonical.Collisions[0].MinX || payload.Map.Walls[0].MinY != canonical.Collisions[0].MinY || payload.Map.Walls[0].Type != canonical.Collisions[0].Type {
 		t.Fatalf("first wall = %#v, want %.0f,%.0f,%s", payload.Map.Walls[0], canonical.Collisions[0].MinX, canonical.Collisions[0].MinY, canonical.Collisions[0].Type)
+	}
+	if !payload.Map.Walls[0].Blocking {
+		t.Fatal("map preview did not publish the authoritative blocking flag")
 	}
 }
 

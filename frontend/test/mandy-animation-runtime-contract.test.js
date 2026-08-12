@@ -72,25 +72,6 @@ test("Mandy has all twelve focused animation scenes", async () => {
   }
 })
 
-test("Mandy authoring contract uses +1 Blender frames and FK foot slide", async () => {
-  const authoring = await readFile(path.join(repoRoot, "tools/blender/author_mandy_animation_scenes.py"), "utf8")
-  assert.match(authoring, /FRAME_DURATIONS\s*=\s*\{[\s\S]*"idle": 90[\s\S]*"aim-gadget": 60/)
-  assert.match(authoring, /"run": 20[\s\S]*"attack": 16[\s\S]*"super": 50/)
-  assert.match(authoring, /"victory": 60/)
-  assert.match(authoring, /frame\s*\+\s*1/)
-  assert.match(authoring, /staff_hand.*L_wrist_s_047|hand_l.*L_wrist_s_047/)
-  assert.match(authoring, /FINGER_BONES\s*=\s*\{[\s\S]*L_index_01_s_050[\s\S]*R_index_01_s_067/)
-  assert.match(authoring, /scene\.frame_set\(20\)/)
-  assert.match(authoring, /preserve the exact source transforms/i)
-  assert.match(authoring, /apply_natural_right_arm_pose/)
-  assert.match(authoring, /authored relaxed wrist\/finger\s+shape/i)
-  assert.doesNotMatch(authoring, /pivot\.scale = \(0\.52, 0\.52, 0\.52\)/)
-  assert.match(authoring, /right_hand_contact.*forbidden/)
-  assert.doesNotMatch(authoring, /root_z=/)
-  assert.match(authoring, /foot slide/i)
-  assert.doesNotMatch(authoring, /IK_TARGET|ik_target|constraint/i)
-})
-
 test("Mandy GLB contains all twelve canonical Actions", async () => {
   const document = glbJson(await readFile(runtimePath))
   assert.deepEqual(

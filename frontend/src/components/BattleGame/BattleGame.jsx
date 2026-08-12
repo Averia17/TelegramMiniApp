@@ -17,6 +17,7 @@ import {assetRegistry} from "./rendering/assets/AssetRegistry.js"
 import {WS_URL} from "../../utils/urls.js"
 import {getAccessToken} from "../../utils/auth.js"
 import {BattleLoading} from "../BattleLoading/BattleLoading.jsx"
+import {getBattleLoadingProgress} from "./battleLoadingProgress.js"
 import "./BattleGame.css"
 
 
@@ -474,7 +475,7 @@ export const BattleGame = ({playerId, roomId, heroName, tauntCharges = 0}) => {
     : !assetsReady
       ? "Загружаем 3D-модели арены..."
       : connected ? "Получаем карту арены..." : "Подключаемся к арене..."
-  const loadingProgress = assetLoadError ? 100 : !assetsReady ? 68 : connected ? 62 : 42
+  const loadingProgress = getBattleLoadingProgress({assetsReady, connected, assetLoadError})
 
   return (
     <Profiler id="battle-ui" onRender={profileBattleUi}>
@@ -484,7 +485,6 @@ export const BattleGame = ({playerId, roomId, heroName, tauntCharges = 0}) => {
           stateHz: clientRef.current?.stateHz,
           stateBytes: clientRef.current?.lastStateBytes,
           renderer: rendererRef.current?.mode,
-          lowQuality: rendererRef.current?.impl?.lowQuality,
           fps: rendererRef.current?.impl?.fps,
           drawCalls: rendererRef.current?.impl?.renderer?.info?.render?.calls,
           triangles: rendererRef.current?.impl?.renderer?.info?.render?.triangles,

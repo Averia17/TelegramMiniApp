@@ -3,6 +3,7 @@ import {isAlivePlayerState} from "../heroes/playerVisibility.js"
 import {MapRenderer} from "../map/MapRenderer"
 import {AimRenderer} from "../combat/AimRenderer"
 import {EffectRenderer} from "../combat/EffectRenderer"
+import {CombatFeedbackRenderer} from "../combat/CombatFeedbackRenderer.js"
 import {ProjectileRenderer} from "../combat/ProjectileRenderer"
 import {CameraRig} from "../CameraRig"
 import {SceneRoot} from "../SceneRoot"
@@ -15,8 +16,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 export class ThreeBattleRenderer {
   constructor(canvas) {
     this.canvas = canvas
-    this.sceneRoot = new SceneRoot(canvas, false)
-    this.lowQuality = this.sceneRoot.lowQuality
+    this.sceneRoot = new SceneRoot(canvas)
     this.renderer = this.sceneRoot.renderer
     this.scene = this.sceneRoot.scene
     this.cameraRig = new CameraRig()
@@ -28,15 +28,16 @@ export class ThreeBattleRenderer {
     this.effectRoot = this.sceneRoot.roots.effects
     this.aimRoot = this.sceneRoot.roots.aim
     this.players = new Map()
-    this.monsters = new MonsterRenderer(this.actorRoot, {lowQuality: this.lowQuality})
+    this.monsters = new MonsterRenderer(this.actorRoot)
     this.pickups = new PickupRenderer(this.pickupRoot)
-    this.projectiles = new ProjectileRenderer(this.projectileRoot, {lowQuality: this.lowQuality})
-    this.effects = new EffectRenderer(this.effectRoot, {lowQuality: this.lowQuality})
+    this.projectiles = new ProjectileRenderer(this.projectileRoot)
+    this.effects = new EffectRenderer(this.effectRoot)
+    this.combatFeedback = new CombatFeedbackRenderer(this.effectRoot)
     this.aim = new AimRenderer(this.aimRoot)
     this.state = null
     this.mapState = null
     this.localPlayerId = null
-    this.mapRenderer = new MapRenderer(this.mapRoot, {lowQuality: this.lowQuality})
+    this.mapRenderer = new MapRenderer(this.mapRoot)
     this.time = 0
     this.lastRenderAt = performance.now()
     this.resize(window.innerWidth, window.innerHeight)
@@ -51,7 +52,7 @@ export class ThreeBattleRenderer {
 
   setLocalPlayerId(id) {
     this.localPlayerId = String(id)
-    this.players.forEach((view, playerId) => view.setShadowCasting?.(playerId === this.localPlayerId))
+    this.combatFeedback.setLocalPlayerId(this.localPlayerId)
   }
 
   showTaunt(playerId, tauntId = "clown_laugh") {
@@ -103,11 +104,10 @@ export class ThreeBattleRenderer {
       if (!view || String(view.state.hero) !== String(player.hero)) {
         if (!isAlivePlayerState(player)) return
         if (view) { this.actorRoot.remove(view.group); view.dispose() }
-        view = new HeroView(String(id), player, this.lowQuality)
+        view = new HeroView(String(id), player)
         this.players.set(String(id), view)
         this.actorRoot.add(view.group)
       }
-      view.setShadowCasting?.(String(id) === this.localPlayerId)
       view.setState(player, Boolean(state.networkSmoothed))
     })
     this.players.forEach((view, id) => {
@@ -117,6 +117,12 @@ export class ThreeBattleRenderer {
     this.monsters.sync(state.monsters || {})
     this.pickups.sync(state.props || [])
     this.effects.sync(state.effects || [])
+    const newHits = this.combatFeedback.sync(state)
+    newHits.forEach(event => {
+      const targetIsLocal = String(event.targetId) === this.localPlayerId
+      const sourceIsLocal = String(event.sourceId) === this.localPlayerId
+      this.cameraRig.addShake(targetIsLocal ? .18 : sourceIsLocal ? .07 : .025)
+    })
     recordBattleMetric("renderer.scene_entity_count", active.size + Object.keys(state.monsters || {}).length + (state.bullets || []).length, {
       players: active.size,
       monsters: Object.keys(state.monsters || {}).length,
@@ -151,9 +157,7 @@ export class ThreeBattleRenderer {
     const frameStartedAt = performance.now()
     const now=performance.now()
     const frameInterval = now - this.lastRenderAt
-    recordBattleMetric("renderer.frame_interval", frameInterval, {
-      lowQuality: this.lowQuality,
-    })
+    recordBattleMetric("renderer.frame_interval", frameInterval)
     const delta=clamp(frameInterval/1000,1/240,.05);this.lastRenderAt=now;this.time+=delta
     const sceneUpdateStartedAt = performance.now()
     const walls=this.state?.map?.walls||[]
@@ -165,6 +169,7 @@ export class ThreeBattleRenderer {
     this.projectiles.update(delta,this.time)
     this.monsters.update(delta,this.time)
     this.pickups.update(delta)
+    this.combatFeedback.update(delta)
     this.aim.update(this.state?.players?.[this.localPlayerId], delta)
     const map=this.state?.map||{width:1024,height:768}
     this.cameraRig.follow(local, map, delta)
@@ -176,13 +181,11 @@ export class ThreeBattleRenderer {
     const gpuRenderStartedAt = performance.now()
     this.sceneRoot.render(this.camera)
     recordBattleMetric("renderer.gpu", performance.now() - gpuRenderStartedAt, {
-      lowQuality: this.lowQuality,
       drawCalls: this.renderer.info.render.calls,
       triangles: this.renderer.info.render.triangles,
     })
     const frameElapsed = performance.now() - frameStartedAt
     recordBattleMetric("renderer.frame", frameElapsed, {
-      lowQuality: this.lowQuality,
       drawCalls: this.renderer.info.render.calls,
       triangles: this.renderer.info.render.triangles,
     })
@@ -207,6 +210,7 @@ export class ThreeBattleRenderer {
     this.pickups.dispose()
     this.monsters.dispose()
     this.mapRenderer.dispose()
+    this.combatFeedback.dispose()
     this.sceneRoot.dispose()
   }
 }
