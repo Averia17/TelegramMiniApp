@@ -13,19 +13,19 @@ func TestKattyIsRegisteredWithBalancedCompactStats(t *testing.T) {
 	if hero == nil {
 		t.Fatal("Katty is not registered")
 	}
-	if hero.MaxLives != 640 || hero.Speed != 14 || hero.AttackDamage != 34 {
-		t.Fatalf("Katty stats = health=%d speed=%d damage=%d, want 640/14/34", hero.MaxLives, hero.Speed, hero.AttackDamage)
+	if hero.MaxLives != 640 || hero.Speed != 14 || hero.AttackDamage != 42 {
+		t.Fatalf("Katty stats = health=%d speed=%d damage=%d, want 640/14/42", hero.MaxLives, hero.Speed, hero.AttackDamage)
 	}
 	if hero.Attack.Range != 240 || hero.Attack.HalfArcDegrees != 22.5 || hero.Attack.ProjectileCount != 3 {
-		t.Fatalf("Katty attack config = %#v, want short 3-shot 45-degree burst", hero.Attack)
+		t.Fatalf("Katty attack config = %#v, want three paint projectiles in a 45-degree fan", hero.Attack)
 	}
 }
 
-func TestKattyBasicSchedulesThreePaintConesAndThirdLayerStuns(t *testing.T) {
+func TestKattyBasicSchedulesThreePaintProjectilesAndThirdLayerStuns(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("katty", "Katty", "Katty")
-	gs.PlayerAdd("enemy", "Enemy", "Shelly")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
 	source, target := gs.Players["katty"], gs.Players["enemy"]
 	source.X, source.Y, target.X, target.Y = 400, 400, 520, 400
 	now := time.Now().UnixMilli()
@@ -41,14 +41,19 @@ func TestKattyBasicSchedulesThreePaintConesAndThirdLayerStuns(t *testing.T) {
 		t.Fatalf("first shot delay=%dms, want 200ms", got)
 	}
 
-	for shot := 0; shot < 3; shot++ {
-		if shot > 0 {
-			time.Sleep(155 * time.Millisecond)
-		}
-		if shot == 0 {
-			time.Sleep(205 * time.Millisecond)
-		}
-		gs.updateScheduledShots()
+	for _, scheduled := range gs.ScheduledShots {
+		scheduled.SpawnAt = now - 1
+	}
+	gs.updateScheduledShots()
+	if len(gs.Bullets) != 3 || len(gs.HeroZones) != 0 {
+		t.Fatalf("paint bullets=%d zones=%d, want three projectiles and no ground zones", len(gs.Bullets), len(gs.HeroZones))
+	}
+	for _, shot := range gs.Bullets {
+		shot.X, shot.Y = target.X-2, target.Y
+		gs.updateBullets()
+	}
+	if got := target.MaxLives - target.Lives; got != source.AttackDmg*3+int(math.Round(float64(source.AttackDmg)*KattyPaintBonusMultiplier)) {
+		t.Fatalf("three-layer paint damage=%d, want base plus %.0f%% bonus", got, KattyPaintBonusMultiplier*100)
 	}
 	remaining := target.StunUntil - time.Now().UnixMilli()
 	if remaining < 500 || remaining > 900 {
@@ -56,7 +61,7 @@ func TestKattyBasicSchedulesThreePaintConesAndThirdLayerStuns(t *testing.T) {
 	}
 }
 
-func TestKattyPaintSpotAppearsWhereTheConeActuallyHits(t *testing.T) {
+func TestKattyPaintProjectileDoesNotLeaveASlowSpot(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("katty", "Katty", "Katty")
@@ -64,14 +69,15 @@ func TestKattyPaintSpotAppearsWhereTheConeActuallyHits(t *testing.T) {
 	katty, enemy := gs.Players["katty"], gs.Players["enemy"]
 	katty.X, katty.Y, enemy.X, enemy.Y = 500, 500, 570, 500
 
-	gs.executeKattyPaintShot(katty, time.Now().UnixMilli(), 0)
+	shot := gs.spawnAttackBullet(katty, 0, "katty_paint", katty.AttackDmg, 28*RuntimeProjectileSpeedScale, 7, 240, 0, false, false)
+	shot.X, shot.Y = enemy.X-2, enemy.Y
+	gs.updateBullets()
 
-	if len(gs.HeroZones) != 1 {
-		t.Fatalf("paint spots=%d, want 1", len(gs.HeroZones))
+	if len(gs.HeroZones) != 0 {
+		t.Fatalf("paint projectile left %d hidden slow spots", len(gs.HeroZones))
 	}
-	spot := gs.HeroZones[0]
-	if math.Hypot(spot.X-enemy.X, spot.Y-enemy.Y) > .01 {
-		t.Fatalf("paint spot=(%.1f,%.1f), want hit=(%.1f,%.1f)", spot.X, spot.Y, enemy.X, enemy.Y)
+	if got := gs.kattyPaintStacks(katty.PlayerId, enemy.PlayerId); got != 1 {
+		t.Fatalf("paint stacks=%d, want one direct layer", got)
 	}
 }
 
@@ -79,8 +85,8 @@ func TestKattySuperLandsThenPaintsEachEnemyEnteringThePuddle(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("katty", "Katty", "Katty")
-	gs.PlayerAdd("enemy", "Enemy", "Shelly")
-	gs.PlayerAdd("late", "Late", "Shelly")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	gs.PlayerAdd("late", "Late", "Needle")
 	source, target, late := gs.Players["katty"], gs.Players["enemy"], gs.Players["late"]
 	source.X, source.Y, target.X, target.Y, source.SuperCharge = 400, 400, 520, 400, 100
 	late.X, late.Y = 900, 900
@@ -92,8 +98,11 @@ func TestKattySuperLandsThenPaintsEachEnemyEnteringThePuddle(t *testing.T) {
 	if target.StunUntil != 0 || target.BlindUntil != 0 {
 		t.Fatalf("grenade applied before landing: stun=%d blind=%d", target.StunUntil, target.BlindUntil)
 	}
-	if len(gs.HeroZones) != 1 || gs.HeroZones[0].Kind != "katty_paint_puddle" || gs.HeroZones[0].Radius != 200 {
-		t.Fatalf("super zones=%#v, want one radius-200 puddle", gs.HeroZones)
+	if len(gs.HeroZones) != 1 || gs.HeroZones[0].Kind != "katty_paint_puddle" || gs.HeroZones[0].Radius != KattySuperRadius {
+		t.Fatalf("super zones=%#v, want one radius-220 puddle", gs.HeroZones)
+	}
+	if got := gs.HeroZones[0].ExpiresAt - now; got != KattySuperDuration.Milliseconds() {
+		t.Fatalf("super duration=%dms, want %dms", got, KattySuperDuration.Milliseconds())
 	}
 	zone := gs.HeroZones[0]
 	zone.TriggerAt = time.Now().UnixMilli()
@@ -113,7 +122,7 @@ func TestKattyGadgetDashesLeavesTrailAndPaintsCrossedEnemy(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("katty", "Katty", "Katty")
-	gs.PlayerAdd("enemy", "Enemy", "Shelly")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
 	source, target := gs.Players["katty"], gs.Players["enemy"]
 	source.X, source.Y, target.X, target.Y = 400, 400, 540, 400
 	now := time.Now().UnixMilli()

@@ -1,12 +1,17 @@
-# Todo: hero skill audit
+# Todo: переработка скиллов активных героев
 
-- [x] Определить активный ростер и исключить legacy-имена из области аудита.
-- [x] Сверить серверную реализацию, клиентские описания, каталог, статусы и VFX.
-- [x] Потратить FocusCharge Mandy после усиленного удара и добавить регрессионный тест.
-- [x] Исправить описание Needle Super: «оглушает», без несуществующего подбрасывания.
-- [x] Сделать Lumi root zone поддерживающей slow/control до выхода из зоны.
-- [x] Показать Light Mark Fairy Mina в HUD и добавить тест.
-- [x] Показать Doomed Kaze в HUD и добавить тест.
-- [x] Синхронизировать Mico vortex heal в описаниях и docs mechanics.
-- [x] Обновить docs/hero-catalog.json fingerprint и проверить валидатор.
-- [x] Прогнать целевые и полные доступные тесты, frontend build и git diff --check.
+- [x] Сверить восемь активных наборов с backend, frontend, каталогом и VFX.
+- [x] Изучить актуальные классы и механические паттерны Brawl Stars.
+- [x] Зафиксировать матрицу роли, боевого цикла и допустимого AoE.
+- [x] Снять baseline backend/frontend тестов.
+- [x] Написать RED-тесты на новые контракты Needle, Mina и Brock.
+- [x] Реализовать и проверить упрощённые projectile/impact правила.
+- [x] Написать RED-тесты на отсутствие hidden AoE у Mandy, Kaze и Mico.
+- [x] Удалить hidden AoE/status effects и проверить новые payoff-механики.
+- [x] Написать RED-тесты на один anchor Lumi и projectile burst Katty.
+- [x] Реализовать ground-control Lumi и Katty.
+- [x] Синхронизировать server/frontend/docs описания и fingerprint.
+- [x] Прогнать frontend tests/build, целевые Go-тесты и валидатор каталога.
+- [x] Выполнить короткий browser QA и закрыть task-owned браузер.
+- [x] Повторить полный Go suite и отдельно записать оставшиеся baseline-падения.
+- [x] Выполнить `git diff --check`.

@@ -152,15 +152,42 @@ func TestMoveCircleWithBlockingWallsAllowsBushes(t *testing.T) {
 	}
 }
 
-func TestMoveCircleWithBlockingWallsBlocksMoonMist(t *testing.T) {
+func TestBlockingWallColliderInsetsAllowApproachingSmallerProps(t *testing.T) {
+	sh := NewSpatialHash(40)
+	sh.Insert(&WallTile{
+		MinX: 100, MinY: 100, MaxX: 140, MaxY: 140, Type: "tree",
+		ColliderInsetX: 10, ColliderInsetY: 8,
+	})
+	body := &CircleBody{X: 70, Y: 120, Radius: 10}
+
+	MoveCircleWithBlockingWalls(body, sh, 50, 0)
+
+	if body.X != 100 {
+		t.Fatalf("body stopped at x=%.2f, want 100 beside inset collider", body.X)
+	}
+}
+
+func TestBlockingWallCorrectionDoesNotCatchCircleOutsideRectangleCorner(t *testing.T) {
+	sh := NewSpatialHash(40)
+	sh.Insert(&WallTile{MinX: 100, MinY: 100, MaxX: 140, MaxY: 140, Type: "wall"})
+	body := &CircleBody{X: 90, Y: 90, Radius: 14}
+
+	CorrectCircleWithBlockingWalls(body, sh)
+
+	if body.X != 90 || body.Y != 90 {
+		t.Fatalf("non-colliding circle corner was corrected to %.2f,%.2f, want 90,90", body.X, body.Y)
+	}
+}
+
+func TestMoveCircleWithBlockingWallsAllowsMoonMist(t *testing.T) {
 	sh := NewSpatialHash(40)
 	sh.Insert(&WallTile{MinX: 100, MinY: 0, MaxX: 140, MaxY: 200, Type: "moon_mist"})
 	body := &CircleBody{X: 50, Y: 80, Radius: 10}
 
 	MoveCircleWithBlockingWalls(body, sh, 120, 0)
 
-	if body.X != 90 || body.Y != 80 {
-		t.Fatalf("move through moon mist ended at %.2f,%.2f, want 90,80 before the object", body.X, body.Y)
+	if body.X != 170 || body.Y != 80 {
+		t.Fatalf("move through moon mist ended at %.2f,%.2f, want 170,80 past the concealment", body.X, body.Y)
 	}
 }
 

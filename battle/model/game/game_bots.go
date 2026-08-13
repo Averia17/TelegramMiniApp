@@ -419,7 +419,7 @@ func botIsMelee(bot *player.Player) bool {
 		return false
 	}
 	switch bot.HeroName {
-	case "Mandy", "Kaze", "Wukong Mico", "Viper", "Spark":
+	case "Mandy", "Kaze", "Wukong Mico", "Viper":
 		return true
 	}
 	switch bot.AttackType {
@@ -683,12 +683,14 @@ func botSecondaryUseful(bot *player.Player, target *botTarget) bool {
 	}
 	if target.kind == "monster" {
 		switch bot.HeroName {
-		case "Needle", "Fairy Mina", "Persephone Lumi":
+		case "Fairy Mina", "Persephone Lumi":
 			return false
 		}
 	}
 	switch bot.HeroName {
-	case "Needle", "Fairy Mina":
+	case "Needle":
+		return bot.Lives*10 <= bot.MaxLives*7
+	case "Fairy Mina":
 		return target.distance <= 150+target.radius()
 	case "Brock Zeus":
 		return target.distance <= botAttackRange(bot)+target.radius()

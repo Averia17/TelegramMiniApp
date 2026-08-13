@@ -34,7 +34,6 @@ func InitGameState(gs *GameState) {
 	gs.HeroZones = make([]*HeroZone, 0)
 	gs.KattyPaintStacks = make(map[string]map[string]int)
 	gs.KattyPaintUntil = make(map[string]map[string]int64)
-	gs.DoomedUntil = make(map[string]int64)
 	gs.LightMarkedUntil = make(map[string]int64)
 	gs.AbilityTargets = make(map[string]string)
 	gs.LightningStrikes = make([]*LightningStrike, 0)
@@ -146,6 +145,9 @@ func (gs *GameState) updateRegenerationAt(now int64) {
 		return
 	}
 	for _, p := range gs.Players {
+		if hasActiveHostileStatus(p, now) {
+			p.InterruptRegenerationAt(now)
+		}
 		if !p.IsAlive() || p.IsFullLives() || p.RegenRate <= 0 || now-p.LastDamageAt < regenerationCooldown.Milliseconds() {
 			continue
 		}
@@ -166,6 +168,11 @@ func (gs *GameState) updateRegenerationAt(now int64) {
 		}
 		p.LastRegenAt = now
 	}
+}
+
+func hasActiveHostileStatus(p *player.Player, now int64) bool {
+	return p != nil && (p.SlowUntil > now || p.StunUntil > now || p.BlindUntil > now ||
+		p.VineUntil > now || p.VortexUntil > now || p.PoisonUntil > now)
 }
 
 func (gs *GameState) isConcealed(source *player.Player) bool {
@@ -361,9 +368,6 @@ func (gs *GameState) monsterCanSeePlayer(m *monster.Monster, target *player.Play
 	if math.Hypot(target.X-m.X, target.Y-m.Y) > monster.MonsterSight {
 		return false
 	}
-	if gs.Walls != nil && segmentHitsBlockingWall(m.X, m.Y, target.X, target.Y, 2, gs.Walls) {
-		return false
-	}
 	targetGroup, targetInBush := gs.bushGroupAt(target.X, target.Y)
 	if !targetInBush {
 		return true
@@ -441,16 +445,21 @@ func (gs *GameState) applyDamage(target *player.Player, amount int) bool {
 }
 
 func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
-	if gs.State != GameStateGame || target == nil || !target.IsAlive() || target.InvulnerableUntil > time.Now().UnixMilli() {
+	if gs.State != GameStateGame || target == nil || !target.IsAlive() {
 		return 0
 	}
-	if target.StealthUntil > time.Now().UnixMilli() && target.Dodges > 0 {
+	now := time.Now().UnixMilli()
+	target.InterruptRegenerationAt(now)
+	if target.InvulnerableUntil > now {
+		return 0
+	}
+	if target.StealthUntil > now && target.Dodges > 0 {
 		target.Dodges--
 		gs.addEffect("evade", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ffffff", 0, 450)
 		return 0
 	}
-	if target.ShieldUntil > time.Now().UnixMilli() {
-		if target.StoneArmorUntil > time.Now().UnixMilli() {
+	if target.ShieldUntil > now {
+		if target.StoneArmorUntil > now {
 			target.SuppressedRage = int(math.Min(240, float64(target.SuppressedRage+amount)))
 		}
 		amount = int(math.Round(float64(amount) * .6))
@@ -462,15 +471,12 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 	shieldBefore := target.ShieldHP
 	target.TakeDamage(amount)
 	dealt := livesBefore - target.Lives + shieldBefore - target.ShieldHP
-	target.RevealedUntil = time.Now().UnixMilli() + 2000
+	target.RevealedUntil = now + 2000
 	gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ff6b9f", dealt, 520)
 	return dealt
 }
 
 func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int) int {
-	if target != nil && gs.DoomedUntil[target.PlayerId] > time.Now().UnixMilli() {
-		amount = int(math.Round(float64(amount) * 1.3))
-	}
 	wasAlive := target != nil && target.IsAlive()
 	dealt := gs.applyDamageAmount(target, amount)
 	if dealt > 0 && target != nil && gs.activeCommandID != "" {
@@ -631,51 +637,19 @@ func (gs *GameState) updateBullets() {
 			continue
 		}
 		gs.activeCommandID, gs.activeSourceID, gs.activeProjectileID = b.CommandID, b.PlayerId, b.ID
-		if b.Lobbed {
-			now := time.Now().UnixMilli()
-			duration := math.Max(1, float64(b.LandsAt-b.SpawnedAt))
-			progress := math.Max(0, math.Min(1, float64(now-b.SpawnedAt)/duration))
-			b.X = b.OriginX + (b.TargetX-b.OriginX)*progress
-			b.Y = b.OriginY + (b.TargetY-b.OriginY)*progress
-			b.Travelled = math.Hypot(b.X-b.OriginX, b.Y-b.OriginY)
-			if progress >= 1 {
-				b.Active = false
-				gs.DamageZones = append(gs.DamageZones, &DamageZone{
-					Owner: b.PlayerId, X: b.TargetX, Y: b.TargetY, Radius: b.ZoneRadius,
-					Damage: b.Damage, TicksLeft: b.ZoneTicks, NextTickAt: now,
-					Interval: b.ZoneInterval, ExpiresAt: now + int64(b.ZoneTicks)*b.ZoneInterval + 100,
-					Kind: "barley_pool", Color: b.Color, Group: b.ZoneGroup,
-				})
-				gs.addEffect("barley_pool", b.TargetX, b.TargetY, 0, 0, b.ZoneRadius, 0, 0, 0, b.Color, 0, int64(b.ZoneTicks)*b.ZoneInterval+100)
-			}
-			continue
-		}
 		previousX, previousY := b.X, b.Y
 		if b.Homing && b.TargetID != "" {
 			if target := gs.Players[b.TargetID]; target != nil && target.IsAlive() {
 				desired := math.Atan2(target.Y-b.Y, target.X-b.X)
+				// Soft homing: keep the auto-aim feel, but cap the turn so a moving
+				// target can juke the projectile instead of being magnetically hit.
 				delta := math.Atan2(math.Sin(desired-b.Rotation), math.Cos(desired-b.Rotation))
-				b.Rotation += math.Max(-0.12, math.Min(0.12, delta))
+				b.Rotation += math.Max(-0.025, math.Min(0.025, delta))
 			} else {
 				b.Homing = false
 			}
 		}
 		b.Move(BulletSpeed)
-		if b.Kind == "lumi_orb" {
-			now := time.Now().UnixMilli()
-			nearTrail := false
-			for index := len(gs.HeroZones) - 1; index >= 0 && index >= len(gs.HeroZones)-12; index-- {
-				zone := gs.HeroZones[index]
-				if zone != nil && zone.Owner == b.PlayerId && zone.Kind == "lumi_trail" && math.Hypot(zone.X-b.X, zone.Y-b.Y) < 60 {
-					nearTrail = true
-					break
-				}
-			}
-			if !nearTrail {
-				gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: b.PlayerId, Kind: "lumi_trail", X: b.X, Y: b.Y, Radius: 60, CreatedAt: now, ExpiresAt: now + 6000, Triggered: map[string]bool{}})
-				gs.addEffect("lumi_slow_trail", b.X, b.Y, 0, 0, 60, 0, 0, 0, b.Color, 0, 6000)
-			}
-		}
 		if b.MaxRange > 0 && b.Travelled >= b.MaxRange {
 			if b.Returning {
 				b.Returning = false
@@ -768,8 +742,14 @@ func (gs *GameState) updateBullets() {
 				p.SlowMultiplier = .60
 				gs.addEffect("needle_spores", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#75d947", 0, cappedSkillDuration(NeedleSporeSlowDuration))
 			}
-			if b.Kind == "spore" || b.Kind == "quantum" {
-				gs.radialDamageExcept(b.PlayerId, b.X, b.Y, map[string]float64{"spore": 115, "quantum": 75}[b.Kind], b.Damage, p.PlayerId)
+			if b.Kind == "katty_paint" {
+				gs.applyKattyPaint(attacker, p, time.Now().UnixMilli(), 1, false)
+			}
+			if b.Kind == "lumi_orb" {
+				gs.finishNewHeroProjectile(b)
+			}
+			if b.Kind == "quantum" {
+				gs.radialDamageExcept(b.PlayerId, b.X, b.Y, 75, b.Damage, p.PlayerId)
 			}
 			if b.Kind == "spore" {
 				gs.splitProjectile(b)
@@ -799,6 +779,7 @@ func (gs *GameState) updateBullets() {
 				continue
 			}
 			b.Active = false
+			gs.finishNewHeroProjectile(b)
 			gs.damageMonster(mid, m, int(math.Max(1, float64(b.Damage))))
 		}
 
@@ -807,15 +788,15 @@ func (gs *GameState) updateBullets() {
 				continue
 			}
 			gs.damageLunarCrate(gs.Players[b.PlayerId], pr, b.Damage)
+			gs.finishNewHeroProjectile(b)
 			b.Active = false
 			break
 		}
 
 		if segmentHitsBlockingWall(previousX, previousY, b.X, b.Y, b.Radius, gs.Walls) {
 			if b.DestroyWalls {
-				gs.destroyWallsInRadius(b.X, b.Y, 55)
-				if b.Kind == "colt_super_round" {
-					continue
+				if gs.destroyNearestWallAt(b.X, b.Y, b.Radius) {
+					gs.addEffect("wall_break", b.X, b.Y, 0, 0, 42, b.Rotation, 0, 0, b.Color, 0, 520)
 				}
 				b.Active = false
 				continue
@@ -867,19 +848,10 @@ func (gs *GameState) splitProjectile(parent *bullet.Bullet) {
 	}
 	angles := []float64{}
 	kind, damage, speed, size, distance := "spike", 1, 0.3*RuntimeProjectileSpeedScale, 3.5, 240.0
-	targetID := ""
 	if parent.Kind == "spore" {
 		damage = int(math.Max(2, math.Round(float64(parent.Damage)*.25)))
 		for i := 0; i < 6; i++ {
 			angles = append(angles, float64(i)*math.Pi/3)
-		}
-		bestDistance := math.MaxFloat64
-		for id, target := range gs.Players {
-			if target != nil && target.CanBulletHurt(parent.PlayerId, parent.Team) {
-				if candidateDistance := math.Hypot(target.X-parent.X, target.Y-parent.Y); candidateDistance < bestDistance {
-					targetID, bestDistance = id, candidateDistance
-				}
-			}
 		}
 	} else {
 		kind, damage, speed, size, distance = "quantum_shard", int(math.Max(1, float64(parent.Damage)/2)), 0.275*RuntimeProjectileSpeedScale, 4.5, parent.MaxRange*.5
@@ -889,7 +861,6 @@ func (gs *GameState) splitProjectile(parent *bullet.Bullet) {
 	for _, angle := range angles {
 		child := bullet.NewBullet(parent.PlayerId, parent.Team, parent.X, parent.Y, size, angle, parent.Color)
 		child.Kind, child.Damage, child.Speed, child.MaxRange, child.CommandID = kind, damage, speed, distance, parent.CommandID
-		child.TargetID, child.Homing = targetID, targetID != ""
 		gs.Bullets = append(gs.Bullets, child)
 	}
 }
@@ -1231,11 +1202,12 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 			return
 		}
 		p.GadgetCharges--
-		p.ShieldUntil = ts + 3000
-		p.ChannelUntil = ts + 3000
+		// Mandy keeps control of her movement and attack. The gadget is a
+		// short defensive window that rewards landing the next staff hit.
+		p.ShieldUntil = ts + 1800
 		p.GadgetArmed = true
 		p.GadgetPulse++
-		gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "mandy_stance", X: p.X, Y: p.Y, Radius: 160, CreatedAt: ts, ExpiresAt: ts + 3000, NextTickAt: ts, Triggered: map[string]bool{}})
+		gs.addEffect("mandy_stance", p.X, p.Y, 0, 0, 52, p.Rotation, 0, 0, p.Color, 0, 1800)
 		p.LastSecondaryAt = ts
 		p.LastAbilityOK = true
 		return
@@ -1284,17 +1256,6 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 			p.ShieldUntil = ts + 2200
 			gs.addEffect("guard", p.X, p.Y, 0, 0, 72, angle, 0, 0, "#ffb15c", 0, 700)
 		}
-	case "Titan":
-		if primary {
-			p.StealthUntil = ts + 3200
-			p.Dodges = 2
-			p.HasteUntil = ts + 3200
-		} else {
-			for _, spread := range []float64{-.24, 0, .24} {
-				gs.spawnAttackBullet(p, angle+spread, "boomerang", 43, 30.5*RuntimeProjectileSpeedScale, 8, 680, 0, false, false)
-			}
-			gs.addEffect("prism", p.X, p.Y, 0, 0, 0, angle, 220, .32, "#8ffff1", 0, 420)
-		}
 	case "Needle":
 		if primary {
 			p.VineUntil = ts + 4000
@@ -1303,17 +1264,6 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 			gs.dashAttack(p, angle, 170, 0, 0)
 			gs.radialDamage(p.PlayerId, p.X, p.Y, 90, 65)
 			gs.addEffect("spore-jump", p.X, p.Y, 0, 0, 90, angle, 0, 0, "#75d947", 0, 500)
-		}
-	case "Spark":
-		if primary {
-			p.VortexUntil = ts + 4000
-			p.HasteUntil = ts + 4000
-			gs.addEffect("vortex", p.X, p.Y, 0, 0, 125, angle, 0, 0, "#9f73ff", 0, 650)
-		} else {
-			originX, originY := p.X, p.Y
-			gs.dashAttack(p, angle, 145, 0, 0)
-			gs.hitSector(p, angle, 105, .9, 48, false)
-			gs.addEffect("scythe", originX, originY, p.X, p.Y, 0, angle, 190, .9, "#c895ff", 0, 520)
 		}
 	}
 }
@@ -1341,10 +1291,6 @@ func AbilityCooldownMs(heroName, slot string) int64 {
 		return 12000
 	case "Viper":
 		return 5800
-	case "Titan":
-		return 6000
-	case "Spark":
-		return 5000
 	}
 	return 12000
 }
@@ -1538,9 +1484,14 @@ func (gs *GameState) spawnAttackBullet(p *player.Player, angle float64, kind str
 		gs.Bullets = append(gs.Bullets, b)
 	}
 	b.Kind, b.Damage, b.Speed, b.MaxRange, b.Pierce, b.Returning, b.Poison = kind, int(math.Round(float64(damage)*gs.damageMultiplier(p))), speed, maxRange, pierce, returning, poison
+	b.DestroyWalls = wallBreakerProjectile(kind)
 	b.HitRadius = 0
 	if gs.activeAutoAim && gs.hasAutoAimTarget {
 		b.HitRadius = AutoAimAssistRadius
+		if !isMeleeBasicAttacker(p) && gs.autoAimTargetID != "" {
+			b.TargetID = gs.autoAimTargetID
+			b.Homing = true
+		}
 	}
 	b.CommandID = gs.activeCommandID
 	if gs.activeCommandID != "" {
@@ -1553,6 +1504,15 @@ func (gs *GameState) spawnAttackBullet(p *player.Player, angle float64, kind str
 		b.Acceleration = 19 * RuntimeProjectileSpeedScale
 	}
 	return b
+}
+
+func wallBreakerProjectile(kind string) bool {
+	switch kind {
+	case "spore", "mina_star", "lumi_orb", "katty_paint":
+		return true
+	default:
+		return false
+	}
 }
 
 func (gs *GameState) damageMultiplier(p *player.Player) float64 {
@@ -1653,7 +1613,7 @@ func (gs *GameState) hitSectorWithDamage(source *player.Player, angle, reach, ha
 		if !target.CanBulletHurt(source.PlayerId, source.Team) {
 			continue
 		}
-		if !gs.autoAimHitsTarget(source, target.X, target.Y, target.Radius, angle, reach, halfArc) {
+		if !gs.autoAimHitsTarget(source, target.X, target.Y, meleeTargetRadius(source, target), angle, reach, halfArc) {
 			continue
 		}
 		gs.dealPlayerDamage(source, target, damage)
@@ -1819,6 +1779,48 @@ func (gs *GameState) destroyWallsInRadius(x, y, radius float64) int {
 		gs.WallsSource = kept
 	}
 	return destroyed
+}
+
+// destroyNearestWallAt removes one destructible cell touched by a projectile.
+// Keeping the selection to one cell makes wall breaking powerful without
+// turning every projectile into a map-wide beam.
+func (gs *GameState) destroyNearestWallAt(x, y, radius float64) bool {
+	if gs == nil || gs.Map == nil {
+		return false
+	}
+	var hit *geometry.WallTile
+	bestDistance := math.MaxFloat64
+	for _, wall := range gs.Map.Collisions {
+		if wall == nil || !isDestructibleWall(wall.Type) {
+			continue
+		}
+		closestX := math.Max(wall.MinX, math.Min(wall.MaxX, x))
+		closestY := math.Max(wall.MinY, math.Min(wall.MaxY, y))
+		if math.Hypot(closestX-x, closestY-y) > radius {
+			continue
+		}
+		distance := math.Hypot((wall.MinX+wall.MaxX)/2-x, (wall.MinY+wall.MaxY)/2-y)
+		if distance < bestDistance {
+			hit, bestDistance = wall, distance
+		}
+	}
+	if hit == nil {
+		return false
+	}
+	kept := make([]*geometry.WallTile, 0, len(gs.Map.Collisions)-1)
+	for _, wall := range gs.Map.Collisions {
+		if wall != hit {
+			kept = append(kept, wall)
+		}
+	}
+	gs.Map.Collisions = kept
+	gs.MapRevision++
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	for _, wall := range kept {
+		gs.Walls.Insert(wall)
+	}
+	gs.WallsSource = kept
+	return true
 }
 
 func isDestructibleWall(wallType string) bool {

@@ -3,7 +3,6 @@ package handler
 import (
 	"battle/model/game"
 	"battle/model/gamemap"
-	"battle/service/geometry"
 	"encoding/json"
 	"net/http"
 )
@@ -29,13 +28,6 @@ func (h *Handler) HandleMapPreview(w http.ResponseWriter, r *http.Request) {
 	seed := gamemap.CanonicalBattleRoyaleSeed
 
 	canonical := gamemap.GenerateBattleRoyale(seed)
-	walls := make([]game.WallJSON, 0, len(canonical.Collisions))
-	for _, wall := range canonical.Collisions {
-		walls = append(walls, game.WallJSON{
-			MinX: wall.MinX, MinY: wall.MinY, MaxX: wall.MaxX, MaxY: wall.MaxY,
-			Type: wall.Type, Blocking: geometry.IsBlockingWall(wall.Type), BushGroup: wall.BushGroup,
-		})
-	}
 	spawners := make([]mapPreviewSpawnerJSON, 0, len(canonical.Spawners))
 	for _, spawner := range canonical.Spawners {
 		spawners = append(spawners, mapPreviewSpawnerJSON{
@@ -46,11 +38,8 @@ func (h *Handler) HandleMapPreview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(mapPreviewResponse{
-		Seed: seed,
-		Map: game.MapJSON{
-			Width: canonical.WidthInPixels, Height: canonical.HeightInPixels,
-			TileSize: game.TileSize, Walls: walls,
-		},
+		Seed:     seed,
+		Map:      game.NewMapJSON("battle-royale", canonical, 0, true),
 		Spawners: spawners,
 	})
 }

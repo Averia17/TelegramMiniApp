@@ -38,13 +38,13 @@ type AttackConfig struct {
 }
 
 var heroAttackConfigs = map[string]AttackConfig{
-	"Needle":          {Archetype: AttackProjectile, AimShape: "line", Range: 620, ProjectileKind: "spore", Modifier: "short_vault"},
+	"Needle":          {Archetype: AttackProjectile, AimShape: "line", Range: 620, ProjectileKind: "spore"},
 	"Mandy":           {Archetype: AttackMeleeCone, AimShape: "cone", Range: 70, HalfArcDegrees: 42, Modifier: "mandy_focus"},
-	"Fairy Mina":      {Archetype: AttackShotgun, AimShape: "cone", Range: 510, ProjectileKind: "mina_star", ProjectileCount: 3, SpreadDegrees: 24, SplashRadius: 38},
+	"Fairy Mina":      {Archetype: AttackShotgun, AimShape: "cone", Range: 510, ProjectileKind: "mina_star", ProjectileCount: 3, SpreadDegrees: 24},
 	"Brock Zeus":      {Archetype: AttackProjectile, AimShape: "line", Range: 760, ProjectileKind: "zeus_lightning", SplashRadius: 72},
 	"Kaze":            {Archetype: AttackMeleeCone, AimShape: "cone", Range: 105, HalfArcDegrees: 55, Modifier: "kaze_double"},
 	"Wukong Mico":     {Archetype: AttackMeleeCone, AimShape: "cone", Range: 120, HalfArcDegrees: 50, Modifier: "mico_staff"},
-	"Persephone Lumi": {Archetype: AttackProjectile, AimShape: "line", Range: 600, ProjectileKind: "lumi_orb", Modifier: "slow_trail"},
+	"Persephone Lumi": {Archetype: AttackProjectile, AimShape: "line", Range: 600, ProjectileKind: "lumi_orb", Modifier: "single_flower"},
 	"Katty":           {Archetype: AttackBurst, AimShape: "cone", Range: 240, ProjectileKind: "katty_paint", ProjectileCount: 3, SpreadDegrees: 45, HalfArcDegrees: 22.5, Modifier: "katty_paint_layers"},
 }
 
@@ -234,12 +234,7 @@ func executeConfiguredDash(gs *GameState, source *player.Player, angle float64, 
 	}
 }
 
-func executeConfiguredProjectile(gs *GameState, source *player.Player, angle, aimDistance float64, config AttackConfig) {
-	if config.Modifier == "short_vault" && aimDistance > 0 && aimDistance < 54 {
-		gs.vaultMove(source, angle, 210)
-		gs.addEffect("vine", source.X, source.Y, 0, 0, 88, angle, 0, 0, "#b5ff70", 0, 550)
-		return
-	}
+func executeConfiguredProjectile(gs *GameState, source *player.Player, angle, _ float64, config AttackConfig) {
 	shot := gs.spawnAttackBullet(source, angle, config.ProjectileKind, source.AttackDmg, source.BulletSpd, source.BulletSz, config.Range, config.Pierce, false, config.Poison)
 	shot.Splash, shot.Chain = config.SplashRadius, config.Chain
 	if config.Modifier == "evolution" && source.Evolution >= 4 {

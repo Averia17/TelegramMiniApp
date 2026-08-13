@@ -22,6 +22,7 @@ export class CameraRig {
     this.aspect = 1
     this.preferredVertical = 27
     this.vertical = 0
+    this.followOffset = new THREE.Vector2()
     this.initialized = false
     this.shake = 0
     this.shakeTime = 0
@@ -50,6 +51,17 @@ export class CameraRig {
     this.camera.updateProjectionMatrix()
   }
 
+  panByScreen(deltaX, deltaY) {
+    const horizontalScenePerPixel = (this.camera.right - this.camera.left) / this.width
+    const verticalScenePerPixel = (this.camera.top - this.camera.bottom) / this.height / Math.sin(CAMERA_ANGLE)
+    this.followOffset.x -= Number(deltaX) * horizontalScenePerPixel / WORLD_SCALE
+    this.followOffset.y -= Number(deltaY) * verticalScenePerPixel / WORLD_SCALE
+  }
+
+  resetPan() {
+    this.followOffset.set(0, 0)
+  }
+
   follow(player, map, delta) {
     this.setVerticalSpan(fitVerticalSpanToMap(
       this.preferredVertical,
@@ -61,10 +73,10 @@ export class CameraRig {
     // not switch to the map centre (the beacon lives there). Hold the last
     // tracked hero position until the result overlay takes over.
     const desired = player
-      ? worldToScene(player.x, player.y)
+      ? worldToScene(player.x + this.followOffset.x, player.y + this.followOffset.y)
       : this.initialized
         ? this.target.clone()
-        : worldToScene(map.width / 2, map.height / 2)
+        : worldToScene(map.width / 2 + this.followOffset.x, map.height / 2 + this.followOffset.y)
     const halfX = (this.camera.right - this.camera.left) / 2 / WORLD_SCALE
     const halfY = (this.camera.top - this.camera.bottom) / 2 / Math.sin(CAMERA_ANGLE) / WORLD_SCALE
     desired.x = clamp(desired.x, Math.min(map.width / 2, halfX) * WORLD_SCALE, Math.max(map.width / 2, map.width - halfX) * WORLD_SCALE)

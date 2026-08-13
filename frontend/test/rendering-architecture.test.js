@@ -15,6 +15,7 @@ import {
   normalizeHeroHeight,
 } from "../src/components/BattleGame/rendering/assets/AssetRegistry.js"
 import {GLBHeroController} from "../src/components/BattleGame/rendering/heroes/GLBHeroController.js"
+import {removeFinishedDeathViews} from "../src/components/BattleGame/rendering/heroes/deathLifecycle.js"
 import {turnTowardsAngle} from "../src/components/BattleGame/rendering/heroes/turning.js"
 import {
   BUSH_HERO_OPACITY,
@@ -46,6 +47,7 @@ import {
 } from "../src/components/BattleGame/rendering/map/MapRenderer.js"
 import {GroundRenderer} from "../src/components/BattleGame/rendering/map/GroundRenderer.js"
 import {createProp} from "../src/components/BattleGame/rendering/map/PropRenderer.js"
+import {createWildflowerField} from "../src/components/BattleGame/rendering/map/WildflowerRenderer.js"
 import {createBushField} from "../src/components/BattleGame/rendering/map/BushRenderer.js"
 import {PickupRenderer} from "../src/components/BattleGame/rendering/map/PickupRenderer.js"
 import {EffectRenderer} from "../src/components/BattleGame/rendering/combat/EffectRenderer.js"
@@ -128,7 +130,7 @@ test("bush concealment softly fades the brawler without adding hero-bound foliag
   assert.equal(getBushConcealmentMix(1, false, .1) < 1, true)
 })
 
-test("melee attack range stays visible as a static, full-size semicircle", () => {
+test("melee attack range uses a clear outer edge at the exact hit distance", () => {
   const root = new THREE.Group()
   const aim = new AimRenderer(root)
   const player = {
@@ -144,13 +146,19 @@ test("melee attack range stays visible as a static, full-size semicircle", () =>
   aim.update(player)
   assert.equal(aim.root.visible, true)
   assert.equal(aim.meleeArea.visible, true)
+  assert.equal(aim.meleeRangeEdge.visible, true)
   assert.equal(aim.line.visible, false)
   assert.equal(aim.meleeArea.userData.halfArcDegrees, 55)
+  assert.equal(aim.meleeRangeEdge.userData.halfArcDegrees, 55)
   assert.equal(Math.abs(aim.meleeArea.scale.x - 105 * WORLD_SCALE) < .001, true)
+  assert.equal(Math.abs(aim.meleeRangeEdge.scale.x - 105 * WORLD_SCALE) < .001, true)
+  assert.ok(aim.meleeRangeEdge.material.opacity > aim.meleeArea.material.opacity)
 
   const firstScale = aim.meleeArea.scale.clone()
+  const firstEdgeScale = aim.meleeRangeEdge.scale.clone()
   aim.update({...player, rotation: 2.2})
   assert.deepEqual(aim.meleeArea.scale.toArray(), firstScale.toArray())
+  assert.deepEqual(aim.meleeRangeEdge.scale.toArray(), firstEdgeScale.toArray())
 
   aim.update({
     aiming: true,
@@ -163,6 +171,7 @@ test("melee attack range stays visible as a static, full-size semicircle", () =>
   })
   assert.equal(aim.root.visible, true)
   assert.equal(aim.meleeArea.visible, false)
+  assert.equal(aim.meleeRangeEdge.visible, false)
   assert.equal(aim.line.visible, true)
   assert.equal(aim.target.visible, true)
 })
@@ -535,6 +544,23 @@ test("camera keeps the last hero position when the local hero dies", () => {
   assert.equal(camera.target.z, 260 * WORLD_SCALE)
 })
 
+test("camera can be panned with a screen drag without moving the tracked hero", () => {
+  const camera = new CameraRig()
+  const player = {x: 512, y: 384}
+  const map = {width: 1024, height: 768}
+
+  camera.resize(1000, 700)
+  camera.follow(player, map, 1 / 60)
+  const initialTarget = camera.target.clone()
+
+  camera.panByScreen(120, 80)
+  camera.follow(player, map, 1)
+
+  assert.ok(camera.target.x < initialTarget.x)
+  assert.ok(camera.target.z < initialTarget.z)
+  assert.deepEqual(player, {x: 512, y: 384})
+})
+
 test("the hero manifest uses self-contained base GLBs", () => {
   assert.deepEqual(Object.keys(HERO_ASSETS), ["Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi", "Katty"])
   for (const name of Object.keys(HERO_ASSETS)) {
@@ -752,6 +778,30 @@ test("renderer keeps an existing hero view long enough to show its death pose", 
   assert.match(source, /const existingView = this\.players\.get\(String\(id\)\)/)
   assert.match(source, /if \(!isAlivePlayerState\(player\) && !existingView\) return/)
   assert.match(source, /active\.add\(String\(id\)\)/)
+})
+
+test("renderer removes a dead hero only after its death animation finishes", () => {
+  const group = new THREE.Group()
+  const actorRoot = new THREE.Group()
+  actorRoot.add(group)
+  let disposed = false
+  const view = {
+    group,
+    isDeathAnimationComplete: () => false,
+    dispose: () => { disposed = true },
+  }
+  const players = new Map([["bot-1", view]])
+
+  removeFinishedDeathViews(players, actorRoot)
+  assert.equal(players.has("bot-1"), true)
+  assert.equal(group.parent, actorRoot)
+  assert.equal(disposed, false)
+
+  view.isDeathAnimationComplete = () => true
+  removeFinishedDeathViews(players, actorRoot)
+  assert.equal(players.has("bot-1"), false)
+  assert.equal(group.parent, null)
+  assert.equal(disposed, true)
 })
 
 test("interpolated lethal frames trigger the existing view death transition", async () => {
@@ -1312,6 +1362,19 @@ test("GLBHeroController keeps a dead model visible for its authored death pose a
   controller.dispose()
 })
 
+test("GLBHeroController reports completion at the end of the authored death clip", () => {
+  const root = new THREE.Group()
+  const death = new THREE.AnimationClip("Death", .4, [])
+  const controller = new GLBHeroController(root, [death], {defeat: "Death"}, {spawnOnLoad: false})
+
+  controller.update(.1, {alive: false})
+  assert.equal(controller.isDeathComplete(), false)
+
+  controller.update(.31, {alive: false})
+  assert.equal(controller.isDeathComplete(), true)
+  controller.dispose()
+})
+
 test("GLBHeroController can skip Spawn for asynchronously loaded lobby previews", () => {
   const root = new THREE.Group()
   const cactus = new THREE.Group()
@@ -1535,6 +1598,21 @@ test("Needle spore attacks use a layered 3D projectile instead of a primitive ba
   assert.equal(visual.userData.vfxType, "needle-spore")
 })
 
+test("water is depth-biased above the shared grass plane", () => {
+  const prop = createProp(
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "water"},
+    0,
+    new THREE.Texture(),
+  )
+  const surface = prop.children[0]
+
+  assert.equal(surface.material.polygonOffset, true)
+  assert.ok(surface.material.polygonOffsetFactor < 0)
+  assert.ok(surface.material.polygonOffsetUnits < 0)
+  assert.equal(surface.material.depthWrite, false)
+  assert.ok(surface.renderOrder > 0)
+})
+
 test("high-quality stone props use the shared faceted block silhouette", () => {
   const prop = createProp(
     {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
@@ -1712,9 +1790,12 @@ test("shipwreck blockers render as volumetric natural root clusters", () => {
   assert.equal(roles.has("root-log"), true)
   assert.equal(roles.has("root-end"), true)
   assert.equal(roles.has("moss-clump"), true)
+  assert.equal(roles.has("root-bed"), false)
+  assert.equal(roles.has("root-moss-bed"), true)
   assert.equal(roles.has("shipwreck-plank"), false)
   assert.ok(size.x >= 40 * WORLD_SCALE * .9)
   assert.ok(size.z >= 40 * WORLD_SCALE * .9)
+  assert.notEqual(prop.getObjectByName("prop-grounding-bed").geometry.type, "CylinderGeometry")
 
   prop.traverse(node => {
     node.geometry?.dispose?.()
@@ -1739,7 +1820,11 @@ test("trees rise slightly above the stone wall silhouette", () => {
     )
     const visual = prop.children.find(child => child.userData?.role !== "contact-shadow")
     const treeTop = new THREE.Box3().setFromObject(visual, true).max.y
-    assert.ok(treeTop > wallTop * 1.05, `${type} should rise above the wall silhouette`)
+      const requiredHeight = type === "dead_tree" ? 1.15 : 1.42
+      assert.ok(treeTop > wallTop * requiredHeight, `${type} should rise above the wall silhouette`)
+    if (type === "dead_tree") {
+      assert.equal(visual.getObjectByName("tree-root-bed"), undefined)
+    }
 
     prop.traverse(node => {
       node.geometry?.dispose?.()
@@ -1751,6 +1836,76 @@ test("trees rise slightly above the stone wall silhouette", () => {
     node.geometry?.dispose?.()
     node.material?.dispose?.()
   })
+})
+
+test("dead trees use an asymmetric crooked branch silhouette", () => {
+  const prop = createProp(
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "dead_tree"},
+    0,
+    new THREE.Texture(),
+  )
+  const visual = prop.children.find(child => child.userData?.role !== "contact-shadow")
+  const branches = []
+  visual.traverse(node => {
+    if (node.userData?.role === "dead-tree-branch") branches.push(node)
+  })
+  assert.equal(branches.length, 5)
+  assert.equal(new Set(branches.map(branch => branch.position.y.toFixed(3))).size, 5)
+  assert.ok(branches.some(branch => Math.abs(branch.rotation.z) > .8))
+  assert.ok(branches.some(branch => branch.scale.y < .6))
+  prop.traverse(node => {
+    node.geometry?.dispose?.()
+    node.material?.dispose?.()
+  })
+})
+
+test("wildflowers decorate only empty ordinary-ground cells", () => {
+  const map = {
+    width: 240,
+    height: 240,
+    tileSize: 40,
+    seed: 42,
+    walls: [
+      {minX: 0, minY: 0, maxX: 40, maxY: 40, type: "water"},
+      {minX: 80, minY: 80, maxX: 120, maxY: 120, type: "bush"},
+      {minX: 160, minY: 160, maxX: 200, maxY: 200, type: "wall"},
+    ],
+  }
+
+  const field = createWildflowerField(map)
+  const occupied = map.walls.map(wall => new THREE.Box2(
+    new THREE.Vector2(wall.minX, wall.minY),
+    new THREE.Vector2(wall.maxX, wall.maxY),
+  ))
+
+  assert.equal(field.userData.role, "wildflower-field")
+  assert.ok(field.userData.flowerPositions.length > 0)
+  for (const position of field.userData.flowerPositions) {
+    assert.equal(occupied.some(bounds => bounds.containsPoint(new THREE.Vector2(position.x, position.y))), false)
+  }
+  assert.ok(field.getObjectByName("wildflower-stems").isInstancedMesh)
+  assert.ok(field.getObjectByName("wildflower-blooms").isInstancedMesh)
+  assert.equal(field.getObjectByName("wildflower-blooms").material.vertexColors, false)
+  assert.ok(field.getObjectByName("wildflower-centres").isInstancedMesh)
+
+  field.traverse(node => {
+    node.geometry?.dispose?.()
+    node.material?.dispose?.()
+  })
+})
+
+test("first-trial island mounts wildflowers even when map data syncs first", () => {
+  const root = new THREE.Group()
+  const renderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  const map = {width: 240, height: 240, tileSize: 40, seed: 42, walls: []}
+
+  renderer.sync(map)
+  assert.equal(renderer.wildflowerField, null)
+
+  renderer.syncIsland({islandName: "Остров Первого Испытания"}, map.width, map.height)
+  assert.equal(renderer.wildflowerField?.userData.role, "wildflower-field")
+  assert.ok(renderer.wildflowerField.userData.flowerPositions.length > 0)
+  renderer.dispose()
 })
 
 test("small blocking props visually fill the collider footprint", () => {

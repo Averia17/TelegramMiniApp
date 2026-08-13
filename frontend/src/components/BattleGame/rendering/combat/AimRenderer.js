@@ -2,6 +2,21 @@ import * as THREE from "three"
 import {WORLD_SCALE, worldToScene} from "../shared/coordinates.js"
 import {flatMaterial} from "../shared/materials.js"
 
+const meleeSectorAngles = halfArcDegrees => ({
+  start: -halfArcDegrees * Math.PI / 180,
+  length: halfArcDegrees * 2 * Math.PI / 180,
+})
+
+const createMeleeAreaGeometry = halfArcDegrees => {
+  const {start, length} = meleeSectorAngles(halfArcDegrees)
+  return new THREE.CircleGeometry(1, 48, start, length)
+}
+
+const createMeleeRangeEdgeGeometry = halfArcDegrees => {
+  const {start, length} = meleeSectorAngles(halfArcDegrees)
+  return new THREE.RingGeometry(0.91, 1, 48, 1, start, length)
+}
+
 export class AimRenderer {
   constructor(root) {
     this.root = root
@@ -15,18 +30,25 @@ export class AimRenderer {
     )
     this.target.rotation.x = -Math.PI / 2
     this.meleeArea = new THREE.Mesh(
-      new THREE.CircleGeometry(1, 48, -Math.PI / 4, Math.PI / 2),
-      flatMaterial(0xffd84d, {transparent: true, opacity: 0.23, side: THREE.DoubleSide, depthWrite: false, depthTest: false}),
+      createMeleeAreaGeometry(45),
+      flatMaterial(0xffd84d, {transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false, depthTest: false}),
     )
     this.meleeArea.rotation.x = -Math.PI / 2
     this.meleeArea.renderOrder = 2
     this.meleeArea.userData.halfArcDegrees = 45
+    this.meleeRangeEdge = new THREE.Mesh(
+      createMeleeRangeEdgeGeometry(45),
+      flatMaterial(0xffffff, {transparent: true, opacity: 0.78, side: THREE.DoubleSide, depthWrite: false, depthTest: false}),
+    )
+    this.meleeRangeEdge.rotation.x = -Math.PI / 2
+    this.meleeRangeEdge.renderOrder = 3
+    this.meleeRangeEdge.userData.halfArcDegrees = 45
     this.superLane = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
       flatMaterial(0xffe24b, {transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false}),
     )
     this.superLane.rotation.x = -Math.PI / 2
-    this.root.add(this.line, this.target, this.meleeArea, this.superLane)
+    this.root.add(this.line, this.target, this.meleeArea, this.meleeRangeEdge, this.superLane)
     this.root.visible = false
   }
 
@@ -63,19 +85,18 @@ export class AimRenderer {
     this.line.visible = !melee && !superAiming
     this.target.visible = !melee && !superAiming
     this.meleeArea.visible = melee && !superAiming
+    this.meleeRangeEdge.visible = melee && !superAiming
     this.superLane.visible = superAiming
 
     if (this.meleeArea.visible) {
       const halfArcDegrees = Number(player.attackHalfArcDegrees) || 45
       if (this.meleeArea.userData.halfArcDegrees !== halfArcDegrees) {
         this.meleeArea.geometry.dispose()
-        this.meleeArea.geometry = new THREE.CircleGeometry(
-          1,
-          48,
-          -halfArcDegrees * Math.PI / 180,
-          halfArcDegrees * 2 * Math.PI / 180,
-        )
+        this.meleeArea.geometry = createMeleeAreaGeometry(halfArcDegrees)
         this.meleeArea.userData.halfArcDegrees = halfArcDegrees
+        this.meleeRangeEdge.geometry.dispose()
+        this.meleeRangeEdge.geometry = createMeleeRangeEdgeGeometry(halfArcDegrees)
+        this.meleeRangeEdge.userData.halfArcDegrees = halfArcDegrees
       }
       this.meleeArea.position.copy(worldToScene(player.x, player.y, 3))
       this.meleeArea.rotation.y = -angle
@@ -83,7 +104,12 @@ export class AimRenderer {
       // never changes its gameplay radius or its visual width.
       this.meleeArea.scale.setScalar(range * WORLD_SCALE)
       this.meleeArea.material.color.set(player.color || 0xffd84d)
-      this.meleeArea.material.opacity = mandy && player.focusCharge >= 100 ? 0.34 : 0.23
+      this.meleeArea.material.opacity = mandy && player.focusCharge >= 100 ? 0.25 : 0.16
+      this.meleeRangeEdge.position.copy(worldToScene(player.x, player.y, 3.2))
+      this.meleeRangeEdge.rotation.y = -angle
+      this.meleeRangeEdge.scale.setScalar(range * WORLD_SCALE)
+      this.meleeRangeEdge.material.color.set(player.color || 0xffd84d).lerp(new THREE.Color(0xffffff), 0.32)
+      this.meleeRangeEdge.material.opacity = mandy && player.focusCharge >= 100 ? 0.95 : 0.78
     }
 
     if (this.superLane.visible) {

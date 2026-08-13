@@ -32,8 +32,8 @@ func TestAbilityCooldownMsKeepsHeroValues(t *testing.T) {
 	}{
 		{hero: "Needle", slot: "primary", want: 12000},
 		{hero: "Viper", slot: "primary", want: 5800},
-		{hero: "Titan", slot: "primary", want: 6000},
-		{hero: "Spark", slot: "primary", want: 5000},
+		{hero: "Mandy", slot: "primary", want: 15000},
+		{hero: "Kaze", slot: "primary", want: 10000},
 		{hero: "Unknown", slot: "primary", want: 12000},
 		{hero: "Needle", slot: "secondary", want: 6500},
 	}

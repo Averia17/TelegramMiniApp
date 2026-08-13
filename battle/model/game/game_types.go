@@ -107,7 +107,6 @@ type GameState struct {
 	HeroZones               []*HeroZone
 	KattyPaintStacks        map[string]map[string]int
 	KattyPaintUntil         map[string]map[string]int64
-	DoomedUntil             map[string]int64
 	LightMarkedUntil        map[string]int64
 	AbilityTargets          map[string]string
 	LightningStrikes        []*LightningStrike
@@ -125,6 +124,7 @@ type GameState struct {
 	activeAutoAim           bool
 	autoAimTargetX          float64
 	autoAimTargetY          float64
+	autoAimTargetID         string
 	hasAutoAimTarget        bool
 	botWallCacheRevision    int
 	botWallCache            map[string][]*geometry.WallTile

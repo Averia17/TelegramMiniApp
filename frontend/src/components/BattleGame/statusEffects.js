@@ -7,7 +7,6 @@ const TIMED_EFFECTS = [
   {id: "invulnerable", property: "invulnerable", label: "НЕУЯЗВИМОСТЬ", icon: "✧", tone: "defense"},
   {id: "blind", property: "blind", label: "ОСЛЕПЛЕНИЕ", icon: "☀", tone: "negative"},
   {id: "stun", property: "stun", label: "СТАН", icon: "✹", tone: "negative"},
-  {id: "doomed", property: "doomed", label: "МЕТКА KAZE", icon: "◈", tone: "negative"},
   {id: "channel", property: "channel", label: "КАНАЛИЗАЦИЯ", icon: "◉", tone: "negative"},
   {id: "vine", property: "vine", label: "СВЯЗАН", icon: "⌁", tone: "negative"},
   {id: "vortex", property: "vortex", label: "ВОРОНКА", icon: "↻", tone: "negative"},

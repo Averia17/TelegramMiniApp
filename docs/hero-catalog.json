@@ -1,17 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "schemaVersion": 1,
-  "catalogRevision": "2026-08-12",
+  "catalogRevision": "2026-08-13",
   "purpose": "Единый источник контекста по героям для gameplay, frontend, Blender и ИИ.",
   "maintenance": {
     "owner": "AI + game team",
     "updatePolicy": "docs/hero-catalog-maintenance.md",
     "lastReviewedBy": "Codex",
-    "lastReviewedAt": "2026-08-12"
+    "lastReviewedAt": "2026-08-13"
   },
   "sourceFingerprints": {
-    "battle/model/game/heroes.go": "FF9C3197BA2F0B256F1A022707BD04F739BC304E07C098A0923B75F2E7CD689E",
-    "battle/model/game/attack_config.go": "B919C0F74F2F0A49D492E315A8965AAFB3785E8EDC79E96EDAFC9737186C67CA",
+    "battle/model/game/heroes.go": "9DB145AB69E877E593EC7CBB1FCE96AB559F9A72563E25B7C5B48DF0E061FB7B",
+    "battle/model/game/attack_config.go": "98BA2932909EA30F8AED97EBA350249070E2759A7FB6AD11EFD24F0E1BFD9918",
     "tools/blender/hero_animation_scene_manifest.json": "6229C8EE8D96C46B14CC909407C53BF92B2079E011F93945BD564A6BBB75C862"
   },
   "contracts": {
@@ -43,13 +43,13 @@
       "name": "Needle",
       "status": "active",
       "identity": {"role": "Controller", "color": "#75D947", "radius": 14},
-      "description": "Споровый контроллер: заражает врагов, замедляет их и создаёт опасные зоны.",
+      "description": "Споровый контроллер: прямой снаряд раскрывается предсказуемой радиальной россыпью шипов.",
       "balance": {"maxLives": 620, "speed": 12, "attackDamage": 65, "attackRateMs": 420, "reloadTimeMs": 1750, "maxAmmo": 3, "bulletSpeed": 23, "bulletSize": 15, "regenRate": 0.011, "attackType": "spore"},
-      "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 620, "projectileKind": "spore", "modifier": "short_vault"},
+      "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 620, "projectileKind": "spore"},
       "abilities": {
-        "basic": {"id": "spore_thorn", "name": "Споровый шип", "description": "Спора раскрывается шестью ищущими шипами сразу при попадании или в конце полёта.", "slot": "basic", "prediction": "projectile", "mechanics": ["самонаведение к ближайшей цели", "раскрытие при прямом попадании", "6 дочерних самонаводящихся шипов"]},
+        "basic": {"id": "spore_thorn", "name": "Споровый шип", "description": "Спора летит по прямой, ломает ближайшую разрушаемую стену и при попадании или в конце полёта раскрывается шестью фиксированными радиальными шипами.", "slot": "basic", "prediction": "projectile", "mechanics": ["прямой полёт без самонаведения", "ломает одну ближайшую клетку стены или дерева", "раскрытие при попадании или в конце дальности", "6 фиксированных радиальных шипов"]},
         "super": {"id": "hunter_root", "name": "Ловчий корень", "description": "Корень оглушает врагов и оставляет замедляющую зону.", "slot": "primary", "prediction": "server", "mechanics": ["зона радиусом 120", "срабатывание через 800 мс", "оглушение и замедление"]},
-        "gadget": {"id": "spore_dash", "name": "Споровый рывок", "description": "Рывок оставляет ослепляющее облако спор в точке приземления.", "slot": "secondary", "prediction": "server", "mechanics": ["рывок на 320", "облако в точке приземления на 5 секунд", "замедление и ослепление"]}
+        "gadget": {"id": "moisture_reserve", "name": "Запас влаги", "description": "Гарантированно восстанавливает 30% максимального здоровья за 3 секунды даже при получении урона.", "slot": "secondary", "prediction": "server", "mechanics": ["лечение по 5% максимального здоровья каждые 0,5 секунды", "30% максимального здоровья за 3 секунды", "получение урона не прерывает восстановление", "не перемещает героя"]}
       },
       "animations": {"manifestSlug": "needle", "available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
       "assets": {"sceneDirectory": "frontend/assets-source/heroes/needle/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/needle_base.glb", "status": "runtime_ready"},
@@ -67,7 +67,7 @@
       "abilities": {
         "basic": {"id": "staff_strike", "name": "Удар посохом", "description": "Ближний удар; неподвижность усиливает удар и оглушает.", "slot": "basic", "prediction": "melee", "mechanics": ["сектор 70", "усиление в фокусе"]},
         "super": {"id": "devastation_wave", "name": "Волна опустошения", "description": "После подготовки выпускает волну через всю карту, разрушая стены; во время подготовки Mandy может двигаться.", "slot": "primary", "prediction": "server", "mechanics": ["подготовка 1200 мс", "движение разрешено во время подготовки", "разрушает стены"]},
-        "gadget": {"id": "unyielding_stance", "name": "Нерушимая стойка", "description": "Стойка защищает от контроля и снижает входящий урон.", "slot": "secondary", "prediction": "server", "mechanics": ["зона стойки", "замедление врагов рядом"]}
+        "gadget": {"id": "unyielding_stance", "name": "Нерушимая стойка", "description": "На 1,8 секунды снижает входящий урон на 40%; следующий удар посохом наносит на 50% больше урона и замедляет цель.", "slot": "secondary", "prediction": "server", "mechanics": ["окно защиты 1,8 секунды", "снижение входящего урона на 40%", "следующий удар: +50% урона и замедление"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
       "assets": {"sceneDirectory": "frontend/assets-source/heroes/mandy/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/mandy_base.glb", "status": "runtime_ready"},
@@ -81,9 +81,9 @@
       "identity": {"role": "Support", "color": "#FF8FE8", "radius": 13},
       "description": "Поддержка с веером звёздных снарядов, щитом и лечащей аурой.",
       "balance": {"maxLives": 600, "speed": 14, "attackDamage": 40, "attackRateMs": 420, "reloadTimeMs": 1550, "maxAmmo": 3, "bulletSpeed": 30, "bulletSize": 7, "regenRate": 0.011, "attackType": "mina_star_fan"},
-      "basicAttack": {"archetype": "shotgun", "aimShape": "cone", "range": 510, "projectileKind": "mina_star", "projectileCount": 3, "spreadDegrees": 24, "splashRadius": 38},
+      "basicAttack": {"archetype": "shotgun", "aimShape": "cone", "range": 510, "projectileKind": "mina_star", "projectileCount": 3, "spreadDegrees": 24},
       "abilities": {
-        "basic": {"id": "star_fan", "name": "Звёздный веер", "description": "Первая звезда метит врага, следующая взрывает метку; союзников звёзды лечат.", "slot": "basic", "prediction": "projectile", "mechanics": ["3 снаряда", "разброс 24°", "световая метка и дополнительный всплеск", "лечение союзников"]},
+        "basic": {"id": "star_fan", "name": "Звёздный веер", "description": "Три прямых звезды ломают ближайшую разрушаемую стену при столкновении; врага метят и повторным попаданием взрывают метку, союзника лечат.", "slot": "basic", "prediction": "projectile", "mechanics": ["3 прямых снаряда", "разброс 24°", "ломает одну ближайшую клетку стены или дерева", "без урона по области", "световая метка и лечение союзников"]},
         "super": {"id": "star_cocoon", "name": "Звёздный кокон", "description": "Выбирает самого раненого союзника рядом; щит и лечащая аура следуют за ним.", "slot": "primary", "prediction": "server", "mechanics": ["автовыбор раненого союзника в радиусе 600", "щит 400 на 4 секунды", "движущаяся аура радиусом 160"]},
         "gadget": {"id": "repelling_wave", "name": "Отталкивающая волна", "description": "Отбрасывает врагов и оглушает уже отмеченные цели.", "slot": "secondary", "prediction": "server", "mechanics": ["радиус 135", "отбрасывание", "оглушение отмеченных целей"]}
       },
@@ -101,8 +101,8 @@
       "balance": {"maxLives": 620, "speed": 12, "attackDamage": 80, "attackRateMs": 520, "reloadTimeMs": 1800, "maxAmmo": 3, "bulletSpeed": 36, "bulletSize": 8, "regenRate": 0.009, "attackType": "zeus_lightning"},
       "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 760, "projectileKind": "zeus_lightning", "splashRadius": 72},
       "abilities": {
-        "basic": {"id": "thunder_projectile", "name": "Грозовой снаряд", "description": "Взрывной снаряд наносит урон по области и разрушает стены.", "slot": "basic", "prediction": "projectile", "mechanics": ["дальность 760", "взрыв 72"]},
-        "super": {"id": "gods_hammer", "name": "Молот богов", "description": "Показывает три точки удара молнии; последний удар создаёт горящую зону.", "slot": "primary", "prediction": "server", "mechanics": ["3 отдельных телеграфа", "задержка между ударами 400 мс", "последний удар создаёт огонь"]},
+        "basic": {"id": "thunder_projectile", "name": "Грозовой снаряд", "description": "Снаряд взрывается при столкновении или в конце дальности, но не разрушает стены.", "slot": "basic", "prediction": "projectile", "mechanics": ["дальность 760", "взрыв радиусом 72", "стены не разрушает"]},
+        "super": {"id": "gods_hammer", "name": "Молот богов", "description": "Показывает три точки удара молнии; последний удар больше и разрушает стены.", "slot": "primary", "prediction": "server", "mechanics": ["3 отдельных телеграфа", "задержка между ударами 400 мс", "финальный удар радиусом 90 разрушает стены"]},
         "gadget": {"id": "discharge_cable", "name": "Разрядный кабель", "description": "Следующий выстрел становится пробивающим лучом.", "slot": "secondary", "prediction": "server", "mechanics": ["луч до 800", "пробивает цели", "разрушает стены по линии"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
@@ -120,7 +120,7 @@
       "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 105, "halfArcDegrees": 55, "modifier": "kaze_double"},
       "abilities": {
         "basic": {"id": "cross_slash", "name": "Косые удары", "description": "Два успешных попадания открывают усиленный третий удар.", "slot": "basic", "prediction": "melee", "mechanics": ["одна зона урона за взмах", "окно комбо 2 секунды", "третий удар наносит 175% урона"]},
-        "super": {"id": "piercing_dash", "name": "Пронизывающий рывок", "description": "Попадание рывком помечает врага и сразу подготавливает усиленный удар.", "slot": "primary", "prediction": "server", "mechanics": ["дистанция 320", "урон 160", "оглушение 500 мс", "следующий удар усилен"]},
+        "super": {"id": "piercing_dash", "name": "Пронизывающий рывок", "description": "Попадание рывком сразу подготавливает усиленный следующий удар Kaze.", "slot": "primary", "prediction": "server", "mechanics": ["дистанция 320", "урон 160", "оглушение 500 мс", "следующий удар усилен без скрытого дебаффа цели"]},
         "gadget": {"id": "vanish", "name": "Исчезновение", "description": "Невидимость на короткое время гарантирует усиленный первый удар.", "slot": "secondary", "prediction": "server", "mechanics": ["невидимость 3 секунды", "усиленный первый удар"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
@@ -139,7 +139,7 @@
       "abilities": {
         "basic": {"id": "heavy_staff", "name": "Тяжёлый посох", "description": "Попадания накапливают до 5 зарядов ярости.", "slot": "basic", "prediction": "melee", "mechanics": ["сектор 120", "1 заряд за успешный взмах", "до 5 зарядов ярости"]},
         "super": {"id": "vengeance_vortex", "name": "Вихрь возмездия", "description": "Расходует ярость, увеличивая радиус, длительность и урон вихря; вихрь лечит Mico по тикам.", "slot": "primary", "prediction": "server", "mechanics": ["базовая длительность 3 секунды", "+0.4 секунды и +18 радиуса за заряд", "урон зависит от ярости", "+1 к здоровью владельца каждые 250 мс"]},
-        "gadget": {"id": "stone_armor", "name": "Каменная броня", "description": "Броня копит ограниченный ответный урон и превращает его в Ярость после взрыва.", "slot": "secondary", "prediction": "server", "mechanics": ["броня на 4 секунды", "накопленный урон ограничен 240", "взрыв и до 4 зарядов Ярости"]}
+        "gadget": {"id": "stone_armor", "name": "Каменная броня", "description": "Броня снижает входящий урон и превращает поглощённый урон в Ярость без ответного взрыва.", "slot": "secondary", "prediction": "server", "mechanics": ["броня на 4 секунды", "поглощённый урон ограничен 240", "до 4 зарядов Ярости без урона вокруг"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
       "assets": {"sceneDirectory": "frontend/assets-source/heroes/wukong-mico/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/wukong-mico_base.glb", "status": "runtime_ready"},
@@ -151,13 +151,13 @@
       "name": "Persephone Lumi",
       "status": "active",
       "identity": {"role": "Controller", "color": "#D954A8", "radius": 13},
-      "description": "Контроллер поля: оставляет замедляющий световой след и выращивает сад корней.",
+      "description": "Контроллер поля: выращивает один замедляющий цветок в точке остановки снаряда и сад корней Супером.",
       "balance": {"maxLives": 680, "speed": 13, "attackDamage": 70, "attackRateMs": 470, "reloadTimeMs": 1600, "maxAmmo": 3, "bulletSpeed": 28, "bulletSize": 10, "regenRate": 0.01, "attackType": "lumi_trail_orb"},
-      "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 600, "projectileKind": "lumi_orb", "modifier": "slow_trail"},
+      "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 600, "projectileKind": "lumi_orb", "modifier": "single_flower"},
       "abilities": {
-        "basic": {"id": "luminous_trail", "name": "Световой след", "description": "Снаряд оставляет след, который замедляет и раскрывает врагов.", "slot": "basic", "prediction": "projectile", "mechanics": ["снаряд создаёт след", "зона замедления"]},
+        "basic": {"id": "luminous_flower", "name": "Световой цветок", "description": "Снаряд ломает ближайшую разрушаемую стену, наносит прямой урон и выращивает один замедляющий и раскрывающий цветок в точке остановки.", "slot": "basic", "prediction": "projectile", "mechanics": ["прямой урон при попадании", "ломает одну ближайшую клетку стены или дерева", "один цветок радиусом 70 в точке остановки", "замедление и раскрытие"]},
         "super": {"id": "root_garden", "name": "Сад корней", "description": "Поле корней обездвиживает вошедших врагов.", "slot": "primary", "prediction": "server", "mechanics": ["радиус 200", "срабатывание через 600 мс", "длительность 6 секунд"]},
-        "gadget": {"id": "flower_burst", "name": "Цветочный взрыв", "description": "Взрывает все следы и сады, но наносит каждой цели один общий всплеск.", "slot": "secondary", "prediction": "server", "mechanics": ["детонация каждой активной зоны", "55 урона на цель без сложения перекрытий", "замедление на 2 секунды"]}
+        "gadget": {"id": "flower_burst", "name": "Цветочный взрыв", "description": "Поглощает все цветки и сады, нанося каждой цели один общий всплеск.", "slot": "secondary", "prediction": "server", "mechanics": ["поглощение каждого активного цветка и сада", "55 урона на цель без сложения перекрытий", "замедление на 2 секунды"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
       "assets": {"sceneDirectory": "frontend/assets-source/heroes/persephone-lumi/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/persephone-lumi_base.glb", "status": "runtime_ready"},
@@ -170,11 +170,11 @@
       "status": "active",
       "identity": {"role": "Controller", "color": "#FF5C9A", "radius": 13},
       "description": "Уличная художница, которая контролирует пространство слоями краски.",
-      "balance": {"maxLives": 640, "speed": 14, "attackDamage": 34, "attackRateMs": 520, "reloadTimeMs": 1700, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "katty_paint_queue"},
+      "balance": {"maxLives": 640, "speed": 14, "attackDamage": 42, "attackRateMs": 520, "reloadTimeMs": 1700, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "katty_paint_queue"},
       "basicAttack": {"archetype": "burst", "aimShape": "cone", "range": 240, "projectileKind": "katty_paint", "projectileCount": 3, "spreadDegrees": 45, "halfArcDegrees": 22.5, "modifier": "katty_paint_layers"},
       "abilities": {
-        "basic": {"id": "paint_queue", "name": "Краска-очередь", "description": "Три выстрела накладывают слои и оставляют краску в фактических точках попадания.", "slot": "basic", "prediction": "server", "mechanics": ["3 выстрела с интервалом 150 мс", "конус 45°", "пятна в точках попадания", "третий слой: оглушение 800 мс"]},
-        "super": {"id": "paint_grenade", "name": "Баллон-граната", "description": "После приземления лужа однократно ослепляет каждого вошедшего врага и наносит третий слой.", "slot": "primary", "prediction": "server", "mechanics": ["приземление через 500 мс", "лужа радиусом 200 на 7 секунд", "каждый вошедший враг получает третий слой и ослепление"]},
+        "basic": {"id": "paint_queue", "name": "Краска-очередь", "description": "Три последовательных снаряда веером ломают ближайшую разрушаемую стену при столкновении и накладывают слои краски; третий слой оглушает.", "slot": "basic", "prediction": "server", "mechanics": ["3 снаряда с интервалом 150 мс", "веер 45° дальностью 240", "ломает одну ближайшую клетку стены или дерева", "без постоянных пятен от Basic", "третий слой: оглушение 800 мс"]},
+        "super": {"id": "paint_grenade", "name": "Баллон-граната", "description": "После приземления лужа однократно ослепляет каждого вошедшего врага и наносит третий слой.", "slot": "primary", "prediction": "server", "mechanics": ["приземление через 500 мс", "лужа радиусом 220 на 7,5 секунды", "каждый вошедший враг получает третий слой, 30% бонусного урона и ослепление"]},
         "gadget": {"id": "paint_flight", "name": "Красколёт", "description": "Рывок проходит сквозь стены только во время способности и оставляет замедляющий след.", "slot": "secondary", "prediction": "server", "mechanics": ["фазовый рывок на 320", "след на 4 секунды", "2 слоя за пересечение врага"]}
       },
       "animations": {"available": [], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "static_import"},

@@ -3,7 +3,6 @@ package game
 import (
 	"battle/model/player"
 	"battle/service/geometry"
-	"fmt"
 	"math"
 	"time"
 )
@@ -17,9 +16,6 @@ type CombatKit interface {
 	AttackRange() float64
 }
 
-type ShellyKit struct{}
-type ColtKit struct{}
-type BarleyKit struct{}
 type MandyKit struct{}
 type NeedleKit struct{}
 type KattyKit struct{}
@@ -62,18 +58,15 @@ type PendingMandySuper struct {
 	Visual    *BattleEffect
 }
 
-const AutoAimAssistRadius = 34.0
+const (
+	AutoAimAssistRadius           = 34.0
+	MeleeMovingTargetAssistRadius = 20.0
+)
 
 func CombatKitFor(hero string) CombatKit {
 	switch hero {
 	case "Needle":
 		return NeedleKit{}
-	case "Shelly":
-		return ShellyKit{}
-	case "Colt":
-		return ColtKit{}
-	case "Barley":
-		return BarleyKit{}
 	case "Mandy":
 		return MandyKit{}
 	case "Fairy Mina":
@@ -97,28 +90,31 @@ func (gs *GameState) autoAimTarget(owner string) (float64, float64) {
 	source := gs.Players[owner]
 	if source == nil {
 		gs.hasAutoAimTarget = false
+		gs.autoAimTargetID = ""
 		return 0, 0
 	}
 	gs.hasAutoAimTarget = false
-	reach := 700.0
-	if kit := CombatKitFor(source.HeroName); kit != nil {
-		reach = kit.AttackRange()
-	}
+	gs.autoAimTargetID = ""
+	reach := autoAimAttackReach(source)
 	// Enemy heroes are the intentional target for auto-aim. Monsters are only a
 	// fallback, so a nearby PvP opponent is never silently replaced by a mob.
 	var best *player.Player
-	bestDistance := reach
+	bestDistance := math.Inf(1)
 	for _, candidate := range gs.Players {
 		if candidate == nil || !candidate.CanBulletHurt(source.PlayerId, source.Team) {
 			continue
 		}
 		distance := math.Hypot(candidate.X-source.X, candidate.Y-source.Y)
-		if distance <= bestDistance {
+		maxDistance := reach
+		if isMeleeBasicAttacker(source) {
+			maxDistance += meleeTargetRadius(source, candidate)
+		}
+		if distance <= maxDistance && distance <= bestDistance {
 			best, bestDistance = candidate, distance
 		}
 	}
 	if best != nil {
-		gs.autoAimTargetX, gs.autoAimTargetY, gs.hasAutoAimTarget = best.X, best.Y, true
+		gs.autoAimTargetX, gs.autoAimTargetY, gs.autoAimTargetID, gs.hasAutoAimTarget = best.X, best.Y, best.PlayerId, true
 		return screenAngleFromWorld(math.Atan2(best.Y-source.Y, best.X-source.X)), bestDistance
 	}
 	var bestMonsterX, bestMonsterY float64
@@ -136,7 +132,7 @@ func (gs *GameState) autoAimTarget(owner string) (float64, float64) {
 		}
 	}
 	if hasMonster {
-		gs.autoAimTargetX, gs.autoAimTargetY, gs.hasAutoAimTarget = bestMonsterX, bestMonsterY, true
+		gs.autoAimTargetX, gs.autoAimTargetY, gs.autoAimTargetID, gs.hasAutoAimTarget = bestMonsterX, bestMonsterY, "", true
 		return screenAngleFromWorld(math.Atan2(bestMonsterY-source.Y, bestMonsterX-source.X)), bestMonsterDistance
 	}
 	if math.Hypot(source.MoveX, source.MoveY) > .01 {
@@ -145,10 +141,32 @@ func (gs *GameState) autoAimTarget(owner string) (float64, float64) {
 	return screenAngleFromWorld(source.Rotation), reach
 }
 
+func autoAimAttackReach(source *player.Player) float64 {
+	reach := 700.0
+	if source == nil {
+		return reach
+	}
+	if kit := CombatKitFor(source.HeroName); kit != nil {
+		reach = kit.AttackRange()
+	}
+	if source.HeroName == "Mandy" && source.FocusCharge >= 100 {
+		reach *= 1.35
+	}
+	return reach
+}
+
 func (gs *GameState) autoAimHitsTarget(source *player.Player, targetX, targetY, targetRadius, angle, reach, halfArc float64) bool {
 	dx, dy := targetX-source.X, targetY-source.Y
 	delta := math.Atan2(math.Sin(math.Atan2(dy, dx)-angle), math.Cos(math.Atan2(dy, dx)-angle))
-	if math.Hypot(dx, dy) <= reach+targetRadius && math.Abs(delta) <= halfArc {
+	distance := math.Hypot(dx, dy)
+	angularRadius := 0.0
+	if isMeleeBasicAttacker(source) {
+		angularRadius = math.Pi
+		if distance > targetRadius {
+			angularRadius = math.Asin(math.Min(1, targetRadius/distance))
+		}
+	}
+	if distance <= reach+targetRadius && math.Abs(delta) <= halfArc+angularRadius {
 		return true
 	}
 	if !gs.activeAutoAim || !gs.hasAutoAimTarget || math.Hypot(targetX-gs.autoAimTargetX, targetY-gs.autoAimTargetY) > AutoAimAssistRadius+targetRadius {
@@ -157,14 +175,26 @@ func (gs *GameState) autoAimHitsTarget(source *player.Player, targetX, targetY, 
 	return math.Hypot(dx, dy) <= reach+targetRadius+AutoAimAssistRadius
 }
 
-func (ShellyKit) AimShape() string     { return "cone" }
-func (ShellyKit) AttackRange() float64 { return 430 }
-func (ColtKit) AimShape() string       { return "line" }
-func (ColtKit) AttackRange() float64   { return 650 }
-func (BarleyKit) AimShape() string     { return "lob" }
-func (BarleyKit) AttackRange() float64 { return 620 }
-func (MandyKit) AimShape() string      { return "cone" }
-func (MandyKit) AttackRange() float64  { return 70 }
+func isMeleeBasicAttacker(source *player.Player) bool {
+	if source == nil {
+		return false
+	}
+	return GetAttackConfig(source.HeroName).Archetype == AttackMeleeCone
+}
+
+func meleeTargetRadius(source, target *player.Player) float64 {
+	if target == nil {
+		return 0
+	}
+	radius := target.Radius
+	if isMeleeBasicAttacker(source) && math.Hypot(target.MoveX, target.MoveY) > .01 {
+		radius += MeleeMovingTargetAssistRadius
+	}
+	return radius
+}
+
+func (MandyKit) AimShape() string     { return "cone" }
+func (MandyKit) AttackRange() float64 { return 70 }
 
 func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ float64) {
 	reach := MandyKit{}.AttackRange()
@@ -178,15 +208,20 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 	}
 	halfArc := 60.0 * math.Pi / 180
 	slowUntil := int64(0)
+	gadgetBoost := 1.0
 	if source.GadgetArmed {
-		slowUntil = ts + 2500
+		slowUntil = ts + 1200
+		gadgetBoost = 1.5
 		source.GadgetArmed = false
 	}
 	for _, target := range gs.Players {
-		if !target.CanBulletHurt(source.PlayerId, source.Team) || !gs.autoAimHitsTarget(source, target.X, target.Y, target.Radius, angle, reach, halfArc) {
+		if !target.CanBulletHurt(source.PlayerId, source.Team) || !gs.autoAimHitsTarget(source, target.X, target.Y, meleeTargetRadius(source, target), angle, reach, halfArc) {
 			continue
 		}
 		damage := source.AttackDmg
+		if gadgetBoost > 1 {
+			damage = int(math.Round(float64(damage) * gadgetBoost))
+		}
 		if focused {
 			damage = int(math.Round(float64(damage) * 1.4))
 		}
@@ -204,6 +239,9 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 			continue
 		}
 		damage := source.AttackDmg
+		if gadgetBoost > 1 {
+			damage = int(math.Round(float64(damage) * gadgetBoost))
+		}
 		if focused {
 			damage = int(math.Round(float64(damage) * 1.4))
 		}
@@ -323,84 +361,6 @@ func (gs *GameState) destroyWallsInBeam(x, y, angle, reach, halfWidth float64) i
 	return destroyed
 }
 
-func (ShellyKit) Basic(gs *GameState, source *player.Player, _ int64, angle, _ float64) {
-	// Five independent hitboxes distributed over a 30 degree cone.
-	for index := 0; index < 5; index++ {
-		spread := (-15.0 + float64(index)*7.5) * math.Pi / 180
-		gs.spawnAttackBullet(source, angle+spread, "shell", source.AttackDmg, source.BulletSpd, source.BulletSz, 430, 0, false, false)
-	}
-	gs.addEffect("shotgun_cone", source.X, source.Y, 0, 0, 0, angle, 430, 15*math.Pi/180, source.Color, 0, 260)
-}
-
-func (ShellyKit) Super(gs *GameState, source *player.Player, _ int64, angle, _ float64) bool {
-	for index := 0; index < 9; index++ {
-		spread := (-20.0 + float64(index)*5.0) * math.Pi / 180
-		shot := gs.spawnAttackBullet(source, angle+spread, "super_shell", 72, 36, 7, 500, 1, false, false)
-		shot.Knockback = 95
-		shot.DestroyWalls = true
-	}
-	gs.destroyWallsInSector(source.X, source.Y, angle, 500, 24*math.Pi/180)
-	gs.addEffect("super_cone", source.X, source.Y, 0, 0, 0, angle, 500, 24*math.Pi/180, "#f5d7ff", 0, 480)
-	return true
-}
-
-func (ColtKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ float64) {
-	// Position is deliberately not captured: each delayed round spawns at the
-	// owner's current transform, so a moving Colt bends/shifts the whole burst.
-	for index := 0; index < 6; index++ {
-		gs.ScheduledShots = append(gs.ScheduledShots, &ScheduledShot{
-			Owner: source.PlayerId, CommandID: gs.activeCommandID, Angle: angle, SpawnAt: ts + int64(index)*50,
-			Damage: source.AttackDmg, Speed: source.BulletSpd, Size: source.BulletSz,
-			MaxRange: 650, Kind: "colt_round",
-		})
-	}
-	gs.addEffect("burst_line", source.X, source.Y, 0, 0, 0, angle, 650, .03, source.Color, 0, 350)
-}
-
-func (ColtKit) Super(gs *GameState, source *player.Player, ts int64, angle, _ float64) bool {
-	for index := 0; index < 12; index++ {
-		gs.ScheduledShots = append(gs.ScheduledShots, &ScheduledShot{
-			Owner: source.PlayerId, CommandID: gs.activeCommandID, Angle: angle, SpawnAt: ts + int64(index)*50,
-			Damage: 42, Speed: 38, Size: 5, MaxRange: 850, Kind: "colt_super_round",
-			Pierce: 99, DestroyWalls: true,
-		})
-	}
-	gs.addEffect("colt_super_line", source.X, source.Y, 0, 0, 0, angle, 850, .035, "#8ee8ff", 0, 700)
-	return true
-}
-
-func (BarleyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, aimDistance float64) {
-	distance := math.Max(70, math.Min(BarleyKit{}.AttackRange(), aimDistance))
-	x, y := source.X+math.Cos(angle)*distance, source.Y+math.Sin(angle)*distance
-	clamped := gs.Map.ClampCircle(&geometry.CircleBody{X: x, Y: y, Radius: 8})
-	shot := gs.spawnAttackBullet(source, angle, "barley_bottle", source.AttackDmg, 0, 9, distance, 0, false, false)
-	shot.Lobbed = true
-	shot.OriginX, shot.OriginY = source.X, source.Y
-	shot.TargetX, shot.TargetY = clamped.X, clamped.Y
-	shot.SpawnedAt, shot.LandsAt = ts, ts+650
-	shot.ZoneRadius, shot.ZoneTicks, shot.ZoneInterval = 60, 2, 1000
-	gs.addEffect("lob_target", clamped.X, clamped.Y, 0, 0, 60, 0, 0, 0, source.Color, 0, 650)
-}
-
-func (BarleyKit) Super(gs *GameState, source *player.Player, ts int64, angle, aimDistance float64) bool {
-	distance := math.Max(70, math.Min(BarleyKit{}.AttackRange(), aimDistance))
-	centerX, centerY := source.X+math.Cos(angle)*distance, source.Y+math.Sin(angle)*distance
-	group := fmt.Sprintf("barley-super:%s:%d", source.PlayerId, ts)
-	for _, offset := range []struct{ x, y float64 }{{0, 0}, {-72, 0}, {72, 0}, {0, -72}, {0, 72}} {
-		target := gs.Map.ClampCircle(&geometry.CircleBody{X: centerX + offset.x, Y: centerY + offset.y, Radius: 8})
-		shotAngle := math.Atan2(target.Y-source.Y, target.X-source.X)
-		shotDistance := math.Hypot(target.X-source.X, target.Y-source.Y)
-		shot := gs.spawnAttackBullet(source, shotAngle, "barley_super_bottle", 76, 0, 10, shotDistance, 0, false, false)
-		shot.Lobbed = true
-		shot.OriginX, shot.OriginY = source.X, source.Y
-		shot.TargetX, shot.TargetY = target.X, target.Y
-		shot.SpawnedAt, shot.LandsAt = ts, ts+700
-		shot.ZoneRadius, shot.ZoneTicks, shot.ZoneInterval, shot.ZoneGroup = 70, 4, 1000, group
-	}
-	gs.addEffect("barley_super_target", centerX, centerY, 0, 0, 145, 0, 0, 0, "#79caff", 0, 850)
-	return true
-}
-
 func (gs *GameState) updateScheduledShots() {
 	now := time.Now().UnixMilli()
 	kept := gs.ScheduledShots[:0]
@@ -416,17 +376,13 @@ func (gs *GameState) updateScheduledShots() {
 		if source == nil || !source.IsAlive() {
 			continue
 		}
-		if scheduled.Kind == "katty_paint" {
-			gs.executeKattyPaintShot(source, now, scheduled.Angle)
-			continue
-		}
 		previousCommandID, previousSourceID := gs.activeCommandID, gs.activeSourceID
 		gs.activeCommandID, gs.activeSourceID = scheduled.CommandID, scheduled.Owner
 		shot := gs.spawnAttackBullet(source, scheduled.Angle, scheduled.Kind, scheduled.Damage, scheduled.Speed, scheduled.Size, scheduled.MaxRange, 0, false, false)
 		gs.activeCommandID, gs.activeSourceID = previousCommandID, previousSourceID
 		shot.Knockback = scheduled.Knockback
 		shot.Pierce = scheduled.Pierce
-		shot.DestroyWalls = scheduled.DestroyWalls
+		shot.DestroyWalls = scheduled.DestroyWalls || wallBreakerProjectile(scheduled.Kind)
 	}
 	gs.ScheduledShots = kept
 }

@@ -16,6 +16,8 @@ const MAX_INTERPOLATION_DELAY = 220
 const MAX_SNAPSHOT_INTERVAL_SAMPLES = 24
 const MAX_PRESENTATION_EXTRAPOLATION = 80
 const STOP_CORRECTION_HOLD_TIME = .12
+const LOCAL_ATTACK_PREDICTION_MS = 700
+const MELEE_MOVING_TARGET_ASSIST_RADIUS = 20
 const MIN_CORRECTION_SPEED = 1
 const COLLISION_CELL_SIZE = 160
 const EMPTY_WALLS = []
@@ -51,6 +53,27 @@ const targetEntries = (players = {}, monsters = {}) => [
 
 const distanceBetween = (a, b) => Math.hypot(Number(a?.x || 0) - Number(b?.x || 0), Number(a?.y || 0) - Number(b?.y || 0))
 
+const meleeAutoAimReach = source => {
+  const base = Math.max(1, Number(source?.attackRange) || 430)
+  return source?.hero === "Mandy" && Number(source?.focusCharge) >= 100 ? base * 1.35 : base
+}
+
+const nearestMeleeAutoAimTarget = (source, players = {}, monsters = {}) => {
+  const reach = meleeAutoAimReach(source)
+  const nearest = entries => entries
+    .filter(({entity}) => canDamage(source, entity))
+    .map(entry => ({...entry, distance: distanceBetween(source, entry.entity)}))
+    .filter(({entity, distance}) => {
+      const movingAssist = Math.hypot(Number(entity.moveX) || 0, Number(entity.moveY) || 0) > .01
+        ? MELEE_MOVING_TARGET_ASSIST_RADIUS
+        : 0
+      return distance <= reach + Number(entity.radius || 0) + movingAssist
+    })
+    .sort((a, b) => a.distance - b.distance)[0]?.entity || null
+  return nearest(Object.entries(players).map(([id, entity]) => ({type: "players", id, entity})))
+    || nearest(Object.entries(monsters).map(([id, entity]) => ({type: "monsters", id, entity})))
+}
+
 const attackDamage = player => {
   let damage = Number(player?.attackDamage) || 0
   damage *= Math.max(1, Number(player?.damageMultiplier) || 1)
@@ -60,7 +83,7 @@ const attackDamage = player => {
 
 const blockingWall = wall => typeof wall?.blocking === "boolean"
   ? wall.blocking
-  : wall?.type !== "half" && wall?.type !== "bush"
+  : wall?.type !== "half" && wall?.type !== "bush" && wall?.type !== "moon_mist"
 
 const preserveMapWalls = (map, previousMap) => {
   if (!map) return map
@@ -74,6 +97,19 @@ const preserveMapWalls = (map, previousMap) => {
 
 const cellCoordinate = value => Math.floor((Number(value) || 0) / COLLISION_CELL_SIZE)
 const collisionCellKey = (x, y) => `${x}:${y}`
+
+const colliderBounds = wall => {
+  const width = Math.max(0, Number(wall?.maxX) - Number(wall?.minX))
+  const height = Math.max(0, Number(wall?.maxY) - Number(wall?.minY))
+  const insetX = clamp(Number(wall?.colliderInsetX) || 0, 0, Math.max(0, width / 2 - .001))
+  const insetY = clamp(Number(wall?.colliderInsetY) || 0, 0, Math.max(0, height / 2 - .001))
+  return {
+    minX: Number(wall?.minX) + insetX,
+    minY: Number(wall?.minY) + insetY,
+    maxX: Number(wall?.maxX) - insetX,
+    maxY: Number(wall?.maxY) - insetY,
+  }
+}
 
 export const createCollisionIndex = walls => {
   const source = Array.isArray(walls) ? walls : EMPTY_WALLS
@@ -140,8 +176,9 @@ export const queryCollisionWalls = (index, position, radius, result = null) => {
 const resolveWalls = (position, radius, walls) => {
   let {x, y} = position
   for (const wall of walls || []) {
-    const closestX = clamp(x, wall.minX, wall.maxX)
-    const closestY = clamp(y, wall.minY, wall.maxY)
+    const bounds = colliderBounds(wall)
+    const closestX = clamp(x, bounds.minX, bounds.maxX)
+    const closestY = clamp(y, bounds.minY, bounds.maxY)
     const dx = x - closestX
     const dy = y - closestY
     const distance = Math.hypot(dx, dy)
@@ -153,10 +190,10 @@ const resolveWalls = (position, radius, walls) => {
       continue
     }
     const choices = [
-      {distance: Math.abs(x - wall.minX), x: wall.minX - radius, y},
-      {distance: Math.abs(wall.maxX - x), x: wall.maxX + radius, y},
-      {distance: Math.abs(y - wall.minY), x, y: wall.minY - radius},
-      {distance: Math.abs(wall.maxY - y), x, y: wall.maxY + radius},
+      {distance: Math.abs(x - bounds.minX), x: bounds.minX - radius, y},
+      {distance: Math.abs(bounds.maxX - x), x: bounds.maxX + radius, y},
+      {distance: Math.abs(y - bounds.minY), x, y: bounds.minY - radius},
+      {distance: Math.abs(bounds.maxY - y), x, y: bounds.maxY + radius},
     ]
     const nearest = choices.reduce((best, candidate) => candidate.distance < best.distance ? candidate : best)
     x = nearest.x
@@ -303,6 +340,7 @@ export class NetworkSimulation {
     this.displayMonsters = {}
     this.displayBullets = new Map()
     this.renderTime = null
+    this.pendingLocalAttack = null
     this.collisionWallsSource = null
     this.collisionWalls = EMPTY_WALLS
     this.collisionIndexSource = null
@@ -419,7 +457,6 @@ export class NetworkSimulation {
   }
 
   predictLocalShoot({angle, autoAim = false, commandId = "", now = Date.now()} = {}) {
-    if (autoAim) return []
     const state = this.latestState
     const sourceId = this.playerId
     const sourceState = state?.players?.[sourceId]
@@ -429,6 +466,17 @@ export class NetworkSimulation {
     const source = {
       ...sourceState,
       ...(this.predicted ? {x: this.predicted.x, y: this.predicted.y} : {}),
+    }
+    if (autoAim) {
+      if (source.attackArchetype !== "melee_cone") return []
+      const target = nearestMeleeAutoAimTarget(source, state.players, state.monsters)
+      if (!target) return []
+      this.pendingLocalAttack = {
+        rotation: Math.atan2(Number(target.y) - Number(source.y), Number(target.x) - Number(source.x)),
+        attackPulse: Number(source.attackPulse) + 1,
+        expiresAt: Number(now) + LOCAL_ATTACK_PREDICTION_MS,
+      }
+      return []
     }
     const damage = attackDamage(source)
     if (!damage) return []
@@ -706,6 +754,18 @@ export class NetworkSimulation {
     if (this.playerId && players[this.playerId] && this.predicted) {
       players[this.playerId].x = this.predicted.x + this.correction.x
       players[this.playerId].y = this.predicted.y + this.correction.y
+      // Position prediction already reacts to the current local command on
+      // this frame. Keep the facing vector in the same time domain so
+      // HeroView does not keep turning toward an older server snapshot after
+      // the player changes direction.
+      players[this.playerId].moveX = this.movementInput.x
+      players[this.playerId].moveY = this.movementInput.y
+      if (this.pendingLocalAttack && now <= this.pendingLocalAttack.expiresAt) {
+        players[this.playerId].rotation = this.pendingLocalAttack.rotation
+        players[this.playerId].attackPulse = this.pendingLocalAttack.attackPulse
+      } else if (this.pendingLocalAttack) {
+        this.pendingLocalAttack = null
+      }
     }
     const monsters = syncInterpolatedMap(this.displayMonsters, older.monsters, newer.monsters, t)
     const bullets = syncInterpolatedList(

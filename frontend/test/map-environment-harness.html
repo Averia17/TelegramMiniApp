@@ -20,7 +20,8 @@
     html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
     body { color: var(--ink); background: #1b2329; }
     button { font: inherit; }
-    canvas { display: block; width: 100%; height: 100%; }
+    canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+    canvas.is-dragging { cursor: grabbing; }
     #app { position: relative; }
     #status {
       position: absolute;
@@ -137,7 +138,7 @@
       </div>
       <div class="readout"><span>Позиция героя</span><strong id="position">—</strong></div>
       <div class="zoom-row" aria-label="Масштаб камеры"><button id="zoom-out" type="button" aria-label="Отдалить">−</button><output id="zoom-value">100%</output><button id="zoom-in" type="button" aria-label="Приблизить">+</button></div>
-      <p class="hint"><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> — двигать героя по одному тайлу. Камера следует за ним как в матче.</p>
+      <p class="hint">Тяните карту мышью для панорамы, колёсико — масштаб. <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> — двигать героя по одному тайлу.</p>
     </aside>
     <button id="toggle-panel" type="button" aria-controls="inspector" aria-expanded="true">Скрыть панель</button>
     <canvas id="scene" aria-label="Каноническая боевая карта"></canvas>
@@ -146,20 +147,14 @@
     import {ThreeBattleRenderer} from "/src/components/BattleGame/rendering/three/ThreeBattleRenderer.js"
     import {assetRegistry} from "/src/components/BattleGame/rendering/assets/AssetRegistry.js"
     import {createCollisionIndex, movePosition} from "/src/components/BattleGame/NetworkSimulation.js"
+    import {loadCanonicalBattleMap} from "/src/components/BattleGame/canonicalMap.js"
 
     const canvas = document.querySelector("#scene")
     const status = document.querySelector("#status")
     const inspector = document.querySelector("#inspector")
     const togglePanel = document.querySelector("#toggle-panel")
-    const loadMap = async () => {
-      const response = await fetch("/api/battle/map-preview", {cache: "no-store"})
-      if (!response.ok) throw new Error(`Map API returned ${response.status}`)
-      const payload = await response.json()
-      return {...payload.map, seed: payload.seed, spawners: payload.spawners}
-    }
-
     try {
-      const map = await loadMap()
+      const map = await loadCanonicalBattleMap()
       status.textContent = "Загрузка боевого рендерера…"
       await assetRegistry.preloadHeroes(["Kaze"])
 
@@ -185,6 +180,7 @@
         "south-west": [.25, .75], south: [.5, .84], "south-east": [.75, .75],
       }
       const updatePosition = (x, y, activeZone = null) => {
+        battleRenderer.cameraRig.resetPan()
         player.x = Math.max(map.tileSize, Math.min(map.width - map.tileSize, x))
         player.y = Math.max(map.tileSize, Math.min(map.height - map.tileSize, y))
         battleRenderer.setState(battleState)
@@ -208,12 +204,43 @@
         )
         updatePosition(next.x, next.y)
       })
+      let dragPointer = null
+      let dragX = 0
+      let dragY = 0
+      canvas.addEventListener("pointerdown", event => {
+        if (event.button !== 0) return
+        dragPointer = event.pointerId
+        dragX = event.clientX
+        dragY = event.clientY
+        canvas.setPointerCapture(event.pointerId)
+        canvas.classList.add("is-dragging")
+      })
+      canvas.addEventListener("pointermove", event => {
+        if (event.pointerId !== dragPointer) return
+        battleRenderer.cameraRig.panByScreen(event.clientX - dragX, event.clientY - dragY)
+        dragX = event.clientX
+        dragY = event.clientY
+      })
+      const stopDragging = event => {
+        if (event.pointerId !== dragPointer) return
+        dragPointer = null
+        canvas.classList.remove("is-dragging")
+        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+      }
+      canvas.addEventListener("pointerup", stopDragging)
+      canvas.addEventListener("pointercancel", stopDragging)
       const resize = () => battleRenderer.resize(innerWidth, innerHeight)
       addEventListener("resize", resize)
       let zoom = 1
       const applyZoom = () => { battleRenderer.cameraRig.preferredVertical = 31 / zoom; document.querySelector("#zoom-value").textContent = `${Math.round(zoom * 100)}%` }
       document.querySelector("#zoom-out").addEventListener("click", () => { zoom = Math.max(.65, zoom - .1); applyZoom() })
       document.querySelector("#zoom-in").addEventListener("click", () => { zoom = Math.min(1.8, zoom + .1); applyZoom() })
+      canvas.addEventListener("wheel", event => {
+        event.preventDefault()
+        if (!event.deltaY) return
+        zoom = Math.max(.65, Math.min(1.8, zoom * Math.pow(1.08, event.deltaY > 0 ? -1 : 1)))
+        applyZoom()
+      }, {passive: false})
       togglePanel.addEventListener("click", () => {
         const hidden = inspector.classList.toggle("is-hidden")
         togglePanel.textContent = hidden ? "Показать панель" : "Скрыть панель"
@@ -232,7 +259,7 @@
       window.qa = {map, battleRenderer, battleState, player, updatePosition}
       window.render_game_to_text = () => JSON.stringify({
         renderer: "ThreeBattleRenderer",
-        map: {width: map.width, height: map.height, seed: map.seed, walls: map.walls.length, spawners: map.spawners.length},
+            map: {id: map.id, name: map.name, width: map.width, height: map.height, seed: map.seed, revision: map.revision, walls: map.walls.length, water: map.walls.filter(wall => wall.type === "water").length, spawners: map.spawners.length},
         hero: {x: player.x, y: player.y},
         environment: {ready: battleRenderer.mapRenderer.isReady(), objects: battleRenderer.mapRenderer.objects.size},
         camera: {target: battleRenderer.cameraRig.target.toArray().map(value => Number(value.toFixed(2)))},

@@ -135,7 +135,6 @@ type PlayerJSON struct {
 	ShieldHP         int           `json:"shieldHp,omitempty"`
 	ShieldStacks     int           `json:"shieldStacks,omitempty"`
 	Marks            int           `json:"marks,omitempty"`
-	Doomed           float64       `json:"doomed,omitempty"`
 	SuperCharge      int           `json:"superCharge"`
 	Heat             int           `json:"heat,omitempty"`
 	AttackPulse      int           `json:"attackPulse,omitempty"`
@@ -234,6 +233,10 @@ type PropJSON struct {
 }
 
 type MapJSON struct {
+	ID       string     `json:"id"`
+	Name     string     `json:"name"`
+	Seed     int64      `json:"seed"`
+	Revision int        `json:"revision"`
 	Width    float64    `json:"width"`
 	Height   float64    `json:"height"`
 	TileSize float64    `json:"tileSize"`
@@ -241,13 +244,15 @@ type MapJSON struct {
 }
 
 type WallJSON struct {
-	MinX      float64 `json:"minX"`
-	MinY      float64 `json:"minY"`
-	MaxX      float64 `json:"maxX"`
-	MaxY      float64 `json:"maxY"`
-	Type      string  `json:"type"`
-	Blocking  bool    `json:"blocking"`
-	BushGroup int     `json:"bushGroup,omitempty"`
+	MinX           float64 `json:"minX"`
+	MinY           float64 `json:"minY"`
+	MaxX           float64 `json:"maxX"`
+	MaxY           float64 `json:"maxY"`
+	Type           string  `json:"type"`
+	Blocking       bool    `json:"blocking"`
+	BushGroup      int     `json:"bushGroup,omitempty"`
+	ColliderInsetX float64 `json:"colliderInsetX,omitempty"`
+	ColliderInsetY float64 `json:"colliderInsetY,omitempty"`
 }
 
 type RoomJoinedParams struct {

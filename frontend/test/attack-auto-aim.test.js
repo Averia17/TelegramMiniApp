@@ -3,6 +3,7 @@ import test from "node:test"
 import * as THREE from "three"
 
 import {canStartAttack, isAutoAimAttackGesture} from "../src/components/BattleGame/Input.js"
+import {getAttackCooldownVisual} from "../src/components/BattleGame/attackCooldownVisual.js"
 import {AimRenderer} from "../src/components/BattleGame/rendering/combat/AimRenderer.js"
 import {blendAngle} from "../src/components/BattleGame/rendering/heroes/turning.js"
 
@@ -32,6 +33,22 @@ test("attack input never advertises an unavailable attack", () => {
   assert.equal(canStartAttack({ammo: 2, lives: 0}, 1_000, 0, "game"), false)
   assert.equal(canStartAttack({ammo: 2, lives: 100, stun: 0.2}, 1_000, 0, "game"), false)
   assert.equal(canStartAttack({ammo: 2, lives: 100, channel: 0.2}, 1_000, 0, "game"), false)
+})
+
+test("attack cooldown visual uses the authoritative remaining time", () => {
+  assert.deepEqual(getAttackCooldownVisual({attackCooldown: .3, attackRateMs: 600}), {
+    state: "cooldown",
+    remaining: .3,
+    progress: .5,
+  })
+})
+
+test("attack cooldown visual stays ready when the server says it is ready", () => {
+  assert.deepEqual(getAttackCooldownVisual({attackCooldown: 0, attackReady: true, attackRateMs: 600}), {
+    state: "ready",
+    remaining: 0,
+    progress: 0,
+  })
 })
 
 test("attack guide stays visible when the server says the attack is unavailable", () => {

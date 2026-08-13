@@ -1,4 +1,6 @@
 import {HeroView, isInsideBush} from "../heroes/HeroView"
+import {removeFinishedDeathViews} from "../heroes/deathLifecycle.js"
+import {getDeathShakeAmount} from "../heroes/deathVisuals.js"
 import {isAlivePlayerState} from "../heroes/playerVisibility.js"
 import {MapRenderer} from "../map/MapRenderer"
 import {AimRenderer} from "../combat/AimRenderer"
@@ -108,6 +110,12 @@ export class ThreeBattleRenderer {
         this.players.set(String(id), view)
         this.actorRoot.add(view.group)
       }
+      const deathShake = getDeathShakeAmount(
+        view.state,
+        player,
+        String(id) === this.localPlayerId,
+      )
+      if (deathShake > 0) this.cameraRig.addShake(deathShake)
       view.setState(player, Boolean(state.networkSmoothed))
     })
     this.players.forEach((view, id) => {
@@ -162,6 +170,7 @@ export class ThreeBattleRenderer {
     const sceneUpdateStartedAt = performance.now()
     const walls=this.state?.map?.walls||[]
     this.players.forEach((view,id)=>view.update(delta,this.time,(id===this.localPlayerId||Boolean(this.state?.players?.[id]?.team&&this.state.players[id].team===this.state?.players?.[this.localPlayerId]?.team))&&isInsideBush(view.state,walls)))
+    removeFinishedDeathViews(this.players, this.actorRoot)
     const local=this.players.get(this.localPlayerId)
     // Map focus is updated on snapshot/state boundaries; procedural props do
     // not trigger asset work from inside RAF.

@@ -69,7 +69,7 @@ func TestIslandVoiceKillTriggersOnlyOnFirstKill(t *testing.T) {
 	gs.MaxPlayers = 3
 	gs.State = GameStateGame
 	gs.PlayerAdd("killer", "Охотник", "Mandy")
-	gs.PlayerAdd("target-1", "Первая цель", "Shelly")
+	gs.PlayerAdd("target-1", "Первая цель", "Needle")
 	gs.PlayerAdd("target-2", "Вторая цель", "Kaze")
 
 	voices := 0

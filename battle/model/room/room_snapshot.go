@@ -4,7 +4,6 @@ import (
 	"battle/model/game"
 	"battle/model/player"
 	"battle/observability"
-	"battle/service/geometry"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -76,7 +75,6 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			ShieldHP:         p.ShieldHP,
 			ShieldStacks:     p.ShieldStacks,
 			Marks:            p.Marks,
-			Doomed:           secondsRemaining(r.State.DoomedUntil[p.PlayerId], now),
 			SuperCharge:      game.SuperChargePercent(p, now),
 			Heat:             p.Heat,
 			AttackPulse:      p.AttackPulse,
@@ -230,19 +228,9 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 		}
 	}
 	if r.State.Map != nil {
-		compactMapJSON = game.MapJSON{
-			Width: r.State.Map.WidthInPixels, Height: r.State.Map.HeightInPixels, TileSize: game.TileSize,
-		}
+		compactMapJSON = game.NewMapJSON(r.State.MapName, r.State.Map, r.State.MapRevision, false)
 		if needsFullMap {
-			walls := make([]game.WallJSON, 0, len(r.State.Map.Collisions))
-			for _, w := range r.State.Map.Collisions {
-				walls = append(walls, game.WallJSON{
-					MinX: w.MinX, MinY: w.MinY, MaxX: w.MaxX, MaxY: w.MaxY,
-					Type: w.Type, Blocking: geometry.IsBlockingWall(w.Type), BushGroup: w.BushGroup,
-				})
-			}
-			fullMapJSON = compactMapJSON
-			fullMapJSON.Walls = walls
+			fullMapJSON = game.NewMapJSON(r.State.MapName, r.State.Map, r.State.MapRevision, true)
 		}
 	}
 

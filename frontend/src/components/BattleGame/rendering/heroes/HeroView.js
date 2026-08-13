@@ -13,6 +13,12 @@ import {
   getBushConcealmentMix,
 } from "./BushConcealment"
 import {createClownTaunt} from "./tauntVisuals.js"
+import {
+  DEATH_PULSE_DURATION,
+  getDeathFade,
+  getDeathPulseState,
+  getHeroDeathPalette,
+} from "./deathVisuals.js"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const blend = (speed, delta) => 1 - Math.exp(-speed * delta)
@@ -86,17 +92,49 @@ const setOpacity = (materials, opacity) => {
 const createDeathBurst = heroName => {
   const group = new THREE.Group()
   group.visible = false
-  const primary = new THREE.MeshStandardMaterial({color:heroName === "Mandy" ? 0xff70b5 : 0x59d85e, roughness:.7})
-  const accent = new THREE.MeshStandardMaterial({color:heroName === "Mandy" ? 0xffdc55 : 0xf4edb2, roughness:.85})
-  for (let index = 0; index < 12; index += 1) {
-    const material = index % 3 ? primary : accent
+  const palette = getHeroDeathPalette(heroName)
+  const particleMaterials = palette.map(color => new THREE.MeshStandardMaterial({
+    color,
+    emissive: color,
+    emissiveIntensity: .35,
+    roughness: .65,
+  }))
+  const ringMaterial = new THREE.MeshBasicMaterial({
+    color: palette[0],
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  })
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(.58, .065, 8, 32), ringMaterial)
+  ring.rotation.x = Math.PI / 2
+  ring.position.y = .08
+  ring.userData.deathRole = "ring"
+  const echo = new THREE.Mesh(new THREE.TorusGeometry(.42, .035, 7, 28), ringMaterial.clone())
+  echo.rotation.x = Math.PI / 2
+  echo.position.y = .12
+  echo.userData.deathRole = "echo"
+  const flashMaterial = new THREE.MeshBasicMaterial({
+    color: palette[1],
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  })
+  const flash = new THREE.Mesh(new THREE.SphereGeometry(.52, 14, 10), flashMaterial)
+  flash.position.y = 1.2
+  flash.userData.deathRole = "flash"
+  group.add(ring, echo, flash)
+  for (let index = 0; index < 16; index += 1) {
+    const material = particleMaterials[index % particleMaterials.length]
     const geometry = index % 3
       ? new THREE.SphereGeometry(.11 + index % 2 * .04, 8, 6)
       : new THREE.ConeGeometry(.07, .34, 7)
     const particle = new THREE.Mesh(geometry, material)
-    const angle = index * Math.PI * 2 / 12
+    const angle = index * Math.PI * 2 / 16
     particle.userData.velocity = new THREE.Vector3(Math.cos(angle) * (2.2 + index % 3), 2.7 + index % 4 * .55, Math.sin(angle) * (2.2 + index % 3))
     particle.userData.spin = new THREE.Vector3(3 + index, 5 - index * .18, 2 + index * .12)
+    particle.userData.deathRole = "particle"
     group.add(particle)
   }
   return group
@@ -118,6 +156,7 @@ export class HeroView {
     this.tauntRemaining = 0
     this.bushConcealmentMix = 0
     this.deathTime = 0
+    this.deathElapsed = 0
     this.group.add(this.model, this.deathBurst, this.taunt)
     if (this.shadow) this.group.add(this.shadow)
     if (this.label) this.group.add(this.label)
@@ -181,9 +220,11 @@ export class HeroView {
     if (this.lastPulse !== undefined && state.attackPulse !== this.lastPulse) this.recoil = 1
     if (this.lastLives !== undefined && state.lives < this.lastLives) this.hit = 1
     if (this.lastLives > 0 && state.lives <= 0) {
-      this.deathTime = .62
+      this.deathTime = DEATH_PULSE_DURATION
+      this.deathElapsed = 0
       this.deathBurst.visible = true
       this.deathBurst.children.forEach(particle => {
+        if (particle.userData.deathRole !== "particle") return
         particle.position.set(0, 1.25, 0)
         particle.scale.setScalar(1)
       })
@@ -206,6 +247,11 @@ export class HeroView {
 
   setResult(result) {
     this.result = result
+  }
+
+  isDeathAnimationComplete() {
+    if (this.state.lives > 0 || this.deathTime > 0) return false
+    return this.animation ? this.animation.isDeathComplete() : true
   }
 
   showTaunt(tauntId = "clown_laugh") {
@@ -294,14 +340,26 @@ export class HeroView {
       this.animation.setHitFlash(this.hit)
     }
     if (this.deathTime > 0) {
+      this.deathElapsed += delta
       this.deathTime = Math.max(0, this.deathTime - delta)
       this.deathBurst.children.forEach(particle => {
+        if (particle.userData.deathRole !== "particle") return
         particle.position.addScaledVector(particle.userData.velocity, delta)
         particle.userData.velocity.y -= 8.5 * delta
         particle.rotation.x += particle.userData.spin.x * delta
         particle.rotation.y += particle.userData.spin.y * delta
-        particle.scale.setScalar(Math.max(0.01, this.deathTime / .62))
+        particle.scale.setScalar(Math.max(0.01, this.deathTime / DEATH_PULSE_DURATION))
       })
+      const pulse = getDeathPulseState(this.deathElapsed)
+      const ring = this.deathBurst.children.find(child => child.userData.deathRole === "ring")
+      const echo = this.deathBurst.children.find(child => child.userData.deathRole === "echo")
+      const flash = this.deathBurst.children.find(child => child.userData.deathRole === "flash")
+      ring?.scale.setScalar(pulse.ringScale)
+      echo?.scale.setScalar(pulse.ringScale * .72)
+      if (ring?.material) ring.material.opacity = pulse.ringOpacity
+      if (echo?.material) echo.material.opacity = pulse.ringOpacity * .55
+      if (flash?.material) flash.material.opacity = pulse.flashOpacity
+      flash?.scale.setScalar(.65 + pulse.ringScale * .28)
       this.deathBurst.visible = this.deathTime > 0
     }
     if (this.tauntRemaining > 0) {
@@ -317,13 +375,17 @@ export class HeroView {
     this.recoil *= Math.exp(-15 * delta)
     this.hit *= Math.exp(-12 * delta)
     this.bushConcealmentMix = getBushConcealmentMix(this.bushConcealmentMix, inBush, delta)
-    const opacity = THREE.MathUtils.lerp(1, BUSH_HERO_OPACITY, this.bushConcealmentMix)
+    const deathProgress = this.state.lives <= 0
+      ? this.animation?.getDeathProgress?.() ?? Math.min(1, this.deathElapsed / DEATH_PULSE_DURATION)
+      : 0
+    const deathFade = this.state.lives <= 0 ? getDeathFade(deathProgress) : 1
+    const opacity = THREE.MathUtils.lerp(1, BUSH_HERO_OPACITY, this.bushConcealmentMix) * deathFade
     if (Math.abs(opacity - this.modelOpacity) > .002) {
       setOpacity(this.modelMaterials, opacity)
       this.modelOpacity = opacity
     }
-    if (this.shadow) this.shadow.material.opacity = THREE.MathUtils.lerp(0.34, 0.18, this.bushConcealmentMix)
-    if (this.label) this.label.material.opacity = 1
+    if (this.shadow) this.shadow.material.opacity = THREE.MathUtils.lerp(0.34, 0.18, this.bushConcealmentMix) * deathFade
+    if (this.label) this.label.material.opacity = deathFade
   }
 
   dispose() {

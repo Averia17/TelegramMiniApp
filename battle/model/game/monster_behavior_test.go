@@ -80,3 +80,25 @@ func TestMonsterLosesPlayerTrailWhenPlayerEntersBush(t *testing.T) {
 		t.Fatalf("monster kept the target after it entered a bush: state=%s target=%q", m.State, m.TargetPlayerId)
 	}
 }
+
+func TestMonsterAcquiresNearbyVisiblePlayerAcrossSolidCover(t *testing.T) {
+	rock := &geometry.WallTile{MinX: 120, MinY: 80, MaxX: 160, MaxY: 120, Type: "wall"}
+	walls := geometry.NewSpatialHash(TileSize)
+	walls.Insert(rock)
+	gs := &GameState{
+		State:    GameStateGame,
+		Map:      &gamemap.GameMap{WidthInPixels: 800, HeightInPixels: 800, Collisions: []*geometry.WallTile{rock}},
+		Walls:    walls,
+		Players:  map[string]*player.Player{},
+		Monsters: map[string]*monster.Monster{},
+	}
+	p := &player.Player{CircleBody: geometry.CircleBody{X: 180, Y: 100, Radius: 16}, PlayerId: "p1", Lives: 100, MaxLives: 100}
+	m := monster.NewMonster(100, 100, 16, 800, 800, monster.MonsterLives)
+	gs.Players[p.PlayerId], gs.Monsters["m1"] = p, m
+
+	gs.updateMonsters()
+
+	if m.State != monster.MonsterChase || m.TargetPlayerId != p.PlayerId {
+		t.Fatalf("nearby visible player did not trigger monster across cover: state=%s target=%q", m.State, m.TargetPlayerId)
+	}
+}

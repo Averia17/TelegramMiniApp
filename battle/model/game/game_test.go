@@ -91,8 +91,8 @@ func TestIslandPhasesFollowMatchClock(t *testing.T) {
 func TestCombatRemainsEnabledForLegacyLandingSnapshots(t *testing.T) {
 	gs := newTestGameState()
 	gs.MaxPlayers = 2
-	gs.PlayerAdd("attacker", "Attacker", "Colt")
-	gs.PlayerAdd("target", "Target", "Shelly")
+	gs.PlayerAdd("attacker", "Attacker", "Brock Zeus")
+	gs.PlayerAdd("target", "Target", "Needle")
 	gs.State = GameStateGame
 	gs.IslandPhase = IslandPhaseLanding
 	attacker := gs.Players["attacker"]
@@ -105,8 +105,8 @@ func TestCombatRemainsEnabledForLegacyLandingSnapshots(t *testing.T) {
 
 func TestMatchStartsWithCombatEnabled(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("attacker", "Attacker", "Colt")
-	gs.PlayerAdd("target", "Target", "Shelly")
+	gs.PlayerAdd("attacker", "Attacker", "Brock Zeus")
+	gs.PlayerAdd("target", "Target", "Needle")
 	gs.State = GameStateLobby
 	gs.startGame()
 
@@ -186,7 +186,7 @@ func TestBeaconRequiresTenSecondsOfContinuousControl(t *testing.T) {
 	gs.IslandPhase = IslandPhaseBeacon
 	gs.BeaconOpen = true
 	gs.BeaconHoldStartedAt = make(map[string]int64)
-	gs.PlayerAdd("holder", "Holder", "Shelly")
+	gs.PlayerAdd("holder", "Holder", "Needle")
 	player := gs.Players["holder"]
 	player.X, player.Y = gs.Map.WidthInPixels/2, gs.Map.HeightInPixels/2
 	now := time.Now().UnixMilli()
@@ -207,8 +207,8 @@ func TestSuddenDeathDamageGrowsForTwoRemainingPlayers(t *testing.T) {
 	gs.MaxPlayers = 2
 	gs.State = GameStateGame
 	gs.IslandPhase = IslandPhaseBeacon
-	gs.PlayerAdd("one", "One", "Shelly")
-	gs.PlayerAdd("two", "Two", "Colt")
+	gs.PlayerAdd("one", "One", "Needle")
+	gs.PlayerAdd("two", "Two", "Brock Zeus")
 	first, second := gs.Players["one"], gs.Players["two"]
 	now := time.Now().UnixMilli()
 	gs.SuddenDeathStartedAt = now - 2*1000
@@ -233,8 +233,8 @@ func TestSuddenDeathDamageAppliesToThreeRemainingPlayers(t *testing.T) {
 	gs.MaxPlayers = 3
 	gs.State = GameStateGame
 	gs.IslandPhase = IslandPhaseBeacon
-	gs.PlayerAdd("one", "One", "Shelly")
-	gs.PlayerAdd("two", "Two", "Colt")
+	gs.PlayerAdd("one", "One", "Needle")
+	gs.PlayerAdd("two", "Two", "Brock Zeus")
 	gs.PlayerAdd("three", "Three", "Mandy")
 	now := time.Now().UnixMilli()
 	gs.SuddenDeathStartedAt = now - 1000
@@ -261,8 +261,8 @@ func TestSuddenDeathLeavesOneSurvivorWhenATickWouldKillEveryone(t *testing.T) {
 	gs.MaxPlayers = 3
 	gs.State = GameStateGame
 	gs.IslandPhase = IslandPhaseBeacon
-	gs.PlayerAdd("one", "One", "Shelly")
-	gs.PlayerAdd("two", "Two", "Colt")
+	gs.PlayerAdd("one", "One", "Needle")
+	gs.PlayerAdd("two", "Two", "Brock Zeus")
 	gs.PlayerAdd("three", "Three", "Mandy")
 	for _, candidate := range gs.Players {
 		candidate.Lives = 20
@@ -325,6 +325,65 @@ func TestUpdateRegenerationWaitsBetweenPulsesAndAfterDamage(t *testing.T) {
 	}
 }
 
+func TestUpdateRegenerationWaitsDuringHostileStatusAndStartsCooldownAfterIt(t *testing.T) {
+	statusSetters := map[string]func(*player.Player, int64){
+		"slow":   func(p *player.Player, until int64) { p.SlowUntil = until },
+		"stun":   func(p *player.Player, until int64) { p.StunUntil = until },
+		"blind":  func(p *player.Player, until int64) { p.BlindUntil = until },
+		"root":   func(p *player.Player, until int64) { p.VineUntil = until },
+		"vortex": func(p *player.Player, until int64) { p.VortexUntil = until },
+		"poison": func(p *player.Player, until int64) { p.PoisonUntil = until },
+	}
+
+	for name, setStatus := range statusSetters {
+		t.Run(name, func(t *testing.T) {
+			gs := newTestGameState()
+			gs.State = GameStateGame
+			gs.PlayerAdd("regen", "Regen", "Needle")
+			p := gs.Players["regen"]
+			p.Lives = p.MaxLives / 2
+			now := int64(10_000_000)
+			p.LastDamageAt = now - int64(10*time.Second/time.Millisecond)
+			setStatus(p, now+1)
+
+			gs.updateRegenerationAt(now)
+			if p.Lives != p.MaxLives/2 {
+				t.Fatalf("regenerated while %s was active: got %d", name, p.Lives)
+			}
+			if p.LastDamageAt != now {
+				t.Fatalf("last hostile interaction after %s = %d, want %d", name, p.LastDamageAt, now)
+			}
+
+			setStatus(p, now)
+			gs.updateRegenerationAt(now + regenerationCooldown.Milliseconds() - 1)
+			if p.Lives != p.MaxLives/2 {
+				t.Fatalf("regenerated before post-%s cooldown elapsed: got %d", name, p.Lives)
+			}
+		})
+	}
+}
+
+func TestBlockedHostileHitStillInterruptsRegeneration(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("target", "Target", "Needle")
+	target := gs.Players["target"]
+	target.Lives = target.MaxLives / 2
+	target.LastDamageAt = 1
+	target.InvulnerableUntil = time.Now().Add(time.Second).UnixMilli()
+
+	before := target.Lives
+	if dealt := gs.applyDamageAmount(target, 100); dealt != 0 {
+		t.Fatalf("damage through invulnerability = %d, want 0", dealt)
+	}
+	if target.Lives != before {
+		t.Fatalf("lives after blocked hit = %d, want %d", target.Lives, before)
+	}
+	if target.LastDamageAt == 1 {
+		t.Fatal("blocked hostile hit did not interrupt regeneration")
+	}
+}
+
 func TestUpdateRegenerationKeepsTwentyFivePercentPulseInConcealment(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("regen", "Regen", "Needle")
@@ -349,8 +408,8 @@ func TestUpdateRegenerationKeepsTwentyFivePercentPulseInConcealment(t *testing.T
 
 func TestConnectedBushGroupRevealsPlayersAcrossGrass(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("hidden", "Hidden", "Spark")
-	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	gs.PlayerAdd("hidden", "Hidden", "Kaze")
+	gs.PlayerAdd("enemy", "Enemy", "Brock Zeus")
 	hidden, enemy := gs.Players["hidden"], gs.Players["enemy"]
 	hidden.X, hidden.Y, enemy.X, enemy.Y = 110, 110, 310, 110
 	gs.Map.Collisions = []*geometry.WallTile{
@@ -368,7 +427,7 @@ func TestConnectedBushGroupRevealsPlayersAcrossGrass(t *testing.T) {
 
 func TestBotFarmsCrateDuringOpeningInsteadOfStandingStill(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("bot", "Bot", "Spark")
+	gs.PlayerAdd("bot", "Bot", "Kaze")
 	bot := gs.Players["bot"]
 	bot.IsBot, bot.X, bot.Y = true, 100, 100
 	gs.Map.Collisions = []*geometry.WallTile{{MinX: 300, MinY: 100, MaxX: 340, MaxY: 140, Type: "crates"}}
@@ -420,7 +479,7 @@ func TestInitGameState(t *testing.T) {
 func TestPlayerAdd(t *testing.T) {
 	gs := newTestGameState()
 
-	gs.PlayerAdd("p1", "Alice", "Colt")
+	gs.PlayerAdd("p1", "Alice", "Brock Zeus")
 	if len(gs.Players) != 1 {
 		t.Errorf("Players count = %v, want 1", len(gs.Players))
 	}
@@ -511,59 +570,13 @@ func TestAbilityAppliesCooldownAndShield(t *testing.T) {
 func TestAbilityActionIsProcessed(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Shelly")
+	gs.PlayerAdd("p1", "Alice", "Needle")
 	before := time.Now().UnixMilli()
 	gs.PlayerPushAction(Action{PlayerId: "p1", Type: "ability", Ts: 10_000, Value: &AbilityValue{Slot: "secondary"}})
 	gs.updatePlayers()
 	processedAt := gs.Players["p1"].LastSecondaryAt
 	if processedAt < before || processedAt > time.Now().UnixMilli() {
 		t.Fatalf("ability action did not use authoritative server time: %d", processedAt)
-	}
-}
-
-func TestTitanSecondaryThrowsThreePrismDiscs(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("titan", "Titan", "Titan")
-
-	gs.playerAbility("titan", 10_000, "secondary")
-
-	active := 0
-	for _, projectile := range gs.Bullets {
-		if projectile.Active {
-			active++
-			if projectile.Kind != "boomerang" {
-				t.Fatalf("Titan secondary projectile kind = %q, want boomerang", projectile.Kind)
-			}
-		}
-	}
-	if active != 3 {
-		t.Fatalf("Titan secondary active projectiles = %d, want 3", active)
-	}
-}
-
-func TestSparkSecondaryIsAnAttackNotOnlyAStatBuff(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("spark", "Spark", "Spark")
-	p := gs.Players["spark"]
-	p.X, p.Y, p.Rotation = 1200, 1200, 0
-	startX := p.X
-
-	gs.playerAbility("spark", 10_000, "secondary")
-
-	if p.X <= startX {
-		t.Fatalf("Spark secondary did not move: x = %.1f, start = %.1f", p.X, startX)
-	}
-	foundScythe := false
-	for _, effect := range gs.Effects {
-		if effect.Kind == "scythe" {
-			foundScythe = true
-			break
-		}
-	}
-	if !foundScythe {
-		t.Fatal("Spark secondary did not create a scythe telegraph")
 	}
 }
 
@@ -584,7 +597,7 @@ func TestGameStatePlayerMove(t *testing.T) {
 func TestMovementMatchesLocalEnginePixelsPerSecond(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Shelly")
+	gs.PlayerAdd("p1", "Alice", "Needle")
 	p := gs.Players["p1"]
 	p.X, p.Y = 256, 256
 
@@ -600,7 +613,7 @@ func TestMovementMatchesLocalEnginePixelsPerSecond(t *testing.T) {
 func TestMovementUsesElapsedServerTimeAfterDelayedTick(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Shelly")
+	gs.PlayerAdd("p1", "Alice", "Needle")
 	p := gs.Players["p1"]
 	p.X, p.Y = 256, 256
 
@@ -616,7 +629,7 @@ func TestMovementUsesElapsedServerTimeAfterDelayedTick(t *testing.T) {
 func TestDelayedTickDoesNotApplyNewDirectionRetroactively(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Shelly")
+	gs.PlayerAdd("p1", "Alice", "Needle")
 	p := gs.Players["p1"]
 	p.X, p.Y = 256, 256
 
@@ -683,7 +696,7 @@ func TestGameplayTempoAppliesMovementAttackAndProjectilePacing(t *testing.T) {
 
 func TestLobbyAllowsMovementAndStartKeepsHumanPosition(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("human", "Human", "Shelly")
+	gs.PlayerAdd("human", "Human", "Needle")
 	gs.startLobby()
 	p := gs.Players["human"]
 	p.X, p.Y = 256, 256
@@ -738,34 +751,19 @@ func TestPlayerRotate(t *testing.T) {
 func TestPlayerShoot(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Colt")
+	gs.PlayerAdd("p1", "Alice", "Brock Zeus")
 
 	gs.playerShoot("p1", 1000, 0)
-	if len(gs.ScheduledShots) != 6 {
-		t.Fatalf("Scheduled shots = %v, want 6", len(gs.ScheduledShots))
+	if len(gs.Bullets) != 1 {
+		t.Fatalf("Bullets = %v, want 1", len(gs.Bullets))
 	}
 
-	shot := gs.ScheduledShots[0]
-	if shot.Owner != "p1" {
-		t.Errorf("Shot owner = %v, want p1", shot.Owner)
+	shot := gs.Bullets[0]
+	if shot.PlayerId != "p1" {
+		t.Errorf("Shot owner = %v, want p1", shot.PlayerId)
 	}
-	if shot.Kind != "colt_round" {
-		t.Errorf("Shot kind = %v, want colt_round", shot.Kind)
-	}
-}
-
-func TestShotgunSpawnsFivePellets(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Shelly")
-	gs.playerShoot("p1", 1000, 0)
-	if len(gs.Bullets) != 5 {
-		t.Fatalf("shotgun bullets = %d, want 5", len(gs.Bullets))
-	}
-	for _, b := range gs.Bullets {
-		if b.Kind != "pellet" {
-			t.Errorf("kind = %q, want pellet", b.Kind)
-		}
+	if shot.Kind != "zeus_lightning" {
+		t.Errorf("Shot kind = %v, want zeus_lightning", shot.Kind)
 	}
 }
 
@@ -775,9 +773,9 @@ func TestHeroCombatProfiles(t *testing.T) {
 		damage int
 		rate   int64
 	}{
-		"Shelly": {250, 600, 250}, "Colt": {250, 420, 300}, "Barley": {250, 760, 350},
-		"Viper": {225, 1250, 520},
-		"Titan": {285, 650, 300}, "Needle": {240, 750, 420}, "Spark": {285, 1050, 260},
+		"Needle":     {12, 65, 420},
+		"Brock Zeus": {12, 80, 520},
+		"Katty":      {14, 42, 520},
 	}
 	for name, expected := range want {
 		hero := GetHeroByName(name)
@@ -790,13 +788,13 @@ func TestHeroCombatProfiles(t *testing.T) {
 func TestAmmoIsServerAuthoritativeAndReloadsSequentially(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Colt")
+	gs.PlayerAdd("p1", "Alice", "Brock Zeus")
 	p := gs.Players["p1"]
 	p.X, p.Y = 1200, 1200
 
 	gs.playerShoot("p1", 1_000, 0)
-	gs.playerShoot("p1", 1_700, 0)
-	gs.playerShoot("p1", 2_400, 0)
+	gs.playerShoot("p1", 2_000, 0)
+	gs.playerShoot("p1", 3_000, 0)
 	gs.playerShoot("p1", 3_100, 0)
 	if p.Ammo != 0 {
 		t.Fatalf("ammo after three accepted attacks = %d, want 0", p.Ammo)
@@ -805,15 +803,15 @@ func TestAmmoIsServerAuthoritativeAndReloadsSequentially(t *testing.T) {
 		t.Fatalf("projectiles after firing with empty ammo = %d, want 3", len(gs.Bullets))
 	}
 
-	gs.reloadAmmo(p, 3_099)
+	gs.reloadAmmo(p, 3_195)
 	if p.Ammo != 0 {
 		t.Fatalf("ammo reloaded early: %d", p.Ammo)
 	}
-	gs.reloadAmmo(p, 3_100)
+	gs.reloadAmmo(p, 3_196)
 	if p.Ammo != 1 {
 		t.Fatalf("ammo after first reload = %d, want 1", p.Ammo)
 	}
-	gs.reloadAmmo(p, 5_200)
+	gs.reloadAmmo(p, 5_392)
 	if p.Ammo != 2 {
 		t.Fatalf("ammo after second reload = %d, want 2", p.Ammo)
 	}
@@ -835,7 +833,7 @@ func TestSlamDealsDamageWithoutProjectile(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("p1", "Vulkan", "Viper")
-	gs.PlayerAdd("p2", "Target", "Colt")
+	gs.PlayerAdd("p2", "Target", "Needle")
 	source, target := gs.Players["p1"], gs.Players["p2"]
 	target.X, target.Y = source.X+60, source.Y
 	before := target.Lives
@@ -851,7 +849,7 @@ func TestSlamDealsDamageWithoutProjectile(t *testing.T) {
 func TestPlayerShootRateLimit(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Colt")
+	gs.PlayerAdd("p1", "Alice", "Brock Zeus")
 
 	gs.playerShoot("p1", 1000, 0)
 	gs.playerShoot("p1", 1050, 0) // too fast (50ms < 800ms)
@@ -864,7 +862,7 @@ func TestPlayerShootRateLimit(t *testing.T) {
 func TestPlayerShootRecycle(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Alice", "Colt")
+	gs.PlayerAdd("p1", "Alice", "Brock Zeus")
 
 	gs.playerShoot("p1", 1000, 0)
 	gs.Bullets[0].Active = false
@@ -1163,7 +1161,7 @@ func TestGameStartGame(t *testing.T) {
 
 func TestBotsFillRoomToHalfCapacity(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice", "Shelly")
+	gs.PlayerAdd("p1", "Alice", "Needle")
 
 	gs.startGame()
 
@@ -1185,7 +1183,7 @@ func TestBotsNotAddedAtHalfCapacity(t *testing.T) {
 	gs := newTestGameState()
 	for index := 1; index <= 4; index++ {
 		id := fmt.Sprintf("p%d", index)
-		gs.PlayerAdd(id, id, "Shelly")
+		gs.PlayerAdd(id, id, "Needle")
 	}
 
 	gs.startGame()
@@ -1202,12 +1200,12 @@ func TestBotsNotAddedAtHalfCapacity(t *testing.T) {
 
 func TestBotsAdjustWhenHumansJoinAndLeaveDuringGame(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice", "Shelly")
+	gs.PlayerAdd("p1", "Alice", "Needle")
 	gs.startGame()
 
-	gs.PlayerAdd("p2", "Bob", "Colt")
+	gs.PlayerAdd("p2", "Bob", "Brock Zeus")
 	gs.PlayerAdd("p3", "Eve", "Viper")
-	gs.PlayerAdd("p4", "Max", "Titan")
+	gs.PlayerAdd("p4", "Max", "Mandy")
 	if bots := countBots(gs); bots != 0 {
 		t.Fatalf("bots after fourth human joined = %d, want 0", bots)
 	}
@@ -1300,8 +1298,8 @@ func TestUpdateGameWin(t *testing.T) {
 
 func TestLethalPlayerDamageImmediatelyFinishesBattleAndReportsWinner(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("winner", "Alice", "Colt")
-	gs.PlayerAdd("loser", "Bob", "Shelly")
+	gs.PlayerAdd("winner", "Alice", "Brock Zeus")
+	gs.PlayerAdd("loser", "Bob", "Needle")
 	gs.State = GameStateGame
 	gs.GameEndsAt = time.Now().Add(GameDuration).UnixMilli()
 	gs.setPlayersActive(true)
@@ -1335,8 +1333,8 @@ func TestLethalPlayerDamageImmediatelyFinishesBattleAndReportsWinner(t *testing.
 
 func TestAllDeadPlayersFinishBattleRegardlessOfIslandPhase(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice", "Colt")
-	gs.PlayerAdd("p2", "Bob", "Shelly")
+	gs.PlayerAdd("p1", "Alice", "Brock Zeus")
+	gs.PlayerAdd("p2", "Bob", "Needle")
 	gs.State = GameStateGame
 	gs.GameEndsAt = time.Now().Add(GameDuration).UnixMilli()
 	gs.IslandPhase = IslandPhaseHunt
@@ -1378,8 +1376,8 @@ func TestUpdateGameTimeout(t *testing.T) {
 
 func TestUpdateGameTimeoutAwardsPlayerWithMostRemainingHealth(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice", "Colt")
-	gs.PlayerAdd("p2", "Bob", "Shelly")
+	gs.PlayerAdd("p1", "Alice", "Brock Zeus")
+	gs.PlayerAdd("p2", "Bob", "Needle")
 	gs.State = GameStateGame
 	gs.GameEndsAt = time.Now().Add(-1 * time.Second).UnixMilli()
 	gs.setPlayersActive(true)
@@ -1441,7 +1439,7 @@ func TestBulletVsPlayer(t *testing.T) {
 
 func TestPlayerHitDoesNotBuildSuperCharge(t *testing.T) {
 	gs := newTestGameState()
-	gs.PlayerAdd("p1", "Alice", "Colt")
+	gs.PlayerAdd("p1", "Alice", "Brock Zeus")
 	gs.PlayerAdd("p2", "Bob", "Viper")
 	gs.State = GameStateGame
 
@@ -1457,28 +1455,11 @@ func TestPlayerHitDoesNotBuildSuperCharge(t *testing.T) {
 	}
 }
 
-func TestSparkDashHitsTargetOnlyOnce(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("spark", "Spark", "Spark")
-	gs.PlayerAdd("target", "Target", "Viper")
-	spark, target := gs.Players["spark"], gs.Players["target"]
-	spark.X, spark.Y = 100, 100
-	target.X, target.Y = 280, 100
-	before := target.Lives
-
-	gs.playerShoot("spark", 10_000, 0)
-
-	if got := before - target.Lives; got != spark.AttackDmg {
-		t.Fatalf("Spark dash damage = %d, want one hit of %d", got, spark.AttackDmg)
-	}
-}
-
 func TestViperSlamAddsSlowAndShieldStack(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("viper", "Viper", "Viper")
-	gs.PlayerAdd("target", "Target", "Shelly")
+	gs.PlayerAdd("target", "Target", "Needle")
 	viper, target := gs.Players["viper"], gs.Players["target"]
 	viper.X, viper.Y = 100, 100
 	target.X, target.Y = 210, 100
@@ -1513,8 +1494,8 @@ func TestPoisonSpreadsToNearbyPlayer(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("source", "Source", "Needle")
-	gs.PlayerAdd("near", "Near", "Shelly")
-	gs.PlayerAdd("far", "Far", "Shelly")
+	gs.PlayerAdd("near", "Near", "Needle")
+	gs.PlayerAdd("far", "Far", "Needle")
 	source, near, far := gs.Players["source"], gs.Players["near"], gs.Players["far"]
 	source.X, source.Y, near.X, near.Y, far.X, far.Y = 100, 100, 220, 100, 300, 100
 	source.PoisonUntil, source.PoisonTickAt, source.PoisonBy = time.Now().Add(4*time.Second).UnixMilli(), 0, "attacker"
@@ -1594,7 +1575,7 @@ func TestEveryMonsterDamagePathRemovesKilledMonsterAndDropsHealth(t *testing.T) 
 func TestChainDamageCanJumpFromPlayerToMonster(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("source", "Source", "Needle")
-	gs.PlayerAdd("first", "First", "Shelly")
+	gs.PlayerAdd("first", "First", "Needle")
 	gs.State = GameStateGame
 	first := gs.Players["first"]
 	first.X, first.Y = 100, 100

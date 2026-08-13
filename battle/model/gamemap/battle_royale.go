@@ -30,9 +30,11 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 			return
 		}
 		occupied[key] = true
+		insetX, insetY := propColliderInsets(kind)
 		gm.Collisions = append(gm.Collisions, &geometry.WallTile{
 			MinX: float64(x) * tile, MinY: float64(y) * tile,
 			MaxX: float64(x+1) * tile, MaxY: float64(y+1) * tile, Type: kind,
+			ColliderInsetX: insetX, ColliderInsetY: insetY,
 		})
 	}
 	addRect := func(minX, minY, maxX, maxY int, kind string) {
@@ -58,7 +60,7 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
 			distance := math.Hypot(float64(x)+0.5-float64(center), float64(y)+0.5-float64(center))
-			shoreline := 26.0 +
+			shoreline := 26.8 +
 				gradientNoise(seed+0x1b873593, float64(x)/5.2, float64(y)/5.2)*2.1 +
 				gradientNoise(seed+0x85ebca6b, float64(x)/11.0, float64(y)/11.0)*1.2
 			if distance > shoreline {
@@ -67,16 +69,17 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 		}
 	}
 
-	// Interior ponds break up the grass without cutting the four approach lanes.
-	for y := 8; y < size-8; y++ {
-		for x := 8; x < size-8; x++ {
-			if occupied[[2]int{x, y}] {
-				continue
-			}
-			distance := math.Hypot(float64(x)-center, float64(y)-center)
-			waterNoise := gradientNoise(seed+0x517cc1b7, float64(x)/4.5, float64(y)/4.5) +
-				gradientNoise(seed+0x68e31da4, float64(x)/10.0, float64(y)/10.0)*.55
-			if distance > 8 && distance < 23 && waterNoise < -.5 {
+	// One broad interior lake reads as a deliberate obstacle from the battle
+	// camera. A little edge noise keeps the ellipse organic without breaking it
+	// into the isolated one-cell puddles produced by thresholded terrain noise.
+	const lakeCenterX, lakeCenterY = 41, 18
+	const lakeRadiusX, lakeRadiusY = 5.8, 4.1
+	for y := lakeCenterY - 5; y <= lakeCenterY+5; y++ {
+		for x := lakeCenterX - 7; x <= lakeCenterX+7; x++ {
+			dx := float64(x-lakeCenterX) / lakeRadiusX
+			dy := float64(y-lakeCenterY) / lakeRadiusY
+			edgeNoise := gradientNoise(seed+0x517cc1b7, float64(x)/3.8, float64(y)/3.8) * .12
+			if dx*dx+dy*dy+edgeNoise <= 1 {
 				add(x, y, "water")
 			}
 		}
@@ -102,6 +105,7 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 
 	// Stone and timber walls follow the same terrain noise, creating cover
 	// clusters and winding sightlines instead of isolated symmetric pillars.
+	stoneCells := make([][2]int, 0, 160)
 	for y := 7; y < size-7; y++ {
 		for x := 7; x < size-7; x++ {
 			if occupied[[2]int{x, y}] {
@@ -110,19 +114,42 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 			distance := math.Hypot(float64(x)-center, float64(y)-center)
 			wallNoise := gradientNoise(seed+0x632be59b, float64(x)/4.8, float64(y)/4.8) +
 				gradientNoise(seed+0x85157af5, float64(x)/9.5, float64(y)/9.5)*.6
+			treeDistance := math.Hypot(float64(x)+.5-center, float64(y)+.5-center)
 			if distance < 6 || wallNoise < .28 {
 				continue
 			}
 			kind := "destructible"
 			switch {
-			case wallNoise > .62:
+			case wallNoise > .62 && treeDistance >= 9:
 				kind = "tree"
 			case wallNoise > .45 && rng.Float64() < .55:
 				kind = "wall"
-			case rng.Float64() < .18:
+			case treeDistance >= 9 && rng.Float64() < .18:
 				kind = "dead_tree"
 			}
 			add(x, y, kind)
+			if kind == "wall" || kind == "destructible" {
+				stoneCells = append(stoneCells, [2]int{x, y})
+			}
+		}
+	}
+
+	// Trees form a taller, denser fringe around rock formations. Keeping this
+	// pass tied to stone cells avoids stray trunks in the central fighting plaza.
+	treeOffsets := [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}}
+	for _, stone := range stoneCells {
+		if rng.Float64() > .42 {
+			continue
+		}
+		start := rng.Intn(len(treeOffsets))
+		for offsetIndex := range treeOffsets {
+			offset := treeOffsets[(start+offsetIndex)%len(treeOffsets)]
+			x, y := stone[0]+offset[0], stone[1]+offset[1]
+			if math.Hypot(float64(x)+.5-center, float64(y)+.5-center) < 9 || occupied[[2]int{x, y}] {
+				continue
+			}
+			add(x, y, "tree")
+			break
 		}
 	}
 
@@ -200,7 +227,37 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 			filtered = append(filtered, wall)
 		}
 	}
-	gm.Collisions = filtered
+
+	// Clearing lanes can cut the last neighbour away from a noise-generated
+	// blocker. Remove those leftover single cells so every ordinary stone/tree
+	// silhouette belongs to an obvious obstacle group.
+	proceduralBlockers := make(map[[2]int]bool)
+	for _, wall := range filtered {
+		if wall.Type == "wall" || wall.Type == "destructible" || wall.Type == "tree" || wall.Type == "dead_tree" {
+			proceduralBlockers[[2]int{int(wall.MinX / tile), int(wall.MinY / tile)}] = true
+		}
+	}
+	grouped := filtered[:0]
+	for _, wall := range filtered {
+		cell := [2]int{int(wall.MinX / tile), int(wall.MinY / tile)}
+		if !proceduralBlockers[cell] {
+			grouped = append(grouped, wall)
+			continue
+		}
+		hasNeighbour := false
+		for offsetY := -1; offsetY <= 1 && !hasNeighbour; offsetY++ {
+			for offsetX := -1; offsetX <= 1; offsetX++ {
+				if (offsetX != 0 || offsetY != 0) && proceduralBlockers[[2]int{cell[0] + offsetX, cell[1] + offsetY}] {
+					hasNeighbour = true
+					break
+				}
+			}
+		}
+		if hasNeighbour {
+			grouped = append(grouped, wall)
+		}
+	}
+	gm.Collisions = grouped
 	assignBushGroups(gm.Collisions, tile)
 	return gm
 }

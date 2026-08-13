@@ -7,6 +7,7 @@ import {
 } from "./BushRenderer.js"
 import {GroundRenderer, createWaterTexture} from "./GroundRenderer.js"
 import {createProp} from "./PropRenderer.js"
+import {createWildflowerField} from "./WildflowerRenderer.js"
 import {createStoneBlockGeometry} from "./StoneBlockGeometry.js"
 import {disposeObjectTree} from "../shared/disposal.js"
 import {WORLD_SCALE} from "../shared/coordinates.js"
@@ -393,11 +394,14 @@ export class MapRenderer {
     this.mapState = null
     this.focus = null
     this.bushVisuals = new Map()
+    this.wildflowerField = null
   }
 
   syncIsland(game, width, height) {
     const isFirstTrial = game?.islandName === "Остров Первого Испытания"
+    const themeChanged = (this.ground.theme === "island") !== isFirstTrial
     this.ground.setTheme(isFirstTrial ? "island" : "default")
+    if (themeChanged && this.mapState) this.syncWildflowers()
     this.syncIslandTerrain(isFirstTrial, width, height)
     this.syncPhaseAtmosphere(game?.phase, width, height)
     const stormRadius = Number(game?.stormRadius) || 0
@@ -535,6 +539,18 @@ export class MapRenderer {
     this.islandTerrain.visible = true
   }
 
+  syncWildflowers() {
+    if (this.wildflowerField) {
+      this.root.remove(this.wildflowerField)
+      disposeObjectTree(this.wildflowerField)
+      this.wildflowerField = null
+    }
+    if (this.ground.theme === "island" && this.mapState) {
+      this.wildflowerField = createWildflowerField(this.mapState)
+      this.root.add(this.wildflowerField)
+    }
+  }
+
   sync(map) {
     if (!map) return
     this.mapState = map
@@ -543,6 +559,7 @@ export class MapRenderer {
     if (signature === this.signature) return
     this.signature = signature
     this.ground.sync(map.width, map.height, this.ground.theme, walls.filter(wall => wall.type === "water"))
+    this.syncWildflowers()
 
     const active = new Set()
     const bushWalls = walls.filter(wall => wall.type === "bush" || wall.type === "half" || wall.type === "moon_mist")
@@ -667,6 +684,7 @@ export class MapRenderer {
     if (this.phaseAtmosphere) disposeObjectTree(this.phaseAtmosphere)
     if (this.beaconGroup) disposeObjectTree(this.beaconGroup)
     if (this.islandTerrain) disposeObjectTree(this.islandTerrain)
+    if (this.wildflowerField) disposeObjectTree(this.wildflowerField)
     this.bushVisuals.clear()
     this.waterTexture.dispose()
   }

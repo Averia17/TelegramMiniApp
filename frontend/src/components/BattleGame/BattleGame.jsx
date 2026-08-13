@@ -7,6 +7,7 @@ import {NetworkSimulation} from "./NetworkSimulation"
 import {getHeroSkill} from "./heroSkills.js"
 import {getBattlePlayerCount, getPlayerBattleStats, getPresentedBattleResult, getSynchronizedBattleView} from "./battleOutcome"
 import {AbilityButton, ActiveStatusEffects, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TauntButton, TouchStick} from "./BattleGameUI.jsx"
+import {getAttackCooldownVisual} from "./attackCooldownVisual.js"
 import {getActiveStatusEffects} from "./statusEffects.js"
 import {formatBattleMessage} from "./battleMessages.js"
 import {chooseTauntTarget} from "./tauntTarget.js"
@@ -468,6 +469,7 @@ export const BattleGame = ({playerId, roomId, heroName, tauntCharges = 0}) => {
     }, 100)
   }
   const localPlayerInBush = isInsideConcealment(localPlayer, gameState?.map?.walls)
+  const attackCooldownVisual = getAttackCooldownVisual(localPlayer || {})
   const activeStatusEffects = getActiveStatusEffects(localPlayer || {}, {inBush: localPlayerInBush})
   const islandPhase = gameState?.game?.phase || "none"
   const loadingStatus = assetLoadError
@@ -587,7 +589,7 @@ export const BattleGame = ({playerId, roomId, heroName, tauntCharges = 0}) => {
         {(view === "game" || (view === "lobby" && roomInfo)) && (
           <>
             <TouchStick kind="move" control={touchControls.move}/>
-            <TouchStick kind="fire" control={touchControls.aim}/>
+            <TouchStick kind="fire" control={touchControls.aim} cooldownVisual={attackCooldownVisual}/>
           </>
         )}
 
@@ -637,6 +639,7 @@ export const BattleGame = ({playerId, roomId, heroName, tauntCharges = 0}) => {
         </div>
 
         <div className="battle-controls">
+          {localPlayer && attackCooldownVisual.state === "cooldown" && <div className="control-hint control-hint--cooldown">АТАКА через {attackCooldownVisual.remaining.toFixed(1)} с</div>}
           <div className="control-hint">WASD — движение · мышь — прицел · клик / пробел — атака</div>
         </div>
       </div>

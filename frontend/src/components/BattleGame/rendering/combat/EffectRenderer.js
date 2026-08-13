@@ -10,12 +10,12 @@ const ORBITAL_KINDS = new Set([
   "mina_healing_aura", "zeus_storm_target", "kaze_veil_step",
   "mico_staff_spin", "mico_ruyi_bind",
   "lumi_roots", "lumi_seedburst", "zeus_thunderbrand",
-  "needle_root_cast", "needle_spore_cloud", "zeus_burning_ground", "mico_suppressed_rage",
-  "kaze_doom_mark", "katty_paint_puddle", "katty_paint_spot", "lumi_slow_trail",
+  "needle_root_cast", "needle_moisture_reserve", "mico_suppressed_rage", "mandy_stance",
+  "kaze_followup_ready", "katty_paint_puddle", "lumi_flower",
 ])
 const TRAIL_KINDS = new Set(["kaze_dash", "zeus_beam_hole"])
 const TELEGRAPH_KINDS = new Set(["zeus_strike_warning"])
-const IMPACT_KINDS = new Set(["mina_mark_burst", "mina_mark_break", "needle_root_burst"])
+const IMPACT_KINDS = new Set(["mina_mark_burst", "mina_mark_break", "needle_root_burst", "wall_break"])
 
 const createSwingArc = (radius, arc, material, innerRadius = .62) => {
   const mesh = new THREE.Mesh(
@@ -85,6 +85,23 @@ const createImpactBurst = (radius, material, kind) => {
   return group
 }
 
+const createWallBreak = (radius, material) => {
+  const group = new THREE.Group()
+  group.userData.kind = "wall_break"
+  for (let index = 0; index < 7; index++) {
+    const shard = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * (.18 + (index % 3) * .06), radius * .22, radius * (.16 + (index % 2) * .07)),
+      material,
+    )
+    const angle = index / 7 * Math.PI * 2
+    shard.position.set(Math.cos(angle) * radius * .42, radius * (.25 + (index % 2) * .15), Math.sin(angle) * radius * .42)
+    shard.rotation.set(index * .7, -angle, index * .35)
+    shard.userData.role = "wall-break-shard"
+    group.add(shard)
+  }
+  return group
+}
+
 export class EffectRenderer {
   constructor(root) {
     this.root = root
@@ -143,6 +160,8 @@ export class EffectRenderer {
           mesh = createOrbitalEffect(radius, material, effect.kind)
         } else if (TELEGRAPH_KINDS.has(effect.kind)) {
           mesh = createTelegraphEffect(radius, material, effect.kind)
+        } else if (effect.kind === "wall_break") {
+          mesh = createWallBreak(radius, material)
         } else if (IMPACT_KINDS.has(effect.kind)) {
           mesh = createImpactBurst(radius, material, effect.kind)
         } else if (MELEE_SWING_KINDS.has(effect.kind)) {
@@ -217,6 +236,14 @@ export class EffectRenderer {
           const progress = 1 - clamp(effect.life / (effect.maxLife || .42))
           mesh.scale.setScalar(.7 + progress * .7)
           mesh.rotation.y = progress * Math.PI * .45
+          if (mesh.userData.kind === "wall_break") {
+            mesh.traverse(child => {
+              if (child.userData?.role !== "wall-break-shard") return
+              child.position.y -= progress * effect.radius * .9
+              child.rotation.x += .08
+              child.rotation.z += .05
+            })
+          }
         }
       }
       const opacity = clamp(effect.life / (effect.maxLife || 0.5))

@@ -113,14 +113,20 @@ func TestHandleMapPreviewReturnsCanonicalBattleMap(t *testing.T) {
 	var payload struct {
 		Seed int64 `json:"seed"`
 		Map  struct {
+			ID       string  `json:"id"`
+			Name     string  `json:"name"`
+			Seed     int64   `json:"seed"`
+			Revision int     `json:"revision"`
 			Width    float64 `json:"width"`
 			Height   float64 `json:"height"`
 			TileSize float64 `json:"tileSize"`
 			Walls    []struct {
-				MinX float64 `json:"minX"`
-				MinY float64 `json:"minY"`
-				Blocking bool `json:"blocking"`
-				Type string  `json:"type"`
+				MinX           float64 `json:"minX"`
+				MinY           float64 `json:"minY"`
+				Blocking       bool    `json:"blocking"`
+				Type           string  `json:"type"`
+				ColliderInsetX float64 `json:"colliderInsetX"`
+				ColliderInsetY float64 `json:"colliderInsetY"`
 			} `json:"walls"`
 		} `json:"map"`
 		Spawners []struct {
@@ -134,6 +140,9 @@ func TestHandleMapPreviewReturnsCanonicalBattleMap(t *testing.T) {
 		t.Fatalf("decode map preview: %v", err)
 	}
 	canonical := gamemap.GenerateBattleRoyale(gamemap.CanonicalBattleRoyaleSeed)
+	if payload.Map.ID != gamemap.CanonicalBattleRoyaleID || payload.Map.Name != "battle-royale" || payload.Map.Seed != gamemap.CanonicalBattleRoyaleSeed || payload.Map.Revision != 0 {
+		t.Fatalf("preview identity = %#v, want canonical battle-royale revision 0", payload.Map)
+	}
 	if payload.Seed != gamemap.CanonicalBattleRoyaleSeed || payload.Map.Width != canonical.WidthInPixels || payload.Map.Height != canonical.HeightInPixels {
 		t.Fatalf("preview header = %#v, want canonical seed %d and %.0fx%.0f", payload, gamemap.CanonicalBattleRoyaleSeed, canonical.WidthInPixels, canonical.HeightInPixels)
 	}
@@ -145,6 +154,16 @@ func TestHandleMapPreviewReturnsCanonicalBattleMap(t *testing.T) {
 	}
 	if !payload.Map.Walls[0].Blocking {
 		t.Fatal("map preview did not publish the authoritative blocking flag")
+	}
+	foundSizedProp := false
+	for _, wall := range payload.Map.Walls {
+		if wall.Blocking && (wall.ColliderInsetX > 0 || wall.ColliderInsetY > 0) {
+			foundSizedProp = true
+			break
+		}
+	}
+	if !foundSizedProp {
+		t.Fatal("map preview did not publish any prop-sized collider insets")
 	}
 }
 

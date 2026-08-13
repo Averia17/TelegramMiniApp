@@ -10,6 +10,10 @@ import (
 // CanonicalBattleRoyaleSeed keeps gameplay, map previews, and QA on one arena.
 const CanonicalBattleRoyaleSeed int64 = 20260810
 
+// CanonicalBattleRoyaleID is the stable identity published by every transport
+// that exposes the generated battle-royale arena.
+const CanonicalBattleRoyaleID = "battle-royale@20260810"
+
 //go:embed assets/maps/small.json
 var smallMapJSON []byte
 
@@ -91,6 +95,27 @@ type TilesetEntry struct {
 	Type   string
 }
 
+func propColliderInsets(kind string) (float64, float64) {
+	switch kind {
+	case "tree":
+		return 10, 10
+	case "dead_tree":
+		return 9, 9
+	case "menhir":
+		return 9, 7
+	case "crates":
+		return 6, 6
+	case "sacrificial_stone":
+		return 6, 6
+	case "altar_three_moons":
+		return 4, 4
+	case "wall", "destructible", "shipwreck":
+		return 4, 4
+	default:
+		return 0, 0
+	}
+}
+
 func LoadMap(name string) (*GameMap, error) {
 	if name == "battle-royale" {
 		return GenerateBattleRoyale(CanonicalBattleRoyaleSeed), nil
@@ -157,12 +182,15 @@ func LoadMap(name string) (*GameMap, error) {
 		switch layer.Name {
 		case "collisions":
 			for _, t := range tiles {
+				insetX, insetY := propColliderInsets(t.Type)
 				gm.Collisions = append(gm.Collisions, &geometry.WallTile{
-					MinX: t.MinX,
-					MinY: t.MinY,
-					MaxX: t.MaxX,
-					MaxY: t.MaxY,
-					Type: t.Type,
+					MinX:           t.MinX,
+					MinY:           t.MinY,
+					MaxX:           t.MaxX,
+					MaxY:           t.MaxY,
+					Type:           t.Type,
+					ColliderInsetX: insetX,
+					ColliderInsetY: insetY,
 				})
 			}
 		case "spawners":

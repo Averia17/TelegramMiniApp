@@ -191,6 +191,7 @@ export class GLBHeroController {
     this.heroName = options.heroName || ""
     this.previewLayout = Boolean(options.previewLayout)
     this.elapsed = 0
+    this.deathElapsed = 0
     this.attackVisualRemaining = 0
     this.attackSwingYaw = 0
     this.rig = findRig(root)
@@ -663,7 +664,9 @@ export class GLBHeroController {
         this.clearOverlay()
         this.transitionLocomotion("defeat", 0.06)
         this.state = "dead"
+        this.deathElapsed = 0
       }
+      this.deathElapsed += Math.max(0, deltaSeconds)
       this.mixer.update(deltaSeconds)
       this.cloudMixer?.update(deltaSeconds)
       this.updateAuthoredCloudEffects()
@@ -930,6 +933,18 @@ export class GLBHeroController {
     } else if (this.proceduralAimFallback) {
       this.appliedHeadAim.identity()
     }
+  }
+
+  isDeathComplete() {
+    if (this.state !== "dead") return false
+    const authoredDuration = this.actions.get("defeat")?.getClip()?.duration
+    return this.deathElapsed >= (Number(authoredDuration) || .62)
+  }
+
+  getDeathProgress() {
+    if (this.state !== "dead") return 0
+    const authoredDuration = this.actions.get("defeat")?.getClip()?.duration
+    return clamp(this.deathElapsed / (Number(authoredDuration) || .62), 0, 1)
   }
 
   setHitFlash(amount) {

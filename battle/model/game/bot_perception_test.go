@@ -73,7 +73,7 @@ func TestMeleeBotDoesNotAttackOutsideItsAttackRange(t *testing.T) {
 	gs.Walls = geometry.NewSpatialHash(TileSize)
 	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
 	gs.PlayerAdd("bot", "Bot", "Kaze")
-	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	gs.PlayerAdd("enemy", "Enemy", "Brock Zeus")
 	gs.State = GameStateGame
 	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
 	bot.IsBot = true
@@ -99,7 +99,7 @@ func TestBotRunsTowardStormCenterBeforeEngagingTarget(t *testing.T) {
 	gs.IslandPhase = IslandPhaseCollapse
 	gs.StormRadius = 220
 	gs.PlayerAdd("bot", "Bot", "Kaze")
-	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	gs.PlayerAdd("enemy", "Enemy", "Brock Zeus")
 	gs.State = GameStateGame
 
 	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
@@ -121,7 +121,7 @@ func TestBotInsideStormSafetyMarginKeepsCombatBehavior(t *testing.T) {
 	gs.IslandPhase = IslandPhaseCollapse
 	gs.StormRadius = 500
 	gs.PlayerAdd("bot", "Bot", "Kaze")
-	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	gs.PlayerAdd("enemy", "Enemy", "Brock Zeus")
 	gs.State = GameStateGame
 
 	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
@@ -139,9 +139,9 @@ func TestBotPrioritizesRecentlyAttackingTargetOverWoundedTarget(t *testing.T) {
 	gs := newTestGameState()
 	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
 	gs.Walls = geometry.NewSpatialHash(TileSize)
-	gs.PlayerAdd("bot", "Bot", "Colt")
-	gs.PlayerAdd("wounded", "Wounded", "Shelly")
-	gs.PlayerAdd("attacker", "Attacker", "Shelly")
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("wounded", "Wounded", "Needle")
+	gs.PlayerAdd("attacker", "Attacker", "Needle")
 
 	bot := gs.Players["bot"]
 	bot.X, bot.Y = 100, 100
@@ -164,6 +164,20 @@ func targetID(target *botTarget) string {
 	return target.id
 }
 
+func TestNeedleBotUsesMoistureReserveForHealthInsteadOfEnemyDistance(t *testing.T) {
+	bot := perceptionPlayer("needle", 100, 100)
+	bot.HeroName, bot.Lives, bot.MaxLives = "Needle", 60, 100
+	distantEnemy := &botTarget{kind: "player", distance: 500, player: perceptionPlayer("enemy", 600, 100)}
+
+	if !botSecondaryUseful(bot, distantEnemy) {
+		t.Fatal("wounded Needle bot should use moisture reserve even when the enemy is distant")
+	}
+	bot.Lives = 100
+	if botSecondaryUseful(bot, distantEnemy) {
+		t.Fatal("healthy Needle bot should preserve moisture reserve")
+	}
+}
+
 func TestWoundedBotKitesHealthyPlayerTarget(t *testing.T) {
 	gs := newTestGameState()
 	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
@@ -171,7 +185,7 @@ func TestWoundedBotKitesHealthyPlayerTarget(t *testing.T) {
 	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
 	gs.State = GameStateGame
 	gs.PlayerAdd("bot", "Bot", "Kaze")
-	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	gs.PlayerAdd("enemy", "Enemy", "Brock Zeus")
 
 	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
 	bot.IsBot, bot.X, bot.Y, bot.Lives = true, 100, 100, 80
@@ -189,8 +203,8 @@ func TestBotLeadsMovingTargetWhenAiming(t *testing.T) {
 	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
 	gs.Walls = geometry.NewSpatialHash(TileSize)
 	gs.State = GameStateGame
-	gs.PlayerAdd("bot", "Bot", "Colt")
-	gs.PlayerAdd("enemy", "Enemy", "Shelly")
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
 
 	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
 	bot.X, bot.Y, bot.Ammo = 100, 100, 1
@@ -209,7 +223,7 @@ func TestBotDoesNotAbandonNearbyEnemyForPowerPickup(t *testing.T) {
 	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
 	gs.Walls = geometry.NewSpatialHash(TileSize)
 	gs.PlayerAdd("bot", "Bot", "Kaze")
-	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	gs.PlayerAdd("enemy", "Enemy", "Brock Zeus")
 	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
 	bot.X, bot.Y = 100, 100
 	enemy.X, enemy.Y = 180, 100
@@ -229,8 +243,8 @@ func TestBotEngagesVisibleTargetBeforeOpeningCrates(t *testing.T) {
 	gs.Walls.Insert(crate)
 	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
 	gs.State = GameStateGame
-	gs.PlayerAdd("bot", "Bot", "Colt")
-	gs.PlayerAdd("enemy", "Enemy", "Shelly")
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
 	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
 	bot.IsBot, bot.X, bot.Y = true, 100, 100
 	enemy.X, enemy.Y = 180, 100
@@ -257,7 +271,7 @@ func TestBotSearchesTheMapWhenNoOpponentIsVisible(t *testing.T) {
 	gs := newTestGameState()
 	gs.Map = &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480}
 	gs.Walls = geometry.NewSpatialHash(TileSize)
-	gs.PlayerAdd("bot", "Bot", "Colt")
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
 	gs.State = GameStateGame
 	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
 	bot := gs.Players["bot"]
@@ -275,7 +289,7 @@ func TestBotUsesReadyPrimaryAgainstVisibleTarget(t *testing.T) {
 	gs.Map = &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480}
 	gs.Walls = geometry.NewSpatialHash(TileSize)
 	gs.PlayerAdd("bot", "Bot", "Kaze")
-	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	gs.PlayerAdd("enemy", "Enemy", "Brock Zeus")
 	gs.State = GameStateGame
 	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
 	bot, enemy := gs.Players["bot"], gs.Players["enemy"]

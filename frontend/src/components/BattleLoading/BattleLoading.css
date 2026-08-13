@@ -31,4 +31,17 @@
 .battle-loading__status strong { color: #ffe15d; font-weight: 900; }
 @keyframes battle-loading-orbit { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .battle-loading-screen::before, .battle-loading-screen::after { animation: none; } .battle-loading__bar span { transition: none; } }
-
+@media (max-width:430px) {
+  .battle-loading__card { width:min(100%,390px); max-height:calc(100dvh - 24px); overflow:auto; padding:22px 16px 18px; border-radius:18px; }
+  .battle-loading__logo { margin-bottom:12px; font-size:clamp(38px,13vw,54px); }
+  .battle-loading__eyebrow { font-size:10px; letter-spacing:3px; }
+  .battle-loading__card h1 { margin:8px 0 16px; font-size:clamp(21px,7vw,30px); }
+  .battle-loading__stages { gap:5px; margin-bottom:13px; font-size:8px; }
+  .battle-loading__stages i { width:12px; }
+}
+@media (max-height:560px) and (orientation:landscape) {
+  .battle-loading__card { max-height:calc(100dvh - 16px); padding-block:14px; }
+  .battle-loading__logo { display:none; }
+  .battle-loading__card h1 { margin:6px 0 10px; }
+  .battle-loading__stages { margin-bottom:9px; }
+}

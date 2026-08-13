@@ -26,7 +26,7 @@ func TestAutoAimFallsBackToTheNearestMonsterWhenNoEnemyHeroIsAvailable(t *testin
 func TestAutoAimKeepsEnemyHeroesAheadOfNearbyMonsters(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("source", "Source", "Needle")
-	gs.PlayerAdd("enemy", "Enemy", "Colt")
+	gs.PlayerAdd("enemy", "Enemy", "Brock Zeus")
 	source, enemy := gs.Players["source"], gs.Players["enemy"]
 	source.X, source.Y = 100, 100
 	enemy.X, enemy.Y = 300, 100
@@ -52,5 +52,26 @@ func TestAutoAimUsesMovementDirectionOnlyWhenNoEnemyIsInReach(t *testing.T) {
 	}
 	if math.Abs(distance-620) > 1e-9 {
 		t.Fatalf("movement fallback distance = %.2f, want 620", distance)
+	}
+}
+
+func TestAutoAimProjectileUsesSoftHomingThatCanBeOutrun(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("source", "Source", "Needle")
+	gs.PlayerAdd("enemy", "Enemy", "Brock Zeus")
+	source, enemy := gs.Players["source"], gs.Players["enemy"]
+	source.X, source.Y = 100, 100
+	enemy.X, enemy.Y = 260, 100
+	_, _ = gs.autoAimTarget(source.PlayerId)
+	gs.activeAutoAim = true
+	shot := gs.spawnAttackBullet(source, 0, "spore", source.AttackDmg, 28, 7, 620, 0, false, false)
+	if !shot.Homing || shot.TargetID != enemy.PlayerId {
+		t.Fatalf("auto-aim shot homing=%v target=%q, want soft homing to enemy", shot.Homing, shot.TargetID)
+	}
+	enemy.X, enemy.Y = 260, 220
+	before := shot.Rotation
+	gs.updateBullets()
+	if shot.Rotation-before > .026 {
+		t.Fatalf("soft homing turned %.3f rad in one tick, want capped turn", shot.Rotation-before)
 	}
 }

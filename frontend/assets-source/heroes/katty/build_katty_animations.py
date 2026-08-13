@@ -86,7 +86,12 @@ LEFT_RELAXED = {
     "L_thumb_02_s": {"rot": (45, 0, 8)},
 }
 RIGHT_OPEN = {name: {"rot": (0, 0, 0)} for name in RIGHT_GRIP}
-DEFAULT_HANDS = {**RIGHT_GRIP, **LEFT_RELAXED, "L_wrist_s": {"rot": (-32, 0, 0)}}
+DEFAULT_HANDS = {
+    **RIGHT_GRIP,
+    **LEFT_RELAXED,
+    "L_elbow_s": {"rot": (0, 0, -18)},
+    "L_wrist_s": {"rot": (-32, 0, 0)},
+}
 
 
 def reset_pose() -> None:
@@ -252,19 +257,19 @@ def locomotion_actions() -> None:
                 "hips_s": {"loc": (0.08, 0, 0), "rot": (0, 0, 2)},
                 "head_s": {"rot": (0, 0, 7)},
                 "L_shoulder_s": {"rot": (0, -8, 20)},
-                "L_elbow_s": {"rot": (0, 0, 65)},
+                "L_elbow_s": {"rot": (0, 0, -65)},
             },
             70: {
                 **idle_base,
                 "L_shoulder_s": {"rot": (-8, -12, 38)},
-                "L_elbow_s": {"rot": (0, 0, 92)},
+                "L_elbow_s": {"rot": (0, 0, -92)},
                 "L_wrist_s": {"rot": (-20, 0, -15)},
             },
             82: {
                 **idle_base,
                 "hips_s": {"loc": (0.05, 0, 0)},
                 "L_shoulder_s": {"rot": (0, 0, 10)},
-                "L_elbow_s": {"rot": (0, 0, 25)},
+                "L_elbow_s": {"rot": (0, 0, -25)},
                 "head_s": {"rot": (0, 0, 4)},
             },
             120: {
@@ -286,7 +291,7 @@ def locomotion_actions() -> None:
         "R_shoulder_s": {"rot": (-22, 0, -20)},
         "R_elbow_s": {"rot": (5, 0, -55)},
         "L_shoulder_s": {"rot": (22, 0, 18)},
-        "L_elbow_s": {"rot": (0, 0, 42)},
+        "L_elbow_s": {"rot": (0, 0, -42)},
     }
     run_b = {
         "hips_s": {"loc": (0, 0.02, -0.04), "rot": (0, 0, -3)},
@@ -298,7 +303,7 @@ def locomotion_actions() -> None:
         "R_shoulder_s": {"rot": (18, 0, -18)},
         "R_elbow_s": {"rot": (5, 0, -48)},
         "L_shoulder_s": {"rot": (-24, 0, 18)},
-        "L_elbow_s": {"rot": (0, 0, 48)},
+        "L_elbow_s": {"rot": (0, 0, -48)},
     }
     author_action(
         "run", 24, {1: run_a, 7: run_b, 13: run_b, 19: run_a, 24: run_a}, linear=False
@@ -314,7 +319,7 @@ def aim_actions() -> None:
         "R_elbow_s": {"rot": (0, -8, -10)},
         "R_wrist_s": {"rot": (0, -10, -3)},
         "L_shoulder_s": {"rot": (0, 12, -48)},
-        "L_elbow_s": {"rot": (0, 0, 58)},
+        "L_elbow_s": {"rot": (0, 0, -58)},
         "head_s": {"rot": (6, 0, -8)},
     }
     author_action(
@@ -445,7 +450,7 @@ def gadget_action() -> None:
         "R_shoulder_s": {"rot": (-18, 0, -34)},
         "R_elbow_s": {"rot": (0, 0, -72)},
         "L_shoulder_s": {"rot": (-16, 0, 34)},
-        "L_elbow_s": {"rot": (0, 0, 72)},
+        "L_elbow_s": {"rot": (0, 0, -72)},
     }
     flight = {
         "hips_s": {"loc": (0, -0.35, 0.18)},
@@ -457,7 +462,7 @@ def gadget_action() -> None:
         "R_shoulder_s": {"rot": (0, 0, -72)},
         "R_elbow_s": {"rot": (0, 0, -18)},
         "L_shoulder_s": {"rot": (0, 0, 72)},
-        "L_elbow_s": {"rot": (0, 0, 18)},
+        "L_elbow_s": {"rot": (0, 0, -18)},
         "head_s": {"rot": (-18, 0, 0)},
     }
     land = {
@@ -472,6 +477,34 @@ def gadget_action() -> None:
     )
 
 
+def tag_skill_semantics() -> None:
+    contracts = {
+        "Attack": {
+            "anticipation_frame": 5,
+            "release_frame": 7,
+            "follow_through_frame": 22,
+            "skill_semantic": "three separately readable paint shots, each with wind-up and recoil",
+        },
+        "super": {
+            "anticipation_frame": 10,
+            "release_frame": 18,
+            "follow_through_frame": 30,
+            "skill_semantic": "wind up the spray bottle, release it as a grenade, then settle after the throw",
+        },
+        "Gadget": {
+            "anticipation_frame": 5,
+            "release_frame": 9,
+            "follow_through_frame": 18,
+            "skill_semantic": "compress into a crouch, launch into paint flight, then land with weight",
+        },
+    }
+    for action_name, contract in contracts.items():
+        action = bpy.data.actions[action_name]
+        action["semantic_revision"] = 1
+        for key, value in contract.items():
+            action[key] = value
+
+
 def reaction_actions() -> None:
     hit = {
         "hips_s": {"loc": (0, 0.12, 0)},
@@ -479,7 +512,7 @@ def reaction_actions() -> None:
         "R_shoulder_s": {"rot": (24, 0, -44)},
         "R_elbow_s": {"rot": (0, 0, -34)},
         "L_shoulder_s": {"rot": (18, 0, 52)},
-        "L_elbow_s": {"rot": (0, 0, 12)},
+        "L_elbow_s": {"rot": (0, 0, -12)},
         "head_s": {"rot": (-18, 0, 0)},
     }
     author_action(
@@ -488,6 +521,24 @@ def reaction_actions() -> None:
         {1: {}, 4: hit, 8: {**hit, "head_s": {"rot": (16, 0, 0)}}, 12: {}, 16: {}},
     )
 
+    death_anticipation = {
+        "hips_s": {"loc": (0, 0, -0.18), "rot": (-10, 0, -8)},
+        "spine_lower_s": {"rot": (-18, 0, 10)},
+        "R_shoulder_s": {"rot": (-18, 0, -38)},
+        "R_elbow_s": {"rot": (0, 0, -82)},
+        "L_shoulder_s": {"rot": (12, 0, 28)},
+        "L_elbow_s": {"rot": (0, 0, -52)},
+        "head_s": {"rot": (-16, 0, -10)},
+    }
+    death_pop = {
+        "hips_s": {"loc": (0, 0, 0.34), "rot": (-14, 0, 18)},
+        "spine_lower_s": {"rot": (-28, 0, -20)},
+        "R_shoulder_s": {"rot": (-48, 12, 26)},
+        "R_elbow_s": {"rot": (0, 0, -22)},
+        "L_shoulder_s": {"rot": (-38, -8, 78)},
+        "L_elbow_s": {"rot": (0, 0, -18)},
+        "head_s": {"rot": (18, 0, 20)},
+    }
     collapse = {
         "hips_s": {"loc": (0, 0, -0.35), "rot": (20, 0, 20)},
         "spine_lower_s": {"rot": (38, 0, 18)},
@@ -511,26 +562,30 @@ def reaction_actions() -> None:
         "R_shoulder_s": {"rot": (38, 0, -72)},
         "R_elbow_s": {"rot": (0, 0, -16)},
         "L_shoulder_s": {"rot": (-28, 0, 86)},
-        "L_elbow_s": {"rot": (0, 0, 22)},
+        "L_elbow_s": {"rot": (0, 0, -22)},
         "head_s": {"rot": (28, 0, 30)},
     }
-    author_action(
+    death_action = author_action(
         "death",
         50,
         {
             1: {},
-            12: collapse,
-            20: {**collapse, **RIGHT_OPEN, "head_s": {"rot": (12, 0, 22)}},
-            28: {**fallen, **RIGHT_OPEN},
+            8: death_anticipation,
+            17: death_pop,
+            20: {**death_pop, **RIGHT_OPEN, "head_s": {"rot": (24, 0, 28)}},
+            23: {**collapse, **RIGHT_OPEN},
+            31: {**fallen, **RIGHT_OPEN},
             50: {**fallen, **RIGHT_OPEN},
         },
         bottle_release={
-            20: loose_bottle((-2.4, -0.5, 4.0), (35, 0, 20)),
-            24: loose_bottle((-1.0, -0.8, 1.0), (88, 0, 95)),
-            28: loose_bottle((0.2, -0.8, 0.55), (92, 0, 150)),
+            20: loose_bottle((-2.7, -0.5, 4.8), (35, 0, 20)),
+            23: loose_bottle((-1.2, -0.8, 1.8), (88, 0, 95)),
+            31: loose_bottle((0.2, -0.8, 0.55), (92, 0, 150)),
             50: loose_bottle((0.2, -0.8, 0.55), (92, 0, 150)),
         },
     )
+    death_action["death_polish_revision"] = 1
+    death_action["death_style"] = "spray-can-bailout"
 
 
 def spawn_action() -> None:
@@ -544,7 +599,7 @@ def spawn_action() -> None:
         "R_shoulder_s": {"rot": (-12, 0, -28)},
         "R_elbow_s": {"rot": (0, 0, -64)},
         "L_shoulder_s": {"rot": (22, 0, 34)},
-        "L_elbow_s": {"rot": (0, 0, 48)},
+        "L_elbow_s": {"rot": (0, 0, -48)},
         "head_s": {"rot": (28, 0, 0)},
     }
     stand = {
@@ -588,7 +643,7 @@ def victory_action() -> None:
         "R_upperLeg_s": {"rot": (-8, 0, 4)},
         "R_lowerLeg_s": {"rot": (-8, 0, 0)},
         "L_shoulder_s": {"rot": (0, 0, 42)},
-        "L_elbow_s": {"rot": (0, 0, 78)},
+        "L_elbow_s": {"rot": (0, 0, -78)},
         "head_s": {"rot": (-4, 0, -3)},
     }
     write = lambda x, y, z: {
@@ -643,6 +698,7 @@ aim_actions()
 attack_action()
 super_action()
 gadget_action()
+tag_skill_semantics()
 reaction_actions()
 spawn_action()
 victory_action()

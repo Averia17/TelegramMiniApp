@@ -27,12 +27,30 @@ test("unknown heroes receive safe localized fallback skills", () => {
 
 test("known hero HUD skills use the authoritative kit contract", () => {
   assert.equal(getHeroSkill("Needle", "primary").name, "Ловчий корень")
-  assert.equal(getHeroSkill("Needle", "secondary").name, "Споровый рывок")
+  assert.equal(getHeroSkill("Needle", "secondary").name, "Запас влаги")
   assert.equal(getHeroSkill("Wukong Mico", "primary").name, "Вихрь возмездия")
+})
+
+test("Needle moisture reserve advertises percentage-based healing", () => {
+  assert.match(getHeroSkill("Needle", "secondary").description, /30%/)
 })
 
 test("Mandy Super explains its map-wide lane and mobile wind-up", () => {
   const description = getHeroSkill("Mandy", "primary").description
   assert.match(description, /через всю карту/i)
   assert.match(description, /может двигаться/i)
+})
+
+test("Mandy Gadget describes an active counter-hit window", () => {
+  const description = getHeroSkill("Mandy", "secondary").description
+  assert.match(description, /1,8 секунды/i)
+  assert.match(description, /50% больше урона/i)
+  assert.doesNotMatch(description, /не может двигаться/i)
+})
+
+test("reworked basic attacks describe their visible hit rules", () => {
+  assert.match(getHeroSkill("Needle", "basic").description, /фиксирован/i)
+  assert.match(getHeroSkill("Brock Zeus", "basic").description, /не разрушает стены/i)
+  assert.match(getHeroSkill("Persephone Lumi", "basic").description, /один.*цветок/i)
+  assert.match(getHeroSkill("Katty", "basic").description, /веер/i)
 })

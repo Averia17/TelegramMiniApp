@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "required_markers": ["anticipation", "release", "follow_through"],
+  "heroes": {
+    "mandy": {
+      "attack": {"frames": [1, 4, 7, 11, 17], "release": 7, "semantic": "staff wind-up, decisive close strike, weighted recovery"},
+      "super": {"frames": [1, 11, 31, 41, 46, 51], "release": 41, "semantic": "mobile charge gathers through the staff, then one map-wide forward wave"},
+      "gadget": {"frames": [1, 4, 8, 12, 17], "release": 8, "semantic": "plant the feet and lock into an unyielding defensive stance"}
+    },
+    "kaze": {
+      "attack": {"frames": [0, 4, 9, 14, 20], "release": 9, "semantic": "two readable crossing slashes with a short combo recovery"},
+      "super": {"frames": [0, 5, 10, 18, 25], "release": 10, "semantic": "compressed dash anticipation, piercing lunge, low recovery"},
+      "gadget": {"frames": [0, 3, 7, 12], "release": 7, "semantic": "draw inward and disappear into a compact stealth silhouette"}
+    },
+    "wukong-mico": {
+      "attack": {"frames": [1, 8, 17, 27, 40], "release": 17, "semantic": "heavy two-handed staff wind-up, impact, and broad follow-through"},
+      "super": {"frames": [1, 12, 24, 92, 110], "release": 24, "semantic": "gather rage, open into a sustained staff vortex, settle with weight"},
+      "gadget": {"frames": [1, 10, 20, 52, 68], "release": 20, "semantic": "brace behind the staff, absorb pressure, then release stored armor force"}
+    },
+    "needle": {
+      "attack": {"frames": [0, 3, 6, 10, 16], "release": 6, "semantic": "flower recoils, then snaps forward to launch one spore"},
+      "super": {"frames": [0, 8, 16, 25, 50], "release": 16, "semantic": "draw the root overhead and plant it firmly into the ground"},
+      "gadget": {"frames": [0, 3, 6, 9, 12], "release": 6, "semantic": "pull moisture to the flower core and visibly recover"}
+    },
+    "fairy-mina": {
+      "attack": {"frames": [0, 3, 7, 11, 18], "release": 7, "semantic": "gather three stars at the chest and fan them outward"},
+      "super": {"frames": [0, 12, 25, 38, 55], "release": 25, "semantic": "weave a protective cocoon, then offer it toward the chosen ally"},
+      "gadget": {"frames": [0, 3, 7, 10, 14], "release": 7, "semantic": "compress wings and arms, then push a radial repelling wave"}
+    },
+    "persephone-lumi": {
+      "attack": {"frames": [1, 7, 14, 22, 35], "release": 14, "semantic": "draw a luminous orb from the weapon and cast it forward"},
+      "super": {"frames": [1, 9, 18, 28, 40], "release": 18, "semantic": "raise the garden seed, then command roots upward from the ground"},
+      "gadget": {"frames": [1, 6, 13, 21, 30], "release": 13, "semantic": "gather every active garden inward and snap them into one detonation"}
+    },
+    "brock-zeus": {
+      "attack": {"frames": [0, 3, 6, 10, 16], "release": 6, "semantic": "charge lightning with the cloud, fire forward, recoil once"},
+      "super": {"frames": [0, 10, 18, 30, 42, 50], "release": 18, "semantic": "call and point three distinct lightning strikes, with the final strike held"},
+      "gadget": {"frames": [0, 4, 10, 16], "release": 10, "semantic": "prime the cloud cable and hold a charged next-shot pose without firing"}
+    }
+  }
+}

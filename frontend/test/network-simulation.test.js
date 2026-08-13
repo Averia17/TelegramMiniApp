@@ -82,6 +82,50 @@ test("local prediction keeps moving through a 180-degree direction change", () =
   assert.ok(simulation.predicted.x < beforeTurn)
 })
 
+test("display state exposes the current local movement direction immediately", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  simulation.ingest({
+    type: "state",
+    ts: 1000,
+    map: {width: 2000, height: 2000, walls: []},
+    players: {
+      local: {x: 500, y: 500, radius: 14, speed: 120, lives: 100, moveX: 1, moveY: 0},
+    },
+    monsters: {},
+    bullets: [],
+  }, 0, 1000)
+  simulation.setLocalPlayerId("local")
+
+  simulation.setInput(0, -1, 1001)
+  const displayed = simulation.getDisplayState(1001).players.local
+
+  assert.equal(displayed.moveX, 0)
+  assert.equal(displayed.moveY, -1)
+})
+
+test("tap auto-aim immediately turns a melee hero toward an enemy behind", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  simulation.ingest({
+    type: "state",
+    ts: 1000,
+    game: {state: "game"},
+    map: {width: 500, height: 500, walls: []},
+    players: {
+      local: {playerId: "local", hero: "Mandy", x: 200, y: 200, radius: 14, lives: 720, ammo: 3, rotation: 0, attackPulse: 4, attackArchetype: "melee_cone", attackRange: 70},
+      enemy: {playerId: "enemy", hero: "Needle", x: 140, y: 200, radius: 14, lives: 620, team: "enemy"},
+    },
+    monsters: {},
+    bullets: [],
+  }, 0, 1000)
+  simulation.setLocalPlayerId("local")
+
+  simulation.predictLocalShoot({angle: 0, autoAim: true, commandId: "tap-behind", now: 1001})
+  const displayed = simulation.getDisplayState(1001).players.local
+
+  assert.ok(Math.cos(displayed.rotation) < -.99, `rotation=${displayed.rotation}`)
+  assert.equal(displayed.attackPulse, 5)
+})
+
 test("delayed authoritative reversal does not make the rendered hero move backward", () => {
   const simulation = new NetworkSimulation({interpolationDelay: 0})
   const base = {
@@ -167,6 +211,26 @@ test("local prediction sweeps through the same blocking wall geometry as the bac
   assert.equal(next.y, 80)
 })
 
+test("local prediction applies authoritative prop collider insets", () => {
+  const wall = {
+    minX: 100, minY: 60, maxX: 140, maxY: 100, type: "tree", blocking: true,
+    colliderInsetX: 10, colliderInsetY: 8,
+  }
+  const map = {width: 500, height: 500, walls: [wall]}
+
+  const next = movePosition(
+    {x: 50, y: 80},
+    {x: 1, y: 0},
+    {radius: 10, movementSpeed: 100},
+    1,
+    map,
+    createCollisionIndex(map.walls),
+  )
+
+  assert.equal(next.x, 100)
+  assert.equal(next.y, 80)
+})
+
 test("compact snapshots cannot make water walkable after the full map was received", () => {
   const water = {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "water"}
   const simulation = new NetworkSimulation({interpolationDelay: 0})
@@ -190,7 +254,7 @@ test("compact snapshots cannot make water walkable after the full map was receiv
   assert.equal(simulation.predicted.y, 80)
 })
 
-test("visible moon mist is solid while ordinary grass remains walkable", () => {
+test("faded moon mist remains walkable like ordinary concealment", () => {
   const simulation = new NetworkSimulation({interpolationDelay: 0})
   const base = {
     type: "state",
@@ -210,7 +274,7 @@ test("visible moon mist is solid while ordinary grass remains walkable", () => {
   simulation.setInput(1, 0)
   simulation.advance(.8)
 
-  assert.equal(simulation.predicted.x, 90)
+  assert.equal(simulation.predicted.x, 110)
   assert.equal(simulation.predicted.y, 80)
 })
 

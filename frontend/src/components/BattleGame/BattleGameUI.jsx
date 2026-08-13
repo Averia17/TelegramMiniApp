@@ -60,7 +60,7 @@ export const IslandVoiceNotice = ({voice}) => {
   )
 }
 
-export const TouchStick = ({kind, control}) => {
+export const TouchStick = ({kind, control, cooldownVisual}) => {
   let x = 0
   let y = 0
   if (control) {
@@ -71,9 +71,15 @@ export const TouchStick = ({kind, control}) => {
     x = dx * scale
     y = dy * scale
   }
-  return <div className={`mobile-stick mobile-stick-${kind}${control ? " mobile-stick--active" : ""}`}
-    style={control ? {left: control.start.x, top: control.start.y, "--stick-x": `${x}px`, "--stick-y": `${y}px`} : undefined}>
+  const isFire = kind === "fire"
+  const state = isFire ? cooldownVisual?.state : null
+  const className = `mobile-stick mobile-stick-${kind}${control ? " mobile-stick--active" : ""}${state ? ` mobile-stick-fire--${state}` : ""}`
+  const style = control
+    ? {left: control.start.x, top: control.start.y, "--stick-x": `${x}px`, "--stick-y": `${y}px`, ...(isFire ? {"--cooldown-progress": cooldownVisual?.progress || 0} : {})}
+    : isFire ? {"--cooldown-progress": cooldownVisual?.progress || 0} : undefined
+  return <div className={className} style={style} aria-label={isFire && state === "cooldown" ? `Атака перезаряжается, ${cooldownVisual.remaining.toFixed(1)} с` : undefined}>
     <span>{kind === "fire" ? "✦" : ""}</span>
+    {isFire && state === "cooldown" && <small className="mobile-stick__cooldown">{cooldownVisual.remaining.toFixed(1)}</small>}
   </div>
 }
 

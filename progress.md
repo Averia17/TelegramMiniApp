@@ -334,4 +334,22 @@ Original prompt: Сделать текущую карту более похож�
 - Added an idempotent `combatEvents` presentation layer. It resolves the target from the authoritative player/monster snapshot, retries when a compact snapshot temporarily omits the target, shows a readable damage number plus low-poly impact burst, and adds a bounded camera punch without changing server damage/hitboxes/cooldowns.
 - Added targeted frontend tests for repeated snapshots, missing target retry, feedback lifecycle, authoritative target position and camera shake. Full frontend suite: `297` passed, `4` skipped. Vite build, changed-file ESLint and `git diff --check` pass.
 - Real browser combat smoke received confirmed backend hits (`39` and `65` damage), rendered the feedback on screen, and finished with no console/page errors. Screenshot: `output/playwright/combat-feedback/combat-feedback-925476571.png`.
-- Backend `go test ./model/game ./model/gamemap ./handler` remains red in pre-existing dirty-worktree legacy hero/game tests (Shelly/Colt/Barley/Titan/Spark assumptions); this combat presentation change did not modify backend files or combat resolution.
+
+## Prop-sized collisions and nearby bat aggro (2026-08-13)
+
+- Root causes: canonical blocking props all used their complete 40x40 authored tile as a collider, and monster visibility rejected nearby targets whenever a solid prop intersected the centre-to-centre sight segment.
+- Added per-axis authoritative collider insets by prop type while preserving the full authored bounds for rendering, terrain, water, and concealment. Server geometry and frontend prediction consume the same serialized `colliderInsetX/Y` values.
+- Nearby living players outside concealment now trigger bats even across solid cover; bushes still break acquisition unless observer and target share the same bush group, while solid props continue to block physical movement and pathing.
+- Regression tests cover inset geometry, distinct canonical prop profiles, network prediction, JSON publication, close-range acquisition across a rock, and retained bush concealment.
+- Verification: full frontend suite passes (`302` passed, `4` skipped), production build and changed-file ESLint pass; focused Go geometry/map/monster/handler/room tests pass. Browser QA rendered the canonical map with no page/console errors at `output/playwright/map-environment/desktop.png` and left no Playwright Chromium process running.
+
+## Katty left-arm and movement-facing follow-up (2026-08-13)
+
+- Reproduced remaining arm issue: frames without an explicit `L_elbow_s` key reset to a perfectly straight elbow, so transitions can still look hyperextended.
+- Reproduced facing lag: local predicted X/Y are copied into display state, but current local `moveX/moveY` are not; `HeroView` therefore turns toward delayed server input.
+- RED tests added for a flexed neutral left elbow and immediate local display direction.
+- GREEN: Katty now has a default `L_elbow_s` flex of `-18` degrees, covering neutral and omitted-key frames; the authored `.blend` and runtime GLB were rebuilt.
+- GREEN: local display state now publishes current predicted movement input, so body facing changes on the input frame instead of waiting for a delayed snapshot.
+- Focused Katty/network tests pass (`36/36`). Browser QA remains to be run against the real GLB `HeroView` harness.
+- Runtime QA passed on the real Katty GLB: forward/right/back/left facing reached `0`, `pi/2`, `pi`, and `3pi/2`; enlarged idle/Attack/Gadget screenshots show no reverse left-elbow bend; console and page errors are empty.
+- Final verification: frontend `302` passed / `4` skipped, all `8` canonical hero GLBs validate, changed runtime lint passes, and the Vite production build succeeds. No Playwright-owned Chrome process remained.

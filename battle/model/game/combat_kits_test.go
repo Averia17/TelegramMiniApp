@@ -12,9 +12,9 @@ func TestCombatKitPolymorphismAndAimShapes(t *testing.T) {
 		shape string
 		reach float64
 	}{
-		"Shelly": {"cone", 430},
-		"Colt":   {"line", 650},
-		"Barley": {"lob", 620},
+		"Mandy":      {"cone", 70},
+		"Needle":     {"line", 620},
+		"Brock Zeus": {"line", 760},
 	}
 	for hero, expected := range cases {
 		kit := CombatKitFor(hero)
@@ -24,170 +24,66 @@ func TestCombatKitPolymorphismAndAimShapes(t *testing.T) {
 	}
 }
 
-func TestShellyAttackCreatesFiveIndependentPelletsInThirtyDegreeCone(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("shelly", "Shelly", "Shelly")
-	p := gs.Players["shelly"]
-	p.X, p.Y = 1200, 1200
-
-	gs.playerShoot("shelly", 1_000, 0)
-
-	if len(gs.Bullets) != 5 {
-		t.Fatalf("Shelly pellets = %d, want 5", len(gs.Bullets))
-	}
-	spread := gs.Bullets[4].Rotation - gs.Bullets[0].Rotation
-	if math.Abs(spread-math.Pi/6) > 1e-9 {
-		t.Fatalf("Shelly spread = %.4f rad, want %.4f", spread, math.Pi/6)
-	}
-	for _, pellet := range gs.Bullets {
-		if pellet.Kind != "shell" || pellet.HitPlayers == nil {
-			t.Fatalf("invalid independent pellet: %#v", pellet)
-		}
-	}
-}
-
-func TestShellySuperKnocksBackAndDestroysDestructibleWalls(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("shelly", "Shelly", "Shelly")
-	p := gs.Players["shelly"]
-	p.X, p.Y, p.Rotation, p.SuperCharge = 500, 500, 0, 100
-	wall := &geometry.WallTile{MinX: 680, MinY: 480, MaxX: 720, MaxY: 520, Type: "destructible"}
-	gs.Map.Collisions = append(gs.Map.Collisions, wall)
-	gs.Walls.Insert(wall)
-
-	gs.playerAbility("shelly", 10_000, "primary")
-
-	if p.SuperCharge != 0 || len(gs.Bullets) != 9 {
-		t.Fatalf("Shelly Super charge=%d pellets=%d, want 0 and 9", p.SuperCharge, len(gs.Bullets))
-	}
-	for _, shot := range gs.Bullets {
-		if !shot.DestroyWalls || shot.Knockback <= 0 {
-			t.Fatalf("Super pellet lacks destruction/knockback: %#v", shot)
-		}
-	}
-	for _, candidate := range gs.Map.Collisions {
-		if candidate == wall {
-			t.Fatal("Shelly Super did not remove destructible wall from navigation grid")
-		}
-	}
-}
-
-func TestColtSuperSchedulesTwelvePiercingWallBreakingRounds(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("colt", "Colt", "Colt")
-	p := gs.Players["colt"]
-	p.X, p.Y, p.Rotation, p.SuperCharge = 500, 500, 0, 100
-	now := time.Now().UnixMilli()
-
-	gs.playerAbility("colt", now-700, "primary")
-	gs.updateScheduledShots()
-
-	if p.SuperCharge != 0 || len(gs.Bullets) != 12 {
-		t.Fatalf("Colt Super charge=%d bullets=%d, want 0 and 12", p.SuperCharge, len(gs.Bullets))
-	}
-	for _, shot := range gs.Bullets {
-		if shot.Kind != "colt_super_round" || shot.MaxRange != 850 || shot.Pierce < 1 || !shot.DestroyWalls {
-			t.Fatalf("invalid Colt Super round: %#v", shot)
-		}
-	}
-}
-
-func TestBarleySuperThrowsFiveGroupedFourTickPoolsAtAimDistance(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("barley", "Barley", "Barley")
-	p := gs.Players["barley"]
-	p.X, p.Y, p.Rotation, p.AimDistance, p.SuperCharge = 600, 600, 0, 240, 100
-	now := time.Now().UnixMilli()
-
-	gs.playerAbility("barley", now, "primary")
-
-	if p.SuperCharge != 0 || len(gs.Bullets) != 5 {
-		t.Fatalf("Barley Super charge=%d bottles=%d, want 0 and 5", p.SuperCharge, len(gs.Bullets))
-	}
-	group := gs.Bullets[0].ZoneGroup
-	for _, bottle := range gs.Bullets {
-		if bottle.Kind != "barley_super_bottle" || bottle.ZoneRadius != 70 || bottle.ZoneTicks != 4 || bottle.ZoneGroup == "" || bottle.ZoneGroup != group {
-			t.Fatalf("invalid Barley Super bottle: %#v", bottle)
-		}
-	}
-	if distance := math.Hypot(gs.Bullets[0].TargetX-p.X, gs.Bullets[0].TargetY-p.Y); math.Abs(distance-240) > .01 {
-		t.Fatalf("Barley Super target distance=%.2f, want 240", distance)
-	}
-}
-
-func TestColtBurstSpawnsSixDelayedRoundsFromCurrentPosition(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("colt", "Colt", "Colt")
-	p := gs.Players["colt"]
-	p.X, p.Y = 900, 900
-	now := time.Now().UnixMilli()
-	ColtKit{}.Basic(gs, p, now-300, 0, 650)
-	p.X = 1050 // Colt moved while the burst was being emitted.
-
-	gs.updateScheduledShots()
-
-	if len(gs.Bullets) != 6 || len(gs.ScheduledShots) != 0 {
-		t.Fatalf("Colt bullets=%d pending=%d, want 6 and 0", len(gs.Bullets), len(gs.ScheduledShots))
-	}
-	for _, shot := range gs.Bullets {
-		if shot.Kind != "colt_round" || shot.OriginX <= 1050 {
-			t.Fatalf("Colt round did not use current moving origin: %#v", shot)
-		}
-	}
-}
-
-func TestBarleyBottleIgnoresWallsAndCreatesTwoTickZone(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("barley", "Barley", "Barley")
-	gs.PlayerAdd("target", "Target", "Shelly")
-	source, target := gs.Players["barley"], gs.Players["target"]
-	source.X, source.Y = 600, 600
-	target.X, target.Y = 800, 600
-	wall := &geometry.WallTile{MinX: 680, MinY: 560, MaxX: 720, MaxY: 640, Type: "destructible"}
-	gs.Map.Collisions = append(gs.Map.Collisions, wall)
-	gs.Walls.Insert(wall)
-	now := time.Now().UnixMilli()
-	BarleyKit{}.Basic(gs, source, now-700, 0, 200)
-
-	gs.updateBullets()
-	if len(gs.DamageZones) != 1 || gs.Bullets[0].Active {
-		t.Fatalf("Barley landing zones=%d bulletActive=%v, want 1 and false", len(gs.DamageZones), gs.Bullets[0].Active)
-	}
-	before := target.Lives
-	gs.updateDamageZones()
-	zone := gs.DamageZones[0]
-	zone.NextTickAt = time.Now().UnixMilli()
-	gs.updateDamageZones()
-	if got := before - target.Lives; got != source.AttackDmg*2 {
-		t.Fatalf("Barley zone damage = %d, want two ticks of %d", got, source.AttackDmg)
-	}
-}
-
 func TestTapAutoAimSelectsNearestEnemyInsideAttackRange(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("shelly", "Shelly", "Shelly")
-	gs.PlayerAdd("near", "Near", "Colt")
-	gs.PlayerAdd("far", "Far", "Colt")
-	source := gs.Players["shelly"]
+	gs.PlayerAdd("source", "Source", "Brock Zeus")
+	gs.PlayerAdd("near", "Near", "Needle")
+	gs.PlayerAdd("far", "Far", "Needle")
+	source := gs.Players["source"]
 	source.X, source.Y = 700, 700
 	gs.Players["near"].X, gs.Players["near"].Y = 850, 700
 	gs.Players["far"].X, gs.Players["far"].Y = 700, 1000
-	gs.PlayerPushAction(Action{PlayerId: "shelly", Type: "shoot", Ts: 1_000, Value: &ShootValue{Angle: math.Pi, AutoAim: true}})
+	gs.PlayerPushAction(Action{PlayerId: "source", Type: "shoot", Ts: 1_000, Value: &ShootValue{Angle: math.Pi, AutoAim: true}})
 
 	gs.updatePlayers()
 
-	if len(gs.Bullets) != 5 {
-		t.Fatalf("auto-aim attack pellets = %d, want 5", len(gs.Bullets))
+	if len(gs.Bullets) != 1 {
+		t.Fatalf("auto-aim projectiles = %d, want 1", len(gs.Bullets))
 	}
-	if centerAngle := gs.Bullets[2].Rotation; math.Abs(centerAngle) > 1e-9 {
+	if centerAngle := gs.Bullets[0].Rotation; math.Abs(centerAngle) > 1e-9 {
 		t.Fatalf("auto-aim center angle = %.3f, want nearest enemy at angle 0", centerAngle)
+	}
+}
+
+func TestTapAutoAimTurnsMeleeHeroesAroundToHitAnEnemyBehindThem(t *testing.T) {
+	for _, hero := range []string{"Mandy", "Kaze", "Wukong Mico"} {
+		t.Run(hero, func(t *testing.T) {
+			gs := newTestGameState()
+			gs.State = GameStateGame
+			gs.PlayerAdd("source", "Source", hero)
+			gs.PlayerAdd("target", "Target", "Needle")
+			source, target := gs.Players["source"], gs.Players["target"]
+			source.X, source.Y, source.Rotation = 500, 500, 0
+			target.X, target.Y = 500-CombatKitFor(hero).AttackRange(), 500
+
+			gs.PlayerPushAction(Action{PlayerId: "source", Type: "shoot", Ts: 1_000, Value: &ShootValue{Angle: 0, AutoAim: true}})
+			gs.updatePlayers()
+
+			if target.Lives == target.MaxLives {
+				t.Fatal("enemy behind the attacker was inside melee reach but was not hit")
+			}
+			if math.Cos(source.Rotation) > -.99 {
+				t.Fatalf("attacker rotation = %.3f, want it turned toward the enemy behind", source.Rotation)
+			}
+		})
+	}
+}
+
+func TestTapAutoAimUsesMandyFocusedAttackReach(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("source", "Source", "Mandy")
+	gs.PlayerAdd("target", "Target", "Needle")
+	source, target := gs.Players["source"], gs.Players["target"]
+	source.X, source.Y, source.Rotation, source.FocusCharge = 500, 500, 0, 100
+	target.X, target.Y = 410, 500
+
+	gs.PlayerPushAction(Action{PlayerId: "source", Type: "shoot", Ts: 1_000, Value: &ShootValue{Angle: 0, AutoAim: true}})
+	gs.updatePlayers()
+
+	if target.Lives == target.MaxLives || math.Cos(source.Rotation) > -.99 {
+		t.Fatalf("focused Mandy did not turn and hit at extended reach: rotation=%.3f damage=%d", source.Rotation, target.MaxLives-target.Lives)
 	}
 }
 
@@ -249,15 +145,15 @@ func TestManualAimDoesNotGainTheAutoAimArea(t *testing.T) {
 func TestCoreCombatSuperChargeDoesNotUsePvPDamage(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("shelly", "Shelly", "Shelly")
-	gs.PlayerAdd("target", "Target", "Shelly")
-	source, target := gs.Players["shelly"], gs.Players["target"]
+	gs.PlayerAdd("source", "Source", "Brock Zeus")
+	gs.PlayerAdd("target", "Target", "Needle")
+	source, target := gs.Players["source"], gs.Players["target"]
 	source.X, source.Y = 1000, 1000
 	target.X, target.Y = 1025, 1000
 
 	source.SuperCharge = 0
 	source.LastPrimaryAt = time.Now().UnixMilli()
-	gs.playerShoot("shelly", 1_000, 0)
+	gs.playerShoot("source", 1_000, 0)
 	gs.updateBullets()
 
 	if source.SuperCharge != 0 {
@@ -269,7 +165,7 @@ func TestMandyFocusExtendsMeleeConeAfterOneSecondStill(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("mandy", "Mandy", "Mandy")
-	gs.PlayerAdd("target", "Target", "Shelly")
+	gs.PlayerAdd("target", "Target", "Needle")
 	source, target := gs.Players["mandy"], gs.Players["target"]
 	source.X, source.Y = 500, 500
 	target.X, target.Y = 585, 500 // Outside 70 base reach, inside 94.5 focused reach.
@@ -292,11 +188,51 @@ func TestMandyFocusExtendsMeleeConeAfterOneSecondStill(t *testing.T) {
 	}
 }
 
+func TestMeleeBasicAttacksForgiveFastMovingTargetsAtTheSwingEdge(t *testing.T) {
+	cases := []struct {
+		hero           string
+		reach          float64
+		halfArcDegrees float64
+	}{
+		{hero: "Mandy", reach: 70, halfArcDegrees: 60},
+		{hero: "Kaze", reach: 105, halfArcDegrees: 55},
+		{hero: "Wukong Mico", reach: 120, halfArcDegrees: 50},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.hero, func(t *testing.T) {
+			gs := newTestGameState()
+			gs.State = GameStateGame
+			gs.PlayerAdd("source", tc.hero, tc.hero)
+			gs.PlayerAdd("target", "Target", "Needle")
+			source, target := gs.Players["source"], gs.Players["target"]
+			source.X, source.Y = 500, 500
+			targetAngle := (tc.halfArcDegrees + 15) * math.Pi / 180
+			target.X = source.X + math.Cos(targetAngle)*tc.reach
+			target.Y = source.Y + math.Sin(targetAngle)*tc.reach
+			target.MoveX = 1
+
+			CombatKitFor(tc.hero).Basic(gs, source, time.Now().UnixMilli(), 0, tc.reach)
+
+			if target.Lives == target.MaxLives {
+				t.Fatal("fast-moving target at the edge of the melee swing was not hit")
+			}
+
+			target.Lives = target.MaxLives
+			target.MoveX = 0
+			CombatKitFor(tc.hero).Basic(gs, source, time.Now().UnixMilli(), 0, tc.reach)
+			if target.Lives != target.MaxLives {
+				t.Fatalf("stationary target outside the melee swing took %d damage", target.MaxLives-target.Lives)
+			}
+		})
+	}
+}
+
 func TestMandyFocusIsSpentAndNextStrikeNeedsAnotherStillWindow(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("mandy", "Mandy", "Mandy")
-	gs.PlayerAdd("target", "Target", "Shelly")
+	gs.PlayerAdd("target", "Target", "Needle")
 	source, target := gs.Players["mandy"], gs.Players["target"]
 	source.X, source.Y = 500, 500
 	target.X, target.Y = 600, 500
@@ -340,12 +276,12 @@ func TestMandySuperChargeDoesNotUseSuccessfulSwings(t *testing.T) {
 	}
 }
 
-func TestMandyStanceLocksMovementAndSlowsNearbyEnemies(t *testing.T) {
+func TestMandyGadgetCreatesAWindowForAnEmpoweredCounterHit(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("mandy", "Mandy", "Mandy")
-	gs.PlayerAdd("one", "One", "Shelly")
-	gs.PlayerAdd("two", "Two", "Shelly")
+	gs.PlayerAdd("one", "One", "Needle")
+	gs.PlayerAdd("two", "Two", "Needle")
 	source := gs.Players["mandy"]
 	source.X, source.Y = 500, 500
 	gs.Players["one"].X, gs.Players["one"].Y = 565, 485
@@ -353,15 +289,20 @@ func TestMandyStanceLocksMovementAndSlowsNearbyEnemies(t *testing.T) {
 	now := time.Now().UnixMilli()
 
 	gs.playerAbility("mandy", now, "secondary")
-	if source.ChannelUntil != now+3000 || source.ShieldUntil != now+3000 {
-		t.Fatalf("stance channel=%d shield=%d", source.ChannelUntil, source.ShieldUntil)
+	if source.ChannelUntil != 0 || source.ShieldUntil != now+1800 || !source.GadgetArmed {
+		t.Fatalf("gadget channel=%d shield=%d armed=%v", source.ChannelUntil, source.ShieldUntil, source.GadgetArmed)
+	}
+	if EffectiveMovementSpeed(source, now) != float64(source.Speed) {
+		t.Fatalf("Mandy movement speed changed during gadget")
+	}
+	gs.playerShoot("mandy", now+200, 0)
+	if source.GadgetArmed {
+		t.Fatalf("counter-hit window was not consumed by the next attack")
+	}
+	if gs.Players["one"].SlowUntil <= now+200 {
+		t.Fatalf("counter-hit did not slow the target")
 	}
 	gs.updateNewHeroSystems()
-	for _, id := range []string{"one", "two"} {
-		if gs.Players[id].SlowUntil <= now {
-			t.Fatalf("%s was not slowed by stance", id)
-		}
-	}
 }
 
 func TestMandySuperWaitsForWindupThenHitsFullMapRectangleAndBreaksWalls(t *testing.T) {
@@ -400,6 +341,33 @@ func TestMandySuperWaitsForWindupThenHitsFullMapRectangleAndBreaksWalls(t *testi
 		if candidate == wall {
 			t.Fatal("Mandy Super did not destroy intersecting wall")
 		}
+	}
+}
+
+func TestWallBreakerRemovesOnlyTheNearestDestructibleCellIncludingDeadTree(t *testing.T) {
+	gs := newTestGameState()
+	near := &geometry.WallTile{MinX: 480, MinY: 480, MaxX: 520, MaxY: 520, Type: "dead_tree"}
+	far := &geometry.WallTile{MinX: 540, MinY: 480, MaxX: 580, MaxY: 520, Type: "destructible"}
+	solid := &geometry.WallTile{MinX: 600, MinY: 480, MaxX: 640, MaxY: 520, Type: "wall"}
+	gs.Map.Collisions = []*geometry.WallTile{near, far, solid}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.Walls.Insert(near)
+	gs.Walls.Insert(far)
+	gs.Walls.Insert(solid)
+
+	if !gs.destroyNearestWallAt(500, 500, 8) {
+		t.Fatal("wall breaker did not remove the touched tree")
+	}
+	if len(gs.Map.Collisions) != 2 {
+		t.Fatalf("remaining collisions=%d, want 2", len(gs.Map.Collisions))
+	}
+	for _, wall := range gs.Map.Collisions {
+		if wall == near {
+			t.Fatal("nearest dead_tree was not removed")
+		}
+	}
+	if !geometry.CollidesCircleWithBlockingWalls(&geometry.CircleBody{X: 550, Y: 500, Radius: 4}, gs.Walls) {
+		t.Fatal("far destructible wall disappeared with the nearest cell")
 	}
 }
 

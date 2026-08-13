@@ -114,8 +114,7 @@ func (p *Player) TakeDamage(amount int) {
 	if amount <= 0 || !p.IsAlive() {
 		return
 	}
-	p.LastDamageAt = time.Now().UnixMilli()
-	p.LastRegenAt = 0
+	p.InterruptRegenerationAt(time.Now().UnixMilli())
 	if p.LunarShield {
 		p.LunarShield = false
 		p.ShieldHP = 0
@@ -131,6 +130,11 @@ func (p *Player) TakeDamage(amount int) {
 	if p.Lives < 0 {
 		p.Lives = 0
 	}
+}
+
+func (p *Player) InterruptRegenerationAt(now int64) {
+	p.LastDamageAt = now
+	p.LastRegenAt = 0
 }
 
 func (p *Player) Heal() {

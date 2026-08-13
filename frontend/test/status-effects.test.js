@@ -49,9 +49,9 @@ test("shows Wukong rage and Kaze combo progress", () => {
   ])
 })
 
-test("shows Kaze doom mark with remaining duration", () => {
+test("does not expose the removed global Kaze vulnerability", () => {
   const effects = getActiveStatusEffects({doomed: 1.4})
-  assert.equal(effects.some(effect => effect.id === "doomed" && effect.remaining === 1.4), true)
+  assert.equal(effects.some(effect => effect.id === "doomed"), false)
 })
 
 test("shows Mina light mark as a pending detonation", () => {

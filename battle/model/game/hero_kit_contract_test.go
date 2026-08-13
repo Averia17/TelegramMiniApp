@@ -22,7 +22,7 @@ func TestHeroKitContractIsIncludedInHeroesPayloadModel(t *testing.T) {
 
 func TestActiveHeroDescriptionsMatchTheirCurrentMechanics(t *testing.T) {
 	checks := map[string]string{
-		"Needle":      "Спора раскрывается шестью ищущими шипами сразу при попадании или в конце полёта.",
+		"Needle":      "Спора летит по прямой и при попадании или в конце полёта раскрывается шестью фиксированными радиальными шипами.",
 		"Kaze":        "Два попадания открывают усиленный третий удар.",
 		"Wukong Mico": "Попадания накапливают до 5 зарядов Ярости.",
 	}

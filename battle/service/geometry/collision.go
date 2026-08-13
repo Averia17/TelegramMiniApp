@@ -28,40 +28,60 @@ func CircleToRectangle(c *CircleBody, r *RectangleBody) bool {
 	return math.Sqrt(distX*distX+distY*distY) <= c.Radius
 }
 
-func rectangleToRectangleSide(r1, r2 *RectangleBody) string {
-	dx := r1.CenterX() - r2.CenterX()
-	dy := r1.CenterY() - r2.CenterY()
-	width := (r1.Width + r2.Width) / 2
-	height := (r1.Height + r2.Height) / 2
-	crossWidth := width * dy
-	crossHeight := height * dx
-
-	if math.Abs(dx) <= width && math.Abs(dy) <= height {
-		if crossWidth > crossHeight {
-			if crossWidth > -crossHeight {
-				return "bottom"
-			}
-			return "left"
-		}
-		if crossWidth > -crossHeight {
-			return "right"
-		}
-		return "top"
+// correctCircleWithRectangle resolves the same circle-to-rectangle overlap
+// used by client prediction. Using the circle's bounding box here creates
+// square, invisible snag zones around rectangle corners.
+func correctCircleWithRectangle(body *CircleBody, rect *RectangleBody) {
+	closestX := Clamp(body.X, rect.Left(), rect.Right())
+	closestY := Clamp(body.Y, rect.Top(), rect.Bottom())
+	dx, dy := body.X-closestX, body.Y-closestY
+	distance := math.Hypot(dx, dy)
+	if distance >= body.Radius {
+		return
 	}
-	return "none"
-}
+	if distance > .0001 {
+		push := body.Radius - distance
+		body.X += dx / distance * push
+		body.Y += dy / distance * push
+		return
+	}
 
-func circleToRectangleSide(c *CircleBody, r *RectangleBody) string {
-	return rectangleToRectangleSide(c.Box(), r)
+	left := math.Abs(body.X - rect.Left())
+	right := math.Abs(rect.Right() - body.X)
+	top := math.Abs(body.Y - rect.Top())
+	bottom := math.Abs(rect.Bottom() - body.Y)
+	nearest := math.Min(math.Min(left, right), math.Min(top, bottom))
+	switch nearest {
+	case left:
+		body.X = rect.Left() - body.Radius
+	case right:
+		body.X = rect.Right() + body.Radius
+	case top:
+		body.Y = rect.Top() - body.Radius
+	default:
+		body.Y = rect.Bottom() + body.Radius
+	}
 }
 
 type WallTile struct {
-	MinX      float64
-	MinY      float64
-	MaxX      float64
-	MaxY      float64
-	Type      string
-	BushGroup int
+	MinX           float64
+	MinY           float64
+	MaxX           float64
+	MaxY           float64
+	Type           string
+	BushGroup      int
+	ColliderInsetX float64
+	ColliderInsetY float64
+}
+
+func (wall *WallTile) ColliderRect() RectangleBody {
+	insetX := Clamp(wall.ColliderInsetX, 0, math.Max(0, (wall.MaxX-wall.MinX)/2-.001))
+	insetY := Clamp(wall.ColliderInsetY, 0, math.Max(0, (wall.MaxY-wall.MinY)/2-.001))
+	return RectangleBody{
+		X: wall.MinX + insetX, Y: wall.MinY + insetY,
+		Width:  wall.MaxX - wall.MinX - insetX*2,
+		Height: wall.MaxY - wall.MinY - insetY*2,
+	}
 }
 
 type SpatialHash struct {
@@ -185,27 +205,12 @@ func (sh *SpatialHash) FindPoint(x, y float64, match func(*WallTile) bool) *Wall
 }
 
 func CorrectCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType string) {
-	box := body.Box()
 	walls.VisitRect(body.Left(), body.Top(), body.Right(), body.Bottom(), func(wall *WallTile) bool {
 		if collisionType != "" && wall.Type != collisionType {
 			return true
 		}
-		wallRect := &RectangleBody{X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY}
-		side := circleToRectangleSide(body, wallRect)
-		switch side {
-		case "left":
-			box.SetRight(wallRect.Left())
-			body.X = box.CenterX()
-		case "top":
-			box.SetBottom(wallRect.Top())
-			body.Y = box.CenterY()
-		case "right":
-			box.SetLeft(wallRect.Right())
-			body.X = box.CenterX()
-		case "bottom":
-			box.SetTop(wallRect.Bottom())
-			body.Y = box.CenterY()
-		}
+		wallRect := wall.ColliderRect()
+		correctCircleWithRectangle(body, &wallRect)
 		return true
 	})
 }
@@ -216,8 +221,8 @@ func CollidesCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType
 		if collisionType != "" && wall.Type != collisionType {
 			return true
 		}
-		wallRect := &RectangleBody{X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY}
-		if CircleToRectangle(body, wallRect) {
+		wallRect := wall.ColliderRect()
+		if CircleToRectangle(body, &wallRect) {
 			collides = true
 			return false
 		}
@@ -227,30 +232,16 @@ func CollidesCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType
 }
 
 func IsBlockingWall(wallType string) bool {
-	return wallType != "half" && wallType != "bush"
+	return wallType != "half" && wallType != "bush" && wallType != "moon_mist"
 }
 
 func CorrectCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) {
-	box := body.Box()
 	walls.VisitRect(body.Left(), body.Top(), body.Right(), body.Bottom(), func(wall *WallTile) bool {
 		if !IsBlockingWall(wall.Type) {
 			return true
 		}
-		wallRect := &RectangleBody{X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY}
-		switch circleToRectangleSide(body, wallRect) {
-		case "left":
-			box.SetRight(wallRect.Left())
-			body.X = box.CenterX()
-		case "top":
-			box.SetBottom(wallRect.Top())
-			body.Y = box.CenterY()
-		case "right":
-			box.SetLeft(wallRect.Right())
-			body.X = box.CenterX()
-		case "bottom":
-			box.SetTop(wallRect.Bottom())
-			body.Y = box.CenterY()
-		}
+		wallRect := wall.ColliderRect()
+		correctCircleWithRectangle(body, &wallRect)
 		return true
 	})
 }
@@ -261,8 +252,8 @@ func CollidesCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) bool 
 		if !IsBlockingWall(wall.Type) {
 			return true
 		}
-		wallRect := &RectangleBody{X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY}
-		if CircleToRectangle(body, wallRect) {
+		wallRect := wall.ColliderRect()
+		if CircleToRectangle(body, &wallRect) {
 			collides = true
 			return false
 		}

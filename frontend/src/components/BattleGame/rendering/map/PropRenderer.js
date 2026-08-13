@@ -119,27 +119,34 @@ const createBarrelVisual = (width, height, depth) => {
 
 const createTreeVisual = (width, height, depth, dead = false) => {
   const group = new THREE.Group()
-  const radius = Math.min(width, depth) * .18
+  const radius = Math.min(width, depth) * (dead ? .18 : .21)
   const trunkMaterial = standardMaterial(dead ? 0x5b4431 : 0x68472f, {roughness: .98})
-  addVisualPart(group, new THREE.CylinderGeometry(radius * .72, radius, height * .62, 7), trunkMaterial, "tree-trunk", new THREE.Vector3(0, height * .31, 0))
+  const trunk = addVisualPart(group, new THREE.CylinderGeometry(radius * .76, radius * (dead ? 1 : 1.08), height * (dead ? .72 : .66), 7), trunkMaterial, "tree-trunk", new THREE.Vector3(0, height * (dead ? .36 : .33), 0))
   if (dead) {
-    const rootBed = addVisualPart(
-      group,
-      new THREE.CylinderGeometry(1, 1, height * .08, 12),
-      standardMaterial(0x536044, {roughness: 1}),
-      "tree-root-bed",
-      new THREE.Vector3(0, height * .04, 0),
-    )
-    rootBed.scale.set(width * .47, 1, depth * .47)
-    for (const [x, z, angle] of [[-.24, 0, -.65], [.22, .04, .62], [0, -.12, .15]]) {
-      const branch = addVisualPart(group, new THREE.CylinderGeometry(radius * .3, radius * .5, height * .52, 6), trunkMaterial, "dead-tree-branch", new THREE.Vector3(x * width, height * .66, z * depth), new THREE.Vector3(0, 0, angle))
-      branch.scale.y = .72
-    }
+      trunk.rotation.z = -.1
+      const branches = [
+        {x: -.2, y: .38, z: -.02, length: .38, thick: .5, angle: -1.02, taper: .7},
+        {x: .14, y: .5, z: .04, length: .3, thick: .38, angle: .56, taper: .58},
+        {x: -.04, y: .6, z: -.1, length: .26, thick: .3, angle: -.34, taper: .5},
+        {x: .06, y: .69, z: .02, length: .23, thick: .26, angle: .78, taper: .46},
+        {x: -.01, y: .75, z: -.08, length: .17, thick: .2, angle: -.2, taper: .4},
+      ]
+      for (const branchSpec of branches) {
+        const branch = addVisualPart(
+          group,
+          new THREE.CylinderGeometry(radius * branchSpec.thick * .58, radius * branchSpec.thick, height * branchSpec.length, 6),
+          trunkMaterial,
+          "dead-tree-branch",
+          new THREE.Vector3(branchSpec.x * width, height * branchSpec.y, branchSpec.z * depth),
+          new THREE.Vector3(0, 0, branchSpec.angle),
+        )
+        branch.scale.y = branchSpec.taper
+      }
     return group
   }
   const foliage = standardMaterial(0x3e9b4a, {roughness: 1})
-  addVisualPart(group, new THREE.IcosahedronGeometry(Math.min(width, depth) * .48, 1), foliage, "tree-crown", new THREE.Vector3(0, height * .7, 0))
-  addVisualPart(group, new THREE.IcosahedronGeometry(Math.min(width, depth) * .32, 1), standardMaterial(0x62b85b, {roughness: 1}), "tree-crown", new THREE.Vector3(width * .22, height * .76, depth * .08))
+  addVisualPart(group, new THREE.IcosahedronGeometry(Math.min(width, depth) * .56, 1), foliage, "tree-crown", new THREE.Vector3(0, height * .72, 0))
+  addVisualPart(group, new THREE.IcosahedronGeometry(Math.min(width, depth) * .38, 1), standardMaterial(0x62b85b, {roughness: 1}), "tree-crown", new THREE.Vector3(width * .24, height * .78, depth * .08))
   return group
 }
 
@@ -174,20 +181,45 @@ const createRootClusterVisual = (width, height, depth, variant = 0) => {
   const mossLight = standardMaterial(0x78b85a, {roughness: 1})
   const shortSide = Math.min(width, depth)
 
-  addVisualPart(
-    group,
-    new THREE.CylinderGeometry(shortSide * .47, shortSide * .49, height * .1, 12),
-    standardMaterial(0x3f6743, {roughness: 1}),
-    "root-bed",
-    new THREE.Vector3(0, height * .05, 0),
-  )
+  for (const [x, z, scale] of [
+    [-.28, -.18, 1.05],
+    [.18, .16, .9],
+    [.34, -.08, .7],
+  ]) {
+    const mossBed = addVisualPart(
+      group,
+      new THREE.IcosahedronGeometry(shortSide * .2, 0),
+      standardMaterial(variant % 2 === 0 ? 0x66804c : 0x718952, {roughness: 1}),
+      "root-moss-bed",
+      new THREE.Vector3(x * width, height * .055, z * depth),
+    )
+    mossBed.scale.set(scale, .22, .72)
+  }
 
   const mainAngle = variant % 2 === 0 ? -.18 : .22
-  const mainPosition = new THREE.Vector3(0, height * .28, -depth * .08)
-  const main = createHorizontalRoot(group, shortSide * .78, shortSide * .13, mainPosition, mainAngle, bark, cut)
+  const mainPosition = new THREE.Vector3(-width * .04, height * .26, -depth * .08)
+  const main = createHorizontalRoot(group, shortSide * .82, shortSide * .12, mainPosition, mainAngle, bark, cut)
   const branchAngle = mainAngle + (variant % 3 === 0 ? 1.05 : -1.05)
-  const branchPosition = new THREE.Vector3(width * .16, height * .42, depth * .08)
-  createHorizontalRoot(group, shortSide * .68, shortSide * .1, branchPosition, branchAngle, bark, cut)
+  const branchPosition = new THREE.Vector3(width * .12, height * .24, depth * .08)
+  createHorizontalRoot(group, shortSide * .66, shortSide * .095, branchPosition, branchAngle, bark, cut)
+  createHorizontalRoot(
+    group,
+    shortSide * .52,
+    shortSide * .08,
+    new THREE.Vector3(-width * .12, height * .18, depth * .2),
+    branchAngle + (variant % 2 === 0 ? -.72 : .72),
+    bark,
+    cut,
+  )
+  createHorizontalRoot(
+    group,
+    shortSide * .95,
+    shortSide * .085,
+    new THREE.Vector3(width * .04, height * .2, depth * .04),
+    Math.PI / 2 + (variant % 2 === 0 ? -.12 : .12),
+    bark,
+    cut,
+  )
 
   const mossA = addVisualPart(
     group,
@@ -289,6 +321,25 @@ const groundingColors = {
 }
 
 const createGroundingBed = (wall, width, depth, variant = 0) => {
+  if (wall.type === "shipwreck") {
+    const bed = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(1, 0),
+      standardMaterial(groundingColors[wall.type] || 0x59694d, {
+        roughness: 1,
+        transparent: true,
+        opacity: .42,
+        depthWrite: false,
+      }),
+    )
+    bed.name = "prop-grounding-bed"
+    bed.userData.role = "grounding-bed"
+    bed.position.y = .025
+    bed.rotation.y = ((variant % 5) - 2) * .08
+    bed.scale.set(width * .5, .035, depth * .5)
+    bed.castShadow = false
+    bed.receiveShadow = true
+    return bed
+  }
   const bed = new THREE.Mesh(
     new THREE.CylinderGeometry(1, 1.08, .045, 10),
     standardMaterial(groundingColors[wall.type] || 0x59694d, {
@@ -320,15 +371,24 @@ export const createProp = (wall, index, waterTexture) => {
   )
 
   if (wall.type === "water") {
-    const material = flatMaterial(0xffffff, {map: waterTexture, transparent: true, opacity: 0.88})
+    const material = flatMaterial(0xffffff, {
+      map: waterTexture,
+      transparent: true,
+      opacity: 0.88,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    })
     const water = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), material)
     water.rotation.x = -Math.PI / 2
     water.position.y = 0.015
+    water.renderOrder = 1
     group.add(water)
     return group
   }
 
-  const height = wall.type === "fence" ? 0.9 : wall.type === "crates" ? 1.65 : wall.type === "tree" || wall.type === "dead_tree" ? 3 : wall.type === "shipwreck" ? 1.9 : wall.type === "menhir" ? 1.45 : 2.15
+  const height = wall.type === "fence" ? 0.9 : wall.type === "crates" ? 1.65 : wall.type === "tree" ? 3.9 : wall.type === "dead_tree" ? 3.9 : wall.type === "shipwreck" ? 1.9 : wall.type === "menhir" ? 1.45 : 2.15
   const block = STONE_PROP_TYPES.has(wall.type)
     ? new THREE.Mesh(
       createStoneBlockGeometry().scale(width, height, depth),

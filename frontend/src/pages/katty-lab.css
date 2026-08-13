@@ -46,3 +46,37 @@
 .katty-lab__details strong { color:#eee5dd; font-size:14px; }
 .katty-lab__details p { grid-column:2; margin:6px 0 0; color:#8f8996; font-size:12px; line-height:1.45; }
 @media (max-width:760px) { .katty-lab__header,.katty-lab__controls { display:block; }.katty-lab__badge { width:max-content; margin-top:18px; }.katty-lab__stage { grid-template-columns:1fr; }.model-card { min-height:115vw; }.model-card + .model-card { border-top:1px solid #3a3542; border-left:0; }.katty-lab__controls > * { margin-bottom:15px; }.katty-lab__tool-stack { justify-items:start; }.katty-lab__compare-panel { justify-self:start; min-width:0; width:100%; }.katty-lab__note { text-align:left; }.ab-switcher { justify-content:flex-start; }.katty-lab__details { grid-template-columns:1fr; gap:15px; } }
+@media (max-width:430px) {
+  .katty-lab { min-height:100dvh; padding: max(16px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) calc(34px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left)); }
+  .katty-lab__header { margin-bottom:18px; }
+  .katty-lab h1 { font-size:clamp(38px,14vw,58px); letter-spacing:-.08em; }
+  .katty-lab__intro { margin-top:11px; font-size:12px; }
+  .katty-lab__badge { margin-top:14px; padding:9px 11px; font-size:9px; }
+  .katty-lab__stage { margin-inline:-1px; }
+  .model-card { min-height:94vw; }
+  .model-card__label { top:12px; left:12px; gap:7px; }
+  .model-card__label strong { font-size:18px; }
+  .model-card__meta { right:12px; bottom:11px; font-size:8px; }
+  .katty-lab__controls { padding-top:16px; }
+  .angle-switcher { width:100%; }
+  .angle-switcher button { flex:1; min-width:0; min-height:44px; }
+  .compare-switcher,.ab-switcher { flex-wrap:wrap; }
+  .compare-switcher button,.ab-switcher button { min-height:40px; }
+  .katty-lab__details div { grid-template-columns:28px 1fr; column-gap:8px; }
+}
+@media (max-width:360px) {
+  .katty-lab h1 { font-size:36px; }
+  .model-card { min-height:88vw; }
+  .katty-lab__compare-panel { gap:7px; }
+  .compare-slider { grid-template-columns:44px 1fr 32px; gap:6px; }
+}
+@media (max-height:560px) and (orientation:landscape) {
+  .katty-lab { padding-top:max(10px,env(safe-area-inset-top)); }
+  .katty-lab__header { display:flex; align-items:center; margin-bottom:12px; }
+  .katty-lab__intro { display:none; }
+  .katty-lab__badge { margin-top:0; }
+  .katty-lab__stage { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .model-card { min-height:68vw; }
+  .model-card + .model-card { border-top:0; border-left:1px solid #3a3542; }
+  .katty-lab__details { grid-template-columns:repeat(3,1fr); }
+}

@@ -18,11 +18,12 @@ const HERO_DISPLAY_NAMES = {
   Katty: "KATTY",
 }
 const heroDisplay = hero => HERO_DISPLAY_NAMES[hero?.name] || hero?.name
+const combatType = hero => hero.attack?.archetype?.startsWith("melee") ? "БЛИЖНИЙ БОЙ" : "ДАЛЬНИЙ БОЙ"
 
 const HERO_DETAILS = {
-  Needle:{title:"Био-стрелок",attack:"65 урона и 6 осколков при разрыве",super:"Q: замедляющая лиана · E: лечение 145",passive:"Контролирует проходы и кусты"},
+  Needle:{title:"Био-стрелок",attack:"65 урона и 6 осколков при разрыве",super:"Q: замедляющая лиана · E: гарантированное лечение 30% HP",passive:"Контролирует проходы и кусты"},
   Mandy:{title:"Сахарный боец ближнего боя",attack:"60 урона конусным ударом посоха",super:"Q: волна через всю карту · E: Карамелизация",passive:"Стоя 1 секунду, получает +35% к дальности"},
-  Katty:{title:"Уличная художница",attack:"34 урона × 3 выстрела в конусе; третий слой оглушает",super:"Баллон-граната: лужа на 7 секунд, ослепление и третий слой",passive:"Краска замедляет врагов и усиливает контроль территории"},
+  Katty:{title:"Уличная художница",attack:"42 урона × 3 выстрела в конусе; третий слой оглушает",super:"Баллон-граната: лужа на 7,5 секунды, ослепление и третий слой",passive:"Краска замедляет врагов и усиливает контроль территории"},
 }
 
 const FALLBACK_HEROES = HEROES_CONFIG
@@ -171,12 +172,10 @@ const HeroCard = ({hero, rarity, selected, onClick}) => (
     onClick={onClick}
     style={{"--hero-color": hero.color}}
   >
-    <div className="hero-card-rank">РАНГ <b>{10 + hero.name.length}</b></div>
     <HeroPortrait hero={hero}/>
-    <div className="hero-card-trophies"><span>🏆</span>{hero.maxLives * 100}</div>
     <div className="hero-card-footer">
       <strong>{heroDisplay(hero)}</strong>
-      <span>СИЛА <b>{Math.min(11, hero.attackDamage + 7)}</b></span>
+      <small className="hero-card-combat-type">{combatType(hero)}</small>
     </div>
     {selected && <i className="hero-card-check">✓</i>}
   </button>

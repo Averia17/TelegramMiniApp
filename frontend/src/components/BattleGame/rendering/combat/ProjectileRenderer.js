@@ -114,11 +114,8 @@ export const createProjectileVisual = projectile => {
     orb.userData.vfxType = "lumi-orb"
     return orb
   }
-  const bottle = String(projectile.kind).includes("barley")
-  const geometry = bottle
-    ? new THREE.CylinderGeometry(0.2, 0.25, 0.65, 8)
-    : new THREE.SphereGeometry(clamp((projectile.radius || 5) * WORLD_SCALE, 0.12, 0.42), 8, 6)
-  return new THREE.Mesh(geometry, flatMaterial(projectile.color || (bottle ? 0x62b9ff : 0xffdf66)))
+  const geometry = new THREE.SphereGeometry(clamp((projectile.radius || 5) * WORLD_SCALE, 0.12, 0.42), 8, 6)
+  return new THREE.Mesh(geometry, flatMaterial(projectile.color || 0xffdf66))
 }
 
 const createSporeBurst = position => {
