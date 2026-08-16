@@ -193,6 +193,36 @@ test("network correction cannot push the predicted player through a blocking wal
   assert.equal(simulation.predicted.y, 80)
 })
 
+test("reconciliation offset cannot render the local player inside a blocking wall", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    map: {
+      width: 500,
+      height: 500,
+      walls: [{minX: 100, minY: 0, maxX: 140, maxY: 200, type: "wall", blocking: true}],
+    },
+    monsters: {},
+    bullets: [],
+  }
+  simulation.ingest({...base, ts: 1000, players: {
+    local: {x: 90, y: 80, radius: 10, movementSpeed: 100, lives: 100, ack: 0, moveX: 0, moveY: 0},
+  }}, 0, 1000)
+  simulation.setLocalPlayerId("local")
+
+  // A delayed authoritative frame pulls simulation truth away from the wall,
+  // while presentation remains continuous at the old, collision-safe pose.
+  simulation.ingest({...base, ts: 1010, players: {
+    local: {x: 80, y: 80, radius: 10, movementSpeed: 100, lives: 100, ack: 0, moveX: 0, moveY: 0},
+  }}, 0, 1010)
+  simulation.setInput(1, 0, 1011)
+  simulation.advance(0.1)
+
+  const displayed = simulation.getDisplayState(1111).players.local
+  assert.ok(displayed.x <= 90, `rendered x=${displayed.x} penetrated the wall boundary at 90`)
+  assert.equal(displayed.y, 80)
+})
+
 test("local prediction sweeps through the same blocking wall geometry as the backend", () => {
   const wall = {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "wall", blocking: true}
   const map = {width: 500, height: 500, walls: [wall]}

@@ -2,13 +2,14 @@ import * as THREE from "three"
 import {WORLD_SCALE, worldToScene} from "./shared/coordinates.js"
 
 const CAMERA_ANGLE = THREE.MathUtils.degToRad(55)
+export const CAMERA_GROUND_PROJECTION = Math.sin(CAMERA_ANGLE)
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const blend = (speed, delta) => 1 - Math.exp(-speed * delta)
 const MAP_FRAME_MARGIN = .96
 
 export const fitVerticalSpanToMap = (preferred, aspect, mapWidth, mapHeight) => Math.max(8, Math.min(
   preferred,
-  Number(mapHeight) * WORLD_SCALE * Math.sin(CAMERA_ANGLE) * MAP_FRAME_MARGIN,
+  Number(mapHeight) * WORLD_SCALE * CAMERA_GROUND_PROJECTION * MAP_FRAME_MARGIN,
   Number(mapWidth) * WORLD_SCALE / Math.max(.01, aspect) * MAP_FRAME_MARGIN,
 ))
 
@@ -53,7 +54,7 @@ export class CameraRig {
 
   panByScreen(deltaX, deltaY) {
     const horizontalScenePerPixel = (this.camera.right - this.camera.left) / this.width
-    const verticalScenePerPixel = (this.camera.top - this.camera.bottom) / this.height / Math.sin(CAMERA_ANGLE)
+    const verticalScenePerPixel = (this.camera.top - this.camera.bottom) / this.height / CAMERA_GROUND_PROJECTION
     this.followOffset.x -= Number(deltaX) * horizontalScenePerPixel / WORLD_SCALE
     this.followOffset.y -= Number(deltaY) * verticalScenePerPixel / WORLD_SCALE
   }
@@ -78,7 +79,7 @@ export class CameraRig {
         ? this.target.clone()
         : worldToScene(map.width / 2 + this.followOffset.x, map.height / 2 + this.followOffset.y)
     const halfX = (this.camera.right - this.camera.left) / 2 / WORLD_SCALE
-    const halfY = (this.camera.top - this.camera.bottom) / 2 / Math.sin(CAMERA_ANGLE) / WORLD_SCALE
+    const halfY = (this.camera.top - this.camera.bottom) / 2 / CAMERA_GROUND_PROJECTION / WORLD_SCALE
     desired.x = clamp(desired.x, Math.min(map.width / 2, halfX) * WORLD_SCALE, Math.max(map.width / 2, map.width - halfX) * WORLD_SCALE)
     desired.z = clamp(desired.z, Math.min(map.height / 2, halfY) * WORLD_SCALE, Math.max(map.height / 2, map.height - halfY) * WORLD_SCALE)
     if (!this.initialized) {

@@ -128,7 +128,7 @@ func TestHandleMessageRejectsTauntOutsideGameAndDuringCooldown(t *testing.T) {
 }
 
 func TestHandleMessageDoesNotBroadcastWhenTauntPaymentFails(t *testing.T) {
-	spender := &fakeTauntSpender{err: fmt.Errorf("not enough taunt charges")}
+	spender := &fakeTauntSpender{err: fmt.Errorf("taunt access expired")}
 	r := &Room{
 		Clients:      make(map[string]*Client),
 		Broadcast:    make(chan []byte, 1),

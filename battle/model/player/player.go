@@ -91,6 +91,12 @@ type Player struct {
 	LastDamageAt      int64
 	LastRegenAt       int64
 	RevealedUntil     int64
+	LastContactAt     int64
+	LastContactBy     string
+	LastContactX      float64
+	LastContactY      float64
+	LastContactDirX   float64
+	LastContactDirY   float64
 	HitImpulseX       float64
 	HitImpulseY       float64
 }

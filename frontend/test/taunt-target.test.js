@@ -19,7 +19,7 @@ test("chooses the nearest visible living opponent", () => {
   assert.equal(target, "near")
 })
 
-test("does not select a hidden or dead opponent", () => {
+test("falls back to a hidden living opponent when no visible target exists", () => {
   const target = chooseTauntTarget({
     localId: "me",
     players: {
@@ -30,5 +30,5 @@ test("does not select a hidden or dead opponent", () => {
     isVisible: () => false,
   })
 
-  assert.equal(target, null)
+  assert.equal(target, "hidden")
 })

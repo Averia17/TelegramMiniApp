@@ -2,10 +2,12 @@ import {HeroView, isInsideBush} from "../heroes/HeroView"
 import {removeFinishedDeathViews} from "../heroes/deathLifecycle.js"
 import {getDeathShakeAmount} from "../heroes/deathVisuals.js"
 import {isAlivePlayerState} from "../heroes/playerVisibility.js"
+import {shouldCreateAttackReloadIndicator} from "../heroes/AttackReloadIndicator.js"
 import {MapRenderer} from "../map/MapRenderer"
 import {AimRenderer} from "../combat/AimRenderer"
 import {EffectRenderer} from "../combat/EffectRenderer"
 import {CombatFeedbackRenderer} from "../combat/CombatFeedbackRenderer.js"
+import {createLastContactEffects} from "../combat/lastContactEffects.js"
 import {ProjectileRenderer} from "../combat/ProjectileRenderer"
 import {CameraRig} from "../CameraRig"
 import {SceneRoot} from "../SceneRoot"
@@ -97,6 +99,14 @@ export class ThreeBattleRenderer {
     const active = new Set()
     Object.entries(state.players || {}).forEach(([id, player]) => {
       const existingView = this.players.get(String(id))
+      if (player.hidden) {
+        if (existingView) {
+          this.actorRoot.remove(existingView.group)
+          existingView.dispose()
+          this.players.delete(String(id))
+        }
+        return
+      }
       // Keep an already-rendered hero for the authoritative death frame so
       // GLBHeroController can show its authored defeat pose. A player that was
       // never visible is still ignored while dead.
@@ -106,7 +116,11 @@ export class ThreeBattleRenderer {
       if (!view || String(view.state.hero) !== String(player.hero)) {
         if (!isAlivePlayerState(player)) return
         if (view) { this.actorRoot.remove(view.group); view.dispose() }
-        view = new HeroView(String(id), player)
+        view = new HeroView(
+          String(id),
+          player,
+          shouldCreateAttackReloadIndicator(id, this.localPlayerId),
+        )
         this.players.set(String(id), view)
         this.actorRoot.add(view.group)
       }
@@ -116,6 +130,7 @@ export class ThreeBattleRenderer {
         String(id) === this.localPlayerId,
       )
       if (deathShake > 0) this.cameraRig.addShake(deathShake)
+      view.setLocalPlayer(shouldCreateAttackReloadIndicator(id, this.localPlayerId))
       view.setState(player, Boolean(state.networkSmoothed))
     })
     this.players.forEach((view, id) => {
@@ -124,7 +139,7 @@ export class ThreeBattleRenderer {
     this.projectiles.sync(state.bullets || [])
     this.monsters.sync(state.monsters || {})
     this.pickups.sync(state.props || [])
-    this.effects.sync(state.effects || [])
+    this.effects.sync([...(state.effects || []), ...createLastContactEffects(state.players || {}, state.ts || Date.now())])
     const newHits = this.combatFeedback.sync(state)
     newHits.forEach(event => {
       const targetIsLocal = String(event.targetId) === this.localPlayerId

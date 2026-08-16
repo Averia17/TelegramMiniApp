@@ -39,13 +39,13 @@ type AttackConfig struct {
 
 var heroAttackConfigs = map[string]AttackConfig{
 	"Needle":          {Archetype: AttackProjectile, AimShape: "line", Range: 620, ProjectileKind: "spore"},
-	"Mandy":           {Archetype: AttackMeleeCone, AimShape: "cone", Range: 70, HalfArcDegrees: 42, Modifier: "mandy_focus"},
+	"Mandy":           {Archetype: AttackMeleeCone, AimShape: "cone", Range: 110, HalfArcDegrees: 60, Modifier: "mandy_focus"},
 	"Fairy Mina":      {Archetype: AttackShotgun, AimShape: "cone", Range: 510, ProjectileKind: "mina_star", ProjectileCount: 3, SpreadDegrees: 24},
 	"Brock Zeus":      {Archetype: AttackProjectile, AimShape: "line", Range: 760, ProjectileKind: "zeus_lightning", SplashRadius: 72},
-	"Kaze":            {Archetype: AttackMeleeCone, AimShape: "cone", Range: 105, HalfArcDegrees: 55, Modifier: "kaze_double"},
-	"Wukong Mico":     {Archetype: AttackMeleeCone, AimShape: "cone", Range: 120, HalfArcDegrees: 50, Modifier: "mico_staff"},
-	"Persephone Lumi": {Archetype: AttackProjectile, AimShape: "line", Range: 600, ProjectileKind: "lumi_orb", Modifier: "single_flower"},
-	"Katty":           {Archetype: AttackBurst, AimShape: "cone", Range: 240, ProjectileKind: "katty_paint", ProjectileCount: 3, SpreadDegrees: 45, HalfArcDegrees: 22.5, Modifier: "katty_paint_layers"},
+	"Kaze":            {Archetype: AttackMeleeCone, AimShape: "cone", Range: 125, HalfArcDegrees: 60, Modifier: "kaze_double"},
+	"Wukong Mico":     {Archetype: AttackMeleeCone, AimShape: "cone", Range: 140, HalfArcDegrees: 60, Modifier: "mico_staff"},
+	"Persephone Lumi": {Archetype: AttackMeleeCone, AimShape: "cone", Range: 120, HalfArcDegrees: 60, Modifier: "lumi_scythe"},
+	"Katty":           {Archetype: AttackProjectile, AimShape: "line", Range: KattySprayRange, ProjectileKind: "katty_paint_spray", Modifier: "katty_paint_cloud"},
 }
 
 // GetAttackConfig returns the immutable wire-facing attack metadata without

@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "url": "http://localhost:8931/mcp",
+      "description": "Playwright browser automation for QA testing"
+    }
+  },
+  "notes": {
+    "playwright": "Start with: node frontend/node_modules/playwright-core/lib/entry/mcp.js --port 8931 --headless",
+    "existing_plugins": [
+      "image_generation — AI image generation for game assets",
+      "audio_generation — TTS and sound effects for game audio",
+      "kimi-webbridge — Real browser control (Chrome/Edge) via local daemon at :10086",
+      "scholar — Academic paper search",
+      "sec_edgar — SEC filings (for financial research if needed)",
+      "yahoo_finance — Stock data",
+      "world_bank_open_data — Global development data",
+      "imf — IMF World Economic Outlook data"
+    ]
+  }
+}

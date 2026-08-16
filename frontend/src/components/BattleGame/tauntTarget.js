@@ -6,8 +6,10 @@ const distanceSquared = (a, b) => {
 
 export const chooseTauntTarget = ({players = {}, localId, isVisible = () => true} = {}) => {
   const local = players?.[localId]
-  const candidates = Object.entries(players)
-    .filter(([id, player]) => String(id) !== String(localId) && Number(player?.lives) > 0 && isVisible(id))
+  const living = Object.entries(players)
+    .filter(([id, player]) => String(id) !== String(localId) && Number(player?.lives) > 0)
+  const visible = living.filter(([id]) => isVisible(id))
+  const candidates = (visible.length ? visible : living)
     .sort(([leftId, left], [rightId, right]) => {
       if (!local) return String(leftId).localeCompare(String(rightId))
       return distanceSquared(left, local) - distanceSquared(right, local)

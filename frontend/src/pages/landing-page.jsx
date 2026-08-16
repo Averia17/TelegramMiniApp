@@ -47,7 +47,7 @@ const LandingPage = ({id}) => {
     try {
       const {data}=await axios.post(`${API_URL}/economy/me/battle`)
       setEconomy(data)
-      navigate("/battle", {state: {heroName: selectedHero, tauntCharges: data.taunt_charges || 0}})
+      navigate("/battle", {state: {heroName: selectedHero, tauntActive: Boolean(data.taunt_active)}})
     } catch (error) {
       setBattleStarting(false)
       setPlayError(error.response?.data?.detail || "Не удалось начать бой")

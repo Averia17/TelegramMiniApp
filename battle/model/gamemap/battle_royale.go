@@ -181,10 +181,11 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 		add(crate[0], crate[1], "crates")
 	}
 
-	// Four broad approach lanes are cleared after dressing. A tiny seeded bend
-	// makes their edges organic while leaving enough room for every spawn.
+	// Four broad approach lanes are cleared after dressing. Their seeded bends
+	// are deliberately readable from the combat camera: they create flankable
+	// cover transitions instead of giving a ranged hero one perfect retreat ray.
 	for i := 8; i <= 27; i++ {
-		bend := int(math.Round(gradientNoise(seed+int64(i)*0x9e37, float64(i)/3.5, 0) * 1.1))
+		bend := int(math.Round(gradientNoise(seed+int64(i)*0x9e37, float64(i)/3.5, 0) * 2.2))
 		clear(center+bend, i)
 		clear(center+bend+1, i)
 		clear(center-bend, size-1-i)

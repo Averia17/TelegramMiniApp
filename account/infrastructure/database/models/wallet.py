@@ -11,6 +11,9 @@ class PlayerWallet(Base, TableNameMixin):
     gold: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     crystals: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     taunt_charges: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    taunt_expires_at: Mapped[object] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     energy: Mapped[int] = mapped_column(Integer, default=100, server_default="100")
     energy_updated_at: Mapped[object] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now()

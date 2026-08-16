@@ -30,6 +30,19 @@ func TestVisiblePlayersForClientOmitsConcealedEnemyCoordinates(t *testing.T) {
 		t.Fatal("ally in bush must remain visible")
 	}
 
+	enemy.LastContactAt = 900
+	enemy.LastContactBy = "viewer"
+	enemy.LastContactX, enemy.LastContactY = 480, 490
+	enemy.LastContactDirX, enemy.LastContactDirY = 0.8, 0.6
+	visible = visiblePlayersForClient(state, "viewer", snapshots, 1_000)
+	lastSeen, ok := visible["enemy"]
+	if !ok || !lastSeen.Hidden || lastSeen.X != 480 || lastSeen.LastContact == nil {
+		t.Fatalf("last contact snapshot = %#v, want hidden marker at the contact position", lastSeen)
+	}
+	if lastSeen.Lives != 0 || lastSeen.MaxLives != 0 || lastSeen.Ammo != 0 || lastSeen.SuperCharge != 0 {
+		t.Fatalf("last contact snapshot leaked combat state: %#v", lastSeen)
+	}
+
 	enemy.RevealedUntil = 2_500
 	visible = visiblePlayersForClient(state, "viewer", snapshots, 1_000)
 	if _, ok := visible["enemy"]; !ok {
@@ -64,5 +77,27 @@ func TestCombatEventsForClientFiltersWithoutEmptyAllocation(t *testing.T) {
 	}
 	if empty := combatEventsForClient(nil, "viewer", 1_000); empty != nil {
 		t.Fatalf("empty combat events = %#v, want nil", empty)
+	}
+}
+
+func TestLastContactIsVisibleOnlyToTheAttackerForAShortWindow(t *testing.T) {
+	contact := &player.Player{
+		PlayerId:        "enemy",
+		LastContactAt:   900,
+		LastContactBy:   "viewer",
+		LastContactX:    500,
+		LastContactY:    500,
+		LastContactDirX: 0.6,
+		LastContactDirY: 0.8,
+	}
+
+	if got := lastContactForClient(contact, "viewer", 1_500); got == nil || got.X != 500 || got.DirectionY != 0.8 {
+		t.Fatalf("attacker last contact = %#v, want recent contact", got)
+	}
+	if got := lastContactForClient(contact, "other", 1_500); got != nil {
+		t.Fatalf("unrelated player received last contact: %#v", got)
+	}
+	if got := lastContactForClient(contact, "viewer", 3_001); got != nil {
+		t.Fatalf("expired last contact = %#v, want nil", got)
 	}
 }

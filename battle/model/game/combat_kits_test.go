@@ -12,7 +12,7 @@ func TestCombatKitPolymorphismAndAimShapes(t *testing.T) {
 		shape string
 		reach float64
 	}{
-		"Mandy":      {"cone", 70},
+		"Mandy":      {"cone", 110},
 		"Needle":     {"line", 620},
 		"Brock Zeus": {"line", 760},
 	}
@@ -97,17 +97,13 @@ func TestTapAutoAimHitsNearbyEnemiesAroundTheSelectedTarget(t *testing.T) {
 	gs.PlayerAdd("nearby", "Nearby", "Persephone Lumi")
 	source := gs.Players["lumi"]
 	source.X, source.Y = 400, 400
-	gs.Players["near"].X, gs.Players["near"].Y = 600, 400
-	// This target is close to the selected target, but outside the projectile's
-	// normal hitbox, so auto-aim must supply the forgiving assist radius.
-	gs.Players["nearby"].X, gs.Players["nearby"].Y = 600, 440
+	gs.Players["near"].X, gs.Players["near"].Y = 500, 400
+	// This target is close to the selected target, so the melee cone can hit it
+	// with the same forgiving auto-aim assist radius.
+	gs.Players["nearby"].X, gs.Players["nearby"].Y = 500, 420
 	gs.PlayerPushAction(Action{PlayerId: "lumi", Type: "shoot", Ts: 1_000, Value: &ShootValue{Angle: math.Pi, AutoAim: true}})
 
 	gs.updatePlayers()
-	for index := 0; index < 30; index++ {
-		gs.updateBullets()
-	}
-
 	if got := gs.Players["near"].MaxLives - gs.Players["near"].Lives; got != source.AttackDmg {
 		t.Fatalf("selected target damage = %d, want one attack damage %d", got, source.AttackDmg)
 	}
@@ -126,14 +122,10 @@ func TestManualAimDoesNotGainTheAutoAimArea(t *testing.T) {
 	gs.PlayerAdd("nearby", "Nearby", "Persephone Lumi")
 	source := gs.Players["lumi"]
 	source.X, source.Y = 400, 400
-	gs.Players["near"].X, gs.Players["near"].Y = 600, 400
-	gs.Players["nearby"].X, gs.Players["nearby"].Y = 600, 440
+	gs.Players["near"].X, gs.Players["near"].Y = 500, 400
+	gs.Players["nearby"].X, gs.Players["nearby"].Y = 500, 540
 
 	gs.playerShoot("lumi", 1_000, 0)
-	for index := 0; index < 30; index++ {
-		gs.updateBullets()
-	}
-
 	if got := gs.Players["near"].MaxLives - gs.Players["near"].Lives; got != source.AttackDmg {
 		t.Fatalf("manually aimed target damage = %d, want %d", got, source.AttackDmg)
 	}
@@ -168,7 +160,7 @@ func TestMandyFocusExtendsMeleeConeAfterOneSecondStill(t *testing.T) {
 	gs.PlayerAdd("target", "Target", "Needle")
 	source, target := gs.Players["mandy"], gs.Players["target"]
 	source.X, source.Y = 500, 500
-	target.X, target.Y = 585, 500 // Outside 70 base reach, inside 94.5 focused reach.
+	target.X, target.Y = 635, 500 // Outside 110 base reach, inside 148.5 focused reach.
 	source.FocusStartedAt = time.Now().Add(-2100 * time.Millisecond).UnixMilli()
 
 	gs.updateMandyFocus()
@@ -177,7 +169,7 @@ func TestMandyFocusExtendsMeleeConeAfterOneSecondStill(t *testing.T) {
 	if source.FocusCharge != 0 {
 		t.Fatalf("focus charge = %d, want 0 after empowered strike", source.FocusCharge)
 	}
-	if target.Lives != target.MaxLives-int(float64(source.AttackDmg)*1.4) || target.StunUntil <= time.Now().UnixMilli() {
+	if target.Lives != target.MaxLives-int(math.Round(float64(source.AttackDmg)*MandyFocusedDamageMultiplier)) || target.StunUntil <= time.Now().UnixMilli() {
 		t.Fatalf("focused target lives = %d stun=%d", target.Lives, target.StunUntil)
 	}
 
@@ -194,9 +186,9 @@ func TestMeleeBasicAttacksForgiveFastMovingTargetsAtTheSwingEdge(t *testing.T) {
 		reach          float64
 		halfArcDegrees float64
 	}{
-		{hero: "Mandy", reach: 70, halfArcDegrees: 60},
-		{hero: "Kaze", reach: 105, halfArcDegrees: 55},
-		{hero: "Wukong Mico", reach: 120, halfArcDegrees: 50},
+		{hero: "Mandy", reach: 110, halfArcDegrees: 60},
+		{hero: "Kaze", reach: 125, halfArcDegrees: 60},
+		{hero: "Wukong Mico", reach: 140, halfArcDegrees: 60},
 	}
 
 	for _, tc := range cases {
@@ -207,7 +199,7 @@ func TestMeleeBasicAttacksForgiveFastMovingTargetsAtTheSwingEdge(t *testing.T) {
 			gs.PlayerAdd("target", "Target", "Needle")
 			source, target := gs.Players["source"], gs.Players["target"]
 			source.X, source.Y = 500, 500
-			targetAngle := (tc.halfArcDegrees + 15) * math.Pi / 180
+			targetAngle := (tc.halfArcDegrees + 12) * math.Pi / 180
 			target.X = source.X + math.Cos(targetAngle)*tc.reach
 			target.Y = source.Y + math.Sin(targetAngle)*tc.reach
 			target.MoveX = 1
@@ -235,7 +227,7 @@ func TestMandyFocusIsSpentAndNextStrikeNeedsAnotherStillWindow(t *testing.T) {
 	gs.PlayerAdd("target", "Target", "Needle")
 	source, target := gs.Players["mandy"], gs.Players["target"]
 	source.X, source.Y = 500, 500
-	target.X, target.Y = 600, 500
+	target.X, target.Y = 635, 500
 	source.FocusCharge = 100
 	now := time.Now().UnixMilli()
 

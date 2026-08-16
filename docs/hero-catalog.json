@@ -1,17 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "schemaVersion": 1,
-  "catalogRevision": "2026-08-13",
+  "catalogRevision": "2026-08-15",
   "purpose": "Единый источник контекста по героям для gameplay, frontend, Blender и ИИ.",
   "maintenance": {
     "owner": "AI + game team",
     "updatePolicy": "docs/hero-catalog-maintenance.md",
     "lastReviewedBy": "Codex",
-    "lastReviewedAt": "2026-08-13"
+    "lastReviewedAt": "2026-08-15"
   },
   "sourceFingerprints": {
-    "battle/model/game/heroes.go": "9DB145AB69E877E593EC7CBB1FCE96AB559F9A72563E25B7C5B48DF0E061FB7B",
-    "battle/model/game/attack_config.go": "98BA2932909EA30F8AED97EBA350249070E2759A7FB6AD11EFD24F0E1BFD9918",
+    "battle/model/game/heroes.go": "06B1A42329ED813291121FBC8C5153558FB9BE1462D4910C7CEE69ABB1569611",
+    "battle/model/game/attack_config.go": "7CEA43938A0F4711534A4F3C0AD9AF42E6DECDCAA3EFBF012A8E68C4DB7F86CC",
     "tools/blender/hero_animation_scene_manifest.json": "6229C8EE8D96C46B14CC909407C53BF92B2079E011F93945BD564A6BBB75C862"
   },
   "contracts": {
@@ -62,8 +62,8 @@
       "status": "active",
       "identity": {"role": "Fighter", "color": "#F4C542", "radius": 14},
       "description": "Ближний боец, который усиливает удары стойкой и пробивает карту волной разрушения.",
-      "balance": {"maxLives": 720, "speed": 13, "attackDamage": 60, "attackRateMs": 420, "reloadTimeMs": 1650, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "mandy_staff"},
-      "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 70, "halfArcDegrees": 42, "modifier": "mandy_focus"},
+      "balance": {"maxLives": 720, "speed": 15, "attackDamage": 90, "attackRateMs": 420, "reloadTimeMs": 1650, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "mandy_staff"},
+      "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 110, "halfArcDegrees": 60, "modifier": "mandy_focus"},
       "abilities": {
         "basic": {"id": "staff_strike", "name": "Удар посохом", "description": "Ближний удар; неподвижность усиливает удар и оглушает.", "slot": "basic", "prediction": "melee", "mechanics": ["сектор 70", "усиление в фокусе"]},
         "super": {"id": "devastation_wave", "name": "Волна опустошения", "description": "После подготовки выпускает волну через всю карту, разрушая стены; во время подготовки Mandy может двигаться.", "slot": "primary", "prediction": "server", "mechanics": ["подготовка 1200 мс", "движение разрешено во время подготовки", "разрушает стены"]},
@@ -116,8 +116,8 @@
       "status": "active",
       "identity": {"role": "Assassin", "color": "#B88CFF", "radius": 12},
       "description": "Быстрый ассасин с двойным ударом, пробивающим рывком и невидимостью.",
-      "balance": {"maxLives": 650, "speed": 16, "attackDamage": 40, "attackRateMs": 220, "reloadTimeMs": 850, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.011, "attackType": "kaze_cross_slash"},
-      "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 105, "halfArcDegrees": 55, "modifier": "kaze_double"},
+      "balance": {"maxLives": 700, "speed": 16, "attackDamage": 85, "attackRateMs": 220, "reloadTimeMs": 850, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.011, "attackType": "kaze_cross_slash"},
+      "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 125, "halfArcDegrees": 60, "modifier": "kaze_double"},
       "abilities": {
         "basic": {"id": "cross_slash", "name": "Косые удары", "description": "Два успешных попадания открывают усиленный третий удар.", "slot": "basic", "prediction": "melee", "mechanics": ["одна зона урона за взмах", "окно комбо 2 секунды", "третий удар наносит 175% урона"]},
         "super": {"id": "piercing_dash", "name": "Пронизывающий рывок", "description": "Попадание рывком сразу подготавливает усиленный следующий удар Kaze.", "slot": "primary", "prediction": "server", "mechanics": ["дистанция 320", "урон 160", "оглушение 500 мс", "следующий удар усилен без скрытого дебаффа цели"]},
@@ -134,8 +134,8 @@
       "status": "active",
       "identity": {"role": "Tank", "color": "#FFB33E", "radius": 15},
       "description": "Танк ближнего боя: накапливает ярость посохом и превращает её в вихрь.",
-      "balance": {"maxLives": 900, "speed": 13, "attackDamage": 85, "attackRateMs": 650, "reloadTimeMs": 1750, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "mico_staff"},
-      "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 120, "halfArcDegrees": 50, "modifier": "mico_staff"},
+      "balance": {"maxLives": 900, "speed": 15, "attackDamage": 100, "attackRateMs": 650, "reloadTimeMs": 1750, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "mico_staff"},
+      "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 140, "halfArcDegrees": 60, "modifier": "mico_staff"},
       "abilities": {
         "basic": {"id": "heavy_staff", "name": "Тяжёлый посох", "description": "Попадания накапливают до 5 зарядов ярости.", "slot": "basic", "prediction": "melee", "mechanics": ["сектор 120", "1 заряд за успешный взмах", "до 5 зарядов ярости"]},
         "super": {"id": "vengeance_vortex", "name": "Вихрь возмездия", "description": "Расходует ярость, увеличивая радиус, длительность и урон вихря; вихрь лечит Mico по тикам.", "slot": "primary", "prediction": "server", "mechanics": ["базовая длительность 3 секунды", "+0.4 секунды и +18 радиуса за заряд", "урон зависит от ярости", "+1 к здоровью владельца каждые 250 мс"]},
@@ -152,8 +152,8 @@
       "status": "active",
       "identity": {"role": "Controller", "color": "#D954A8", "radius": 13},
       "description": "Контроллер поля: выращивает один замедляющий цветок в точке остановки снаряда и сад корней Супером.",
-      "balance": {"maxLives": 680, "speed": 13, "attackDamage": 70, "attackRateMs": 470, "reloadTimeMs": 1600, "maxAmmo": 3, "bulletSpeed": 28, "bulletSize": 10, "regenRate": 0.01, "attackType": "lumi_trail_orb"},
-      "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 600, "projectileKind": "lumi_orb", "modifier": "single_flower"},
+      "balance": {"maxLives": 700, "speed": 15, "attackDamage": 90, "attackRateMs": 470, "reloadTimeMs": 1600, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "lumi_scythe"},
+      "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 120, "halfArcDegrees": 60, "modifier": "lumi_scythe"},
       "abilities": {
         "basic": {"id": "luminous_flower", "name": "Световой цветок", "description": "Снаряд ломает ближайшую разрушаемую стену, наносит прямой урон и выращивает один замедляющий и раскрывающий цветок в точке остановки.", "slot": "basic", "prediction": "projectile", "mechanics": ["прямой урон при попадании", "ломает одну ближайшую клетку стены или дерева", "один цветок радиусом 70 в точке остановки", "замедление и раскрытие"]},
         "super": {"id": "root_garden", "name": "Сад корней", "description": "Поле корней обездвиживает вошедших врагов.", "slot": "primary", "prediction": "server", "mechanics": ["радиус 200", "срабатывание через 600 мс", "длительность 6 секунд"]},
@@ -170,10 +170,10 @@
       "status": "active",
       "identity": {"role": "Controller", "color": "#FF5C9A", "radius": 13},
       "description": "Уличная художница, которая контролирует пространство слоями краски.",
-      "balance": {"maxLives": 640, "speed": 14, "attackDamage": 42, "attackRateMs": 520, "reloadTimeMs": 1700, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "katty_paint_queue"},
-      "basicAttack": {"archetype": "burst", "aimShape": "cone", "range": 240, "projectileKind": "katty_paint", "projectileCount": 3, "spreadDegrees": 45, "halfArcDegrees": 22.5, "modifier": "katty_paint_layers"},
+      "balance": {"maxLives": 640, "speed": 14, "attackDamage": 42, "attackRateMs": 520, "reloadTimeMs": 1700, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "katty_paint_spray"},
+      "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 220, "projectileKind": "katty_paint_spray", "modifier": "katty_paint_cloud"},
       "abilities": {
-        "basic": {"id": "paint_queue", "name": "Краска-очередь", "description": "Три последовательных снаряда веером ломают ближайшую разрушаемую стену при столкновении и накладывают слои краски; третий слой оглушает.", "slot": "basic", "prediction": "server", "mechanics": ["3 снаряда с интервалом 150 мс", "веер 45° дальностью 240", "ломает одну ближайшую клетку стены или дерева", "без постоянных пятен от Basic", "третий слой: оглушение 800 мс"]},
+        "basic": {"id": "paint_spray", "name": "Краска-пшик", "description": "Короткий направленный пшик наносит 42 урона, накладывает слой краски и оставляет облако краски вокруг цели.", "slot": "basic", "prediction": "server", "mechanics": ["один снаряд дальностью 220", "прямое попадание: 42 урона и один слой краски", "облако радиусом 58 на 1,8 секунды", "внутри облака 6 урона каждые 400 мс (4 тика)", "враг внутри облака замедлен до 72% скорости; выход из зоны прекращает периодический урон"]},
         "super": {"id": "paint_grenade", "name": "Баллон-граната", "description": "После приземления лужа однократно ослепляет каждого вошедшего врага и наносит третий слой.", "slot": "primary", "prediction": "server", "mechanics": ["приземление через 500 мс", "лужа радиусом 220 на 7,5 секунды", "каждый вошедший враг получает третий слой, 30% бонусного урона и ослепление"]},
         "gadget": {"id": "paint_flight", "name": "Красколёт", "description": "Рывок проходит сквозь стены только во время способности и оставляет замедляющий след.", "slot": "secondary", "prediction": "server", "mechanics": ["фазовый рывок на 320", "след на 4 секунды", "2 слоя за пересечение врага"]}
       },

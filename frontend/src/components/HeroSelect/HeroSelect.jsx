@@ -2,35 +2,16 @@ import {useEffect, useMemo, useState} from "react"
 import axios from "axios"
 import {BATTLE_URL} from "../../utils/urls.js"
 import {HeroModelPreview} from "./HeroModelPreview.jsx"
-import {HEROES_CONFIG, normalizeHeroConfig} from "../BattleGame/heroesConfig.js"
 import {assetRegistry} from "../BattleGame/rendering/assets/AssetRegistry.js"
 import "./HeroSelect.css"
 
-const RARITIES = ["rare", "super-rare", "epic", "mythic", "legendary"]
-const HERO_DISPLAY_NAMES = {
-  Needle: "NEEDLE",
-  Mandy: "MANDY",
-  "Fairy Mina": "FAIRY MINA",
-  "Brock Zeus": "BROCK ZEUS",
-  Kaze: "KAZE",
-  "Wukong Mico": "WUKONG MICO",
-  "Persephone Lumi": "PERSEPHONE LUMI",
-  Katty: "KATTY",
-}
-const heroDisplay = hero => HERO_DISPLAY_NAMES[hero?.name] || hero?.name
+const heroDisplay = hero => hero?.displayName || hero?.name
 const combatType = hero => hero.attack?.archetype?.startsWith("melee") ? "БЛИЖНИЙ БОЙ" : "ДАЛЬНИЙ БОЙ"
-
-const HERO_DETAILS = {
-  Needle:{title:"Био-стрелок",attack:"65 урона и 6 осколков при разрыве",super:"Q: замедляющая лиана · E: гарантированное лечение 30% HP",passive:"Контролирует проходы и кусты"},
-  Mandy:{title:"Сахарный боец ближнего боя",attack:"60 урона конусным ударом посоха",super:"Q: волна через всю карту · E: Карамелизация",passive:"Стоя 1 секунду, получает +35% к дальности"},
-  Katty:{title:"Уличная художница",attack:"42 урона × 3 выстрела в конусе; третий слой оглушает",super:"Баллон-граната: лужа на 7,5 секунды, ослепление и третий слой",passive:"Краска замедляет врагов и усиливает контроль территории"},
-}
-
-const FALLBACK_HEROES = HEROES_CONFIG
 
 export const HeroSelect = ({onSelect, selectedHero}) => {
   const [heroes, setHeroes] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [rosterOpen, setRosterOpen] = useState(false)
 
   useEffect(() => {
@@ -38,10 +19,13 @@ export const HeroSelect = ({onSelect, selectedHero}) => {
       .then(({data}) => {
         const supported = (data || [])
           .filter(hero => assetRegistry.hasHero(hero.name))
-          .map(normalizeHeroConfig)
-        setHeroes(supported.length ? supported : FALLBACK_HEROES.map(normalizeHeroConfig))
+        if (!supported.length) throw new Error("Hero catalog is empty")
+        setHeroes(supported)
       })
-      .catch(() => setHeroes(FALLBACK_HEROES.map(normalizeHeroConfig)))
+      .catch(() => {
+        setHeroes([])
+        setLoadError(true)
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -70,7 +54,7 @@ export const HeroSelect = ({onSelect, selectedHero}) => {
   }
 
   if (!selected) {
-    return <div className="hero-select-loading">БОЙЦЫ ПОКА НЕДОСТУПНЫ</div>
+    return <div className="hero-select-loading">{loadError ? "КАТАЛОГ ГЕРОЕВ НЕ ЗАГРУЖЕН" : "БОЙЦЫ ПОКА НЕДОСТУПНЫ"}</div>
   }
 
   const selectHero = hero => {
@@ -89,7 +73,7 @@ export const HeroSelect = ({onSelect, selectedHero}) => {
       </div>
 
       <div className="hero-identity">
-        <span className="hero-rarity">{rarityFor(selected, heroes)}</span>
+        <span className="hero-rarity">{selected.rarity}</span>
         <h1>{heroDisplay(selected)}</h1>
         <div className="hero-role"><span>{roleIcon(selected.role)}</span>{selected.role}</div>
       </div>
@@ -101,10 +85,10 @@ export const HeroSelect = ({onSelect, selectedHero}) => {
       </div>
 
       <div className="hero-ability-card">
-        <strong>{HERO_DETAILS[selected.name]?.title}</strong>
-        <p><span>АТАКА</span>{HERO_DETAILS[selected.name]?.attack}</p>
-        <p><span>Q / E</span>{HERO_DETAILS[selected.name]?.super}</p>
-        <p><span>ПАССИВ</span>{HERO_DETAILS[selected.name]?.passive}</p>
+        <strong>{selected.title}</strong>
+        <p><span>АТАКА</span>{selected.attackDescription}</p>
+        <p><span>Q / E</span>{selected.superDescription}</p>
+        <p><span>ПАССИВ</span>{selected.passiveDescription}</p>
       </div>
 
       <button className="hero-roster-button" onClick={() => setRosterOpen(true)}>
@@ -127,11 +111,10 @@ export const HeroSelect = ({onSelect, selectedHero}) => {
             <b>▾</b>
           </div>
           <div className="hero-select-grid">
-            {heroes.map((hero, index) => (
+            {heroes.map(hero => (
               <HeroCard
                 key={hero.name}
                 hero={hero}
-                rarity={RARITIES[index % RARITIES.length]}
                 selected={selected.name === hero.name}
                 onClick={() => selectHero(hero)}
               />
@@ -141,11 +124,6 @@ export const HeroSelect = ({onSelect, selectedHero}) => {
       )}
     </section>
   )
-}
-
-const rarityFor = (hero, heroes) => {
-  const index = Math.max(0, heroes.findIndex(item => item.name === hero.name))
-  return RARITIES[index % RARITIES.length].replace("-", " ")
 }
 
 const roleIcon = role => ({
@@ -166,9 +144,9 @@ const QuickStat = ({icon, value, label}) => (
   </div>
 )
 
-const HeroCard = ({hero, rarity, selected, onClick}) => (
+const HeroCard = ({hero, selected, onClick}) => (
   <button
-    className={`hero-card hero-card--${rarity} ${selected ? "hero-card--selected" : ""}`}
+    className={`hero-card hero-card--${hero.rarity} ${selected ? "hero-card--selected" : ""}`}
     onClick={onClick}
     style={{"--hero-color": hero.color}}
   >

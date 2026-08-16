@@ -77,7 +77,7 @@ const nearestMeleeAutoAimTarget = (source, players = {}, monsters = {}) => {
 const attackDamage = player => {
   let damage = Number(player?.attackDamage) || 0
   damage *= Math.max(1, Number(player?.damageMultiplier) || 1)
-  if (player?.hero === "Mandy" && Number(player?.focusCharge) >= 100) damage *= 1.4
+  if (player?.hero === "Mandy" && Number(player?.focusCharge) >= 100) damage *= 1.5
   return damage > 0 ? Math.max(1, Math.round(damage)) : 0
 }
 
@@ -213,6 +213,18 @@ const movementSpeed = player => {
   return speed
 }
 
+const constrainPosition = (position, player, map, collisionIndex = null, collisionResult = null) => {
+  const radius = Number(player.radius) || 14
+  const next = {
+    x: clamp(Number(position.x) || 0, radius, Math.max(radius, (map.width || radius) - radius)),
+    y: clamp(Number(position.y) || 0, radius, Math.max(radius, (map.height || radius) - radius)),
+  }
+  const collisionWalls = collisionIndex?.cells
+    ? queryCollisionWalls(collisionIndex, next, radius, collisionResult)
+    : map.walls
+  return resolveWalls(next, radius, collisionWalls)
+}
+
 export const movePosition = (position, input, player, delta, map, collisionIndex = null, collisionResult = null) => {
   const magnitude = Math.hypot(input.x, input.y)
   if (magnitude <= .001 || delta <= 0) return position
@@ -227,12 +239,7 @@ export const movePosition = (position, input, player, delta, map, collisionIndex
       x: next.x + input.x / magnitude * stepDistance,
       y: next.y + input.y / magnitude * stepDistance,
     }
-    next.x = clamp(next.x, radius, Math.max(radius, (map.width || radius) - radius))
-    next.y = clamp(next.y, radius, Math.max(radius, (map.height || radius) - radius))
-    const collisionWalls = collisionIndex?.cells
-      ? queryCollisionWalls(collisionIndex, next, radius, collisionResult)
-      : map.walls
-    next = resolveWalls(next, radius, collisionWalls)
+    next = constrainPosition(next, player, map, collisionIndex, collisionResult)
   }
   return next
 }
@@ -712,6 +719,17 @@ export class NetworkSimulation {
       this.correction.x += correctionDelta.x
       this.correction.y += correctionDelta.y
     }
+
+    // Prediction truth is collision-safe, but the presentation offset is a
+    // second vector applied afterwards. During a fast reversal it can briefly
+    // point from an older safe pose through a wall while it decays. Constrain
+    // the composed render pose and retain only the collision-safe offset.
+    const presentation = constrainPosition({
+      x: this.predicted.x + this.correction.x,
+      y: this.predicted.y + this.correction.y,
+    }, player, map, this.getCollisionIndex(map), this.collisionQueryResult)
+    this.correction.x = presentation.x - this.predicted.x
+    this.correction.y = presentation.y - this.predicted.y
 
   }
 

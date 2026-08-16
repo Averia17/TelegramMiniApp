@@ -35,7 +35,7 @@ const profileBattleUi = (_id, phase, actualDuration) => {
   if (import.meta.env.DEV) recordBattleMetric("ui.commit", actualDuration, {phase})
 }
 
-export const BattleGame = ({playerId, roomId, heroName, tauntCharges = 0}) => {
+export const BattleGame = ({playerId, roomId, heroName, tauntActive = false}) => {
   const navigate = useNavigate()
   const canvasRef = useRef(null)
   const clientRef = useRef(null)
@@ -54,7 +54,6 @@ export const BattleGame = ({playerId, roomId, heroName, tauntCharges = 0}) => {
   const [mobileMode, setMobileMode] = useState(() => window.matchMedia("(pointer: coarse), (max-width: 700px)").matches)
   const [touchControls, setTouchControls] = useState({move: null, aim: null})
   const [tauntCooldown, setTauntCooldown] = useState(0)
-  const [availableTaunts, setAvailableTaunts] = useState(() => Math.max(0, Number(tauntCharges) || 0))
   const tauntTimerRef = useRef(null)
 
   const [gameState, setGameState] = useState(null)
@@ -68,10 +67,6 @@ export const BattleGame = ({playerId, roomId, heroName, tauntCharges = 0}) => {
   const [sceneReady, setSceneReady] = useState(false)
   const [assetsReady, setAssetsReady] = useState(false)
   const [assetLoadError, setAssetLoadError] = useState(false)
-
-  useEffect(() => {
-    setAvailableTaunts(Math.max(0, Number(tauntCharges) || 0))
-  }, [tauntCharges])
 
   const setView = useCallback((v) => {
     viewRef.current = v
@@ -452,9 +447,8 @@ export const BattleGame = ({playerId, roomId, heroName, tauntCharges = 0}) => {
     isVisible: id => rendererRef.current?.isPlayerVisible(id) ?? false,
   })
   const sendTaunt = () => {
-    if (tauntCooldown > 0 || availableTaunts < 1 || !tauntTargetId) return
+    if (tauntCooldown > 0 || !tauntTargetId || !tauntActive) return
     clientRef.current?.taunt("clown_laugh", tauntTargetId)
-    setAvailableTaunts(value => Math.max(0, value - 1))
     setTauntCooldown(1.5)
     if (tauntTimerRef.current) window.clearInterval(tauntTimerRef.current)
     tauntTimerRef.current = window.setInterval(() => {
@@ -578,7 +572,7 @@ export const BattleGame = ({playerId, roomId, heroName, tauntCharges = 0}) => {
                 <AbilityButton slot="secondary" keyName="E" label={`${getHeroSkill(localPlayer.hero, "secondary").name} · ${localPlayer.gadgetCharges || 0}`} description={getHeroSkill(localPlayer.hero, "secondary").description} cooldown={localPlayer.cooldowns?.secondary} disabled={!localPlayer.gadgetCharges || localPlayer.gadgetArmed} onUse={() => clientRef.current?.ability?.("secondary")}/>
               </div>
             )}
-            {localPlayer && availableTaunts > 0 && (
+            {localPlayer && tauntActive && (
               <div className="battle-taunt-slot">
                 <TauntButton cooldown={tauntCooldown} disabled={!tauntTargetId} onUse={sendTaunt}/>
               </div>

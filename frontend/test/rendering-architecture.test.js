@@ -24,7 +24,7 @@ import {
 import {createProjectileVisual} from "../src/components/BattleGame/rendering/combat/ProjectileRenderer.js"
 import {
   MonsterRenderer,
-  getDamageBarFractions,
+  getHealthBarFraction,
   formatHealthLabel,
 } from "../src/components/BattleGame/rendering/monsters/MonsterRenderer.js"
 import {getBattleWebGLContext} from "../src/components/BattleGame/rendering/SceneRoot.js"
@@ -110,7 +110,7 @@ test("hero fallback configs expose compact health, damage, and speed values", ()
   )
   assert.deepEqual(
     {health: mico.maxLives, damage: mico.attackDamage, speed: mico.speed},
-    {health: 900, damage: 85, speed: 13},
+    {health: 900, damage: 100, speed: 15},
   )
 })
 
@@ -153,6 +153,7 @@ test("melee attack range uses a clear outer edge at the exact hit distance", () 
   assert.equal(Math.abs(aim.meleeArea.scale.x - 105 * WORLD_SCALE) < .001, true)
   assert.equal(Math.abs(aim.meleeRangeEdge.scale.x - 105 * WORLD_SCALE) < .001, true)
   assert.ok(aim.meleeRangeEdge.material.opacity > aim.meleeArea.material.opacity)
+  assert.ok(aim.meleeProjection.scale.z > 1, "tilted camera projection must not shorten vertical melee aim")
 
   const firstScale = aim.meleeArea.scale.clone()
   const firstEdgeScale = aim.meleeRangeEdge.scale.clone()
@@ -255,9 +256,10 @@ test("health labels show exact remaining and maximum HP", () => {
   assert.equal(formatHealthLabel(-20, 3600), "0 / 3600")
 })
 
-test("damage bar keeps the just-lost HP visible as a red trailing segment", () => {
-  assert.deepEqual(getDamageBarFractions(0.62, 0.80), {current: 0.62, damage: 0.80})
-  assert.deepEqual(getDamageBarFractions(0.62, 0.80, 0.5), {current: 0.62, damage: 0.71})
+test("monster health bar is a single red fraction of current HP", () => {
+  assert.equal(getHealthBarFraction(62, 100), 0.62)
+  assert.equal(getHealthBarFraction(140, 100), 1)
+  assert.equal(getHealthBarFraction(-20, 100), 0)
 })
 
 test("monster health drops are visible until the player collects them", () => {
@@ -1580,6 +1582,12 @@ test("Wukong ignores cloud-like meshes because the companion was removed", () =>
 test("new hero projectiles match the detached object used by the attack", () => {
   const mina = createProjectileVisual({kind: "mina_star_fan"})
   assert.equal(mina.userData.vfxType, "fairy-orb")
+})
+
+test("Katty paint spray renders as a can-shaped projectile with a mist nozzle", () => {
+  const spray = createProjectileVisual({kind: "katty_paint_spray", radius: 10})
+  assert.equal(spray.userData.vfxType, "katty-paint-spray")
+  assert.equal(spray.children.some(child => child.userData.role === "spray-mist"), true)
 })
 
 test("short-lived projectiles use emissive visuals without dynamic scene lights", () => {

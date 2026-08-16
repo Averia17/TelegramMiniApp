@@ -1,4 +1,5 @@
 import * as THREE from "three"
+import {CAMERA_GROUND_PROJECTION} from "../CameraRig.js"
 import {WORLD_SCALE, worldToScene} from "../shared/coordinates.js"
 import {flatMaterial} from "../shared/materials.js"
 
@@ -43,12 +44,18 @@ export class AimRenderer {
     this.meleeRangeEdge.rotation.x = -Math.PI / 2
     this.meleeRangeEdge.renderOrder = 3
     this.meleeRangeEdge.userData.halfArcDegrees = 45
+    this.meleeProjection = new THREE.Group()
+    // The orthographic camera is tilted for depth, which otherwise makes a
+    // circular ground range look shorter when aiming vertically on screen.
+    // Compensate only the aim guide so its shown radius and arc stay constant.
+    this.meleeProjection.scale.z = 1 / CAMERA_GROUND_PROJECTION
+    this.meleeProjection.add(this.meleeArea, this.meleeRangeEdge)
     this.superLane = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
       flatMaterial(0xffe24b, {transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false}),
     )
     this.superLane.rotation.x = -Math.PI / 2
-    this.root.add(this.line, this.target, this.meleeArea, this.meleeRangeEdge, this.superLane)
+    this.root.add(this.line, this.target, this.meleeProjection, this.superLane)
     this.root.visible = false
   }
 
@@ -98,14 +105,15 @@ export class AimRenderer {
         this.meleeRangeEdge.geometry = createMeleeRangeEdgeGeometry(halfArcDegrees)
         this.meleeRangeEdge.userData.halfArcDegrees = halfArcDegrees
       }
-      this.meleeArea.position.copy(worldToScene(player.x, player.y, 3))
+      this.meleeProjection.position.copy(worldToScene(player.x, player.y, 0))
+      this.meleeArea.position.set(0, 3 * WORLD_SCALE, 0)
       this.meleeArea.rotation.y = -angle
       // Use one scalar so changing aim direction only rotates the sector and
       // never changes its gameplay radius or its visual width.
       this.meleeArea.scale.setScalar(range * WORLD_SCALE)
       this.meleeArea.material.color.set(player.color || 0xffd84d)
       this.meleeArea.material.opacity = mandy && player.focusCharge >= 100 ? 0.25 : 0.16
-      this.meleeRangeEdge.position.copy(worldToScene(player.x, player.y, 3.2))
+      this.meleeRangeEdge.position.set(0, 3.2 * WORLD_SCALE, 0)
       this.meleeRangeEdge.rotation.y = -angle
       this.meleeRangeEdge.scale.setScalar(range * WORLD_SCALE)
       this.meleeRangeEdge.material.color.set(player.color || 0xffd84d).lerp(new THREE.Color(0xffffff), 0.32)

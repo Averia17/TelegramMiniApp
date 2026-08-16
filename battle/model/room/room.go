@@ -384,8 +384,8 @@ func (r *Room) handleTaunt(client *Client, data []byte) {
 		}
 		r.mu.Unlock()
 		message := "Насмешка временно недоступна"
-		if err.Error() == "not enough taunt charges" {
-			message = "Нет оплаченных насмешек"
+		if err.Error() == "taunt access expired" {
+			message = "Доступ к насмешке закончился"
 		}
 		r.SendToPlayer(client.Id, "error", game.ErrorParams{Message: message})
 		return

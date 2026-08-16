@@ -30,7 +30,7 @@ func TestClientSpendTauntReturnsInsufficientCharges(t *testing.T) {
 	defer server.Close()
 
 	err := NewClient(server.URL).SpendTaunt("access-token", "clown_laugh")
-	if err == nil || err.Error() != "not enough taunt charges" {
-		t.Fatalf("SpendTaunt() error = %v, want not enough taunt charges", err)
+	if err == nil || err.Error() != "taunt access expired" {
+		t.Fatalf("SpendTaunt() error = %v, want taunt access expired", err)
 	}
 }

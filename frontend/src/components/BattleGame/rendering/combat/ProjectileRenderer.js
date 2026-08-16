@@ -98,6 +98,31 @@ export const createProjectileVisual = projectile => {
     orb.userData.vfxType = "fairy-orb"
     return orb
   }
+  if (kind.includes("katty_paint_spray")) {
+    const spray = new THREE.Group()
+    spray.userData.vfxType = "katty-paint-spray"
+    const can = new THREE.Mesh(
+      new THREE.CylinderGeometry(.16, .19, .42, 12),
+      standardMaterial(0xff5c9a, {emissive:0x7f174b, emissiveIntensity:1.1}),
+    )
+    can.rotation.z = Math.PI / 2
+    spray.add(can)
+    const cap = new THREE.Mesh(
+      new THREE.CylinderGeometry(.20, .20, .07, 12),
+      standardMaterial(0xffd2e4, {emissive:0x7a3557, emissiveIntensity:.7}),
+    )
+    cap.position.y = .22
+    cap.rotation.z = Math.PI / 2
+    spray.add(cap)
+    const mist = new THREE.Mesh(
+      new THREE.TorusGeometry(.25, .025, 6, 20),
+      new THREE.MeshBasicMaterial({color:0xffd2e4, transparent:true, opacity:.72, depthWrite:false}),
+    )
+    mist.rotation.x = Math.PI / 2
+    mist.userData.role = "spray-mist"
+    spray.add(mist)
+    return spray
+  }
   if (kind.includes("zeus_lightning")) {
     const bolt = new THREE.Group()
     bolt.userData.vfxType = "lightning"

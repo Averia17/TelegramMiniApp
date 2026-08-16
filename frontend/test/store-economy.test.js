@@ -2,16 +2,15 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {getTauntPurchaseState} from "../src/components/Tabs/storeEconomy.js"
 
-test("taunt pack is available when the wallet has enough crystals", () => {
+test("daily taunt access is available when the wallet has enough crystals", () => {
   assert.deepEqual(
     getTauntPurchaseState({crystals: 10, taunt_pack_cost: 10, taunt_pack_charges: 10}),
     {
       cost: 10,
-      charges: 10,
       canBuy: true,
       disabled: false,
-      buttonLabel: "КУПИТЬ 10",
-      title: "Купить пакет насмешек",
+      buttonLabel: "КУПИТЬ НА ДЕНЬ",
+      title: "Купить насмешку на 24 часа",
     },
   )
 })

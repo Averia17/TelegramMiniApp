@@ -14,15 +14,15 @@ const BattlePage = ({id}) => {
   const {roomId} = useParams()
   const location = useLocation()
   const hero = location.state?.heroName || loadBattleHero(id)
-  const [tauntCharges, setTauntCharges] = useState(Number(location.state?.tauntCharges || 0))
+  const [tauntActive, setTauntActive] = useState(Boolean(location.state?.tauntActive))
   useEffect(() => {
     axios.get(`${API_URL}/economy/me`).then(({data}) => {
-      setTauntCharges(Number(data.taunt_charges || 0))
+      setTauntActive(Boolean(data.taunt_active))
     }).catch(() => {})
   }, [])
   return (
     <Suspense fallback={<BattleLoading progress={32} status="Загружаем арену..." />}>
-      <BattleGame playerId={id} roomId={roomId} heroName={hero} tauntCharges={tauntCharges}/>
+      <BattleGame playerId={id} roomId={roomId} heroName={hero} tauntActive={tauntActive}/>
     </Suspense>
   )
 }

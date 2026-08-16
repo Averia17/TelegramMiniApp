@@ -41,7 +41,7 @@ func (c *Client) SpendTaunt(accessToken, tauntID string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusConflict {
-		return fmt.Errorf("not enough taunt charges")
+		return fmt.Errorf("taunt access expired")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("taunt payment rejected with status %d", resp.StatusCode)

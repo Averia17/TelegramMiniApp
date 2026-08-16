@@ -32,7 +32,7 @@ runWithBrowser(
       Object.assign(window.qa.player, {
         aiming: true,
         attackArchetype: "melee_cone",
-        attackRange: 70,
+        attackRange: 110,
         attackHalfArcDegrees: 60,
         color: "#F4C542",
       })
@@ -57,7 +57,7 @@ runWithBrowser(
         game: {state: "game"},
         map: {width: 500, height: 500, walls: []},
         players: {
-          local: {playerId: "local", hero: "Mandy", x: 200, y: 200, radius: 14, lives: 720, ammo: 3, rotation: 0, attackPulse: 4, attackArchetype: "melee_cone", attackRange: 70},
+          local: {playerId: "local", hero: "Mandy", x: 200, y: 200, radius: 14, lives: 720, ammo: 3, rotation: 0, attackPulse: 4, attackArchetype: "melee_cone", attackRange: 110},
           enemy: {playerId: "enemy", hero: "Needle", x: 140, y: 200, radius: 14, lives: 620, team: "enemy"},
         },
         monsters: {},

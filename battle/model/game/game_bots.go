@@ -659,7 +659,7 @@ func botPrimaryUseful(bot *player.Player, target *botTarget) bool {
 	}
 	if target.kind == "monster" {
 		switch bot.HeroName {
-		case "Needle", "Kaze", "Persephone Lumi":
+		case "Needle", "Kaze":
 			return false
 		}
 	}

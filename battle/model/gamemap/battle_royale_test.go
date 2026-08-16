@@ -279,3 +279,29 @@ func TestGenerateBattleRoyaleKeepsEveryLandingZoneConnectedToTheCentre(t *testin
 		}
 	}
 }
+
+func TestGenerateBattleRoyaleApproachLanesHaveReadableBends(t *testing.T) {
+	gameMap := GenerateBattleRoyale(CanonicalBattleRoyaleSeed)
+	blocked := make(map[[2]int]bool)
+	for _, wall := range gameMap.Collisions {
+		if wall.Type == "bush" || wall.Type == "half" || wall.Type == "moon_mist" {
+			continue
+		}
+		blocked[[2]int{int(wall.MinX / 40), int(wall.MinY / 40)}] = true
+	}
+
+	// The northern approach should offer a short, readable lateral choice. A
+	// completely straight lane lets a ranged hero retreat on one aim ray.
+	centres := make(map[int]bool)
+	for y := 8; y <= 27; y++ {
+		for x := 26; x <= 32; x++ {
+			if !blocked[[2]int{x, y}] && !blocked[[2]int{x + 1, y}] {
+				centres[x] = true
+				break
+			}
+		}
+	}
+	if len(centres) < 3 {
+		t.Fatalf("northern approach has only %d lateral positions, want a readable bend", len(centres))
+	}
+}

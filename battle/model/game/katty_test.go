@@ -3,7 +3,6 @@ package game
 import (
 	"battle/model/gamemap"
 	"battle/service/geometry"
-	"math"
 	"testing"
 	"time"
 )
@@ -16,12 +15,12 @@ func TestKattyIsRegisteredWithBalancedCompactStats(t *testing.T) {
 	if hero.MaxLives != 640 || hero.Speed != 14 || hero.AttackDamage != 42 {
 		t.Fatalf("Katty stats = health=%d speed=%d damage=%d, want 640/14/42", hero.MaxLives, hero.Speed, hero.AttackDamage)
 	}
-	if hero.Attack.Range != 240 || hero.Attack.HalfArcDegrees != 22.5 || hero.Attack.ProjectileCount != 3 {
-		t.Fatalf("Katty attack config = %#v, want three paint projectiles in a 45-degree fan", hero.Attack)
+	if hero.Attack.Range != KattySprayRange || hero.Attack.Archetype != AttackProjectile || hero.Attack.AimShape != "line" || hero.Attack.ProjectileKind != "katty_paint_spray" {
+		t.Fatalf("Katty attack config = %#v, want a short paint spray projectile", hero.Attack)
 	}
 }
 
-func TestKattyBasicSchedulesThreePaintProjectilesAndThirdLayerStuns(t *testing.T) {
+func TestKattyBasicSprayCreatesOneShortRangePaintCloudOnHit(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("katty", "Katty", "Katty")
@@ -31,53 +30,66 @@ func TestKattyBasicSchedulesThreePaintProjectilesAndThirdLayerStuns(t *testing.T
 	now := time.Now().UnixMilli()
 
 	KattyKit{}.Basic(gs, source, now, 0, 0)
-	if len(gs.ScheduledShots) != 3 {
-		t.Fatalf("scheduled paint shots=%d, want 3", len(gs.ScheduledShots))
+	if len(gs.ScheduledShots) != 0 || len(gs.Bullets) != 1 {
+		t.Fatalf("scheduled shots=%d bullets=%d, want one immediate spray projectile", len(gs.ScheduledShots), len(gs.Bullets))
 	}
-	if got := gs.ScheduledShots[1].SpawnAt - gs.ScheduledShots[0].SpawnAt; got != 150 {
-		t.Fatalf("paint shot interval=%dms, want 150ms", got)
+	shot := gs.Bullets[0]
+	if shot.Kind != "katty_paint_spray" || shot.MaxRange != KattySprayRange {
+		t.Fatalf("spray projectile=%#v, want paint spray with range %.0f", shot, KattySprayRange)
 	}
-	if got := gs.ScheduledShots[0].SpawnAt - now; got != 200 {
-		t.Fatalf("first shot delay=%dms, want 200ms", got)
+	shot.X, shot.Y = target.X-2, target.Y
+	gs.updateBullets()
+	if got := target.MaxLives - target.Lives; got != source.AttackDmg {
+		t.Fatalf("direct spray damage=%d, want %d", got, source.AttackDmg)
+	}
+	if got := gs.kattyPaintStacks(source.PlayerId, target.PlayerId); got != 1 {
+		t.Fatalf("paint stacks=%d, want one direct layer", got)
+	}
+	if len(gs.HeroZones) != 1 || gs.HeroZones[0].Kind != "katty_paint_cloud" || gs.HeroZones[0].Radius != KattySprayCloudRadius {
+		t.Fatalf("paint cloud zones=%#v, want one radius-%.0f cloud", gs.HeroZones, KattySprayCloudRadius)
+	}
+	if len(gs.DamageZones) != 1 || gs.DamageZones[0].Kind != "katty_paint_cloud" || gs.DamageZones[0].TicksLeft != KattySprayCloudTicks {
+		t.Fatalf("paint damage zones=%#v, want %d cloud ticks", gs.DamageZones, KattySprayCloudTicks)
 	}
 
-	for _, scheduled := range gs.ScheduledShots {
-		scheduled.SpawnAt = now - 1
+	cloud := gs.HeroZones[0]
+	damageZone := gs.DamageZones[0]
+	damageZone.NextTickAt = now - 1
+	beforeCloudTick := target.Lives
+	gs.updateDamageZones()
+	if got := beforeCloudTick - target.Lives; got != KattySprayCloudDamage {
+		t.Fatalf("cloud tick damage=%d, want %d", got, KattySprayCloudDamage)
 	}
-	gs.updateScheduledShots()
-	if len(gs.Bullets) != 3 || len(gs.HeroZones) != 0 {
-		t.Fatalf("paint bullets=%d zones=%d, want three projectiles and no ground zones", len(gs.Bullets), len(gs.HeroZones))
+	gs.updateNewHeroSystems()
+	if target.SlowUntil <= now || target.SlowMultiplier != KattySprayCloudSlow {
+		t.Fatalf("cloud slow until=%d multiplier=%.2f, want active slow %.2f", target.SlowUntil, target.SlowMultiplier, KattySprayCloudSlow)
 	}
-	for _, shot := range gs.Bullets {
-		shot.X, shot.Y = target.X-2, target.Y
-		gs.updateBullets()
-	}
-	if got := target.MaxLives - target.Lives; got != source.AttackDmg*3+int(math.Round(float64(source.AttackDmg)*KattyPaintBonusMultiplier)) {
-		t.Fatalf("three-layer paint damage=%d, want base plus %.0f%% bonus", got, KattyPaintBonusMultiplier*100)
-	}
-	remaining := target.StunUntil - time.Now().UnixMilli()
-	if remaining < 500 || remaining > 900 {
-		t.Fatalf("third paint layer stun remaining=%dms, want about 800ms", remaining)
+
+	target.X, target.Y = cloud.X+cloud.Radius+target.Radius+10, cloud.Y
+	damageZone.NextTickAt = time.Now().UnixMilli() - 1
+	beforeOutsideTick := target.Lives
+	gs.updateDamageZones()
+	if target.Lives != beforeOutsideTick {
+		t.Fatalf("cloud damaged target after leaving zone: lives %d -> %d", beforeOutsideTick, target.Lives)
 	}
 }
 
-func TestKattyPaintProjectileDoesNotLeaveASlowSpot(t *testing.T) {
+func TestKattyPaintSprayMissDoesNotLeaveACloud(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("katty", "Katty", "Katty")
 	gs.PlayerAdd("enemy", "Enemy", "Needle")
 	katty, enemy := gs.Players["katty"], gs.Players["enemy"]
-	katty.X, katty.Y, enemy.X, enemy.Y = 500, 500, 570, 500
+	katty.X, katty.Y, enemy.X, enemy.Y = 500, 500, 760, 500
 
-	shot := gs.spawnAttackBullet(katty, 0, "katty_paint", katty.AttackDmg, 28*RuntimeProjectileSpeedScale, 7, 240, 0, false, false)
-	shot.X, shot.Y = enemy.X-2, enemy.Y
+	gs.spawnAttackBullet(katty, 0, "katty_paint_spray", katty.AttackDmg, 28*RuntimeProjectileSpeedScale, 10, KattySprayRange, 0, false, false)
 	gs.updateBullets()
 
-	if len(gs.HeroZones) != 0 {
-		t.Fatalf("paint projectile left %d hidden slow spots", len(gs.HeroZones))
+	if len(gs.HeroZones) != 0 || len(gs.DamageZones) != 0 {
+		t.Fatalf("paint spray miss left hero zones=%#v damage zones=%#v", gs.HeroZones, gs.DamageZones)
 	}
-	if got := gs.kattyPaintStacks(katty.PlayerId, enemy.PlayerId); got != 1 {
-		t.Fatalf("paint stacks=%d, want one direct layer", got)
+	if got := gs.kattyPaintStacks(katty.PlayerId, enemy.PlayerId); got != 0 {
+		t.Fatalf("paint stacks after miss=%d, want zero", got)
 	}
 }
 

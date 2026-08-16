@@ -12,42 +12,74 @@ const lunarColor = lootType => {
   return 0xffd34e
 }
 
-const createHealthPotion = () => {
+const roundedBarGeometry = (length, width) => {
+  const shape = new THREE.Shape()
+  const radius = width / 2
+  const half = length / 2
+  shape.moveTo(-half + radius, -radius)
+  shape.lineTo(half - radius, -radius)
+  shape.absarc(half - radius, 0, radius, -Math.PI / 2, Math.PI / 2, false)
+  shape.lineTo(-half + radius, radius)
+  shape.absarc(-half + radius, 0, radius, Math.PI / 2, Math.PI * 1.5, false)
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: width * 0.9,
+    bevelEnabled: true,
+    bevelThickness: width * 0.18,
+    bevelSize: width * 0.18,
+    bevelSegments: 2,
+  })
+  geometry.center()
+  return geometry
+}
+
+const createHealGlow = radius => {
+  const glow = createContactShadow(radius)
+  glow.material.color.set(0x59ff7a)
+  glow.material.opacity = 0.45
+  glow.material.blending = THREE.AdditiveBlending
+  glow.position.y = 0.02
+  glow.userData.role = "heal-glow"
+  return glow
+}
+
+const createHealthPotion = pickup => {
   const group = new THREE.Group()
-  group.userData.type = "potion-red"
+  group.userData.type = pickup.type
+  group.userData.pulse = true
 
-  const bottle = new THREE.Mesh(
-    new THREE.SphereGeometry(8 * WORLD_SCALE, 12, 8),
-    flatMaterial(0xff3f58),
-  )
-  bottle.scale.set(0.9, 1.08, 0.72)
-  bottle.position.y = 10 * WORLD_SCALE
+  const cross = new THREE.Group()
+  const barLength = 22 * WORLD_SCALE
+  const barWidth = 8.5 * WORLD_SCALE
 
-  const neck = new THREE.Mesh(
-    new THREE.CylinderGeometry(3.2 * WORLD_SCALE, 4.2 * WORLD_SCALE, 7 * WORLD_SCALE, 10),
-    flatMaterial(0xff7182),
+  const outlineMaterial = flatMaterial(0xf4fff6)
+  const outlineHorizontal = new THREE.Mesh(
+    roundedBarGeometry(barLength + 3 * WORLD_SCALE, barWidth + 3 * WORLD_SCALE),
+    outlineMaterial,
   )
-  neck.position.y = 18 * WORLD_SCALE
+  const outlineVertical = new THREE.Mesh(
+    roundedBarGeometry(barLength + 3 * WORLD_SCALE, barWidth + 3 * WORLD_SCALE),
+    outlineMaterial.clone(),
+  )
+  outlineVertical.rotation.y = Math.PI / 2
 
-  const cork = new THREE.Mesh(
-    new THREE.CylinderGeometry(4 * WORLD_SCALE, 4 * WORLD_SCALE, 3.5 * WORLD_SCALE, 10),
-    flatMaterial(0xffd27a),
+  const greenMaterial = flatMaterial(0x2fd65c)
+  const greenHorizontal = new THREE.Mesh(
+    roundedBarGeometry(barLength, barWidth),
+    greenMaterial,
   )
-  cork.position.y = 23 * WORLD_SCALE
+  greenHorizontal.position.y = 1.5 * WORLD_SCALE
+  const greenVertical = new THREE.Mesh(
+    roundedBarGeometry(barLength, barWidth),
+    greenMaterial.clone(),
+  )
+  greenVertical.rotation.y = Math.PI / 2
+  greenVertical.position.y = 1.5 * WORLD_SCALE
 
-  const crossMaterial = flatMaterial(0xffffff)
-  const crossHorizontal = new THREE.Mesh(
-    new THREE.BoxGeometry(8 * WORLD_SCALE, 2.6 * WORLD_SCALE, 1.2 * WORLD_SCALE),
-    crossMaterial,
-  )
-  const crossVertical = new THREE.Mesh(
-    new THREE.BoxGeometry(2.6 * WORLD_SCALE, 8 * WORLD_SCALE, 1.3 * WORLD_SCALE),
-    crossMaterial.clone(),
-  )
-  crossHorizontal.position.set(0, 11 * WORLD_SCALE, 6.2 * WORLD_SCALE)
-  crossVertical.position.copy(crossHorizontal.position)
+  cross.add(outlineHorizontal, outlineVertical, greenHorizontal, greenVertical)
+  cross.position.y = 14 * WORLD_SCALE
+  cross.rotation.x = -0.35
 
-  group.add(createContactShadow(10 * WORLD_SCALE), bottle, neck, cork, crossHorizontal, crossVertical)
+  group.add(createHealGlow(14 * WORLD_SCALE), cross)
   return group
 }
 
@@ -92,7 +124,7 @@ const createLunarReward = pickup => {
 const createPickup = pickup => {
   if (pickup.type === "lunar_crate") return createLunarCrate(pickup)
   if (String(pickup.type).startsWith("lunar_")) return createLunarReward(pickup)
-  return createHealthPotion()
+  return createHealthPotion(pickup)
 }
 
 export class PickupRenderer {
@@ -131,6 +163,10 @@ export class PickupRenderer {
     this.pickups.forEach(view => {
       view.position.y = view.userData.baseY + (4 + Math.sin(this.elapsed * 3.5 + view.userData.phase) * 2) * WORLD_SCALE
       view.rotation.y += deltaSeconds * 1.8
+      if (view.userData.pulse) {
+        const pulse = 1 + Math.sin(this.elapsed * 4.2 + view.userData.phase) * 0.08
+        view.scale.setScalar(pulse)
+      }
     })
   }
 

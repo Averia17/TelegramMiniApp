@@ -13,6 +13,7 @@ import {
   getBushConcealmentMix,
 } from "./BushConcealment"
 import {createClownTaunt} from "./tauntVisuals.js"
+import {AttackReloadIndicator} from "./AttackReloadIndicator.js"
 import {
   DEATH_PULSE_DURATION,
   getDeathFade,
@@ -141,7 +142,7 @@ const createDeathBurst = heroName => {
 }
 
 export class HeroView {
-  constructor(id, state) {
+  constructor(id, state, isLocalPlayer = false) {
     this.id = id
     const readyInstance = assetRegistry.instantiateReadyHero(state.hero)
     this.group = new THREE.Group()
@@ -176,6 +177,9 @@ export class HeroView {
     this.disposed = false
     this.result = null
     this.state = state
+    this.isLocalPlayer = false
+    this.attackReloadIndicator = null
+    this.setLocalPlayer(isLocalPlayer)
     this.group.position.copy(worldToScene(state.x, state.y))
     if (readyInstance) this.installGlbInstance(readyInstance, state.hero)
   }
@@ -236,6 +240,7 @@ export class HeroView {
     this.lastPulse = state.attackPulse
     this.lastLives = state.lives
     updateLabel(this.label, state)
+    if (this.isLocalPlayer) this.attackReloadIndicator?.update(state)
   }
 
   setDisplayState(state) {
@@ -243,6 +248,20 @@ export class HeroView {
     this.targetX = state.x
     this.targetY = state.y
     updateLabel(this.label, state)
+    if (this.isLocalPlayer) this.attackReloadIndicator?.update(state)
+  }
+
+  setLocalPlayer(isLocalPlayer) {
+    this.isLocalPlayer = Boolean(isLocalPlayer)
+    if (!this.isLocalPlayer) {
+      if (this.attackReloadIndicator) this.attackReloadIndicator.group.visible = false
+      return
+    }
+    if (!this.attackReloadIndicator) {
+      this.attackReloadIndicator = new AttackReloadIndicator()
+      this.group.add(this.attackReloadIndicator.group)
+    }
+    this.attackReloadIndicator.update(this.state)
   }
 
   setResult(result) {

@@ -22,6 +22,17 @@ test("hero combat stats use integer values", () => {
   }
 })
 
+test("melee fallback configs can close on Needle and survive the approach", () => {
+  const needle = HEROES_CONFIG.find(hero => hero.name === "Needle")
+  const meleeHeroes = HEROES_CONFIG.filter(hero => hero.attack.archetype === "melee_cone")
+
+  assert.ok(meleeHeroes.length > 0)
+  for (const hero of meleeHeroes) {
+    assert.ok(hero.speed >= needle.speed + 3, `${hero.name} needs a clear mobility advantage`)
+    assert.ok(hero.maxLives >= needle.maxLives + 80, `${hero.name} needs enough health to approach`)
+  }
+})
+
 test("server hero kit payload takes precedence over local fallback", () => {
   const hero = normalizeHeroConfig({name: "Kaze", kit: {
     basic: {id: "server-basic", name: "Server basic", description: "authoritative"},

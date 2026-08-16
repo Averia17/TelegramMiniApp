@@ -40,7 +40,7 @@ export const StoreTab = ({economy, onEconomyChange}) => {
     setNotice("")
     try {
       const {data} = await axios.post(`${API_URL}/economy/me/chests/${product.product_id}/open`)
-      onEconomyChange?.({...economy, gold: data.gold, crystals: data.crystals, energy: data.energy, max_energy: data.max_energy, taunt_charges: data.taunt_charges ?? economy.taunt_charges})
+      onEconomyChange?.({...economy, gold: data.gold, crystals: data.crystals, energy: data.energy, max_energy: data.max_energy, taunt_active: data.taunt_active ?? economy.taunt_active, taunt_expires_at: data.taunt_expires_at ?? economy.taunt_expires_at})
       setReward({
         amount: data.energy_reward,
         rolled: data.rolled_energy,
@@ -61,7 +61,7 @@ export const StoreTab = ({economy, onEconomyChange}) => {
     setNotice("")
     try {
       const {data} = await axios.post(`${API_URL}/economy/me/taunt-pack`)
-      onEconomyChange?.({...economy, crystals: data.crystals, taunt_charges: data.taunt_charges})
+      onEconomyChange?.({...economy, crystals: data.crystals, taunt_active: data.taunt_active, taunt_expires_at: data.taunt_expires_at})
     } catch (error) {
       setNotice(error.response?.data?.detail || "Не удалось купить насмешки")
     } finally {
@@ -77,7 +77,7 @@ export const StoreTab = ({economy, onEconomyChange}) => {
     {notice && <div className="store-notice store-notice--error">{notice}</div>}
     <article className="taunt-pack-card">
       <div className="taunt-pack-card__icon">🤡</div>
-      <div className="taunt-pack-card__copy"><strong>ПАКЕТ НАСМЕШЕК</strong><span>10 использований · не влияет на силу героя</span><small>Осталось: {economy?.taunt_charges || 0}</small></div>
+      <div className="taunt-pack-card__copy"><strong>НАСМЕШКА НА ДЕНЬ</strong><span>Безлимитное использование · 24 часа</span><small>{economy?.taunt_active ? "АКТИВНА" : "НЕ КУПЛЕНА"}</small></div>
       <button type="button" disabled={tauntPurchase.disabled} title={tauntPurchase.title} onClick={buyTauntPack}><b>◆ {tauntPurchase.cost}</b><small>{tauntPurchase.buttonLabel}</small></button>
     </article>
     {status === "loading" && <StoreState text="Загружаем магазин..."/>}

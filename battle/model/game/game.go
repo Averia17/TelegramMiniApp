@@ -479,6 +479,9 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int) int {
 	wasAlive := target != nil && target.IsAlive()
 	dealt := gs.applyDamageAmount(target, amount)
+	if dealt > 0 && target != nil {
+		gs.recordLastContact(source, target)
+	}
 	if dealt > 0 && target != nil && gs.activeCommandID != "" {
 		sourceID := gs.activeSourceID
 		if source != nil {
@@ -509,6 +512,21 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		gs.finishBattleIfDecided()
 	}
 	return dealt
+}
+
+func (gs *GameState) recordLastContact(source, target *player.Player) {
+	if source == nil || target == nil {
+		return
+	}
+	dx, dy := target.X-source.X, target.Y-source.Y
+	distance := math.Hypot(dx, dy)
+	if distance > 0 {
+		dx, dy = dx/distance, dy/distance
+	}
+	target.LastContactAt = time.Now().UnixMilli()
+	target.LastContactBy = source.PlayerId
+	target.LastContactX, target.LastContactY = target.X, target.Y
+	target.LastContactDirX, target.LastContactDirY = dx, dy
 }
 
 func (gs *GameState) updateDelayedEffects() {
@@ -742,8 +760,13 @@ func (gs *GameState) updateBullets() {
 				p.SlowMultiplier = .60
 				gs.addEffect("needle_spores", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#75d947", 0, cappedSkillDuration(NeedleSporeSlowDuration))
 			}
-			if b.Kind == "katty_paint" {
-				gs.applyKattyPaint(attacker, p, time.Now().UnixMilli(), 1, false)
+			if b.Kind == "katty_paint" || b.Kind == "katty_paint_spray" {
+				now := time.Now().UnixMilli()
+				gs.applyKattyPaint(attacker, p, now, 1, false)
+				if b.Kind == "katty_paint_spray" && b.ZoneGroup == "" {
+					gs.spawnKattyPaintCloud(attacker, p.X, p.Y, now)
+					b.ZoneGroup = "katty_paint_cloud"
+				}
 			}
 			if b.Kind == "lumi_orb" {
 				gs.finishNewHeroProjectile(b)
@@ -781,6 +804,13 @@ func (gs *GameState) updateBullets() {
 			b.Active = false
 			gs.finishNewHeroProjectile(b)
 			gs.damageMonster(mid, m, int(math.Max(1, float64(b.Damage))))
+			if b.Kind == "katty_paint_spray" && b.ZoneGroup == "" {
+				if attacker := gs.Players[b.PlayerId]; attacker != nil {
+					now := time.Now().UnixMilli()
+					gs.spawnKattyPaintCloud(attacker, m.X, m.Y, now)
+					b.ZoneGroup = "katty_paint_cloud"
+				}
+			}
 		}
 
 		for _, pr := range gs.Props {
@@ -1357,7 +1387,13 @@ func (gs *GameState) playerShootWithMode(id string, ts int64, screenAngle float6
 		p.KazeCritReady = true
 	}
 	p.StealthUntil = 0
-	p.RevealedUntil = time.Now().UnixMilli() + 2000
+	revealDuration := int64(2_000)
+	if gs.isInConcealment(p) {
+		// Firing from concealment gives the hunter a fair read on the ambush
+		// without making the attacker permanently visible in open combat.
+		revealDuration = 1_200
+	}
+	p.RevealedUntil = ts + revealDuration
 	if kit := BasicCombatKitFor(p.HeroName); kit != nil {
 		distance := kit.AttackRange()
 		if len(aimDistance) > 0 && aimDistance[0] > 0 {
@@ -1508,7 +1544,7 @@ func (gs *GameState) spawnAttackBullet(p *player.Player, angle float64, kind str
 
 func wallBreakerProjectile(kind string) bool {
 	switch kind {
-	case "spore", "mina_star", "lumi_orb", "katty_paint":
+	case "spore", "mina_star", "lumi_orb", "katty_paint", "katty_paint_spray":
 		return true
 	default:
 		return false

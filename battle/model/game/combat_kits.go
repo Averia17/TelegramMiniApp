@@ -194,7 +194,7 @@ func meleeTargetRadius(source, target *player.Player) float64 {
 }
 
 func (MandyKit) AimShape() string     { return "cone" }
-func (MandyKit) AttackRange() float64 { return 70 }
+func (MandyKit) AttackRange() float64 { return heroAttackConfigs["Mandy"].Range }
 
 func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ float64) {
 	reach := MandyKit{}.AttackRange()
@@ -206,7 +206,7 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 		source.FocusCharge = 0
 		source.FocusStartedAt = ts
 	}
-	halfArc := 60.0 * math.Pi / 180
+	halfArc := heroAttackConfigs["Mandy"].HalfArcDegrees * math.Pi / 180
 	slowUntil := int64(0)
 	gadgetBoost := 1.0
 	if source.GadgetArmed {
@@ -223,12 +223,14 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 			damage = int(math.Round(float64(damage) * gadgetBoost))
 		}
 		if focused {
-			damage = int(math.Round(float64(damage) * 1.4))
+			damage = int(math.Round(float64(damage) * MandyFocusedDamageMultiplier))
 		}
 		if gs.dealPlayerDamage(source, target, damage) > 0 {
+			stunDuration := MandyStaffStunDuration
 			if focused {
-				target.StunUntil = ts + 500
+				stunDuration = MeleeSkillStunDuration
 			}
+			target.StunUntil = max(target.StunUntil, ts+stunDuration.Milliseconds())
 			if slowUntil > 0 {
 				target.SlowUntil = slowUntil
 			}
@@ -243,7 +245,7 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 			damage = int(math.Round(float64(damage) * gadgetBoost))
 		}
 		if focused {
-			damage = int(math.Round(float64(damage) * 1.4))
+			damage = int(math.Round(float64(damage) * MandyFocusedDamageMultiplier))
 		}
 		gs.damageMonster(id, target, damage)
 	}
@@ -312,6 +314,7 @@ func (gs *GameState) updatePendingMandySupers() {
 			along := math.Abs((target.X-cast.X)*math.Cos(cast.Angle) + (target.Y-cast.Y)*math.Sin(cast.Angle))
 			progress := math.Min(1, along/math.Max(1, reach))
 			gs.dealPlayerDamage(source, target, int(math.Round(140*(1+progress*.6))))
+			target.StunUntil = max(target.StunUntil, now+MeleeSkillStunDuration.Milliseconds())
 		}
 		for id, target := range gs.Monsters {
 			if target != nil && target.IsAlive() && insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {

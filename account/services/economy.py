@@ -11,7 +11,6 @@ MAX_ENERGY = 100
 ENERGY_REGEN_SECONDS = 300
 WIN_GOLD = 10
 TAUNT_COST = 10
-TAUNT_PACK_CHARGES = 10
 CHESTS = {
     1001: {"reward": (5, 10), "crystal_chance": 10, "crystal_reward": (5, 10)},
     1002: {"reward": (15, 20), "crystal_chance": 20, "crystal_reward": (15, 20)},
@@ -80,6 +79,7 @@ async def get_wallet(session, user_id, lock=False):
             gold=0,
             crystals=0,
             taunt_charges=0,
+            taunt_expires_at=None,
             energy=MAX_ENERGY,
         )
         session.add(wallet)
@@ -90,13 +90,19 @@ async def get_wallet(session, user_id, lock=False):
 async def wallet_view(session, user_id):
     wallet, next_in = await get_wallet(session, user_id, True)
     await session.commit()
+    now = datetime.now(timezone.utc)
+    taunt_expires_at = wallet.taunt_expires_at
+    if taunt_expires_at and taunt_expires_at.tzinfo is None:
+        taunt_expires_at = taunt_expires_at.replace(tzinfo=timezone.utc)
     return {
         "user_id": user_id,
         "gold": wallet.gold,
         "crystals": wallet.crystals,
         "taunt_charges": wallet.taunt_charges,
+        "taunt_active": bool(taunt_expires_at and taunt_expires_at > now),
+        "taunt_expires_at": taunt_expires_at.isoformat() if taunt_expires_at else None,
         "taunt_pack_cost": TAUNT_COST,
-        "taunt_pack_charges": TAUNT_PACK_CHARGES,
+        "taunt_pack_charges": 0,
         "energy": wallet.energy,
         "max_energy": MAX_ENERGY,
         "next_energy_in": next_in,
@@ -114,32 +120,37 @@ async def spend_battle_energy(session, user_id):
     return await wallet_view(session, user_id)
 
 
-async def spend_taunt(session, user_id, taunt_id):
+async def spend_taunt(session, user_id, taunt_id, now=None):
     if taunt_id != "clown_laugh":
         raise LookupError("Насмешка не найдена")
     wallet, _ = await get_wallet(session, user_id, True)
-    if wallet.taunt_charges < 1:
+    now = now or datetime.now(timezone.utc)
+    expires_at = wallet.taunt_expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if not expires_at or expires_at <= now:
         raise ValueError("Нет оплаченных насмешек")
-    wallet.taunt_charges -= 1
     await session.commit()
     return {
         "taunt_id": taunt_id,
-        "charges": wallet.taunt_charges,
+        "taunt_active": True,
+        "taunt_expires_at": expires_at.isoformat(),
         "crystals": wallet.crystals,
     }
 
 
-async def purchase_taunt_pack(session, user_id):
+async def purchase_taunt_pack(session, user_id, now=None):
     wallet, _ = await get_wallet(session, user_id, True)
     if wallet.crystals < TAUNT_COST:
         raise ValueError("Недостаточно кристаллов")
     wallet.crystals -= TAUNT_COST
-    wallet.taunt_charges += TAUNT_PACK_CHARGES
+    now = now or datetime.now(timezone.utc)
+    wallet.taunt_expires_at = now + timedelta(days=1)
     await session.commit()
     return {
         "cost": TAUNT_COST,
-        "charges_added": TAUNT_PACK_CHARGES,
-        "taunt_charges": wallet.taunt_charges,
+        "taunt_active": True,
+        "taunt_expires_at": wallet.taunt_expires_at.isoformat(),
         "crystals": wallet.crystals,
     }
 

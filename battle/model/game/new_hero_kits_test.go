@@ -10,7 +10,7 @@ import (
 func TestNewHeroCombatKitsAreRegistered(t *testing.T) {
 	want := map[string]string{
 		"Fairy Mina": "cone", "Brock Zeus": "line", "Kaze": "cone",
-		"Wukong Mico": "cone", "Persephone Lumi": "line", "Katty": "cone",
+		"Wukong Mico": "cone", "Persephone Lumi": "cone", "Katty": "line",
 	}
 	for name, shape := range want {
 		kit := CombatKitFor(name)
@@ -454,7 +454,7 @@ func TestKazeSuperCrossesAndStunsEnemy(t *testing.T) {
 	p.X, p.Y, enemy.X, enemy.Y = 500, 500, 650, 500
 	now := time.Now().UnixMilli()
 	KazeKit{}.Super(gs, p, now, 0, 0)
-	if enemy.Lives != enemy.MaxLives-160 || enemy.StunUntil != now+500 {
+	if enemy.Lives != enemy.MaxLives-160 || enemy.StunUntil != now+MeleeSkillStunDuration.Milliseconds() {
 		t.Fatalf("enemy lives=%d stun=%d", enemy.Lives, enemy.StunUntil)
 	}
 	if p.KazeCombo != 2 {
@@ -647,20 +647,22 @@ func TestLumiFlowerRevealsEnemiesWhileSlowingThem(t *testing.T) {
 	}
 }
 
-func TestLumiBasicCreatesOneFlowerOnlyAtProjectileStop(t *testing.T) {
+func TestLumiBasicUsesCloseRangeWeaponSwing(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("lumi", "Lumi", "Persephone Lumi")
-	lumi := gs.Players["lumi"]
-	lumi.X, lumi.Y = 400, 400
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	lumi, enemy := gs.Players["lumi"], gs.Players["enemy"]
+	lumi.X, lumi.Y, enemy.X, enemy.Y = 400, 400, 500, 400
+	before := enemy.Lives
 
 	PersephoneLumiKit{}.Basic(gs, lumi, time.Now().UnixMilli(), 0, 0)
-	shot := gs.Bullets[0]
-	shot.Travelled = shot.MaxRange
-	gs.updateBullets()
 
-	if len(gs.HeroZones) != 1 || gs.HeroZones[0].Kind != "lumi_flower" {
-		t.Fatalf("Lumi zones=%#v, want one flower at projectile stop", gs.HeroZones)
+	if enemy.Lives >= before {
+		t.Fatalf("Lumi melee attack did not damage close enemy: before=%d after=%d", before, enemy.Lives)
+	}
+	if len(gs.Bullets) != 0 {
+		t.Fatalf("Lumi melee attack spawned %d projectile(s), want none", len(gs.Bullets))
 	}
 }
 

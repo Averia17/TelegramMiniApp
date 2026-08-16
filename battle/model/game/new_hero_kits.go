@@ -16,6 +16,13 @@ type PersephoneLumiKit struct{}
 
 const (
 	KattyPaintBonusMultiplier = .30
+	KattySprayRange           = 220.0
+	KattySprayCloudRadius     = 58.0
+	KattySprayCloudDuration   = 1800 * time.Millisecond
+	KattySprayCloudTick       = 400 * time.Millisecond
+	KattySprayCloudDamage     = 6
+	KattySprayCloudTicks      = 4
+	KattySprayCloudSlow       = .72
 	KattySuperRadius          = 220.0
 	KattySuperDuration        = 7500 * time.Millisecond
 	KattyPaintTrailWidth      = 42.0
@@ -30,6 +37,9 @@ const (
 	NeedleMoistureHealFraction    = .05
 	KazeComboWindow               = 2 * time.Second
 	KazeEmpoweredDamageMultiplier = 1.75
+	MeleeSkillStunDuration        = 1 * time.Second
+	MandyFocusedDamageMultiplier  = 1.5
+	MandyStaffStunDuration        = 250 * time.Millisecond
 	MicoVortexBaseDuration        = 3 * time.Second
 	MicoVortexDurationPerRage     = 400 * time.Millisecond
 	MicoVortexBaseRadius          = 150.0
@@ -74,26 +84,18 @@ func (MinaKit) AttackRange() float64           { return 510 }
 func (BrockZeusKit) AimShape() string          { return "line" }
 func (BrockZeusKit) AttackRange() float64      { return 760 }
 func (KazeKit) AimShape() string               { return "cone" }
-func (KazeKit) AttackRange() float64           { return 105 }
+func (KazeKit) AttackRange() float64           { return heroAttackConfigs["Kaze"].Range }
 func (WukongMicoKit) AimShape() string         { return "cone" }
-func (WukongMicoKit) AttackRange() float64     { return 120 }
-func (PersephoneLumiKit) AimShape() string     { return "line" }
-func (PersephoneLumiKit) AttackRange() float64 { return 600 }
-func (KattyKit) AimShape() string              { return "cone" }
-func (KattyKit) AttackRange() float64          { return 240 }
+func (WukongMicoKit) AttackRange() float64     { return heroAttackConfigs["Wukong Mico"].Range }
+func (PersephoneLumiKit) AimShape() string     { return "cone" }
+func (PersephoneLumiKit) AttackRange() float64 { return heroAttackConfigs["Persephone Lumi"].Range }
+func (KattyKit) AimShape() string              { return "line" }
+func (KattyKit) AttackRange() float64          { return KattySprayRange }
 
 func (KattyKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64) {
-	const spread = 22.5 * math.Pi / 180
-	for index := 0; index < 3; index++ {
-		shotAngle := angle + float64(index-1)*spread
-		gs.ScheduledShots = append(gs.ScheduledShots, &ScheduledShot{
-			Owner: p.PlayerId, CommandID: gs.activeCommandID, Angle: shotAngle,
-			SpawnAt: ts + 200 + int64(index)*150, Damage: p.AttackDmg,
-			Speed: 28 * RuntimeProjectileSpeedScale, Size: 7,
-			MaxRange: KattyKit{}.AttackRange(), Kind: "katty_paint",
-		})
-	}
-	gs.addEffect("katty_paint_queue", p.X, p.Y, 0, 0, KattyKit{}.AttackRange(), angle, KattyKit{}.AttackRange(), spread, p.Color, p.AttackDmg, 700)
+	shot := gs.spawnAttackBullet(p, angle, "katty_paint_spray", p.AttackDmg, 30*RuntimeProjectileSpeedScale, 10, KattyKit{}.AttackRange(), 0, false, false)
+	shot.CommandID = gs.activeCommandID
+	gs.addEffect("katty_paint_spray", p.X, p.Y, 0, 0, KattyKit{}.AttackRange(), angle, 0, .20, p.Color, p.AttackDmg, 260)
 }
 
 func (KattyKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
@@ -154,6 +156,24 @@ func (gs *GameState) applyKattyPaint(source, target *player.Player, ts int64, la
 		gs.dealPlayerDamage(source, target, bonus)
 	}
 	gs.addEffect("katty_paint_stick", target.X, target.Y, 0, 0, target.Radius+16, 0, 0, 0, source.Color, bonus, 800)
+}
+
+func (gs *GameState) spawnKattyPaintCloud(source *player.Player, x, y float64, ts int64) {
+	if gs == nil || source == nil {
+		return
+	}
+	expiresAt := ts + KattySprayCloudDuration.Milliseconds()
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{
+		Owner: source.PlayerId, Kind: "katty_paint_cloud", X: x, Y: y, Radius: KattySprayCloudRadius,
+		CreatedAt: ts, ExpiresAt: expiresAt, NextTickAt: ts, Triggered: map[string]bool{},
+	})
+	gs.DamageZones = append(gs.DamageZones, &DamageZone{
+		Owner: source.PlayerId, X: x, Y: y, Radius: KattySprayCloudRadius,
+		Damage: KattySprayCloudDamage, TicksLeft: KattySprayCloudTicks,
+		NextTickAt: ts + 250, Interval: KattySprayCloudTick.Milliseconds(), ExpiresAt: expiresAt,
+		Kind: "katty_paint_cloud", Color: source.Color,
+	})
+	gs.addEffect("katty_paint_cloud", x, y, 0, 0, KattySprayCloudRadius, 0, 0, 0, source.Color, KattySprayCloudDamage, KattySprayCloudDuration.Milliseconds())
 }
 
 func (MinaKit) Basic(gs *GameState, p *player.Player, _ int64, angle, _ float64) {
@@ -233,6 +253,7 @@ func (BrockZeusKit) Super(gs *GameState, p *player.Player, ts int64, angle, dist
 }
 
 func (KazeKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64) {
+	config := heroAttackConfigs["Kaze"]
 	if ts > p.KazeComboUntil {
 		p.KazeCombo = 0
 	}
@@ -242,14 +263,14 @@ func (KazeKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64
 		damage = int(math.Round(float64(p.AttackDmg) * KazeEmpoweredDamageMultiplier))
 		p.KazeCritReady = false
 	}
-	hits := gs.hitSector(p, angle, 105, 55*math.Pi/180, damage, false)
+	hits := gs.hitSector(p, angle, config.Range, config.HalfArcDegrees*math.Pi/180, damage, false)
 	if empowered {
 		p.KazeCombo, p.KazeComboUntil = 0, 0
 	} else if hits > 0 {
 		p.KazeCombo++
 		p.KazeComboUntil = ts + KazeComboWindow.Milliseconds()
 	}
-	gs.addEffect("kaze_cross_slash", p.X, p.Y, 0, 0, 105, angle, 105, .9, p.Color, damage, 260)
+	gs.addEffect("kaze_cross_slash", p.X, p.Y, 0, 0, config.Range, angle, config.Range, config.HalfArcDegrees*math.Pi/180, p.Color, damage, 260)
 }
 func (KazeKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ float64) bool {
 	startX, startY := p.X, p.Y
@@ -259,7 +280,7 @@ func (KazeKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ float64
 		if target.CanBulletHurt(p.PlayerId, p.Team) && segmentHitsCircle(startX, startY, p.X, p.Y, target.X, target.Y, target.Radius+18) {
 			hit = true
 			gs.dealPlayerDamage(p, target, 160)
-			target.StunUntil = ts + 500
+			target.StunUntil = max(target.StunUntil, ts+MeleeSkillStunDuration.Milliseconds())
 			p.KazeCombo, p.KazeComboUntil = 2, ts+KazeComboWindow.Milliseconds()
 		}
 	}
@@ -271,8 +292,9 @@ func (KazeKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ float64
 }
 
 func (WukongMicoKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64) {
-	const reach = 120.0
-	const halfArc = 50.0 * math.Pi / 180
+	config := heroAttackConfigs["Wukong Mico"]
+	reach := config.Range
+	halfArc := config.HalfArcDegrees * math.Pi / 180
 	hits := gs.hitSector(p, angle, reach, halfArc, p.AttackDmg, false)
 	if hits > 0 {
 		p.MicoRage = int(math.Min(5, float64(p.MicoRage+1)))
@@ -289,7 +311,13 @@ func (WukongMicoKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ f
 	}
 	gs.addEffect("mico_staff_swing", p.X, p.Y, 0, 0, reach, angle, reach, halfArc, p.Color, p.AttackDmg, 360)
 }
-func (WukongMicoKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ float64) bool {
+func (WukongMicoKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
+	if distance > 0 {
+		leapDistance := math.Min(140, math.Max(0, distance*.5))
+		startX, startY := p.X, p.Y
+		gs.vaultMove(p, angle, leapDistance)
+		gs.addEffect("mico_leap", startX, startY, p.X, p.Y, 24, angle, leapDistance, 0, p.Color, 0, 360)
+	}
 	rage := p.MicoRage
 	duration := cappedSkillDuration(MicoVortexBaseDuration + time.Duration(rage)*MicoVortexDurationPerRage)
 	radius := MicoVortexBaseRadius + float64(rage)*MicoVortexRadiusPerRage
@@ -299,13 +327,24 @@ func (WukongMicoKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ f
 	p.VortexRadius = radius
 	p.VortexDamage = 4 + rage*2
 	gs.radialDamage(p.PlayerId, p.X, p.Y, radius, damage)
+	for _, target := range gs.Players {
+		if target.CanBulletHurt(p.PlayerId, p.Team) && math.Hypot(target.X-p.X, target.Y-p.Y) <= radius+target.Radius {
+			target.StunUntil = max(target.StunUntil, ts+MeleeSkillStunDuration.Milliseconds())
+		}
+	}
 	gs.addEffect("mico_staff_spin", p.X, p.Y, 0, 0, radius, angle, radius, math.Pi, p.Color, damage, duration)
 	return true
 }
 
 func (PersephoneLumiKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64) {
-	shot := gs.spawnAttackBullet(p, angle, "lumi_orb", p.AttackDmg, p.BulletSpd, p.BulletSz, 600, 0, false, false)
-	shot.SpawnedAt = ts
+	config := heroAttackConfigs["Persephone Lumi"]
+	reach := config.Range
+	halfArc := config.HalfArcDegrees * math.Pi / 180
+	gs.hitSector(p, angle, reach, halfArc, p.AttackDmg, false)
+	flowerX := p.X + math.Cos(angle)*reach
+	flowerY := p.Y + math.Sin(angle)*reach
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "lumi_flower", X: flowerX, Y: flowerY, Radius: 70, CreatedAt: ts, ExpiresAt: ts + 6000, Triggered: map[string]bool{}})
+	gs.addEffect("lumi_scythe_swing", p.X, p.Y, 0, 0, reach, angle, reach, halfArc, p.Color, p.AttackDmg, 320)
 }
 func (PersephoneLumiKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
 	distance = math.Max(80, math.Min(520, distance))
@@ -521,6 +560,15 @@ func (gs *GameState) updateNewHeroSystems() {
 					}
 					target.SlowUntil = now + 250
 					target.SlowMultiplier = .80
+				}
+			}
+		}
+		if z.Kind == "katty_paint_cloud" {
+			owner := gs.Players[z.Owner]
+			for _, target := range gs.Players {
+				if owner != nil && target.CanBulletHurt(owner.PlayerId, owner.Team) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {
+					target.SlowUntil = now + 350
+					target.SlowMultiplier = KattySprayCloudSlow
 				}
 			}
 		}

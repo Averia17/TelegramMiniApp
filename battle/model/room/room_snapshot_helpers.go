@@ -6,6 +6,18 @@ import (
 	"math"
 )
 
+const lastContactTTL = int64(2_000)
+
+func lastContactForClient(target *player.Player, viewerID string, now int64) *game.LastContactJSON {
+	if target == nil || target.LastContactBy != viewerID || target.LastContactAt <= 0 || now-target.LastContactAt > lastContactTTL {
+		return nil
+	}
+	return &game.LastContactJSON{
+		X: target.LastContactX, Y: target.LastContactY, At: target.LastContactAt,
+		DirectionX: target.LastContactDirX, DirectionY: target.LastContactDirY,
+	}
+}
+
 func combatEventsForClient(events []game.CombatEvent, playerID string, now int64) []game.CombatEventJSON {
 	count := 0
 	for _, event := range events {
@@ -58,6 +70,19 @@ func visiblePlayersForClient(state *game.GameState, viewerID string, all map[str
 				visibleTarget := state.Players[visibleID]
 				if visibleTarget != nil && isPlayerVisible(state, viewer, viewerID, visibleID, visibleTarget, now) {
 					visible[visibleID] = snapshot
+					continue
+				}
+				if visibleTarget != nil {
+					if contact := lastContactForClient(visibleTarget, viewerID, now); contact != nil {
+						snapshot.X, snapshot.Y = contact.X, contact.Y
+						// A last-contact marker is intentionally not a stale full player
+						// snapshot. Do not leak health, ammo, or charge while the target is
+						// concealed; only the directional contact clue is actionable.
+						snapshot.Lives, snapshot.MaxLives = 0, 0
+						snapshot.Ammo, snapshot.SuperCharge = 0, 0
+						snapshot.Hidden, snapshot.LastContact = true, contact
+						visible[visibleID] = snapshot
+					}
 				}
 			}
 			return visible

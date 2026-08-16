@@ -93,37 +93,39 @@ class EconomyRefillTests(unittest.IsolatedAsyncioTestCase):
 
 
 class EconomyTauntTests(unittest.IsolatedAsyncioTestCase):
-    async def test_purchase_taunt_pack_deducts_crystals_and_adds_charges(self):
+    async def test_purchase_taunt_day_deducts_crystals_and_grants_24_hours(self):
         now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
         wallet = _Wallet(100, now, crystals=15, taunt_charges=2)
         session = _Session([wallet])
 
-        result = await purchase_taunt_pack(session, 42)
+        result = await purchase_taunt_pack(session, 42, now=now)
 
         self.assertEqual(wallet.crystals, 5)
-        self.assertEqual(wallet.taunt_charges, 12)
-        self.assertEqual(result["taunt_charges"], 12)
+        self.assertEqual(result["taunt_active"], True)
+        self.assertEqual(result["taunt_expires_at"], "2026-07-30T12:00:00+00:00")
         self.assertEqual(session.commits, 1)
 
-    async def test_spend_taunt_consumes_one_charge_without_consuming_crystals(self):
+    async def test_spend_taunt_does_not_consume_usage_during_active_day(self):
         now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
         wallet = _Wallet(100, now, crystals=15, taunt_charges=2)
+        wallet.taunt_expires_at = now + timedelta(days=1)
         session = _Session([wallet])
 
-        result = await spend_taunt(session, 42, "clown_laugh")
+        result = await spend_taunt(session, 42, "clown_laugh", now=now)
 
         self.assertEqual(wallet.crystals, 15)
-        self.assertEqual(wallet.taunt_charges, 1)
-        self.assertEqual(result["charges"], 1)
+        self.assertEqual(wallet.taunt_charges, 2)
+        self.assertEqual(result["taunt_active"], True)
         self.assertEqual(session.commits, 1)
 
-    async def test_spend_taunt_rejects_when_no_charges_remain(self):
+    async def test_spend_taunt_rejects_after_day_expires(self):
         now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
         wallet = _Wallet(100, now, crystals=15, taunt_charges=0)
+        wallet.taunt_expires_at = now
         session = _Session([wallet])
 
         with self.assertRaisesRegex(ValueError, "оплаченных"):
-            await spend_taunt(session, 42, "clown_laugh")
+            await spend_taunt(session, 42, "clown_laugh", now=now)
 
         self.assertEqual(wallet.crystals, 15)
         self.assertEqual(wallet.taunt_charges, 0)
