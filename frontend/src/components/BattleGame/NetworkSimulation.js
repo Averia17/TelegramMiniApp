@@ -1,4 +1,6 @@
 import {DamagePrediction} from "./DamagePrediction.js"
+import {createBattleContext, createBattleMode} from "./battleMode.js"
+import {isBlockingWall, preserveAuthoritativeMapWalls} from "./mapContract.js"
 import {endBattlePerformance, recordBattleMetric, startBattlePerformance} from "./rendering/shared/performance.js"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
@@ -33,18 +35,8 @@ const worldAngleFromScreen = angle => Math.atan2(Math.sin(angle) / SCREEN_DEPTH_
 
 const angleDelta = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b))
 
-const isDefended = entity =>
-  Number(entity?.invulnerable) > 0 ||
-  Number(entity?.shield) > 0 ||
-  Number(entity?.shieldHp) > 0 ||
-  Number(entity?.shieldStacks) > 0 ||
-  (Number(entity?.stealth) > 0 && Number(entity?.dodges) > 0)
-
-const canDamage = (source, target) =>
-  target && Number(target.lives) > 0 &&
-  String(source?.playerId || "") !== String(target.playerId || "") &&
-  (!source?.team || source.team !== target.team) &&
-  !isDefended(target)
+const canDamage = (source, target, battleMode = createBattleMode()) =>
+  battleMode.canDamage(source, target)
 
 const targetEntries = (players = {}, monsters = {}) => [
   ...Object.entries(players).map(([id, entity]) => ({type: "players", id, entity})),
@@ -58,10 +50,10 @@ const meleeAutoAimReach = source => {
   return source?.hero === "Mandy" && Number(source?.focusCharge) >= 100 ? base * 1.35 : base
 }
 
-const nearestMeleeAutoAimTarget = (source, players = {}, monsters = {}) => {
+const nearestMeleeAutoAimTarget = (source, players = {}, monsters = {}, battleMode = createBattleMode()) => {
   const reach = meleeAutoAimReach(source)
   const nearest = entries => entries
-    .filter(({entity}) => canDamage(source, entity))
+    .filter(({entity}) => canDamage(source, entity, battleMode))
     .map(entry => ({...entry, distance: distanceBetween(source, entry.entity)}))
     .filter(({entity, distance}) => {
       const movingAssist = Math.hypot(Number(entity.moveX) || 0, Number(entity.moveY) || 0) > .01
@@ -79,20 +71,6 @@ const attackDamage = player => {
   damage *= Math.max(1, Number(player?.damageMultiplier) || 1)
   if (player?.hero === "Mandy" && Number(player?.focusCharge) >= 100) damage *= 1.5
   return damage > 0 ? Math.max(1, Math.round(damage)) : 0
-}
-
-const blockingWall = wall => typeof wall?.blocking === "boolean"
-  ? wall.blocking
-  : wall?.type !== "half" && wall?.type !== "bush" && wall?.type !== "moon_mist"
-
-const preserveMapWalls = (map, previousMap) => {
-  if (!map) return map
-  const previousWalls = previousMap?.walls
-  const incomingWalls = map.walls
-  if (!Array.isArray(previousWalls) || previousWalls.length === 0) return map
-  if (Array.isArray(incomingWalls) && incomingWalls.length > 0) return map
-  if (map.width !== previousMap.width || map.height !== previousMap.height) return map
-  return {...map, walls: previousWalls}
 }
 
 const cellCoordinate = value => Math.floor((Number(value) || 0) / COLLISION_CELL_SIZE)
@@ -116,7 +94,7 @@ export const createCollisionIndex = walls => {
   const cells = new Map()
   const blockingWalls = []
   source.forEach((wall, index) => {
-    if (!blockingWall(wall)) return
+    if (!isBlockingWall(wall)) return
     blockingWalls.push(wall)
     const minX = cellCoordinate(wall.minX)
     const maxX = cellCoordinate(wall.maxX)
@@ -353,6 +331,7 @@ export class NetworkSimulation {
     this.collisionIndexSource = null
     this.collisionIndex = EMPTY_COLLISION_INDEX
     this.collisionQueryResult = []
+    this.battleContext = createBattleContext()
   }
 
   setLocalPlayerId(id) {
@@ -386,8 +365,9 @@ export class NetworkSimulation {
 
   ingest(state, clockOffset = null, receivedAt = Date.now()) {
     if (!state || state.type !== "state") return
-    const map = preserveMapWalls(state.map, this.latestState?.map)
+    const map = preserveAuthoritativeMapWalls(state.map, this.latestState?.map)
     const normalizedState = map === state.map ? state : {...state, map}
+    this.battleContext = createBattleContext(normalizedState)
     const timestamp = Number(state.ts)
     const lastTimestamp = Number(this.snapshots.at(-1)?.ts)
     if (Number.isFinite(timestamp) && Number.isFinite(lastTimestamp) && timestamp < lastTimestamp) return
@@ -476,7 +456,7 @@ export class NetworkSimulation {
     }
     if (autoAim) {
       if (source.attackArchetype !== "melee_cone") return []
-      const target = nearestMeleeAutoAimTarget(source, state.players, state.monsters)
+      const target = nearestMeleeAutoAimTarget(source, state.players, state.monsters, this.battleContext.mode)
       if (!target) return []
       this.pendingLocalAttack = {
         rotation: Math.atan2(Number(target.y) - Number(source.y), Number(target.x) - Number(source.x)),
@@ -497,7 +477,7 @@ export class NetworkSimulation {
     const predicted = []
 
     targetEntries(state.players, state.monsters).forEach(({type, id, entity}) => {
-      if (!canDamage(source, entity)) return
+      if (!canDamage(source, entity, this.battleContext.mode)) return
       const target = {...entity, x: Number(entity.x), y: Number(entity.y)}
       let hit = false
       if (archetype === "melee_cone") {

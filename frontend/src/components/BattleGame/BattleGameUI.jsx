@@ -1,5 +1,6 @@
 import {memo, useEffect, useRef} from "react"
 import {getBattleRewardMessage} from "./battleOutcome"
+import {getTeamHudModel} from "./teamBattleUi.js"
 import {getIslandPhaseIndex, getIslandPhaseProgress, ISLAND_PHASE_ORDER} from "./phaseVisuals.js"
 
 const ISLAND_PHASES = {
@@ -121,6 +122,16 @@ export const AbilityButton = ({keyName, label, description, cooldown = 0, charge
     <span>{label}</span>
   </button>
 )
+
+export const TeamBattleHud = ({state, localId}) => {
+  const model = getTeamHudModel(state, localId)
+  if (!model) return null
+  return <section className="team-battle-hud" aria-label="Счёт команд">
+    {model.teams.map(team => <div key={team.id} className={`team-battle-hud__team${team.isLocal ? " is-local" : ""}`}>
+      <b>{team.label}</b><span>{team.alive} живы · {team.kills} фрагов</span>
+    </div>)}
+  </section>
+}
 
 export const TauntButton = ({cooldown = 0, disabled = false, onUse}) => (
   <button className="battle-ability battle-taunt" title="Показать клоуна над ближайшим противником" aria-label="Показать клоуна над ближайшим противником" disabled={disabled || cooldown > 0} onClick={onUse}>

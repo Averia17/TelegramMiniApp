@@ -6,7 +6,7 @@ import {Input} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
 import {getHeroSkill} from "./heroSkills.js"
 import {getBattlePlayerCount, getPlayerBattleStats, getPresentedBattleResult, getSynchronizedBattleView} from "./battleOutcome"
-import {AbilityButton, ActiveStatusEffects, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TauntButton, TouchStick} from "./BattleGameUI.jsx"
+import {AbilityButton, ActiveStatusEffects, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TauntButton, TeamBattleHud, TouchStick} from "./BattleGameUI.jsx"
 import {getAttackCooldownVisual} from "./attackCooldownVisual.js"
 import {getActiveStatusEffects} from "./statusEffects.js"
 import {formatBattleMessage} from "./battleMessages.js"
@@ -19,6 +19,7 @@ import {WS_URL} from "../../utils/urls.js"
 import {getAccessToken} from "../../utils/auth.js"
 import {BattleLoading} from "../BattleLoading/BattleLoading.jsx"
 import {getBattleLoadingProgress} from "./battleLoadingProgress.js"
+import {normalizeTeamBattleResult} from "./teamBattleUi.js"
 import "./BattleGame.css"
 
 
@@ -82,7 +83,11 @@ export const BattleGame = ({playerId, roomId, heroName, tauntActive = false}) =>
       Date.now(),
       {eliminated: result.won === false},
     )
-    const normalized = {duration:0,kills:0,monsters:0,...snapshotStats,...result}
+    const normalized = normalizeTeamBattleResult(
+      {duration:0,kills:0,monsters:0,...snapshotStats,...result},
+      latestStateRef.current,
+      clientRef.current?.playerId,
+    )
     saveBattleResult(normalized)
     setBattleResult(normalized)
     setView(normalized.won ? "result" : normalized.timedOut ? "timeout" : "dead")
@@ -566,6 +571,7 @@ export const BattleGame = ({playerId, roomId, heroName, tauntActive = false}) =>
               </div>
             )}
             {gameState?.map && <BattleMiniMap state={gameState} localId={clientRef.current?.playerId} renderer={rendererRef.current}/>}
+            <TeamBattleHud state={gameState} localId={clientRef.current?.playerId}/>
             {localPlayer && (
               <div className="battle-abilities">
                 <AbilityButton slot="primary" keyName="Q" label={getHeroSkill(localPlayer.hero, "primary").name} description={getHeroSkill(localPlayer.hero, "primary").description} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper onUse={() => clientRef.current?.ability?.("primary")}/>

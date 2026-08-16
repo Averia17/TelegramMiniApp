@@ -238,17 +238,7 @@ func HandleJoin(c *mroom.Client, data []byte) {
 		req.RoomName = "room_" + shortID(c.Id)
 	}
 	req.RoomName = boundedText(req.RoomName, 32)
-	if req.RoomMap != "small" && req.RoomMap != "battle-royale" {
-		req.RoomMap = "battle-royale"
-	}
-	if req.Mode != string(game.ModeDeathmatch) && req.Mode != string(game.ModeTeamDeathmatch) {
-		req.Mode = "deathmatch"
-	}
-	if req.MaxPlayers <= 0 {
-		req.MaxPlayers = 8
-	} else if req.MaxPlayers > 8 {
-		req.MaxPlayers = 8
-	}
+	profile := mroom.NormalizeMatchProfile(req.Mode, req.RoomMap, req.MaxPlayers)
 	if req.PlayerName == "" {
 		req.PlayerName = shortID(c.Id)
 	}
@@ -258,8 +248,9 @@ func HandleJoin(c *mroom.Client, data []byte) {
 		req.HeroName = "Needle"
 	}
 
-	r := mroom.GetOrCreateRoom(req.RoomName, req.RoomName, req.RoomMap, req.Mode, req.MaxPlayers)
+	r := mroom.GetOrCreateRoomFor(req.RoomName, req.RoomName, profile)
 	c.Room = r
+	c.Profile = profile
 	c.Name = req.PlayerName
 	c.HeroName = req.HeroName
 
@@ -313,6 +304,9 @@ func HandleFindMatch(c *mroom.Client, data []byte) {
 		Type       string `json:"type"`
 		PlayerName string `json:"playerName"`
 		HeroName   string `json:"heroName"`
+		RoomMap    string `json:"roomMap"`
+		MaxPlayers int    `json:"maxPlayers"`
+		Mode       string `json:"mode"`
 	}
 	if err := json.Unmarshal(data, &req); err != nil {
 		sendError(c, "Invalid match request")
@@ -329,6 +323,7 @@ func HandleFindMatch(c *mroom.Client, data []byte) {
 	}
 	c.Name = req.PlayerName
 	c.HeroName = req.HeroName
+	c.Profile = mroom.NormalizeMatchProfile(req.Mode, req.RoomMap, req.MaxPlayers)
 
 	sroom.AddToMatchQueue(c)
 }
@@ -389,13 +384,23 @@ func HandleListRooms(c *mroom.Client) {
 }
 
 func sendRoomJoined(c *mroom.Client, r *mroom.Room) {
+	mapID := ""
+	mapRevision := 0
+	if r.State != nil {
+		mapRevision = r.State.MapRevision
+		if r.State.Map != nil {
+			mapID = r.MapName
+		}
+	}
 	params := game.RoomJoinedParams{
-		PlayerId:   c.Id,
-		RoomId:     r.Id,
-		RoomName:   r.Name,
-		MapName:    r.MapName,
-		Mode:       r.Mode,
-		MaxPlayers: r.MaxPlayers,
+		PlayerId:    c.Id,
+		RoomId:      r.Id,
+		RoomName:    r.Name,
+		MapName:     r.MapName,
+		MapID:       mapID,
+		MapRevision: mapRevision,
+		Mode:        r.Mode,
+		MaxPlayers:  r.MaxPlayers,
 	}
 	msg := game.NewServerMessage("room_joined", params)
 	msgData, _ := json.Marshal(msg)

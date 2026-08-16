@@ -22,6 +22,7 @@ type Client struct {
 	MessageWindow time.Time
 	MessageCount  int
 	LastTauntAt   int64
+	Profile       MatchProfile
 }
 
 type Room struct {

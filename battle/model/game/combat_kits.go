@@ -64,26 +64,7 @@ const (
 )
 
 func CombatKitFor(hero string) CombatKit {
-	switch hero {
-	case "Needle":
-		return NeedleKit{}
-	case "Mandy":
-		return MandyKit{}
-	case "Fairy Mina":
-		return MinaKit{}
-	case "Brock Zeus":
-		return BrockZeusKit{}
-	case "Kaze":
-		return KazeKit{}
-	case "Wukong Mico":
-		return WukongMicoKit{}
-	case "Persephone Lumi":
-		return PersephoneLumiKit{}
-	case "Katty":
-		return KattyKit{}
-	default:
-		return nil
-	}
+	return defaultCombatRegistry.CombatKitFor(hero)
 }
 
 func (gs *GameState) autoAimTarget(owner string) (float64, float64) {
@@ -153,6 +134,20 @@ func autoAimAttackReach(source *player.Player) float64 {
 		reach *= 1.35
 	}
 	return reach
+}
+
+func (gs *GameState) combatKitFor(hero string) CombatKit {
+	if gs != nil && gs.combatRegistry != nil {
+		return gs.combatRegistry.CombatKitFor(hero)
+	}
+	return CombatKitFor(hero)
+}
+
+func (gs *GameState) basicCombatKitFor(hero string) BasicCombatKit {
+	if gs != nil && gs.combatRegistry != nil {
+		return gs.combatRegistry.BasicCombatKitFor(hero)
+	}
+	return BasicCombatKitFor(hero)
 }
 
 func (gs *GameState) autoAimHitsTarget(source *player.Player, targetX, targetY, targetRadius, angle, reach, halfArc float64) bool {

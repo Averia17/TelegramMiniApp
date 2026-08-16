@@ -63,142 +63,54 @@ func (r *Room) Run() {
 	for {
 		select {
 		case client := <-r.Register:
-			r.mu.Lock()
-			if client.State == nil {
-				client.State = make(chan []byte, 1)
-			}
-			if r.Disconnected == nil {
-				r.Disconnected = make(map[string]time.Time)
-			}
-			emptySince = time.Time{}
-			previous := r.Clients[client.Id]
-			existingPlayer := r.State.Players[client.Id]
-			r.Clients[client.Id] = client
-			delete(r.Disconnected, client.Id)
-
-			if previous != nil && previous != client {
-				// A newer authenticated connection owns this player now. The old
-				// read pump may still send Unregister, so Unregister must verify
-				// that it is still the current client before removing anything.
-				close(previous.Send)
-				if previous.Conn != nil {
-					_ = previous.Conn.Close()
-				}
-			}
-
-			if existingPlayer != nil {
-				// Reconnects resume the authoritative server-side player. Client
-				// supplied name/hero values must not reset battle progress.
-				client.Name = existingPlayer.Name
-				client.HeroName = existingPlayer.HeroName
-			} else {
-				lateJoin := r.State.State == game.GameStateGame
-				r.State.PlayerAdd(client.Id, client.Name, client.HeroName)
-				if lateJoin {
-					if joined := r.State.Players[client.Id]; joined != nil {
-						joined.InvulnerableUntil = time.Now().Add(3 * time.Second).UnixMilli()
-					}
-				}
-			}
-			if Store != nil && previous == nil {
-				playerRecord := &provider.PlayerRecord{
-					PlayerId: client.Id,
-					RoomId:   r.Id,
-					Name:     client.Name,
-				}
-				if err := Store.AddPlayerToRoom(r.Id, playerRecord); err != nil {
-					log.Printf("Store add player error: %v", err)
-				}
-			}
-			r.mu.Unlock()
+			r.registerClient(client, &emptySince)
 
 		case client := <-r.Unregister:
-			r.mu.Lock()
-			if current, ok := r.Clients[client.Id]; ok && current == client {
-				delete(r.Clients, client.Id)
-				r.Disconnected[client.Id] = time.Now()
-				close(client.Send)
-				if Store != nil {
-					if err := Store.RemovePlayerFromRoom(r.Id, client.Id); err != nil {
-						log.Printf("Store remove player error: %v", err)
-					}
-				}
-			}
-			if len(r.Clients) == 0 && len(r.Disconnected) == 0 {
-				emptySince = time.Now()
-			}
-			r.mu.Unlock()
+			r.unregisterClient(client, &emptySince)
 
 		case message := <-r.Broadcast:
-			r.mu.RLock()
-			for _, client := range r.Clients {
-				select {
-				case client.Send <- message:
-				default:
-					close(client.Send)
-					delete(r.Clients, client.Id)
-				}
-			}
-			r.mu.RUnlock()
+			r.deliverBroadcast(message)
 
 		case <-ticker.C:
-			var updates []preparedStateUpdate
-			snapshotDuration := time.Duration(0)
-			tickStarted := time.Now()
-			tickGap := time.Duration(0)
-			if !previousTickAt.IsZero() {
-				tickGap = tickStarted.Sub(previousTickAt)
-			}
-			elapsed := battleTickElapsed(previousTickAt, tickStarted)
-			previousTickAt = tickStarted
-			r.mu.Lock()
-			r.expireDisconnectedPlayers()
-			if len(r.Clients) == 0 {
+			step := r.stepSimulation(previousTickAt, frame, time.Now())
+			previousTickAt = step.tickStarted
+			if !step.hasClients {
 				if len(r.Disconnected) == 0 && emptySince.IsZero() {
 					emptySince = time.Now()
 				}
 				shouldClose := len(r.Disconnected) == 0 && !emptySince.IsZero() && time.Since(emptySince) >= 30*time.Second
-				r.mu.Unlock()
 				if shouldClose {
 					RemoveRoom(r.Id)
 					return
 				}
 				continue
 			}
+			updates := step.updates
+			snapshotDuration := step.snapshot
 			if metricsWindowAt.IsZero() {
-				metricsWindowAt = tickStarted
+				metricsWindowAt = step.tickStarted
 			}
 			frame++
-			r.State.UpdateWithDelta(elapsed)
-			updateDuration := time.Since(tickStarted)
-			// Simulate and publish at 60 Hz so movement and combat presentation
-			// do not inherit an avoidable 33 ms transport gap.
-			if shouldPublishState(frame) {
-				snapshotStarted := time.Now()
-				updates = r.prepareStateUpdates()
-				snapshotDuration = time.Since(snapshotStarted)
-				metricsMaxSnapshot = maxDuration(metricsMaxSnapshot, snapshotDuration)
-			}
-			r.mu.Unlock()
+			metricsMaxSnapshot = maxDuration(metricsMaxSnapshot, snapshotDuration)
 			queueStarted := time.Now()
 			queuedUpdates, stateBytes, queueDrops := r.queueStateUpdates(updates)
 			queueDuration := time.Since(queueStarted)
 
 			metricsTicks++
-			metricsMaxGap = maxDuration(metricsMaxGap, tickGap)
-			metricsMaxUpdate = maxDuration(metricsMaxUpdate, updateDuration)
+			metricsMaxGap = maxDuration(metricsMaxGap, step.tickGap)
+			metricsMaxUpdate = maxDuration(metricsMaxUpdate, step.updateDuration)
 			metricsMaxQueue = maxDuration(metricsMaxQueue, queueDuration)
-			if tickGap > 20*time.Millisecond || updateDuration > 10*time.Millisecond || queueDuration > 10*time.Millisecond {
+			if step.tickGap > 20*time.Millisecond || step.updateDuration > 10*time.Millisecond || queueDuration > 10*time.Millisecond {
 				metricsSlowTicks++
 			}
 			observability.RecordBattleTick(observability.Default, observability.BattleTickSample{
-				Gap: tickGap, Update: updateDuration, Snapshot: snapshotDuration, Queue: queueDuration,
+				Gap: step.tickGap, Update: step.updateDuration, Snapshot: snapshotDuration, Queue: queueDuration,
 				Updates: queuedUpdates, Bytes: stateBytes, Dropped: queueDrops,
-				Slow: tickGap > 20*time.Millisecond || updateDuration > 10*time.Millisecond || queueDuration > 10*time.Millisecond,
+				Slow: step.tickGap > 20*time.Millisecond || step.updateDuration > 10*time.Millisecond || queueDuration > 10*time.Millisecond,
 			})
 			if time.Since(metricsWindowAt) >= 2*time.Second {
 				log.Printf("battle tick metrics room=%s ticks=%d hz=%.1f slow=%d gap_max=%s update_max=%s snapshot_max=%s queue_max=%s players=%d bots=%d bullets=%d effects=%d", r.Id, metricsTicks, float64(metricsTicks)/time.Since(metricsWindowAt).Seconds(), metricsSlowTicks, metricsMaxGap, metricsMaxUpdate, metricsMaxSnapshot, metricsMaxQueue, len(r.State.Players), countBots(r.State), len(r.State.Bullets), len(r.State.Effects))
-				metricsWindowAt = tickStarted
+				metricsWindowAt = step.tickStarted
 				metricsTicks = 0
 				metricsSlowTicks = 0
 				metricsMaxGap, metricsMaxUpdate, metricsMaxSnapshot, metricsMaxQueue = 0, 0, 0, 0

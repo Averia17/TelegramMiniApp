@@ -99,6 +99,10 @@ type GameState struct {
 	OnGameEnd               func(players map[string]*player.Player, winner string, duration int64)
 	OnPlayerKilled          func(playerId, killerName string)
 	MapRevision             int
+	rules                   MatchRules
+	mapProvider             MapProvider
+	heroCatalog             HeroCatalog
+	combatRegistry          *CombatRegistry
 	Effects                 []*BattleEffect
 	DelayedEffects          []*DelayedBattleEffect
 	ScheduledShots          []*ScheduledShot

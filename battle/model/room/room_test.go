@@ -25,6 +25,27 @@ func TestBattleTickElapsedUsesThePreviousTickTimestamp(t *testing.T) {
 	}
 }
 
+func TestSimulationStepSeparatesStateAdvanceFromTransport(t *testing.T) {
+	r := &Room{
+		Clients:      make(map[string]*Client),
+		Disconnected: make(map[string]time.Time),
+		State:        game.NewGameState(game.GameConfig{MapName: "small", MaxPlayers: 2}),
+	}
+	step := r.stepSimulation(time.Time{}, 0, time.UnixMilli(1_000))
+	if step.hasClients {
+		t.Fatal("empty room should not advance a transport step")
+	}
+
+	r.Clients["p1"] = &Client{Id: "p1"}
+	step = r.stepSimulation(time.UnixMilli(1_000), 0, time.UnixMilli(1_016))
+	if !step.hasClients {
+		t.Fatal("room with a client should advance the simulation")
+	}
+	if step.tickGap != 16*time.Millisecond {
+		t.Fatalf("tick gap = %s, want 16ms", step.tickGap)
+	}
+}
+
 func TestAttackCooldownSecondsTracksServerAttackCadence(t *testing.T) {
 	p := &player.Player{LastShootAt: 1_000, AttackRate: 800}
 

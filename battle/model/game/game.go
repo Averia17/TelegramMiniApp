@@ -21,6 +21,36 @@ const (
 )
 
 func InitGameState(gs *GameState) {
+	InitGameStateWithDependencies(gs, GameDependencies{})
+}
+
+func InitGameStateWithDependencies(gs *GameState, dependencies GameDependencies) {
+	if gs == nil {
+		return
+	}
+	gs.Mode = NormalizeGameMode(gs.Mode)
+	if dependencies.MapProvider == nil {
+		dependencies.MapProvider = DefaultMapProvider{}
+	}
+	if dependencies.HeroCatalog == nil {
+		dependencies.HeroCatalog = DefaultHeroCatalog()
+	}
+	if dependencies.Combat == nil {
+		dependencies.Combat = defaultCombatRegistry
+	}
+	if dependencies.Rules == nil {
+		dependencies.Rules = NewMatchRules(gs.Mode)
+	}
+	if gs.Broadcast == nil {
+		gs.Broadcast = func(string, interface{}) {}
+	}
+	if gs.SendToPlayer == nil {
+		gs.SendToPlayer = func(string, string, interface{}) {}
+	}
+	gs.mapProvider = dependencies.MapProvider
+	gs.heroCatalog = dependencies.HeroCatalog
+	gs.combatRegistry = dependencies.Combat
+	gs.rules = dependencies.Rules
 	gs.Players = make(map[string]*player.Player)
 	gs.Monsters = make(map[string]*monster.Monster)
 	gs.Bullets = make([]*bullet.Bullet, 0)
@@ -50,7 +80,7 @@ func InitGameState(gs *GameState) {
 	gs.botTerrainCacheRevision = -1
 	gs.botTerrainCache = nil
 
-	m, err := gamemap.LoadMap(gs.MapName)
+	m, err := gs.mapProvider.LoadMap(gs.MapName)
 	if err != nil {
 		fmt.Printf("Error loading map: %v\n", err)
 		m = &gamemap.GameMap{WidthInPixels: 512, HeightInPixels: 512}
@@ -951,9 +981,7 @@ func (gs *GameState) startGame() {
 	gs.State = GameStateGame
 	gs.fillMissingBots()
 
-	if gs.Mode == ModeTeamDeathmatch {
-		gs.setPlayersTeamsRandomly()
-	}
+	gs.matchRules().AssignTeams(gs)
 	gs.setBotsPositionAtFreeSpawns()
 	gs.setPlayersActive(true)
 	spawnProtectionUntil := time.Now().Add(SpawnProtectionDuration).UnixMilli()
@@ -1005,11 +1033,13 @@ func (gs *GameState) onGameEnd(event *ServerEvent) {
 }
 
 func (gs *GameState) PlayerAdd(id, name string, heroName string) {
-	var hero Hero
-	if h := GetHeroByName(heroName); h != nil {
-		hero = *h
-	} else {
-		hero = RandomHero()
+	catalog := gs.heroCatalog
+	if catalog == nil {
+		catalog = DefaultHeroCatalog()
+	}
+	hero, ok := catalog.Find(heroName)
+	if !ok {
+		hero = catalog.Random()
 	}
 	spawner := gs.Map.GetRandomSpawner()
 	p := hero.CreatePlayer(id, name, spawner.X+float64(hero.Radius), spawner.Y+float64(hero.Radius))
@@ -1246,7 +1276,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 		return
 	}
 	if primary {
-		if kit := CombatKitFor(p.HeroName); kit != nil {
+		if kit := gs.combatKitFor(p.HeroName); kit != nil {
 			aimDistance := p.AimDistance
 			if aimDistance <= 0 {
 				aimDistance = kit.AttackRange()
@@ -1394,7 +1424,7 @@ func (gs *GameState) playerShootWithMode(id string, ts int64, screenAngle float6
 		revealDuration = 1_200
 	}
 	p.RevealedUntil = ts + revealDuration
-	if kit := BasicCombatKitFor(p.HeroName); kit != nil {
+	if kit := gs.basicCombatKitFor(p.HeroName); kit != nil {
 		distance := kit.AttackRange()
 		if len(aimDistance) > 0 && aimDistance[0] > 0 {
 			distance = math.Min(distance, aimDistance[0])
@@ -2030,42 +2060,16 @@ func (gs *GameState) finishBattleIfDecided() bool {
 	if gs.State != GameStateGame || len(gs.Players) == 0 {
 		return false
 	}
-
-	activePlayers := gs.countActivePlayers()
-	if activePlayers == 0 {
+	winner, decided := gs.matchRules().EvaluateWinner(gs, time.Now().UnixMilli())
+	if !decided {
+		return false
+	}
+	if winner == "" {
 		// Elimination is terminal even when it happens before the island's
 		// beacon phase. There is no winner in a simultaneous all-dead result.
 		gs.onGameEnd(nil)
 		gs.startFinished()
 		return true
-	}
-
-	winner := ""
-	switch gs.Mode {
-	case ModeDeathmatch:
-		if activePlayers == 1 {
-			if survivor := gs.getWinningPlayer(); survivor != nil {
-				winner = survivor.Name
-			}
-		} else {
-			if gs.IslandPhase != IslandPhaseBeacon {
-				return false
-			}
-			if player := gs.beaconWinner(time.Now().UnixMilli()); player != nil {
-				winner = player.Name
-			}
-		}
-	case ModeTeamDeathmatch:
-		team := gs.getWinningTeam()
-		if team == "" {
-			return false
-		}
-		winner = team + " team"
-	default:
-		return false
-	}
-	if winner == "" {
-		return false
 	}
 
 	gs.onGameEnd(&ServerEvent{
@@ -2086,34 +2090,14 @@ func (gs *GameState) getWinningPlayer() *player.Player {
 }
 
 func (gs *GameState) getTimeoutWinner() string {
-	if gs.Mode == ModeTeamDeathmatch {
-		teamLives := map[string]int{"Red": 0, "Blue": 0}
-		for _, p := range gs.Players {
-			teamLives[p.Team] += p.Lives
-		}
-		if teamLives["Red"] == teamLives["Blue"] {
-			return ""
-		}
-		if teamLives["Red"] > teamLives["Blue"] {
-			return "Red team"
-		}
-		return "Blue team"
-	}
+	return gs.matchRules().TimeoutWinner(gs)
+}
 
-	var winner *player.Player
-	tied := false
-	for _, candidate := range gs.Players {
-		if winner == nil || candidate.Lives > winner.Lives {
-			winner = candidate
-			tied = false
-		} else if candidate.Lives == winner.Lives {
-			tied = true
-		}
+func (gs *GameState) matchRules() MatchRules {
+	if gs.rules == nil {
+		gs.rules = NewMatchRules(gs.Mode)
 	}
-	if winner == nil || tied {
-		return ""
-	}
-	return winner.Name
+	return gs.rules
 }
 
 func (gs *GameState) getWinningTeam() string {

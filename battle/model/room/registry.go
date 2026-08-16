@@ -13,6 +13,18 @@ var rooms = make(map[string]*Room)
 var roomsMu sync.RWMutex
 
 func GetOrCreateRoom(roomId, roomName, mapName, mode string, maxPlayers int) *Room {
+	return GetOrCreateRoomFor(roomId, roomName, NormalizeMatchProfile(mode, mapName, maxPlayers))
+}
+
+func GetOrCreateRoomFor(roomId, roomName string, profile MatchProfile) *Room {
+	return GetOrCreateRoomWithDependencies(roomId, roomName, profile, game.GameDependencies{})
+}
+
+// GetOrCreateRoomWithDependencies keeps room lifecycle independent from map
+// loading and combat catalogs. New maps can provide their own MapProvider
+// without changing matchmaking or transport code.
+func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfile, dependencies game.GameDependencies) *Room {
+	profile = normalizeProfileValue(profile)
 	roomsMu.Lock()
 	defer roomsMu.Unlock()
 
@@ -23,9 +35,9 @@ func GetOrCreateRoom(roomId, roomName, mapName, mode string, maxPlayers int) *Ro
 	r := &Room{
 		Id:           roomId,
 		Name:         roomName,
-		MapName:      mapName,
-		Mode:         mode,
-		MaxPlayers:   maxPlayers,
+		MapName:      profile.MapName,
+		Mode:         string(profile.Mode),
+		MaxPlayers:   profile.MaxPlayers,
 		Clients:      make(map[string]*Client),
 		Disconnected: make(map[string]time.Time),
 		Broadcast:    make(chan []byte, 256),
@@ -34,49 +46,49 @@ func GetOrCreateRoom(roomId, roomName, mapName, mode string, maxPlayers int) *Ro
 		TauntSpender: defaultTauntSpender,
 	}
 
-	gs := &game.GameState{
+	gs := game.NewGameState(game.GameConfig{
 		RoomName:     roomName,
-		MapName:      mapName,
-		MaxPlayers:   maxPlayers,
-		Mode:         game.GameMode(mode),
+		MapName:      profile.MapName,
+		MaxPlayers:   profile.MaxPlayers,
+		Mode:         profile.Mode,
+		Dependencies: dependencies,
 		Broadcast:    r.BroadcastMsg,
 		SendToPlayer: r.SendToPlayer,
-		OnGameEnd: func(players map[string]*player.Player, winner string, duration int64) {
-			if Kafka == nil {
-				return
+	})
+	gs.OnGameEnd = func(players map[string]*player.Player, winner string, duration int64) {
+		if Kafka == nil {
+			return
+		}
+		result := &provider.BattleResult{
+			RoomId:   roomId,
+			EndedAt:  provider.NowMillis(),
+			MapName:  profile.MapName,
+			Mode:     string(profile.Mode),
+			Duration: duration,
+			Winner:   winner,
+		}
+		for _, p := range players {
+			if p.IsBot {
+				continue
 			}
-			result := &provider.BattleResult{
-				RoomId:   roomId,
-				EndedAt:  provider.NowMillis(),
-				MapName:  mapName,
-				Mode:     mode,
-				Duration: duration,
-				Winner:   winner,
-			}
-			for _, p := range players {
-				if p.IsBot {
-					continue
-				}
-				result.Players = append(result.Players, provider.PlayerResult{
-					PlayerId: p.PlayerId,
-					Name:     p.Name,
-					Hero:     p.HeroName,
-					Kills:    p.Kills,
-					Lives:    p.Lives,
-					Won: p.Name == winner ||
-						(winner == "Red team" && p.Team == "Red") ||
-						(winner == "Blue team" && p.Team == "Blue"),
-				})
-			}
-			_ = Kafka.PublishBattleResult(result)
-		},
-		OnPlayerKilled: func(playerId, killerName string) {
-			r.SendToPlayer(playerId, "you_died", map[string]interface{}{
-				"killerName": killerName,
+			result.Players = append(result.Players, provider.PlayerResult{
+				PlayerId: p.PlayerId,
+				Name:     p.Name,
+				Hero:     p.HeroName,
+				Kills:    p.Kills,
+				Lives:    p.Lives,
+				Won: p.Name == winner ||
+					(winner == "Red team" && p.Team == "Red") ||
+					(winner == "Blue team" && p.Team == "Blue"),
 			})
-		},
+		}
+		_ = Kafka.PublishBattleResult(result)
 	}
-	game.InitGameState(gs)
+	gs.OnPlayerKilled = func(playerId, killerName string) {
+		r.SendToPlayer(playerId, "you_died", map[string]interface{}{
+			"killerName": killerName,
+		})
+	}
 	r.State = gs
 
 	rooms[roomId] = r
@@ -93,10 +105,16 @@ func FindRoom(roomId string) *Room {
 }
 
 func FindLobbyRoom() *Room {
+	return FindLobbyRoomFor(DefaultMatchProfile())
+}
+
+func FindLobbyRoomFor(profile MatchProfile) *Room {
+	profile = normalizeProfileValue(profile)
 	roomsMu.RLock()
 	defer roomsMu.RUnlock()
 	for _, r := range rooms {
-		if (r.State.State == "waiting" || r.State.State == "lobby") && len(r.Clients) < r.MaxPlayers {
+		if (r.State.State == "waiting" || r.State.State == "lobby") && len(r.Clients) < r.MaxPlayers &&
+			profile.Compatible(MatchProfile{Mode: game.GameMode(r.Mode), MapName: r.MapName, MaxPlayers: r.MaxPlayers}) {
 			return r
 		}
 	}

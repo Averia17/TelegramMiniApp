@@ -73,29 +73,7 @@ type ConfiguredBasicKit struct {
 }
 
 func BasicCombatKitFor(hero string) BasicCombatKit {
-	switch hero {
-	case "Needle":
-		return NeedleKit{}
-	case "Mandy":
-		return MandyKit{}
-	case "Fairy Mina":
-		return MinaKit{}
-	case "Brock Zeus":
-		return BrockZeusKit{}
-	case "Kaze":
-		return KazeKit{}
-	case "Wukong Mico":
-		return WukongMicoKit{}
-	case "Persephone Lumi":
-		return PersephoneLumiKit{}
-	case "Katty":
-		return KattyKit{}
-	}
-	config, ok := heroAttackConfigs[hero]
-	if !ok {
-		return nil
-	}
-	return ConfiguredBasicKit{Config: config}
+	return defaultCombatRegistry.BasicCombatKitFor(hero)
 }
 
 func (kit ConfiguredBasicKit) AimShape() string     { return kit.Config.AimShape }

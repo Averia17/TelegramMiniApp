@@ -33,7 +33,7 @@ func (c architectureHeroCatalog) Random() Hero {
 
 func TestNewGameStateUsesInjectedMapAndHeroDependencies(t *testing.T) {
 	mapProvider := &architectureMapProvider{mapValue: &gamemap.GameMap{
-		WidthInPixels: 640,
+		WidthInPixels:  640,
 		HeightInPixels: 480,
 	}}
 	catalog := architectureHeroCatalog{hero: Heroes[0]}
@@ -44,7 +44,7 @@ func TestNewGameStateUsesInjectedMapAndHeroDependencies(t *testing.T) {
 		MaxPlayers: 4,
 		Mode:       ModeDeathmatch,
 		Dependencies: GameDependencies{
-			MapProvider:  mapProvider,
+			MapProvider: mapProvider,
 			HeroCatalog: catalog,
 		},
 	})

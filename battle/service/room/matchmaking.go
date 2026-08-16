@@ -45,8 +45,13 @@ func (mq *MatchQueue) tryMatch() {
 	for len(mq.queue) > 0 {
 		p := mq.queue[0]
 		mq.queue = mq.queue[1:]
+		profile := p.Profile
+		if profile == (room.MatchProfile{}) {
+			profile = room.DefaultMatchProfile()
+			p.Profile = profile
+		}
 
-		existing := room.FindLobbyRoom()
+		existing := room.FindLobbyRoomFor(profile)
 		if existing != nil {
 			data, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: existing.Id}))
 			p.Send <- data
@@ -54,7 +59,7 @@ func (mq *MatchQueue) tryMatch() {
 		}
 
 		roomName := generateRoomId()
-		r := room.GetOrCreateRoom(roomName, roomName, "battle-royale", "deathmatch", 8)
+		r := room.GetOrCreateRoomFor(roomName, roomName, profile)
 
 		data, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: r.Id}))
 		p.Send <- data

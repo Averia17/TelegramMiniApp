@@ -3,7 +3,6 @@ package game
 import (
 	"battle/model/player"
 	"battle/service/geometry"
-	"math/rand"
 	"strings"
 )
 
@@ -102,7 +101,7 @@ func withSelectionMetadata(heroes []Hero) []Hero {
 }
 
 func RandomHero() Hero {
-	return Heroes[rand.Intn(len(Heroes))]
+	return DefaultHeroCatalog().Random()
 }
 
 func withHeroKits(heroes []Hero) []Hero {
@@ -132,11 +131,8 @@ func CanonicalHeroName(name string) string {
 }
 
 func GetHeroByName(name string) *Hero {
-	canonical := CanonicalHeroName(name)
-	for _, h := range Heroes {
-		if h.Name == canonical {
-			return &h
-		}
+	if hero, ok := DefaultHeroCatalog().Find(name); ok {
+		return &hero
 	}
 	return nil
 }

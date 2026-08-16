@@ -266,12 +266,14 @@ type WallJSON struct {
 }
 
 type RoomJoinedParams struct {
-	PlayerId   string `json:"playerId"`
-	RoomId     string `json:"roomId"`
-	RoomName   string `json:"roomName"`
-	MapName    string `json:"mapName"`
-	Mode       string `json:"mode"`
-	MaxPlayers int    `json:"maxPlayers"`
+	PlayerId    string `json:"playerId"`
+	RoomId      string `json:"roomId"`
+	RoomName    string `json:"roomName"`
+	MapName     string `json:"mapName"`
+	MapID       string `json:"mapId,omitempty"`
+	MapRevision int    `json:"mapRevision,omitempty"`
+	Mode        string `json:"mode"`
+	MaxPlayers  int    `json:"maxPlayers"`
 }
 
 type MatchFoundParams struct {

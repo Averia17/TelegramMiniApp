@@ -16,15 +16,9 @@ const GAME_MESSAGES = new Set([
 ])
 
 import {recordBattleMetric} from "./rendering/shared/performance.js"
+import {preserveAuthoritativeMapWalls} from "./mapContract.js"
 
-export const preserveAuthoritativeMapWalls = (map, previousMap) => {
-  const previousWalls = previousMap?.walls
-  const incomingWalls = map?.walls
-  if (!Array.isArray(previousWalls) || previousWalls.length === 0) return map
-  if (Array.isArray(incomingWalls) && incomingWalls.length > 0) return map
-  if (map?.width !== previousMap.width || map?.height !== previousMap.height) return map
-  return {...map, walls: previousWalls}
-}
+export {preserveAuthoritativeMapWalls}
 
 export class GameClient {
   constructor(url, accessToken, onStateUpdate, onMessage, onConnect, onDisconnect) {
@@ -168,12 +162,15 @@ export class GameClient {
     }))
   }
 
-  findMatch(playerName, heroName) {
+  findMatch(playerName, heroName, profile = {}) {
     if (this.ws?.readyState !== WebSocket.OPEN) return
     this.ws.send(JSON.stringify({
       type: "find_match",
       playerName: playerName || "Player",
       heroName: heroName || "",
+      ...(profile.mode ? {mode: profile.mode} : {}),
+      ...(profile.mapName ? {roomMap: profile.mapName} : {}),
+      ...(profile.maxPlayers ? {maxPlayers: profile.maxPlayers} : {}),
     }))
   }
 
