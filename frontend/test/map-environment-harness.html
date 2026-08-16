@@ -119,10 +119,16 @@
       <div class="eyebrow">Battle map / live renderer</div>
       <h1>Проверка карты</h1>
       <p class="intro">Этот экран получает ту же карту и запускает тот же боевой рендерер, камеру, свет и героя, что и реальный матч.</p>
+      <label class="section-title" for="map-mode">Режим карты</label>
+      <select id="map-mode" aria-label="Режим карты">
+        <option value="solo" data-map-mode="solo">Battle Royale</option>
+        <option value="team" data-map-mode="team">Team Battle · 2 × 3</option>
+      </select>
       <div class="stats">
         <div class="stat"><small>Seed</small><strong id="seed">—</strong></div>
         <div class="stat"><small>Объекты</small><strong id="objects">—</strong></div>
         <div class="stat"><small>Кусты</small><strong id="bushes">—</strong></div>
+        <div class="stat"><small>Переходы</small><strong id="features">—</strong></div>
       </div>
       <div class="section-title">Переместить героя в сектор</div>
       <div class="navigator" aria-label="Секторы карты">
@@ -154,7 +160,15 @@
     const inspector = document.querySelector("#inspector")
     const togglePanel = document.querySelector("#toggle-panel")
     try {
-      const map = await loadCanonicalBattleMap()
+      const selectedMode = new URLSearchParams(location.search).get("mode") === "team" ? "team" : "solo"
+      document.querySelector("#map-mode").value = selectedMode
+      document.querySelector("#map-mode").addEventListener("change", event => {
+        const url = new URL(location.href)
+        if (event.target.value === "team") url.searchParams.set("mode", "team")
+        else url.searchParams.delete("mode")
+        location.href = url.toString()
+      })
+      const map = await loadCanonicalBattleMap(fetch, selectedMode)
       status.textContent = "Загрузка боевого рендерера…"
       await assetRegistry.preloadHeroes(["Kaze"])
 
@@ -166,8 +180,9 @@
       const collisionIndex = createCollisionIndex(map.walls)
       const battleState = {
         map,
-        game: {islandName: "Остров Первого Испытания", phase: "landing", stormRadius: 0},
+        game: {islandName: selectedMode === "team" ? "team-battle" : "Остров Первого Испытания", phase: "landing", stormRadius: 0},
         players: {"map-inspector": player},
+        objectives: (map.objectives || []).map(objective => ({...objective, lives: objective.type === "town_hall" ? 12000 : 3000, maxLives: objective.type === "town_hall" ? 12000 : 3000})),
         monsters: {}, props: [], bullets: [], effects: [],
       }
       const battleRenderer = new ThreeBattleRenderer(canvas)
@@ -250,6 +265,7 @@
       document.querySelector("#seed").textContent = map.seed
       document.querySelector("#objects").textContent = battleRenderer.mapRenderer.objects.size.toLocaleString("ru-RU")
       document.querySelector("#bushes").textContent = map.walls.filter(wall => wall.type === "bush").length.toLocaleString("ru-RU")
+      document.querySelector("#features").textContent = (map.features || []).length.toLocaleString("ru-RU")
       updatePosition(player.x, player.y, "center")
       status.textContent = `Готово · ${map.width} × ${map.height}`
       status.classList.add("is-ready")
@@ -261,7 +277,7 @@
         renderer: "ThreeBattleRenderer",
             map: {id: map.id, name: map.name, width: map.width, height: map.height, seed: map.seed, revision: map.revision, walls: map.walls.length, water: map.walls.filter(wall => wall.type === "water").length, spawners: map.spawners.length},
         hero: {x: player.x, y: player.y},
-        environment: {ready: battleRenderer.mapRenderer.isReady(), objects: battleRenderer.mapRenderer.objects.size},
+            environment: {ready: battleRenderer.mapRenderer.isReady(), objects: battleRenderer.mapRenderer.objects.size, objectives: battleRenderer.mapRenderer.objectiveObjects?.size || 0, features: battleRenderer.mapRenderer.featureObjects?.size || 0},
         camera: {target: battleRenderer.cameraRig.target.toArray().map(value => Number(value.toFixed(2)))},
       })
     } catch (error) {

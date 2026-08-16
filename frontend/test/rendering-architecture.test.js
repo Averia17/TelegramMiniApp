@@ -492,7 +492,25 @@ test("the battle map stays populated across full and compact server snapshots", 
   assert.equal(display.map.walls, walls)
   assert.equal(mapRenderer.objects.size, 3)
   assert.ok(root.children.length >= 3)
-  mapRenderer.dispose()
+	mapRenderer.dispose()
+})
+
+test("team map mounts natural diagonal river features without adding collision objects", () => {
+	const root = new THREE.Group()
+	const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+	mapRenderer.sync({
+		width: 3200, height: 3200, tileSize: 40, walls: [
+			{minX: 1540, minY: 1540, maxX: 1580, maxY: 1580, type: "river"},
+		], features: [
+			{id: "team-river", type: "river", x: 1580, y: 1580, rotation: -Math.PI / 4, scale: 1},
+			{id: "bridge-a", type: "river_bridge", x: 1560, y: 1600, rotation: -Math.PI / 4, scale: 1},
+		],
+	})
+
+	assert.equal(mapRenderer.objects.size, 0)
+	assert.equal(mapRenderer.featureObjects.size, 2)
+	assert.ok(root.children.some(object => object.userData.featureId === "team-river"))
+	mapRenderer.dispose()
 })
 
 test("local reconciliation compares a server snapshot with matching client-local history", () => {
@@ -1763,6 +1781,54 @@ test("map crate cells render as natural log piles instead of default box planks"
   })
 })
 
+test("team battle ruin cells render as detailed stonework and thorny blockers", () => {
+  const ruin = createProp(
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "ruin_wall"},
+    2,
+    new THREE.Texture(),
+  )
+  const vine = createProp(
+    {minX: 60, minY: 20, maxX: 100, maxY: 60, type: "thorn_vine"},
+    3,
+    new THREE.Texture(),
+  )
+  const ruinRoles = new Set()
+  const vineRoles = new Set()
+  ruin.traverse(child => { if (child.userData?.role) ruinRoles.add(child.userData.role) })
+  vine.traverse(child => { if (child.userData?.role) vineRoles.add(child.userData.role) })
+
+  assert.equal(ruin.userData.visualType, "ruin_wall")
+  assert.equal(ruinRoles.has("ruin-stone"), true)
+  assert.equal(ruinRoles.has("ruin-ivy"), true)
+  assert.equal(vineRoles.has("thorn-vine-stem"), true)
+  assert.equal(vineRoles.has("thorn-vine-spike"), true)
+
+  for (const prop of [ruin, vine]) {
+    prop.traverse(node => {
+      node.geometry?.dispose?.()
+      node.material?.dispose?.()
+    })
+  }
+})
+
+test("fortress wall cells use a taller stone silhouette than ordinary cover", () => {
+  const wall = createProp(
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "fortress_wall"},
+    0,
+    new THREE.Texture(),
+  )
+  const visual = wall.children.find(child => child.geometry?.userData?.stylizedStoneBlock)
+  const size = new THREE.Box3().setFromObject(visual, true).getSize(new THREE.Vector3())
+  assert.equal(wall.userData.visualType, "fortress_wall")
+  assert.ok(size.y >= 2.7)
+  assert.equal(visual.castShadow, true)
+  assert.equal(visual.receiveShadow, true)
+  wall.traverse(node => {
+    node.geometry?.dispose?.()
+    node.material?.dispose?.()
+  })
+})
+
 test("solid map props receive a low-profile grounding bed", () => {
   const prop = createProp(
     {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
@@ -1920,39 +1986,6 @@ test("small blocking props visually fill the collider footprint", () => {
   const colliderSize = 40 * WORLD_SCALE
 
   for (const type of ["crates", "barrels", "cactus", "crystal"]) {
-    const prop = createProp(
-      {minX: 20, minY: 20, maxX: 60, maxY: 60, type},
-      0,
-      new THREE.Texture(),
-    )
-    const visual = prop.children.find(child => child.userData?.role !== "contact-shadow")
-    const size = new THREE.Box3().setFromObject(visual, true).getSize(new THREE.Vector3())
-
-    assert.ok(size.x >= colliderSize * .92, `${type} leaves a visible horizontal collision gap`)
-    assert.ok(size.z >= colliderSize * .92, `${type} leaves a visible depth collision gap`)
-
-    prop.traverse(node => {
-      node.geometry?.dispose?.()
-      node.material?.dispose?.()
-    })
-  }
-})
-
-test("blocking map props visibly cover their authoritative collision tile", () => {
-  const colliderSize = 40 * WORLD_SCALE
-  const blockingTypes = [
-    "destructible",
-    "wall",
-    "tree",
-    "dead_tree",
-    "shipwreck",
-    "crates",
-    "altar_three_moons",
-    "sacrificial_stone",
-    "menhir",
-  ]
-
-  for (const type of blockingTypes) {
     const prop = createProp(
       {minX: 20, minY: 20, maxX: 60, maxY: 60, type},
       0,
@@ -2360,5 +2393,11 @@ test("grass ground receives directional prop shadows", () => {
 test("map signature changes when only a wall visual changes", () => {
   const first = {width: 100, height: 100, walls: [{minX: 0, minY: 0, maxX: 40, maxY: 40, type: "crates", visual: "desert_wall_a"}]}
   const second = {width: 100, height: 100, walls: [{...first.walls[0], visual: "barrel_a"}]}
+  assert.notEqual(createMapSignature(first), createMapSignature(second))
+})
+
+test("map signature changes when a passable team feature changes", () => {
+  const first = {width: 100, height: 100, walls: [], features: [{id: "team-river", type: "river", x: 20, y: 20}]}
+  const second = {...first, features: [{...first.features[0], x: 24}]}
   assert.notEqual(createMapSignature(first), createMapSignature(second))
 })

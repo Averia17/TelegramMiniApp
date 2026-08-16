@@ -143,3 +143,73 @@ Basic/Super/Gadget сохраняются. Hypercharge, второй Gadget и �
 - Frontend: 326 тестов, 321 pass, 4 skip, 1 несвязанный fail по визуальному footprint `dead_tree`.
 - Frontend build, lint и каталог проходят.
 - Browser QA: 24/24 действий героев, без console/page errors; task-owned процессы закрыты.
+# Implementation Plan: Team Battle (2 × configurable party size)
+
+## Overview
+
+Extend the existing authoritative solo battle into a separate team-battle mode. The first playable slice keeps the current WebSocket and renderer contracts, while adding party-aware matchmaking, deterministic team assignment, team-safe hero selection, a larger diagonal two-base map, destructible base objectives, defensive towers, and territory respawn.
+
+## Working assumptions
+
+- The initial production format is two teams with three combatants each; `PartyMaxSize` and `TeamSize` remain configuration values.
+- Parties are represented by a shared `partyId` in matchmaking. A party is indivisible, but solo players can fill remaining slots.
+- The team objective is destruction of the enemy town hall. Towers are defensive structures and deal damage only to enemies in their own base perimeter.
+- A dead hero respawns after a configurable cooldown at a safe point near its own town hall. Respawning is disabled after the team town hall is destroyed.
+- Existing solo mode remains the default and keeps its current behavior.
+- The map harness gets a mode selector and renders the team map through the same canonical map API.
+
+## Architecture decisions
+
+- Use a `MatchProfile`/queue contract instead of branching on transport messages.
+- Add a party as a queue unit; team formation operates on units and validates capacity before room creation.
+- Put team composition and hero uniqueness in pure functions with unit tests.
+- Represent bases, towers, and town halls as authoritative map objectives/state, not frontend-only decorations.
+- Keep the first balance pass conservative: structure attacks have range/cooldown, town halls have large health and damage reduction while an allied tower is alive.
+
+## Task List
+
+### Phase 1: contracts and matchmaking
+
+- [x] Define team-battle configuration, party queue units, and profile compatibility.
+- [x] Add party create/invite/leave transport messages with configurable max party size.
+- [x] Match two complete teams from parties and solos; reject incompatible or over-capacity parties.
+- [x] Assign exactly two teams and enforce unique heroes inside each team.
+
+### Checkpoint: matchmaking
+
+- [x] Go unit tests cover party capacity, queue grouping, deterministic teams, and hero uniqueness.
+- [ ] Existing solo tests remain green; unrelated legacy hero-contract failures remain documented in verification output.
+
+### Phase 2: map and authoritative objectives
+
+- [x] Add the larger diagonal team map with corner spawns, grouped cover, passable diagonal stream, and base/objective metadata.
+- [x] Add town halls, towers, attack cooldowns, objective damage rules, and team victory condition.
+- [x] Add territory respawn cooldown and spawn protection.
+- [x] Extend state protocol and frontend renderer/minimap/HUD for objectives.
+
+### Checkpoint: playable team match
+
+- [x] Unit/integration-style tests cover 1/2/3-player partial team composition and objective state.
+- [x] Browser harness can switch between solo and team map and shows both bases.
+- [x] Frontend build and focused contract tests pass.
+
+### Phase 3: balance and polish
+
+- [x] Add configuration-driven party/team limits and persistent party state.
+- [x] Add party lobby UI, invite notifications, and team composition feedback.
+- [x] Add regression coverage and document launch configuration.
+
+## Open questions to revisit after the first playable slice
+
+- Whether towers should be fixed turrets or a more active base-defense unit.
+- Whether respawns should be limited per player/team in ranked play.
+- Whether parties may span both teams in a later mode.
+
+## Risks and mitigations
+
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| Legacy room queue assumes one client per queue entry | High | Queue parties as immutable units and test capacity boundaries first |
+| Team objective state inflates snapshots | Medium | Send static map metadata once and delta/compact objective state in snapshots |
+| Respawn creates spawn camping | High | Protected corner spawn zone, invulnerability, and tower coverage |
+| Existing solo behavior regresses | High | Keep solo rules/map path intact and run the full existing suite after each slice |

@@ -39,7 +39,7 @@ export const getStateBattleResult = (state, playerId, currentView) => {
   const authoritativeState = state?.game?.state
   if (currentView !== "game" && authoritativeState !== "game" && authoritativeState !== "finished") return null
   const player = state?.players?.[playerId]
-  if (!player || Number(player.lives) > 0) return null
+  if (!player || Number(player.lives) > 0 || Number(player.respawnAt) > Date.now()) return null
   return {
     won: false,
     ...getPlayerBattleStats(state, playerId),

@@ -2,16 +2,21 @@ package player
 
 import (
 	"battle/service/geometry"
+	"math"
 	"time"
 )
 
 type Player struct {
 	geometry.CircleBody
 	PlayerId          string
+	PartyID           string
 	Name              string
 	Lives             int
 	MaxLives          int
+	BaseMaxLives      int
+	HealthBoosts      int
 	Team              string
+	TeamLocked        bool
 	Color             string
 	Kills             int
 	Rotation          float64
@@ -89,6 +94,8 @@ type Player struct {
 	RegenRate         float64
 	RegenCarry        float64
 	LastDamageAt      int64
+	RespawnAt         int64
+	RespawnCount      int
 	LastRegenAt       int64
 	RevealedUntil     int64
 	LastContactAt     int64
@@ -145,6 +152,26 @@ func (p *Player) InterruptRegenerationAt(now int64) {
 
 func (p *Player) Heal() {
 	p.Lives++
+}
+
+// ApplyHealthBoost permanently adds a fraction of the hero's original max
+// health. Keeping BaseMaxLives separate prevents stacked boosts from
+// compounding unexpectedly as the current max health grows.
+func (p *Player) ApplyHealthBoost(fraction float64) int {
+	if p == nil || fraction <= 0 {
+		return 0
+	}
+	if p.BaseMaxLives <= 0 {
+		p.BaseMaxLives = p.MaxLives
+	}
+	bonus := int(math.Round(float64(p.BaseMaxLives) * fraction))
+	if bonus <= 0 {
+		return 0
+	}
+	p.MaxLives += bonus
+	p.Lives += bonus
+	p.HealthBoosts++
+	return bonus
 }
 
 func (p *Player) IsAlive() bool {

@@ -1,7 +1,8 @@
 const CANONICAL_MAP_URL = "/api/battle/map-preview"
 
-export const loadCanonicalBattleMap = async (fetchImpl = fetch) => {
-  const response = await fetchImpl(CANONICAL_MAP_URL, {cache: "no-store"})
+export const loadCanonicalBattleMap = async (fetchImpl = fetch, mode = "solo") => {
+  const query = mode === "team" ? "?mode=team" : ""
+  const response = await fetchImpl(`${CANONICAL_MAP_URL}${query}`, {cache: "no-store"})
   if (!response.ok) throw new Error(`Map API returned ${response.status}`)
   const payload = await response.json()
   if (!payload?.map || !Array.isArray(payload.map.walls)) {

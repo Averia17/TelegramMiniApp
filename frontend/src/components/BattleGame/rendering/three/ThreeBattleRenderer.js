@@ -95,8 +95,11 @@ export class ThreeBattleRenderer {
     endBattlePerformance(mapSyncToken)
     const islandSyncToken = startBattlePerformance("renderer.map.island")
     if (state.map) this.mapRenderer.syncIsland(state.game, state.map.width, state.map.height)
+    this.mapRenderer.syncObjectives?.(state.objectives)
     endBattlePerformance(islandSyncToken)
     const active = new Set()
+    const teamBattle = String(state.game?.mode || "").toLowerCase().replace(/[_-]/g, " ") === "team deathmatch"
+    const localTeam = state.players?.[this.localPlayerId]?.team || ""
     Object.entries(state.players || {}).forEach(([id, player]) => {
       const existingView = this.players.get(String(id))
       if (player.hidden) {
@@ -120,10 +123,13 @@ export class ThreeBattleRenderer {
           String(id),
           player,
           shouldCreateAttackReloadIndicator(id, this.localPlayerId),
+          teamBattle,
+          localTeam,
         )
         this.players.set(String(id), view)
         this.actorRoot.add(view.group)
       }
+      view.setTeamContext(teamBattle, localTeam)
       const deathShake = getDeathShakeAmount(
         view.state,
         player,

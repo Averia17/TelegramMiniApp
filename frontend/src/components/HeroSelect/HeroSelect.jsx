@@ -8,11 +8,12 @@ import "./HeroSelect.css"
 const heroDisplay = hero => hero?.displayName || hero?.name
 const combatType = hero => hero.attack?.archetype?.startsWith("melee") ? "БЛИЖНИЙ БОЙ" : "ДАЛЬНИЙ БОЙ"
 
-export const HeroSelect = ({onSelect, selectedHero}) => {
+export const HeroSelect = ({onSelect, selectedHero, battleMode = "solo", onModeChange}) => {
   const [heroes, setHeroes] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [rosterOpen, setRosterOpen] = useState(false)
+  const [modeOpen, setModeOpen] = useState(false)
 
   useEffect(() => {
     axios.get(`${BATTLE_URL}/heroes`)
@@ -91,11 +92,22 @@ export const HeroSelect = ({onSelect, selectedHero}) => {
         <p><span>ПАССИВ</span>{selected.passiveDescription}</p>
       </div>
 
-      <button className="hero-roster-button" onClick={() => setRosterOpen(true)}>
-        <span className="hero-roster-grid"><i/><i/><i/><i/></span>
-        БОЙЦЫ
-        <b>{heroes.length}</b>
-      </button>
+      <div className="hero-lobby-actions">
+        <button className="hero-roster-button" onClick={() => setRosterOpen(true)}>
+          <span className="hero-roster-grid"><i/><i/><i/><i/></span>
+          БОЙЦЫ
+          <b>{heroes.length}</b>
+        </button>
+        <div className="hero-mode-picker">
+          <button className={`hero-mode-button hero-mode-button--${battleMode}`} onClick={() => setModeOpen(open => !open)} aria-expanded={modeOpen} aria-haspopup="menu">
+            <span>РЕЖИМ</span><strong>{battleMode === "team" ? "КОМАНДА" : "SOLO"}</strong><i>▾</i>
+          </button>
+          {modeOpen && <div className="hero-mode-menu" role="menu">
+            <button className={battleMode === "solo" ? "is-active" : ""} onClick={() => { onModeChange?.("solo"); setModeOpen(false) }} role="menuitem"><strong>SOLO</strong><small>Каждый сам за себя</small></button>
+            <button className={battleMode === "team" ? "is-active" : ""} onClick={() => { onModeChange?.("team"); setModeOpen(false) }} role="menuitem"><strong>КОМАНДА</strong><small>Ищи союзников или создай пати</small></button>
+          </div>}
+        </div>
+      </div>
 
       {rosterOpen && (
         <div className="hero-roster">

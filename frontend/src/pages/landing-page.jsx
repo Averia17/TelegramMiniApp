@@ -8,6 +8,10 @@ import "./landing-page.css"
 import {API_URL} from "../utils/urls.js"
 import {BattleLoading} from "../components/BattleLoading/BattleLoading.jsx"
 import {loadBattleHero, saveBattleHero} from "../utils/battlePreferences.js"
+import {PartyPanel} from "../components/Party/PartyPanel.jsx"
+import {canStartTeamParty} from "../components/Party/partyRoster.js"
+import {PartyInviteNotifications} from "../components/Party/PartyInviteNotifications.jsx"
+import {MAX_PARTY_SIZE} from "../utils/urls.js"
 
 const HeroSelect = lazy(() => import("../components/HeroSelect/HeroSelect.jsx").then(module => ({default: module.HeroSelect})))
 
@@ -22,6 +26,10 @@ const LandingPage = ({id}) => {
   const [economy, setEconomy] = useState({energy:100,max_energy:100,gold:0,crystals:0,taunt_charges:0,next_energy_in:0})
   const [playError, setPlayError] = useState("")
   const [battleStarting, setBattleStarting] = useState(false)
+  const [battleMode, setBattleMode] = useState("solo")
+  const [partyId, setPartyId] = useState(() => new URLSearchParams(window.location.search).get("party") || "")
+  const [partyState, setPartyState] = useState(null)
+  const [partyOpen, setPartyOpen] = useState(false)
 
   const refreshEconomy = useCallback(() => axios.get(`${API_URL}/economy/me`).then(({data}) => setEconomy(data)).catch(() => {}), [])
   useEffect(() => { refreshEconomy(); const timer=setInterval(refreshEconomy,30000); return () => clearInterval(timer) }, [refreshEconomy])
@@ -30,6 +38,8 @@ const LandingPage = ({id}) => {
     setSelectedHero(hero)
     saveBattleHero(id, hero)
   }, [id])
+  const handlePartyReady = useCallback(state => { setPartyState(state); setPartyId(state.partyId) }, [])
+  const handlePartyAccepted = useCallback(state => { setBattleMode("team"); handlePartyReady(state) }, [handlePartyReady])
 
   useEffect(() => {
     if (TABS.includes(tabParam) && tabParam !== tab) setTab(tabParam)
@@ -42,22 +52,30 @@ const LandingPage = ({id}) => {
 
   const handlePlay = useCallback(async () => {
     if (!selectedHero) return
+    if (battleMode === "team" && partyId) {
+      const partyValidation = canStartTeamParty(partyState?.members || [], partyState?.maxSize || MAX_PARTY_SIZE)
+      if (partyState && !partyValidation.ok) {
+        setPlayError(partyValidation.reason)
+        return
+      }
+    }
     setPlayError("")
     setBattleStarting(true)
     try {
       const {data}=await axios.post(`${API_URL}/economy/me/battle`)
       setEconomy(data)
-      navigate("/battle", {state: {heroName: selectedHero, tauntActive: Boolean(data.taunt_active)}})
+      navigate(battleMode === "team" ? `/battle?mode=team${partyId ? `&party=${encodeURIComponent(partyId)}` : ""}` : "/battle", {state: {heroName: selectedHero, tauntActive: Boolean(data.taunt_active)}})
     } catch (error) {
       setBattleStarting(false)
       setPlayError(error.response?.data?.detail || "Не удалось начать бой")
     }
-  }, [navigate,selectedHero])
+  }, [battleMode, navigate, partyId, partyState, selectedHero])
 
   const playerTag = `P${String(id || 0).slice(-6)}`
 
   return (
     <main className={`lp lp--${tab}`}>
+      <PartyInviteNotifications id={id} onAccepted={handlePartyAccepted}/>
       {tab === "play" && (
         <>
           <header className="lp-topbar">
@@ -83,15 +101,15 @@ const LandingPage = ({id}) => {
 
           <div className="lp-content lp-content--play">
             <Suspense fallback={<BattleLoading progress={28} status="Загружаем героев..." />}>
-              <HeroSelect onSelect={selectHero} selectedHero={selectedHero}/>
+              <HeroSelect onSelect={selectHero} selectedHero={selectedHero} battleMode={battleMode} onModeChange={mode => { setBattleMode(mode); setPlayError("") }}/>
             </Suspense>
           </div>
 
           <footer className="lp-battle-dock">
-            <button className="lp-team-button"><span>＋</span><small>КОМАНДА</small></button>
+            <button className={`lp-team-button ${battleMode === "team" ? "is-active" : ""}`} onClick={() => { setBattleMode("team"); setPartyOpen(true) }}><span>＋</span><small>{partyId ? "ПАТИ" : "КОМАНДА"}</small></button>
             <div className="lp-event-card">
               <div className="lp-event-icon">☠</div>
-              <div><small>ОДИНОЧНОЕ СТОЛКНОВЕНИЕ</small><strong>Песчаный лабиринт</strong><span>Новая карта через 3ч.</span></div>
+              <div><small>{battleMode === "team" ? "КОМАНДНЫЙ БОЙ" : "ОДИНОЧНОЕ СТОЛКНОВЕНИЕ"}</small><strong>{battleMode === "team" ? "Командная арена" : "Песчаный лабиринт"}</strong><span>{battleMode === "team" ? "Две команды по три игрока" : "Новая карта через 3ч."}</span></div>
             </div>
             <button className="lp-play-btn" disabled={!selectedHero || battleStarting} onClick={handlePlay} aria-busy={battleStarting}>
               В БОЙ!
@@ -102,6 +120,7 @@ const LandingPage = ({id}) => {
       )}
 
       {battleStarting && <BattleLoading progress={18} status="Подготавливаем бой..." />}
+      {partyOpen && <PartyPanel id={id} selectedHero={selectedHero} onClose={() => setPartyOpen(false)} onPartyReady={handlePartyReady}/>}
 
       {tab !== "play" && (
         <>

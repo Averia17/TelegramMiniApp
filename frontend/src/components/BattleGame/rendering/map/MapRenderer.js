@@ -23,6 +23,163 @@ const STONE_PROP_TYPES = new Set(["wall", "destructible", "sacrificial_stone", "
 const DEFAULT_MAP_TILE_SIZE = 40
 const BEACON_VISUAL_SCALE = 24
 
+const createObjectiveVisual = objective => {
+  const group = new THREE.Group()
+  const blue = String(objective.team) === "Blue"
+  const color = blue ? 0x4b9dff : 0xff5f6d
+  const material = new THREE.MeshStandardMaterial({color, roughness: .72, metalness: .14, flatShading: true})
+  const dark = new THREE.MeshStandardMaterial({color: blue ? 0x172d63 : 0x5e1826, roughness: .8, flatShading: true})
+  const hall = objective.type === "town_hall"
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(hall ? 3.8 : 1.85, hall ? 4.35 : 2.25, hall ? .72 : .55, hall ? 8 : 8), dark)
+  base.position.y = hall ? .36 : .28
+  base.name = hall ? "team-town-hall-foundation" : "team-tower-foundation"
+  if (hall) {
+    const house = new THREE.Mesh(new THREE.BoxGeometry(4.9, 2.35, 3.9), material)
+    house.position.y = 1.72
+    house.name = "team-town-hall-house"
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(3.75, 1.65, 4), material)
+    roof.rotation.y = Math.PI / 4
+    roof.position.y = 3.72
+    roof.name = "team-town-hall-roof"
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(3.55, .12, 8, 24), new THREE.MeshBasicMaterial({color, transparent: true, opacity: .7, depthWrite: false}))
+    ring.rotation.x = Math.PI / 2
+    ring.position.y = .8
+    ring.name = "team-town-hall-ring"
+    group.add(base, house, roof, ring)
+  } else {
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.55, 2.5, 8), material)
+    shaft.position.y = 1.55
+    shaft.name = "team-tower-shaft"
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.75, 1.45, 6), material)
+    roof.position.y = 3.52
+    roof.name = "team-tower-roof"
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(.42, 0), new THREE.MeshBasicMaterial({color: 0xffe28a, transparent: true, opacity: .9}))
+    core.position.y = 3.45
+    core.name = "team-tower-core"
+    group.add(base, shaft, roof, core)
+  }
+  group.position.set(Number(objective.x) * WORLD_SCALE, 0, Number(objective.y) * WORLD_SCALE)
+  group.userData.objectiveId = objective.id
+  group.userData.objectiveMaterial = material
+  return group
+}
+
+const shapeGeometry = points => {
+  const shape = new THREE.Shape()
+  shape.moveTo(points[0][0], points[0][1])
+  points.slice(1).forEach(point => shape.lineTo(point[0], point[1]))
+  shape.closePath()
+  return new THREE.ShapeGeometry(shape)
+}
+
+const riverProfile = [
+  [-96, 2.05], [-82, 2.45], [-68, 2.15], [-54, 2.65], [-40, 2.25],
+  [-26, 2.5], [-12, 2.1], [0, 2.4], [12, 2.1], [26, 2.5],
+  [40, 2.25], [54, 2.65], [68, 2.15], [82, 2.45], [96, 2.05],
+]
+
+const riverBankGeometry = extra => shapeGeometry([
+  ...riverProfile.map(([x, width]) => [x, width + extra]),
+  ...[...riverProfile].reverse().map(([x, width]) => [x, -width - extra]),
+])
+
+const createRiverVisual = scale => {
+  const group = new THREE.Group()
+  const waterMaterial = new THREE.MeshStandardMaterial({
+    color: 0x3e9ca8, roughness: .7, metalness: .02, transparent: true, opacity: .78,
+  })
+  const water = new THREE.Mesh(riverBankGeometry(0), waterMaterial)
+  water.rotation.x = -Math.PI / 2
+  water.position.y = .035
+  water.scale.setScalar(scale)
+  water.name = "team-river-water"
+  group.add(water)
+
+  const shoreMaterial = new THREE.MeshStandardMaterial({color: 0x9b845d, roughness: .98, flatShading: true})
+  const makeShore = side => {
+    const shore = new THREE.Mesh(shapeGeometry([
+      ...riverProfile.map(([x, width]) => [x, side * width]),
+      ...[...riverProfile].reverse().map(([x, width]) => [x, side * (width + 1.55)]),
+    ]), shoreMaterial)
+    shore.rotation.x = -Math.PI / 2
+    shore.position.y = .025
+    shore.scale.setScalar(scale)
+    shore.name = "team-river-shore"
+    return shore
+  }
+  group.add(makeShore(-1), makeShore(1))
+
+  const rockMaterial = new THREE.MeshStandardMaterial({color: 0x667477, roughness: .9, flatShading: true})
+  const reedMaterial = new THREE.MeshStandardMaterial({color: 0x386d43, roughness: 1, flatShading: true})
+  for (const [x, z, size] of [
+    [-84, -3.1, .42], [-61, 3.15, .34], [-36, -3.05, .3], [-11, 3.1, .38],
+    [14, -3.05, .36], [39, 3.1, .32], [64, -3.05, .4], [86, 3.1, .34],
+  ]) {
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(size * scale, 0), rockMaterial)
+    rock.position.set(x * scale, size * .45 * scale, z * scale)
+    rock.scale.set(1.25, .72, .95)
+    rock.name = "team-river-rock"
+    group.add(rock)
+  }
+  for (const [x, z] of [[-73, -3.3], [-48, 3.25], [-22, -3.25], [2, 3.25], [27, -3.25], [52, 3.25], [76, -3.3]]) {
+    const reed = new THREE.Mesh(new THREE.ConeGeometry(.09 * scale, .8 * scale, 5), reedMaterial)
+    reed.position.set(x * scale, .4 * scale, z * scale)
+    reed.rotation.z = (x % 2 ? -.18 : .16)
+    reed.name = "team-river-reed"
+    group.add(reed)
+  }
+  return group
+}
+
+const createRiverBridgeVisual = scale => {
+  const group = new THREE.Group()
+  const wood = new THREE.MeshStandardMaterial({color: 0x8f6847, roughness: .92, flatShading: true})
+  const plank = new THREE.MeshStandardMaterial({color: 0xb08859, roughness: .9, flatShading: true})
+  const stone = new THREE.MeshStandardMaterial({color: 0x6b7776, roughness: .95, flatShading: true})
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(4.5 * scale, .28 * scale, 8.2 * scale), wood)
+  deck.position.y = .22 * scale
+  deck.name = "team-river-bridge-deck"
+  group.add(deck)
+  for (let index = -2; index <= 2; index += 1) {
+    const board = new THREE.Mesh(new THREE.BoxGeometry(4.25 * scale, .12 * scale, .82 * scale), plank)
+    board.position.set(0, .41 * scale, index * 1.55 * scale)
+    board.name = "team-river-bridge-plank"
+    group.add(board)
+  }
+  for (const z of [-3.35, 3.35]) {
+    const support = new THREE.Mesh(new THREE.DodecahedronGeometry(.72 * scale, 0), stone)
+    support.position.set(0, -.08 * scale, z * scale)
+    support.scale.set(1.35, .55, .85)
+    support.name = "team-river-bridge-stone"
+    group.add(support)
+  }
+  for (const x of [-2.05, 2.05]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(.14 * scale, .13 * scale, 7.2 * scale), wood)
+    rail.position.set(x * scale, .92 * scale, 0)
+    rail.name = "team-river-bridge-rail"
+    group.add(rail)
+    for (const z of [-3.1, 0, 3.1]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(.12 * scale, .14 * scale, 1.15 * scale, 6), wood)
+      post.position.set(x * scale, .58 * scale, z * scale)
+      post.name = "team-river-bridge-post"
+      group.add(post)
+    }
+  }
+  return group
+}
+
+const createTeamFeatureVisual = feature => {
+  const group = new THREE.Group()
+  const type = String(feature.type || "")
+  const scale = Number(feature.scale) > 0 ? Number(feature.scale) : 1
+  group.rotation.y = Number(feature.rotation) || -Math.PI / 4
+  if (type === "river") group.add(createRiverVisual(scale))
+  if (type === "river_bridge") group.add(createRiverBridgeVisual(scale))
+  group.position.set(Number(feature.x) * WORLD_SCALE, 0, Number(feature.y) * WORLD_SCALE)
+  group.userData.featureId = feature.id
+  return group
+}
+
 const createBeaconVisual = () => {
   const group = new THREE.Group()
   group.userData.role = "beacon"
@@ -395,6 +552,8 @@ export class MapRenderer {
     this.focus = null
     this.bushVisuals = new Map()
     this.wildflowerField = null
+    this.objectiveObjects = new Map()
+    this.featureObjects = new Map()
   }
 
   syncIsland(game, width, height) {
@@ -554,6 +713,7 @@ export class MapRenderer {
   sync(map) {
     if (!map) return
     this.mapState = map
+    this.syncFeatures(map.features)
     const walls = map.walls || []
     const signature = createMapSignature(map)
     if (signature === this.signature) return
@@ -581,7 +741,7 @@ export class MapRenderer {
         }
       })
     })
-    const nonBushWalls = walls.filter(wall => wall.type !== "bush" && wall.type !== "half" && wall.type !== "moon_mist")
+    const nonBushWalls = walls.filter(wall => wall.type !== "bush" && wall.type !== "half" && wall.type !== "moon_mist" && wall.type !== "river")
     const renderWalls = [
       ...mergeWalls(nonBushWalls.filter(wall => wall.type === "water")),
       ...nonBushWalls.filter(wall => wall.type !== "water" && !STONE_PROP_TYPES.has(wall.type)),
@@ -599,6 +759,56 @@ export class MapRenderer {
       this.objects.delete(key)
       this.bushVisuals.delete(key)
       this.debris.push({object, age: 0, life: 0.28, baseY: object.position.y})
+    })
+  }
+
+  syncObjectives(objectives) {
+    const incoming = Array.isArray(objectives) ? objectives : []
+    const active = new Set()
+    incoming.forEach(objective => {
+      if (!objective?.id) return
+      active.add(String(objective.id))
+      let object = this.objectiveObjects.get(String(objective.id))
+      if (!object) {
+        object = createObjectiveVisual(objective)
+        this.objectiveObjects.set(String(objective.id), object)
+        this.root.add(object)
+      }
+      const material = object.userData.objectiveMaterial
+      const maxLives = Math.max(1, Number(objective.maxLives) || 1)
+      const lives = Math.max(0, Number(objective.lives) || 0)
+      const ratio = lives / maxLives
+      object.visible = lives > 0 || incoming.some(candidate => candidate?.team !== objective.team && candidate?.type === "town_hall" && Number(candidate.lives) > 0)
+      object.scale.setScalar(.82 + ratio * .18)
+      if (material) material.emissive?.setHex?.(String(objective.team) === "Blue" ? 0x102f68 : 0x651622)
+      object.userData.objectiveState = objective
+    })
+    this.objectiveObjects.forEach((object, id) => {
+      if (active.has(id)) return
+      this.root.remove(object)
+      disposeObjectTree(object)
+      this.objectiveObjects.delete(id)
+    })
+  }
+
+  syncFeatures(features) {
+    const incoming = Array.isArray(features) ? features : []
+    const active = new Set()
+    incoming.forEach(feature => {
+      if (!feature?.id || !feature?.type) return
+      const id = String(feature.id)
+      active.add(id)
+      if (!this.featureObjects.has(id)) {
+        const object = createTeamFeatureVisual(feature)
+        this.featureObjects.set(id, object)
+        this.root.add(object)
+      }
+    })
+    this.featureObjects.forEach((object, id) => {
+      if (active.has(id)) return
+      this.root.remove(object)
+      disposeObjectTree(object)
+      this.featureObjects.delete(id)
     })
   }
 
@@ -683,8 +893,12 @@ export class MapRenderer {
     if (this.stormMesh) disposeObjectTree(this.stormMesh)
     if (this.phaseAtmosphere) disposeObjectTree(this.phaseAtmosphere)
     if (this.beaconGroup) disposeObjectTree(this.beaconGroup)
+    this.featureObjects.forEach(object => disposeObjectTree(object))
+    this.featureObjects.clear()
     if (this.islandTerrain) disposeObjectTree(this.islandTerrain)
     if (this.wildflowerField) disposeObjectTree(this.wildflowerField)
+    this.objectiveObjects.forEach(object => disposeObjectTree(object))
+    this.objectiveObjects.clear()
     this.bushVisuals.clear()
     this.waterTexture.dispose()
   }

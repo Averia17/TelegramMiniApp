@@ -18,6 +18,8 @@ services:
       - APP_AUTH_SECRET=${APP_AUTH_SECRET:-local-development-auth-secret-change-before-production}
       - APP_ENV=development
       - ACCOUNT_URL=http://account:8000
+      - TEAM_SIZE=${TEAM_SIZE:-3}
+      - MAX_PARTY_SIZE=${MAX_PARTY_SIZE:-3}
     restart: unless-stopped
     depends_on:
       account:

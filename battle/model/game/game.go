@@ -9,6 +9,7 @@ import (
 	"battle/service/geometry"
 	"fmt"
 	"math"
+	"math/rand"
 	"sort"
 	"time"
 )
@@ -70,6 +71,7 @@ func InitGameStateWithDependencies(gs *GameState, dependencies GameDependencies)
 	gs.Skyfalls = make([]*Skyfall, 0)
 	gs.TemporaryWalls = make(map[*geometry.WallTile]int64)
 	gs.BotMemory = make(map[string]*BotPerception)
+	gs.botAI = newBotAIStrategy(gs.Mode)
 	gs.IslandVoiceNextAt = make(map[string]int64)
 	gs.IslandVoiceKillClaimed = make(map[string]bool)
 	gs.CombatEvents = make([]CombatEvent, 0)
@@ -92,6 +94,7 @@ func InitGameStateWithDependencies(gs *GameState, dependencies GameDependencies)
 		gs.Walls.Insert(wall)
 	}
 	gs.WallsSource = m.Collisions
+	gs.initializeTeamObjectives()
 
 	gs.State = GameStateWaiting
 	gs.LobbyEndsAt = 0
@@ -142,6 +145,8 @@ func (gs *GameState) updateWithDelta(elapsed time.Duration) {
 	gs.updateBots()
 	gs.updateMonsters()
 	gs.updateBullets()
+	gs.updateTeamObjectivesAt(time.Now().UnixMilli())
+	gs.updateTeamRespawns(time.Now().UnixMilli())
 	gs.expireEffects()
 	gs.pruneCombatEvents(time.Now().UnixMilli())
 }
@@ -507,6 +512,9 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 }
 
 func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int) int {
+	if target == nil || amount <= 0 || !gs.canDamagePlayer(source, target) {
+		return 0
+	}
 	wasAlive := target != nil && target.IsAlive()
 	dealt := gs.applyDamageAmount(target, amount)
 	if dealt > 0 && target != nil {
@@ -523,6 +531,9 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		})
 	}
 	if wasAlive && !target.IsAlive() {
+		if gs.Mode == ModeTeamDeathmatch {
+			target.RespawnAt = time.Now().UnixMilli() + teamRespawnDelay
+		}
 		killerName := "Unknown"
 		if source != nil {
 			killerName = source.Name
@@ -542,6 +553,31 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		gs.finishBattleIfDecided()
 	}
 	return dealt
+}
+
+// canDamagePlayer is the final server-side friendly-fire gate. Individual
+// attacks still filter their candidate lists for efficiency, but damage must
+// never depend on every ability remembering to do that filtering correctly.
+// Resolve teams from the authoritative GameState so stale attack payloads or
+// copied Player values cannot bypass the rule.
+func (gs *GameState) canDamagePlayer(source, target *player.Player) bool {
+	if target == nil {
+		return false
+	}
+	if source == nil {
+		return true
+	}
+	if gs.Mode != ModeTeamDeathmatch || source.PlayerId == target.PlayerId {
+		return source.PlayerId != target.PlayerId
+	}
+	sourceTeam, targetTeam := source.Team, target.Team
+	if authoritative := gs.Players[source.PlayerId]; authoritative != nil {
+		sourceTeam = authoritative.Team
+	}
+	if authoritative := gs.Players[target.PlayerId]; authoritative != nil {
+		targetTeam = authoritative.Team
+	}
+	return sourceTeam == "" || targetTeam == "" || sourceTeam != targetTeam
 }
 
 func (gs *GameState) recordLastContact(source, target *player.Player) {
@@ -710,6 +746,23 @@ func (gs *GameState) updateBullets() {
 				continue
 			}
 		}
+		if gs.Mode == ModeTeamDeathmatch && b.Active {
+			attacker := gs.Players[b.PlayerId]
+			for _, objective := range gs.Objectives {
+				if objective == nil || objective.Lives <= 0 || attacker == nil || attacker.Team == objective.Team {
+					continue
+				}
+				if segmentHitsCircle(previousX, previousY, b.X, b.Y, objective.X, objective.Y, objective.Radius) {
+					if gs.damageObjective(attacker, objective, b.Damage) {
+						b.Active = false
+					}
+					break
+				}
+			}
+		}
+		if !b.Active {
+			continue
+		}
 
 		for _, p := range gs.Players {
 			if b.Kind == "mina_star" && p.IsAlive() && (p.PlayerId == b.PlayerId || (b.Team != "" && p.Team == b.Team)) && segmentHitsCircle(previousX, previousY, b.X, b.Y, p.X, p.Y, p.Radius+b.Radius) {
@@ -844,10 +897,10 @@ func (gs *GameState) updateBullets() {
 		}
 
 		for _, pr := range gs.Props {
-			if pr == nil || !pr.Active || pr.Type != "lunar_crate" || !segmentHitsCircle(previousX, previousY, b.X, b.Y, pr.X, pr.Y, pr.Radius+b.Radius) {
+			if pr == nil || !pr.Active || !isBreakableCrate(pr) || !segmentHitsCircle(previousX, previousY, b.X, b.Y, pr.X, pr.Y, pr.Radius+b.Radius) {
 				continue
 			}
-			gs.damageLunarCrate(gs.Players[b.PlayerId], pr, b.Damage)
+			gs.damageCrate(gs.Players[b.PlayerId], pr, b.Damage)
 			gs.finishNewHeroProjectile(b)
 			b.Active = false
 			break
@@ -895,11 +948,28 @@ func segmentHitsBlockingWall(x1, y1, x2, y2, radius float64, walls *geometry.Spa
 	for step := 0; step <= steps; step++ {
 		t := float64(step) / float64(steps)
 		body := geometry.CircleBody{X: x1 + (x2-x1)*t, Y: y1 + (y2-y1)*t, Radius: radius}
-		if geometry.CollidesCircleWithBlockingWalls(&body, walls) {
+		if collidesCircleWithProjectileBlockingWalls(&body, walls) {
 			return true
 		}
 	}
 	return false
+}
+
+func collidesCircleWithProjectileBlockingWalls(body *geometry.CircleBody, walls *geometry.SpatialHash) bool {
+	collides := false
+	walls.VisitRect(body.Left(), body.Top(), body.Right(), body.Bottom(), func(wall *geometry.WallTile) bool {
+		// River blocks movement but projectiles fly over it.
+		if wall.Type == "river" || !geometry.IsBlockingWall(wall.Type) {
+			return true
+		}
+		wallRect := wall.ColliderRect()
+		if geometry.CircleToRectangle(body, &wallRect) {
+			collides = true
+			return false
+		}
+		return true
+	})
+	return collides
 }
 
 func (gs *GameState) splitProjectile(parent *bullet.Bullet) {
@@ -982,12 +1052,19 @@ func (gs *GameState) startGame() {
 	gs.fillMissingBots()
 
 	gs.matchRules().AssignTeams(gs)
+	if gs.Mode == ModeTeamDeathmatch {
+		gs.setPlayersPositionForTeams()
+	}
 	gs.setBotsPositionAtFreeSpawns()
 	gs.setPlayersActive(true)
 	spawnProtectionUntil := time.Now().Add(SpawnProtectionDuration).UnixMilli()
 	for _, p := range gs.Players {
 		p.InvulnerableUntil = spawnProtectionUntil
 	}
+	if gs.Mode == ModeTeamDeathmatch {
+		gs.spawnAuthoredTeamPickups()
+	}
+	gs.healthCratesAdd(HealthCratesCount)
 	gs.monstersAdd(MonstersCount)
 	gs.emitIslandVoiceToAll(IslandVoiceTriggerPhase, gs.MatchStartedAt)
 	gs.Broadcast("start", map[string]interface{}{})
@@ -1045,6 +1122,7 @@ func (gs *GameState) PlayerAdd(id, name string, heroName string) {
 	p := hero.CreatePlayer(id, name, spawner.X+float64(hero.Radius), spawner.Y+float64(hero.Radius))
 	if gs.Mode == ModeTeamDeathmatch {
 		p.SetTeam("Red")
+		p.TeamLocked = false
 	}
 	gs.Players[id] = p
 	gs.Broadcast("joined", map[string]interface{}{"name": p.Name, "hero": p.HeroName})
@@ -1199,6 +1277,13 @@ func (gs *GameState) collectPickups(p *player.Player) {
 				p.DamageMultiplier = math.Min(1.35, 1+float64(p.PowerCores)*.07)
 				// Never let a pickup reduce an assassin's native movement speed.
 				p.Speed = math.Max(p.Speed, math.Min(p.Speed*1.012, 14.25))
+			case "health_boost":
+				bonus := p.ApplyHealthBoost(HealthBoostFraction)
+				if bonus <= 0 {
+					continue
+				}
+				pr.Active = false
+				gs.addEffect("health_boost", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#4dff70", bonus, 700)
 			case "lunar_speed", "lunar_damage", "lunar_shield", "lunar_cooldown":
 				pr.Active = false
 				switch pr.Type {
@@ -1650,8 +1735,24 @@ func (gs *GameState) damageMonster(id string, target *monster.Monster, damage in
 		return false
 	}
 	gs.Props = append(gs.Props, prop.NewProp("potion-red", target.X, target.Y, FlaskSize/2))
+	if gs.shouldDropMonsterHealthBoost(id) {
+		reward := prop.NewProp("health_boost", target.X+8, target.Y, 14)
+		reward.LootType = "health_boost"
+		gs.Props = append(gs.Props, reward)
+	}
 	delete(gs.Monsters, id)
 	return true
+}
+
+func shouldDropMonsterHealthBoost(roll int) bool {
+	return roll >= 1 && roll <= MonsterHealthBoostDropChancePercent
+}
+
+func (gs *GameState) shouldDropMonsterHealthBoost(_ string) bool {
+	if gs.randomHealthBoostDrop != nil {
+		return gs.randomHealthBoostDrop()
+	}
+	return shouldDropMonsterHealthBoost(rand.Intn(100) + 1)
 }
 
 func (gs *GameState) hitSector(source *player.Player, angle, reach, halfArc float64, damage int, pull bool) int {
@@ -1701,7 +1802,7 @@ func (gs *GameState) hitSectorWithDamage(source *player.Player, angle, reach, ha
 		gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ffe55c", damage, 520)
 	}
 	for _, crate := range gs.Props {
-		if crate == nil || !crate.Active || crate.Type != "lunar_crate" {
+		if crate == nil || !crate.Active || !isBreakableCrate(crate) {
 			continue
 		}
 		dx, dy := crate.X-source.X, crate.Y-source.Y
@@ -1709,24 +1810,63 @@ func (gs *GameState) hitSectorWithDamage(source *player.Player, angle, reach, ha
 		if math.Hypot(dx, dy) > reach+crate.Radius || math.Abs(delta) > halfArc {
 			continue
 		}
-		if gs.damageLunarCrate(source, crate, damage) {
+		if gs.damageCrate(source, crate, damage) {
 			hits++
+		}
+	}
+	if gs.Mode == ModeTeamDeathmatch {
+		for _, objective := range gs.Objectives {
+			if objective == nil || objective.Lives <= 0 || objective.Team == source.Team || !gs.autoAimHitsTarget(source, objective.X, objective.Y, objective.Radius, angle, reach, halfArc) {
+				continue
+			}
+			if gs.damageObjective(source, objective, damage) {
+				hits++
+			}
 		}
 	}
 	return hits
 }
 
+func isBreakableCrate(crate *prop.Prop) bool {
+	return crate != nil && (crate.Type == "lunar_crate" || crate.Type == "health_crate")
+}
+
 func (gs *GameState) damageLunarCrate(source *player.Player, crate *prop.Prop, damage int) bool {
-	if crate == nil || !crate.Active || crate.Type != "lunar_crate" {
+	if crate == nil || crate.Type != "lunar_crate" {
+		return false
+	}
+	return gs.damageCrate(source, crate, damage)
+}
+
+func (gs *GameState) damageHealthCrate(source *player.Player, crate *prop.Prop, damage int) bool {
+	if crate == nil || crate.Type != "health_crate" {
+		return false
+	}
+	return gs.damageCrate(source, crate, damage)
+}
+
+func (gs *GameState) damageCrate(source *player.Player, crate *prop.Prop, damage int) bool {
+	if !isBreakableCrate(crate) || !crate.Active || damage <= 0 {
 		return false
 	}
 	crate.Lives -= int(math.Max(1, float64(damage)))
-	gs.addEffect("crate_hit", crate.X, crate.Y, 0, 0, crate.Radius, 0, 0, 0, lunarLootColor(crate.LootType), damage, 260)
+	crateColor := lunarLootColor(crate.LootType)
+	if crate.Type == "health_crate" {
+		crateColor = "#62d84e"
+	}
+	gs.addEffect("crate_hit", crate.X, crate.Y, 0, 0, crate.Radius, 0, 0, 0, crateColor, damage, 260)
 	if crate.Lives > 0 {
 		return true
 	}
 	crate.Lives = 0
 	crate.Active = false
+	if crate.Type == "health_crate" {
+		reward := prop.NewProp("health_boost", crate.X, crate.Y, 14)
+		reward.LootType = "health_boost"
+		gs.Props = append(gs.Props, reward)
+		gs.addEffect("crate_break", crate.X, crate.Y, 0, 0, 34, 0, 0, 0, "#62d84e", 0, 650)
+		return true
+	}
 	reward := prop.NewProp("lunar_"+crate.LootType, crate.X, crate.Y, 16)
 	reward.LootType = crate.LootType
 	gs.Props = append(gs.Props, reward)
@@ -1996,6 +2136,7 @@ func (gs *GameState) setPlayersActive(active bool) {
 			p.GadgetArmed, p.GadgetCharges = false, 3
 			p.Ammo = p.MaxAmmo
 			p.NextAmmoAt = 0
+			p.RespawnAt = 0
 		} else {
 			p.Lives = 0
 		}
@@ -2026,23 +2167,56 @@ func (gs *GameState) setPlayersPositionRandomly() {
 	}
 }
 
+func (gs *GameState) setPlayersPositionForTeams() {
+	if gs.Map == nil || len(gs.Map.TeamSpawners) == 0 {
+		return
+	}
+	used := map[string]int{"Blue": 0, "Red": 0}
+	for _, p := range gs.Players {
+		spawners := gs.Map.TeamSpawners[p.Team]
+		if len(spawners) == 0 {
+			continue
+		}
+		spawner := spawners[used[p.Team]%len(spawners)]
+		used[p.Team]++
+		p.X = spawner.X + PlayerSize/2
+		p.Y = spawner.Y + PlayerSize/2
+		p.Ack = 0
+	}
+}
+
 func (gs *GameState) setPlayersTeamsRandomly() {
 	ids := make([]string, 0, len(gs.Players))
 	for id := range gs.Players {
 		ids = append(ids, id)
 	}
 	ids = geometry.ShuffleStrings(ids)
+	// Matchmaking may have already assigned a valid team. Preserve it and use
+	// the legacy balanced fallback only for clients that joined a room directly.
+	counts := map[string]int{"Blue": 0, "Red": 0}
+	for _, id := range ids {
+		if gs.Players[id].TeamLocked {
+			team := gs.Players[id].Team
+			if team == "Blue" || team == "Red" {
+				counts[team]++
+			}
+		}
+	}
 
 	minPerTeam := len(ids) / 2
 	rest := len(ids) % 2
 
-	for i, id := range ids {
+	for _, id := range ids {
 		p := gs.Players[id]
-		if i < minPerTeam+rest {
-			p.SetTeam("Blue")
-		} else {
-			p.SetTeam("Red")
+		if p.TeamLocked {
+			continue
 		}
+		team := "Red"
+		if counts["Blue"] < minPerTeam+rest {
+			team = "Blue"
+		}
+		p.SetTeam(team)
+		counts[team]++
 	}
 }
 
@@ -2128,6 +2302,10 @@ func (gs *GameState) monstersAdd(count int) {
 	if gs.Map == nil || count <= 0 {
 		return
 	}
+	if gs.Mode == ModeTeamDeathmatch && len(gs.Map.MonsterSpawns) > 0 {
+		gs.addAuthoredTeamMonsters(count)
+		return
+	}
 
 	regions := monsterSpawnRegions()
 	placed := make([][2]float64, 0, count)
@@ -2145,6 +2323,22 @@ func (gs *GameState) monstersAdd(count int) {
 		m := monster.NewMonster(x, y, PlayerSize/2, gs.Map.WidthInPixels, gs.Map.HeightInPixels, lives)
 		m.Tier, m.MaxLives = tier, lives
 		gs.Monsters[fmt.Sprintf("%d", geometry.GetRandomInt(0, 1000))] = m
+	}
+}
+
+func (gs *GameState) addAuthoredTeamMonsters(count int) {
+	limit := count
+	if limit > len(gs.Map.MonsterSpawns) {
+		limit = len(gs.Map.MonsterSpawns)
+	}
+	for index, spawn := range gs.Map.MonsterSpawns[:limit] {
+		tier, lives := 1, monster.MonsterLives
+		if index%4 == 0 {
+			tier, lives = 2, monster.EliteMonsterLives
+		}
+		m := monster.NewMonster(spawn.X, spawn.Y, PlayerSize/2, gs.Map.WidthInPixels, gs.Map.HeightInPixels, lives)
+		m.Tier, m.MaxLives = tier, lives
+		gs.Monsters[fmt.Sprintf("team-bat-%d", index)] = m
 	}
 }
 
@@ -2222,6 +2416,62 @@ func (gs *GameState) propsAdd(count int) {
 		y := geometry.GetRandomFloat(float64(TileSize), gs.Map.HeightInPixels-float64(TileSize))
 		pr := prop.NewProp("potion-red", x, y, FlaskSize/2)
 		gs.Props = append(gs.Props, pr)
+	}
+}
+
+func (gs *GameState) healthCratesAdd(count int) {
+	if gs.Map == nil || count <= 0 {
+		return
+	}
+	const radius = 22.0
+	for i := 0; i < count; i++ {
+		placed := false
+		for attempt := 0; attempt < 80 && !placed; attempt++ {
+			x := geometry.GetRandomFloat(float64(TileSize)+radius, gs.Map.WidthInPixels-float64(TileSize)-radius)
+			y := geometry.GetRandomFloat(float64(TileSize)+radius, gs.Map.HeightInPixels-float64(TileSize)-radius)
+			candidate := &geometry.CircleBody{X: x, Y: y, Radius: radius}
+			if geometry.CollidesCircleWithBlockingWalls(candidate, gs.Walls) {
+				continue
+			}
+			tooClose := false
+			for _, p := range gs.Players {
+				if p != nil && math.Hypot(p.X-x, p.Y-y) < 100 {
+					tooClose = true
+					break
+				}
+			}
+			if tooClose {
+				continue
+			}
+			for _, existing := range gs.Props {
+				if existing != nil && existing.Active && math.Hypot(existing.X-x, existing.Y-y) < radius*3 {
+					tooClose = true
+					break
+				}
+			}
+			if tooClose {
+				continue
+			}
+			gs.Props = append(gs.Props, prop.NewHealthCrate(x, y))
+			placed = true
+		}
+	}
+}
+
+func (gs *GameState) spawnAuthoredTeamPickups() {
+	if gs.Map == nil {
+		return
+	}
+	for _, spawn := range gs.Map.PickupSpawns {
+		radius := spawn.Radius
+		if radius <= 0 {
+			radius = FlaskSize / 2
+		}
+		propType := spawn.Type
+		if propType == "" {
+			propType = "potion-red"
+		}
+		gs.Props = append(gs.Props, prop.NewProp(propType, spawn.X, spawn.Y, radius))
 	}
 }
 

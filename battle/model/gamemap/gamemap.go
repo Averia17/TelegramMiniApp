@@ -83,7 +83,47 @@ type GameMap struct {
 	HeightInPixels float64
 	Collisions     []*geometry.WallTile
 	Spawners       []*geometry.RectangleBody
+	TeamSpawners   map[string][]*geometry.RectangleBody
+	MonsterSpawns  []MapMonsterSpawn
+	PickupSpawns   []MapPickupSpawn
+	Objectives     []MapObjective
+	Features       []MapFeature
 	Tileset        map[int]TilesetEntry
+}
+
+// MapMonsterSpawn is an authored neutral monster position. Team maps use
+// these instead of sampling a random arena region at match start.
+type MapMonsterSpawn struct {
+	X, Y float64
+}
+
+// MapPickupSpawn is an authored pickup position published by the map. Keeping
+// the type here leaves room for future map-specific pickup layouts while the
+// current team map uses health potions.
+type MapPickupSpawn struct {
+	X, Y   float64
+	Radius float64
+	Type   string
+}
+
+type MapObjective struct {
+	ID     string
+	Type   string
+	Team   string
+	X      float64
+	Y      float64
+	Radius float64
+}
+
+// MapFeature is visual map dressing that deliberately does not participate in
+// collision. It is used for readable landmarks such as a passable team border.
+type MapFeature struct {
+	ID       string
+	Type     string
+	X        float64
+	Y        float64
+	Rotation float64
+	Scale    float64
 }
 
 type TilesetEntry struct {
@@ -119,6 +159,9 @@ func propColliderInsets(kind string) (float64, float64) {
 func LoadMap(name string) (*GameMap, error) {
 	if name == "battle-royale" {
 		return GenerateBattleRoyale(CanonicalBattleRoyaleSeed), nil
+	}
+	if name == "team-battle" {
+		return GenerateTeamBattle(CanonicalTeamBattleSeed), nil
 	}
 	data, ok := mapData[name]
 	if !ok {

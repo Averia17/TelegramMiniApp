@@ -73,6 +73,7 @@ type StateUpdate struct {
 	Props        []PropJSON             `json:"props"`
 	Effects      []EffectJSON           `json:"effects,omitempty"`
 	CombatEvents []CombatEventJSON      `json:"combatEvents,omitempty"`
+	Objectives   []ObjectiveStateJSON   `json:"objectives,omitempty"`
 }
 
 type CombatEventJSON struct {
@@ -177,6 +178,7 @@ type PlayerJSON struct {
 	AbilityAck       string           `json:"abilityAck,omitempty"`
 	AbilityAccepted  bool             `json:"abilityAccepted,omitempty"`
 	RegenRate        float64          `json:"regenRate,omitempty"`
+	RespawnAt        int64            `json:"respawnAt,omitempty"`
 	Hidden           bool             `json:"hidden,omitempty"`
 	LastContact      *LastContactJSON `json:"lastContact,omitempty"`
 }
@@ -187,6 +189,16 @@ type LastContactJSON struct {
 	At         int64   `json:"at"`
 	DirectionX float64 `json:"directionX"`
 	DirectionY float64 `json:"directionY"`
+}
+
+type ObjectiveStateJSON struct {
+	ID       string  `json:"id"`
+	Type     string  `json:"type"`
+	Team     string  `json:"team"`
+	X        float64 `json:"x"`
+	Y        float64 `json:"y"`
+	Lives    int     `json:"lives"`
+	MaxLives int     `json:"maxLives"`
 }
 
 // CooldownsJSON keeps the public object shape while avoiding a per-snapshot
@@ -243,14 +255,41 @@ type PropJSON struct {
 }
 
 type MapJSON struct {
-	ID       string     `json:"id"`
-	Name     string     `json:"name"`
-	Seed     int64      `json:"seed"`
-	Revision int        `json:"revision"`
-	Width    float64    `json:"width"`
-	Height   float64    `json:"height"`
-	TileSize float64    `json:"tileSize"`
-	Walls    []WallJSON `json:"walls"`
+	ID         string                 `json:"id"`
+	Name       string                 `json:"name"`
+	Seed       int64                  `json:"seed"`
+	Revision   int                    `json:"revision"`
+	Width      float64                `json:"width"`
+	Height     float64                `json:"height"`
+	TileSize   float64                `json:"tileSize"`
+	Walls      []WallJSON             `json:"walls"`
+	TeamSpawns map[string][]SpawnJSON `json:"teamSpawns,omitempty"`
+	Objectives []ObjectiveJSON        `json:"objectives,omitempty"`
+	Features   []FeatureJSON          `json:"features,omitempty"`
+}
+
+type SpawnJSON struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+type ObjectiveJSON struct {
+	ID     string  `json:"id"`
+	Type   string  `json:"type"`
+	Team   string  `json:"team"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Radius float64 `json:"radius"`
+}
+
+type FeatureJSON struct {
+	ID       string  `json:"id"`
+	Type     string  `json:"type"`
+	X        float64 `json:"x"`
+	Y        float64 `json:"y"`
+	Rotation float64 `json:"rotation,omitempty"`
+	Scale    float64 `json:"scale,omitempty"`
 }
 
 type WallJSON struct {
@@ -278,6 +317,14 @@ type RoomJoinedParams struct {
 
 type MatchFoundParams struct {
 	RoomId string `json:"roomId"`
+}
+
+type PartyStateParams struct {
+	PartyID   string   `json:"partyId"`
+	OwnerID   string   `json:"ownerId"`
+	MemberIDs []string `json:"memberIds"`
+	Count     int      `json:"count"`
+	MaxSize   int      `json:"maxSize"`
 }
 
 type ErrorParams struct {

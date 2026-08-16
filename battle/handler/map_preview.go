@@ -5,6 +5,7 @@ import (
 	"battle/model/gamemap"
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 type mapPreviewSpawnerJSON struct {
@@ -25,9 +26,15 @@ func (h *Handler) HandleMapPreview(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	teamMap := strings.EqualFold(r.URL.Query().Get("mode"), "team") || strings.EqualFold(r.URL.Query().Get("map"), "team-battle")
 	seed := gamemap.CanonicalBattleRoyaleSeed
-
+	mapName := "battle-royale"
 	canonical := gamemap.GenerateBattleRoyale(seed)
+	if teamMap {
+		seed = gamemap.CanonicalTeamBattleSeed
+		mapName = "team-battle"
+		canonical = gamemap.GenerateTeamBattle(seed)
+	}
 	spawners := make([]mapPreviewSpawnerJSON, 0, len(canonical.Spawners))
 	for _, spawner := range canonical.Spawners {
 		spawners = append(spawners, mapPreviewSpawnerJSON{
@@ -39,7 +46,7 @@ func (h *Handler) HandleMapPreview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(mapPreviewResponse{
 		Seed:     seed,
-		Map:      game.NewMapJSON("battle-royale", canonical, 0, true),
+		Map:      game.NewMapJSON(mapName, canonical, 0, true),
 		Spawners: spawners,
 	})
 }

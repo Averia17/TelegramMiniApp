@@ -36,3 +36,12 @@ export const normalizeTeamBattleResult = (result, state, localId, mode = state?.
   const won = winnerTeam ? winnerTeam === localTeam : result?.won
   return {...result, winnerTeam: winnerTeam || null, team: localTeam || null, won}
 }
+
+export const getObjectiveHudModel = (state, mode = state?.game?.mode) => {
+  if (normalizeBattleMode(mode) !== TEAM_DEATHMATCH_MODE) return null
+  return (state?.objectives || []).filter(Boolean).map(objective => ({
+    ...objective,
+    percent: Math.max(0, Math.min(100, Number(objective.maxLives) > 0 ? Number(objective.lives) / Number(objective.maxLives) * 100 : 0)),
+    destroyed: Number(objective.lives) <= 0,
+  }))
+}

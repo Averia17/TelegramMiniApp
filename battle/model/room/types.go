@@ -23,6 +23,9 @@ type Client struct {
 	MessageCount  int
 	LastTauntAt   int64
 	Profile       MatchProfile
+	PartyID       string
+	PartySize     int
+	AssignedTeam  string
 }
 
 type Room struct {

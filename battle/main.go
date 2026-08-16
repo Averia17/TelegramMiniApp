@@ -7,6 +7,7 @@ import (
 	"battle/observability"
 	"battle/provider"
 	"battle/service/economy"
+	sroom "battle/service/room"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 func main() {
 	cfg := config.Load()
+	sroom.ConfigureTeamMatchConfig(sroom.TeamMatchConfig{TeamSize: cfg.TeamSize, PartyMaxSize: cfg.PartyMaxSize})
 
 	store := provider.NewRedisProvider(cfg.RedisAddr)
 	mroom.SetStore(store)

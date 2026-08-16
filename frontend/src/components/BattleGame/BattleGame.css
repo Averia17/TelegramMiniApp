@@ -175,6 +175,9 @@
 .battle-alive { justify-self: end; background: linear-gradient(#302c56, #17182e); font-size: 13px; }
 .battle-alive i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 50%; background: #63e557; box-shadow: 0 0 10px #63e557; }
 
+.team-objective-hud { position: absolute; z-index: 12; top: max(72px, calc(env(safe-area-inset-top) + 64px)); left: 14px; display: flex; gap: 8px; padding: 8px 10px; color: #fff; border: 2px solid rgba(255,255,255,.42); border-radius: 12px; background: rgba(20,24,55,.86); box-shadow: 0 5px 18px rgba(5,8,30,.3); font: 900 9px/1 system-ui,sans-serif; }
+.team-objective-hud__team { min-width: 72px; }.team-objective-hud__team > b { display: block; margin-bottom: 5px; color: #a9c9ff; }.team-objective-hud__team:last-child > b { color: #ffaaa9; }.team-objective-hud__objective { display: flex; align-items: center; gap: 4px; margin-top: 4px; }.team-objective-hud__objective span { width: 31px; color: rgba(255,255,255,.7); font-size: 7px; }.team-objective-hud__objective i { display: block; width: 35px; height: 4px; overflow: hidden; border-radius: 3px; background: rgba(255,255,255,.18); }.team-objective-hud__objective em { display: block; height: 100%; border-radius: inherit; background: #78d7ff; }.team-objective-hud__team:last-child em { background: #ff7373; }.team-objective-hud__objective.is-destroyed { opacity: .38; }.team-respawn-notice { position: absolute; z-index: 14; top: 50%; left: 50%; padding: 12px 18px; transform: translate(-50%, -50%); color: #fff5bd; border: 2px solid #ffe45a; border-radius: 12px; background: rgba(20,18,54,.88); box-shadow: 0 0 28px rgba(255,219,71,.25); font: 900 15px system-ui,sans-serif; letter-spacing: .8px; pointer-events: none; }
+
 .island-phase-hud {
   position: absolute;
   z-index: 12;

@@ -25,7 +25,14 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const blend = (speed, delta) => 1 - Math.exp(-speed * delta)
 const heroSpeed = heroName => HEROES_CONFIG.find(hero => hero.name === heroName)?.speed || ANIMATION_REFERENCE_SPEED
 
-const createLabel = state => {
+export const getTeamPresentation = (state, teamBattle, localTeam, isLocalPlayer = false) => {
+  if (!teamBattle || !state?.team) return {role: "", color: "#55df57", ring: "#55df57"}
+  if (isLocalPlayer) return {role: "ТЫ", color: "#49d9ff", ring: "#ffd84d"}
+  if (localTeam && state.team === localTeam) return {role: "СОЮЗНИК", color: "#49d9ff", ring: "#27a9ff"}
+  return {role: "ВРАГ", color: "#ff4657", ring: "#ff334d"}
+}
+
+const createLabel = (state, teamBattle = false, localTeam = "", isLocalPlayer = false) => {
   const canvas = document.createElement("canvas")
   canvas.width = 256
   canvas.height = 80
@@ -37,13 +44,18 @@ const createLabel = state => {
   sprite.position.y = 4.5
   sprite.renderOrder = 20
   sprite.userData = {canvas, texture, signature: ""}
+  sprite.userData.teamBattle = teamBattle
+  sprite.userData.localTeam = localTeam
+  sprite.userData.isLocalPlayer = isLocalPlayer
   updateLabel(sprite, state)
   return sprite
 }
 
 const updateLabel = (sprite, state) => {
   if (!sprite) return
-  const signature = `${state.name}:${state.lives}:${state.maxLives}`
+  const {teamBattle = false, localTeam = "", isLocalPlayer = false} = sprite.userData || {}
+  const presentation = getTeamPresentation(state, teamBattle, localTeam, isLocalPlayer)
+  const signature = `${state.name}:${state.lives}:${state.maxLives}:${presentation.role}`
   if (sprite.userData.signature === signature) return
   sprite.userData.signature = signature
   const {canvas, texture} = sprite.userData
@@ -52,19 +64,20 @@ const updateLabel = (sprite, state) => {
   context.clearRect(0, 0, canvas.width, canvas.height)
   context.textAlign = "center"
   context.textBaseline = "middle"
-  context.font = "800 21px Arial"
+  context.font = "800 19px Arial"
   context.lineWidth = 6
   context.strokeStyle = "#17213b"
-  context.strokeText(state.name || state.hero || "Hero", 128, 16)
+  const displayName = presentation.role ? `${presentation.role} · ${state.name || state.hero || "Hero"}` : (state.name || state.hero || "Hero")
+  context.strokeText(displayName, 128, 16)
   context.fillStyle = "#fff"
-  context.fillText(state.name || state.hero || "Hero", 128, 16)
+  context.fillText(displayName, 128, 16)
   context.font = "900 14px Arial"
   const healthText = formatHeroHealthLabel(state)
   context.strokeText(healthText, 128, 34)
   context.fillText(healthText, 128, 34)
   context.fillStyle = "#151d34"
   context.fillRect(38, 47, 180, 17)
-  context.fillStyle = health < 0.35 ? "#ff4b57" : health < 0.65 ? "#ffc934" : "#55df57"
+  context.fillStyle = teamBattle && presentation.role ? presentation.color : health < 0.35 ? "#ff4b57" : health < 0.65 ? "#ffc934" : "#55df57"
   context.fillRect(43, 52, 170 * health, 7)
   texture.needsUpdate = true
 }
@@ -142,8 +155,10 @@ const createDeathBurst = heroName => {
 }
 
 export class HeroView {
-  constructor(id, state, isLocalPlayer = false) {
+  constructor(id, state, isLocalPlayer = false, teamBattle = false, localTeam = "") {
     this.id = id
+    this.teamBattle = teamBattle
+    this.localTeam = localTeam
     const readyInstance = assetRegistry.instantiateReadyHero(state.hero)
     this.group = new THREE.Group()
     this.shadow = createContactShadow(1.05)
@@ -151,14 +166,22 @@ export class HeroView {
     this.modelMaterials = collectMaterials(this.model)
     this.hitMaterials = collectHitMaterials(this.modelMaterials)
     this.modelOpacity = 1
-    this.label = createLabel(state)
+    this.label = createLabel(state, teamBattle, localTeam, isLocalPlayer)
+    this.teamMarker = new THREE.Mesh(
+      new THREE.TorusGeometry(.95, .075, 8, 40),
+      new THREE.MeshBasicMaterial({color: "#55df57", transparent: true, opacity: .95, depthTest: false, depthWrite: false}),
+    )
+    this.teamMarker.rotation.x = Math.PI / 2
+    this.teamMarker.position.y = .06
+    this.teamMarker.renderOrder = 12
+    this.teamMarker.userData.role = "team-marker"
     this.deathBurst = createDeathBurst(state.hero)
     this.taunt = createClownTaunt()
     this.tauntRemaining = 0
     this.bushConcealmentMix = 0
     this.deathTime = 0
     this.deathElapsed = 0
-    this.group.add(this.model, this.deathBurst, this.taunt)
+    this.group.add(this.teamMarker, this.model, this.deathBurst, this.taunt)
     if (this.shadow) this.group.add(this.shadow)
     if (this.label) this.group.add(this.label)
     this.x = this.targetX = state.x
@@ -180,6 +203,7 @@ export class HeroView {
     this.isLocalPlayer = false
     this.attackReloadIndicator = null
     this.setLocalPlayer(isLocalPlayer)
+    this.updateTeamPresentation()
     this.group.position.copy(worldToScene(state.x, state.y))
     if (readyInstance) this.installGlbInstance(readyInstance, state.hero)
   }
@@ -240,6 +264,7 @@ export class HeroView {
     this.lastPulse = state.attackPulse
     this.lastLives = state.lives
     updateLabel(this.label, state)
+    this.updateTeamPresentation()
     if (this.isLocalPlayer) this.attackReloadIndicator?.update(state)
   }
 
@@ -248,11 +273,15 @@ export class HeroView {
     this.targetX = state.x
     this.targetY = state.y
     updateLabel(this.label, state)
+    this.updateTeamPresentation()
     if (this.isLocalPlayer) this.attackReloadIndicator?.update(state)
   }
 
   setLocalPlayer(isLocalPlayer) {
     this.isLocalPlayer = Boolean(isLocalPlayer)
+    this.label.userData.isLocalPlayer = this.isLocalPlayer
+    updateLabel(this.label, this.state)
+    this.updateTeamPresentation()
     if (!this.isLocalPlayer) {
       if (this.attackReloadIndicator) this.attackReloadIndicator.group.visible = false
       return
@@ -262,6 +291,23 @@ export class HeroView {
       this.group.add(this.attackReloadIndicator.group)
     }
     this.attackReloadIndicator.update(this.state)
+  }
+
+  setTeamContext(teamBattle, localTeam) {
+    this.teamBattle = Boolean(teamBattle)
+    this.localTeam = localTeam || ""
+    this.label.userData.teamBattle = this.teamBattle
+    this.label.userData.localTeam = this.localTeam
+    this.label.userData.isLocalPlayer = this.isLocalPlayer
+    updateLabel(this.label, this.state)
+    this.updateTeamPresentation()
+  }
+
+  updateTeamPresentation() {
+    const presentation = getTeamPresentation(this.state, this.teamBattle, this.localTeam, this.isLocalPlayer)
+    this.teamMarker.visible = this.teamBattle && Boolean(this.state?.team)
+    if (this.teamMarker.material) this.teamMarker.material.color.set(presentation.ring)
+    this.teamMarker.scale.setScalar(this.state?.lives > 0 ? 1 : .86)
   }
 
   setResult(result) {

@@ -1,0 +1,38 @@
+services:
+  party:
+    container_name: party
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "8002"
+    environment:
+      - PORT=8002
+      - KAFKA_ADDR=kafka:9092
+      - ACCOUNT_URL=http://account:8000
+      - MAX_PARTY_SIZE=${MAX_PARTY_SIZE:-3}
+      - PARTY_STORE_PATH=/data/party-store.json
+      - APP_AUTH_SECRET=${APP_AUTH_SECRET:-local-development-auth-secret-change-before-production}
+      - ENVIRONMENT=${APP_ENV:-development}
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      account:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8002/health | grep -q 'status'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    volumes:
+      - party-data:/data
+    networks:
+      - app-net
+
+networks:
+  app-net:
+
+volumes:
+  party-data:

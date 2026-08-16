@@ -117,6 +117,7 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			AbilityAccepted:  p.LastAbilityOK,
 			Poisoned:         p.PoisonUntil > now,
 			RegenRate:        p.RegenRate,
+			RespawnAt:        p.RespawnAt,
 		}
 	}
 
@@ -247,6 +248,11 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 		visiblePlayers := visiblePlayersForClient(r.State, client.Id, players, now)
 		combatEvents := combatEventsForClient(r.State.CombatEvents, client.Id, now)
 		clientState := game.NewStateUpdate(&gameState, &mapJSON, visiblePlayers, monsters, bullets, props, effects, combatEvents)
+		for _, objective := range r.State.Objectives {
+			if objective != nil {
+				clientState.Objectives = append(clientState.Objectives, game.ObjectiveStateJSON{ID: objective.ID, Type: objective.Type, Team: objective.Team, X: objective.X, Y: objective.Y, Lives: objective.Lives, MaxLives: objective.MaxLives})
+			}
+		}
 		updates = append(updates, preparedStateUpdate{client: client, state: clientState, mapRevision: r.State.MapRevision, sendingMap: sendingMap})
 	}
 	return updates

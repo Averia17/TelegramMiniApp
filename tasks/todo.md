@@ -15,3 +15,11 @@
 - [x] Выполнить короткий browser QA и закрыть task-owned браузер.
 - [x] Повторить полный Go suite и отдельно записать оставшиеся baseline-падения.
 - [x] Выполнить `git diff --check`.
+- [x] Team battle: add configurable party-aware queue units
+- [x] Team battle: form two teams and enforce per-team hero uniqueness
+- [x] Team battle: add diagonal base map and corner spawns
+- [x] Team battle: add town halls, towers, and objective victory
+- [x] Team battle: add territory respawn cooldown
+- [x] Team battle: update map environment harness
+- [x] Team battle: replace sparse map blockout with grouped cover and passable diagonal stream
+- [x] Team battle: add invite-link party flow

@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+const (
+	DefaultTeamSize     = 3
+	DefaultPartyMaxSize = 3
+)
+
 // MatchProfile describes the immutable matchmaking dimensions of a room.
 // Keeping it separate from transport requests makes queue compatibility explicit.
 type MatchProfile struct {
@@ -31,6 +36,9 @@ func NormalizeMatchProfile(mode, mapName string, maxPlayers int) MatchProfile {
 			maxPlayers = 8
 		}
 		profile.MaxPlayers = maxPlayers
+	}
+	if profile.Mode == game.ModeTeamDeathmatch && maxPlayers <= 0 {
+		profile.MaxPlayers = DefaultTeamSize * 2
 	}
 	return profile
 }

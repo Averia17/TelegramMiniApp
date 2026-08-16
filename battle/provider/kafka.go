@@ -38,6 +38,8 @@ type BattleResult struct {
 
 type PlayerResult struct {
 	PlayerId string `json:"playerId"`
+	PartyID  string `json:"partyId,omitempty"`
+	Team     string `json:"team,omitempty"`
 	Name     string `json:"name"`
 	Hero     string `json:"hero"`
 	Kills    int    `json:"kills"`

@@ -1,6 +1,6 @@
 import {memo, useEffect, useRef} from "react"
 import {getBattleRewardMessage} from "./battleOutcome"
-import {getTeamHudModel} from "./teamBattleUi.js"
+import {getObjectiveHudModel, getTeamHudModel} from "./teamBattleUi.js"
 import {getIslandPhaseIndex, getIslandPhaseProgress, ISLAND_PHASE_ORDER} from "./phaseVisuals.js"
 
 const ISLAND_PHASES = {
@@ -129,6 +129,25 @@ export const TeamBattleHud = ({state, localId}) => {
   return <section className="team-battle-hud" aria-label="Счёт команд">
     {model.teams.map(team => <div key={team.id} className={`team-battle-hud__team${team.isLocal ? " is-local" : ""}`}>
       <b>{team.label}</b><span>{team.alive} живы · {team.kills} фрагов</span>
+    </div>)}
+  </section>
+}
+
+export const TeamObjectiveHud = ({state}) => {
+  const objectives = getObjectiveHudModel(state)
+  if (!objectives) return null
+  const grouped = objectives.reduce((result, objective) => {
+    const team = result[objective.team] || []
+    team.push(objective)
+    result[objective.team] = team
+    return result
+  }, {})
+  return <section className="team-objective-hud" aria-label="Состояние укреплений">
+    {Object.entries(grouped).map(([team, items]) => <div key={team} className="team-objective-hud__team">
+      <b>{team === "Blue" ? "СИНИЕ" : "КРАСНЫЕ"}</b>
+      {items.map(objective => <div key={objective.id} className={`team-objective-hud__objective${objective.destroyed ? " is-destroyed" : ""}`}>
+        <span>{objective.type === "town_hall" ? "РАТУША" : "БАШНЯ"}</span><i><em style={{width: `${objective.percent}%`}}/></i>
+      </div>)}
     </div>)}
   </section>
 }

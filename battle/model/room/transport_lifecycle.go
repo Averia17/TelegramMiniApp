@@ -37,6 +37,11 @@ func (r *Room) registerClient(client *Client, emptySince *time.Time) {
 	} else {
 		lateJoin := r.State.State == game.GameStateGame
 		r.State.PlayerAdd(client.Id, client.Name, client.HeroName)
+		if client.AssignedTeam == "Blue" || client.AssignedTeam == "Red" {
+			r.State.Players[client.Id].SetTeam(client.AssignedTeam)
+			r.State.Players[client.Id].TeamLocked = true
+		}
+		r.State.Players[client.Id].PartyID = client.PartyID
 		if lateJoin {
 			if joined := r.State.Players[client.Id]; joined != nil {
 				joined.InvulnerableUntil = time.Now().Add(3 * time.Second).UnixMilli()

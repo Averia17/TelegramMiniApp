@@ -22,9 +22,13 @@ const (
 	// enough for sudden death to reduce the field to one survivor.
 	GameDuration = OpeningCombatDuration + ChallengeDuration + CollapseDuration + FinalPhaseDuration
 
-	FlasksCount      = 8
-	LunarCratesCount = 12
-	MonstersCount    = 8
+	FlasksCount       = 8
+	LunarCratesCount  = 12
+	HealthCratesCount = 6
+	MonstersCount     = 8
+
+	HealthBoostFraction                 = .05
+	MonsterHealthBoostDropChancePercent = 20
 
 	PlayerSize = 32.0
 
@@ -90,6 +94,7 @@ type GameState struct {
 	Walls                   *geometry.SpatialHash
 	WallsSource             []*geometry.WallTile
 	Players                 map[string]*player.Player
+	Objectives              map[string]*ObjectiveState
 	Monsters                map[string]*monster.Monster
 	Bullets                 []*bullet.Bullet
 	Props                   []*prop.Prop
@@ -117,9 +122,11 @@ type GameState struct {
 	Skyfalls                []*Skyfall
 	TemporaryWalls          map[*geometry.WallTile]int64
 	BotMemory               map[string]*BotPerception
+	botAI                   BotAIStrategy
 	IslandVoiceNextAt       map[string]int64
 	IslandVoiceKillClaimed  map[string]bool
 	CombatEvents            []CombatEvent
+	randomHealthBoostDrop   func() bool
 	NextCombatEventID       uint64
 	activeCommandID         string
 	activeSourceID          string
@@ -138,6 +145,15 @@ type GameState struct {
 	botPathVisited          []uint32
 	botPathParents          []botPathCell
 	botPathSearchID         uint32
+}
+
+type ObjectiveState struct {
+	ID, Type, Team  string
+	X, Y, Radius    float64
+	Lives, MaxLives int
+	AttackAt        int64
+	LastDamagedAt   int64
+	LastDamagedBy   string
 }
 
 type botPathCell struct {

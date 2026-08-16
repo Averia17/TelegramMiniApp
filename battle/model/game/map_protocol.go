@@ -14,6 +14,9 @@ func NewMapJSON(name string, source *gamemap.GameMap, revision int, includeWalls
 	if name == "battle-royale" {
 		id = gamemap.CanonicalBattleRoyaleID
 		seed = gamemap.CanonicalBattleRoyaleSeed
+	} else if name == "team-battle" {
+		id = "team-battle@20260816"
+		seed = gamemap.CanonicalTeamBattleSeed
 	}
 	result := MapJSON{ID: id, Name: name, Seed: seed, Revision: revision}
 	if source == nil {
@@ -22,6 +25,20 @@ func NewMapJSON(name string, source *gamemap.GameMap, revision int, includeWalls
 	result.Width = source.WidthInPixels
 	result.Height = source.HeightInPixels
 	result.TileSize = TileSize
+	if len(source.TeamSpawners) > 0 {
+		result.TeamSpawns = make(map[string][]SpawnJSON, len(source.TeamSpawners))
+		for team, spawners := range source.TeamSpawners {
+			for _, spawner := range spawners {
+				result.TeamSpawns[team] = append(result.TeamSpawns[team], SpawnJSON{X: spawner.X, Y: spawner.Y, Width: spawner.Width, Height: spawner.Height})
+			}
+		}
+	}
+	for _, objective := range source.Objectives {
+		result.Objectives = append(result.Objectives, ObjectiveJSON{ID: objective.ID, Type: objective.Type, Team: objective.Team, X: objective.X, Y: objective.Y, Radius: objective.Radius})
+	}
+	for _, feature := range source.Features {
+		result.Features = append(result.Features, FeatureJSON{ID: feature.ID, Type: feature.Type, X: feature.X, Y: feature.Y, Rotation: feature.Rotation, Scale: feature.Scale})
+	}
 	if !includeWalls {
 		return result
 	}

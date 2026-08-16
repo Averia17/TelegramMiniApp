@@ -143,6 +143,7 @@ func (h Hero) CreatePlayer(id, name string, x, y float64) *player.Player {
 		PlayerId:         id,
 		Name:             name,
 		MaxLives:         h.MaxLives,
+		BaseMaxLives:     h.MaxLives,
 		Lives:            h.MaxLives,
 		Color:            h.Color,
 		HeroName:         h.Name,

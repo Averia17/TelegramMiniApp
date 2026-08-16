@@ -18,8 +18,11 @@ const propColors = {
   altar_three_moons: 0x5079b4,
   sacrificial_stone: 0x8e394c,
   menhir: 0x626879,
+  ruin_wall: 0x77766d,
+  thorn_vine: 0x3f673f,
+  fortress_wall: 0x59615f,
 }
-const STONE_PROP_TYPES = new Set(["wall", "destructible", "sacrificial_stone", "menhir"])
+const STONE_PROP_TYPES = new Set(["wall", "destructible", "sacrificial_stone", "menhir", "fortress_wall"])
 const STONE_COLORS = [0x89958e, 0x829089, 0x929990, 0x788780]
 
 const standardMaterial = (color, options = {}) => new THREE.MeshStandardMaterial({
@@ -295,6 +298,47 @@ const createAltarVisual = (width, height) => {
   return group
 }
 
+const createRuinWallVisual = (width, height, depth, variant = 0) => {
+  const group = new THREE.Group()
+  const stone = [0x77766d, 0x858177, 0x6b706b][Math.abs(variant) % 3]
+  const mortar = standardMaterial(0x4e574f, {roughness: 1})
+  const moss = standardMaterial(0x54794a, {roughness: 1})
+  const blockWidth = width * .31
+  const blockDepth = depth * .72
+  for (const [x, y, scale] of [
+    [-.31, .2, .92], [0, .2, 1.08], [.31, .2, .84],
+    [-.2, .54, .78], [.16, .54, 1.02], [0, .82, .64],
+  ]) {
+    const block = addVisualPart(
+      group,
+      new THREE.DodecahedronGeometry(1, 0),
+      standardMaterial(stone, {roughness: .9}),
+      "ruin-stone",
+      new THREE.Vector3(x * width, y * height, 0),
+    )
+    block.scale.set(blockWidth * scale, height * .19 * scale, blockDepth * scale)
+    block.rotation.y = (variant % 2 ? -.12 : .08) + x * .25
+  }
+  addVisualPart(group, new THREE.BoxGeometry(width * .9, height * .045, depth * .9), mortar, "ruin-foundation", new THREE.Vector3(0, height * .04, 0))
+  const ivy = addVisualPart(group, new THREE.CylinderGeometry(width * .035, width * .05, height * .58, 6), moss, "ruin-ivy", new THREE.Vector3(width * .31, height * .42, depth * .4), new THREE.Vector3(.18, 0, -.22))
+  ivy.scale.x = .7
+  return group
+}
+
+const createThornVineVisual = (width, height, depth, variant = 0) => {
+  const group = new THREE.Group()
+  const vine = standardMaterial(variant % 2 ? 0x315c3c : 0x3d7042, {roughness: 1})
+  const thorn = standardMaterial(0x777b55, {roughness: .96})
+  const radius = Math.min(width, depth) * .055
+  for (const [x, z, angle] of [[-.2, 0, -.5], [0, .04, .18], [.2, -.02, .62]]) {
+    const stem = addVisualPart(group, new THREE.CylinderGeometry(radius * .75, radius, height * .78, 6), vine, "thorn-vine-stem", new THREE.Vector3(x * width, height * .39, z * depth), new THREE.Vector3(0, 0, angle))
+    stem.scale.y = 1 + (variant % 3) * .12
+    const tip = addVisualPart(group, new THREE.ConeGeometry(radius * 1.6, height * .16, 5), thorn, "thorn-vine-spike", new THREE.Vector3((x + .07) * width, height * .65, (z + .02) * depth))
+    tip.rotation.z = angle - Math.PI / 2
+  }
+  return group
+}
+
 const createDecorativeVisual = (wall, width, height, depth, variant = 0) => {
   if (wall.type === "crates") return createLogPileVisual(width, height, depth, variant)
   if (wall.type === "fence") return createFenceVisual(width, height, depth)
@@ -305,6 +349,8 @@ const createDecorativeVisual = (wall, width, height, depth, variant = 0) => {
   if (wall.type === "cactus") return createCactusVisual(width, height, depth)
   if (wall.type === "crystal") return createCrystalVisual(width, height, depth)
   if (wall.type === "altar_three_moons") return createAltarVisual(width, height)
+  if (wall.type === "ruin_wall") return createRuinWallVisual(width, height, depth, variant)
+  if (wall.type === "thorn_vine") return createThornVineVisual(width, height, depth, variant)
   return createColoredBox(width, height, depth, propColors[wall.type] || 0x536060)
 }
 
@@ -318,6 +364,9 @@ const groundingColors = {
   altar_three_moons: 0x626c59,
   sacrificial_stone: 0x6d654b,
   menhir: 0x626c59,
+  ruin_wall: 0x596156,
+  thorn_vine: 0x456344,
+  fortress_wall: 0x4f5a54,
 }
 
 const createGroundingBed = (wall, width, depth, variant = 0) => {
@@ -388,7 +437,7 @@ export const createProp = (wall, index, waterTexture) => {
     return group
   }
 
-  const height = wall.type === "fence" ? 0.9 : wall.type === "crates" ? 1.65 : wall.type === "tree" ? 3.9 : wall.type === "dead_tree" ? 3.9 : wall.type === "shipwreck" ? 1.9 : wall.type === "menhir" ? 1.45 : 2.15
+  const height = wall.type === "fence" ? 0.9 : wall.type === "thorn_vine" ? 1.05 : wall.type === "crates" ? 1.65 : wall.type === "tree" ? 3.9 : wall.type === "dead_tree" ? 3.9 : wall.type === "shipwreck" ? 1.9 : wall.type === "menhir" ? 1.45 : wall.type === "ruin_wall" ? 2.35 : wall.type === "fortress_wall" ? 2.8 : 2.15
   const block = STONE_PROP_TYPES.has(wall.type)
     ? new THREE.Mesh(
       createStoneBlockGeometry().scale(width, height, depth),

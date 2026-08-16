@@ -28,6 +28,102 @@ const createSwingArc = (radius, arc, material, innerRadius = .62) => {
   return mesh
 }
 
+const roundedBarGeometry = (length, width) => {
+  const shape = new THREE.Shape()
+  const halfLength = length / 2
+  const halfWidth = width / 2
+  const corner = halfWidth
+  shape.moveTo(-halfLength + corner, -halfWidth)
+  shape.lineTo(halfLength - corner, -halfWidth)
+  shape.absarc(halfLength - corner, 0, corner, -Math.PI / 2, Math.PI / 2, false)
+  shape.lineTo(-halfLength + corner, halfWidth)
+  shape.absarc(-halfLength + corner, 0, corner, Math.PI / 2, Math.PI * 1.5, false)
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: width * .9,
+    bevelEnabled: true,
+    bevelThickness: width * .16,
+    bevelSize: width * .16,
+    bevelSegments: 2,
+  })
+  geometry.center()
+  return geometry
+}
+
+export const createHealEffect = (radius, color = 0x65ff9c) => {
+  const group = new THREE.Group()
+  group.userData.kind = "heal"
+  group.userData.effectRadius = radius
+
+  const glow = new THREE.Mesh(
+    new THREE.CircleGeometry(radius * .62, 32),
+    flatMaterial(0x59ff7a, {
+      transparent: true,
+      opacity: .45,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+    }),
+  )
+  glow.rotation.x = -Math.PI / 2
+  glow.scale.y = .62
+  glow.userData.role = "heal-glow"
+  glow.userData.opacityMultiplier = .44
+  group.add(glow)
+
+  const barLength = radius * .72
+  const barWidth = radius * .20
+  const outlineMaterial = flatMaterial(0xf4fff6, {
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+  })
+  const greenMaterial = flatMaterial(new THREE.Color(color).lerp(new THREE.Color(0x36e36a), .55), {
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+  })
+  const crossY = radius * .78
+  const bars = [
+    [barLength + radius * .08, barWidth + radius * .08, outlineMaterial, 0],
+    [barLength + radius * .08, barWidth + radius * .08, outlineMaterial.clone(), Math.PI / 2],
+    [barLength, barWidth, greenMaterial, 0],
+    [barLength, barWidth, greenMaterial.clone(), Math.PI / 2],
+  ]
+  bars.forEach(([length, width, barMaterial, rotationZ]) => {
+    const bar = new THREE.Mesh(roundedBarGeometry(length, width), barMaterial)
+    bar.position.y = crossY
+    bar.rotation.x = -.35
+    bar.rotation.z = rotationZ
+    bar.userData.role = "healing-cross"
+    bar.userData.basePosition = bar.position.clone()
+    bar.userData.opacityMultiplier = barMaterial.color.getHex() === 0xf4fff6 ? .98 : .94
+    group.add(bar)
+  })
+
+  for (let index = 0; index < 6; index++) {
+    const mote = new THREE.Mesh(
+      new THREE.SphereGeometry(radius * (.035 + index % 2 * .012), 8, 6),
+      flatMaterial(0x8bffad, {
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+      }),
+    )
+    const angle = index / 6 * Math.PI * 2
+    mote.position.set(
+      Math.cos(angle) * radius * (.58 + index % 2 * .08),
+      radius * (.35 + index % 3 * .12),
+      Math.sin(angle) * radius * (.58 + index % 2 * .08),
+    )
+    mote.userData.role = "healing-mote"
+    mote.userData.phase = index * .9
+    mote.userData.basePosition = mote.position.clone()
+    mote.userData.opacityMultiplier = .7
+    group.add(mote)
+  }
+  return group
+}
+
 const createOrbitalEffect = (radius, material, kind) => {
   const group = new THREE.Group()
   group.userData.kind = kind
@@ -167,32 +263,8 @@ export class EffectRenderer {
           side: THREE.DoubleSide,
           depthWrite: false,
         })
-        if (effect.kind === "heal") {
-          mesh = new THREE.Group()
-          mesh.userData.kind = "heal"
-          const ring = new THREE.Mesh(
-            new THREE.RingGeometry(radius * .68, radius, 28),
-            material,
-          )
-          ring.rotation.x = -Math.PI / 2
-          const crossMaterial = flatMaterial(effect.color || 0x65ff9c, {
-            transparent: true,
-            opacity: .95,
-            depthWrite: false,
-          })
-          const horizontal = new THREE.Mesh(
-            new THREE.BoxGeometry(radius * 1.15, radius * .32, radius * .18),
-            crossMaterial,
-          )
-          const vertical = new THREE.Mesh(
-            new THREE.BoxGeometry(radius * .32, radius * 1.15, radius * .2),
-            crossMaterial.clone(),
-          )
-          horizontal.userData.role = "healing-cross"
-          vertical.userData.role = "healing-cross"
-          horizontal.position.y = radius * 1.15
-          vertical.position.y = radius * 1.15
-          mesh.add(ring, horizontal, vertical)
+        if (effect.kind === "heal" || effect.kind === "health_boost") {
+          mesh = createHealEffect(radius, effect.color || 0x65ff9c)
         } else if (effect.kind === "mandy_super_wave") {
           mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 24, 1), material)
           mesh.userData.kind = effect.kind
@@ -280,6 +352,24 @@ export class EffectRenderer {
             }
           })
         }
+        if (mesh.userData.kind === "heal") {
+          const progress = 1 - clamp(effect.life / (effect.maxLife || .52))
+          const rise = progress * mesh.userData.effectRadius * .30
+          mesh.scale.setScalar(.78 + progress * .34)
+          mesh.children.forEach(child => {
+            if (child.userData.role === "healing-cross") {
+              child.position.y = child.userData.basePosition.y + rise
+              child.rotation.y = Math.sin(progress * Math.PI * 2) * .035
+            }
+            if (child.userData.role === "healing-mote") {
+              const basePosition = child.userData.basePosition
+              child.position.copy(basePosition)
+              child.position.y += progress * mesh.userData.effectRadius * .55
+              child.position.x += Math.cos(progress * Math.PI * 2 + child.userData.phase) * .07
+              child.position.z += Math.sin(progress * Math.PI * 2 + child.userData.phase) * .07
+            }
+          })
+        }
         if (TELEGRAPH_KINDS.has(mesh.userData.kind)) {
           const progress = 1 - clamp(effect.life / (effect.maxLife || .52))
           const pulse = .92 + progress * .12 + Math.sin(progress * Math.PI * 8) * .04
@@ -301,7 +391,10 @@ export class EffectRenderer {
       }
       const opacity = clamp(effect.life / (effect.maxLife || 0.5))
       mesh.traverse(child => {
-        if (child.material) child.material.opacity = (mesh.userData.kind === "heal" ? .95 : .42) * opacity
+        if (child.material) {
+          const baseOpacity = mesh.userData.kind === "heal" ? .95 : .42
+          child.material.opacity = baseOpacity * (child.userData.opacityMultiplier || 1) * opacity
+        }
       })
     })
     this.meshes.forEach((mesh, id) => {

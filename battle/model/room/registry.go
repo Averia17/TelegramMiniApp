@@ -73,6 +73,8 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 			}
 			result.Players = append(result.Players, provider.PlayerResult{
 				PlayerId: p.PlayerId,
+				PartyID:  p.PartyID,
+				Team:     p.Team,
 				Name:     p.Name,
 				Hero:     p.HeroName,
 				Kills:    p.Kills,

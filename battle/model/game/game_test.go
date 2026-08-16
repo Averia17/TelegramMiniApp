@@ -28,6 +28,36 @@ func newTestGameState() *GameState {
 	return gs
 }
 
+func TestProjectilesFlyOverTeamRiverButStopAtStone(t *testing.T) {
+	walls := geometry.NewSpatialHash(float64(TileSize))
+	walls.Insert(&geometry.WallTile{MinX: 80, MinY: 0, MaxX: 120, MaxY: 200, Type: "river"})
+	if segmentHitsBlockingWall(0, 100, 200, 100, 4, walls) {
+		t.Fatal("projectile should fly over river collision")
+	}
+	walls.Insert(&geometry.WallTile{MinX: 140, MinY: 0, MaxX: 180, MaxY: 200, Type: "wall"})
+	if !segmentHitsBlockingWall(0, 100, 200, 100, 4, walls) {
+		t.Fatal("projectile should stop at stone wall")
+	}
+}
+
+func TestTeamBattleNeverDealsFriendlyFireThroughDamageGateway(t *testing.T) {
+	gs := newTestGameState()
+	gs.Mode = ModeTeamDeathmatch
+	ally := &player.Player{PlayerId: "ally", Name: "Ally", HeroName: "Kaze", Lives: 100, MaxLives: 100}
+	target := &player.Player{PlayerId: "target", Name: "Target", HeroName: "Needle", Lives: 100, MaxLives: 100}
+	ally.SetTeam("Blue")
+	target.SetTeam("Blue")
+	gs.Players = map[string]*player.Player{ally.PlayerId: ally, target.PlayerId: target}
+	before := target.Lives
+
+	if dealt := gs.dealPlayerDamage(ally, target, 100); dealt != 0 {
+		t.Fatalf("friendly-fire damage = %d, want 0", dealt)
+	}
+	if target.Lives != before {
+		t.Fatalf("ally health changed from %d to %d", before, target.Lives)
+	}
+}
+
 func TestBattleDurationIncludesFinalPhase(t *testing.T) {
 	want := OpeningCombatDuration + ChallengeDuration + CollapseDuration + FinalPhaseDuration
 	if GameDuration != want {
@@ -136,6 +166,23 @@ func TestCombatAttackDamagesLunarCrate(t *testing.T) {
 
 	if crate.Lives >= crate.MaxLives {
 		t.Fatalf("attack did not damage lunar crate: %d/%d", crate.Lives, crate.MaxLives)
+	}
+}
+
+func TestCombatAttackDamagesHealthCrate(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("attacker", "Attacker", "Wukong Mico")
+	gs.State = GameStateGame
+	gs.IslandPhase = IslandPhaseHunt
+	attacker := gs.Players["attacker"]
+	attacker.X, attacker.Y, attacker.Ammo = 100, 100, 1
+	crate := prop.NewHealthCrate(160, 100)
+	gs.Props = append(gs.Props, crate)
+
+	gs.playerShootWithCommand(attacker.PlayerId, time.Now().UnixMilli(), 0, "health-crate-hit", 120)
+
+	if crate.Lives >= crate.MaxLives {
+		t.Fatalf("attack did not damage health crate: %d/%d", crate.Lives, crate.MaxLives)
 	}
 }
 
@@ -1115,7 +1162,7 @@ func TestGameStartLobby(t *testing.T) {
 	}
 }
 
-func TestLobbyAndMatchDoNotAutoSpawnBoosterDrops(t *testing.T) {
+func TestLobbyDoesNotSpawnHealthCratesAndMatchDoes(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateWaiting
 	gs.PlayerAdd("p1", "Alice", "")
@@ -1127,8 +1174,14 @@ func TestLobbyAndMatchDoNotAutoSpawnBoosterDrops(t *testing.T) {
 	}
 
 	gs.startGame()
-	if len(gs.Props) != 0 {
-		t.Fatalf("match booster drops = %d, want 0", len(gs.Props))
+	crateCount := 0
+	for _, prop := range gs.Props {
+		if prop.Type == "health_crate" {
+			crateCount++
+		}
+	}
+	if crateCount != HealthCratesCount {
+		t.Fatalf("match health crates = %d, want %d", crateCount, HealthCratesCount)
 	}
 }
 
@@ -1145,8 +1198,8 @@ func TestGameStartGame(t *testing.T) {
 	if gs.GameEndsAt == 0 {
 		t.Error("GameEndsAt should be set")
 	}
-	if len(gs.Props) != 0 {
-		t.Errorf("Props = %v, want no automatic booster drops", len(gs.Props))
+	if len(gs.Props) != HealthCratesCount {
+		t.Errorf("Props = %v, want %d health crates", len(gs.Props), HealthCratesCount)
 	}
 	if len(gs.Monsters) != MonstersCount {
 		t.Errorf("Monsters = %v, want %v", len(gs.Monsters), MonstersCount)
@@ -1156,6 +1209,21 @@ func TestGameStartGame(t *testing.T) {
 		if remaining < SpawnProtectionDuration-250*time.Millisecond {
 			t.Errorf("spawn protection = %v, want about %v", remaining, SpawnProtectionDuration)
 		}
+	}
+}
+
+func TestSoloModeKeepsRandomMonsterPathEvenWithAuthoredMapSpawns(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map.MonsterSpawns = []gamemap.MapMonsterSpawn{{X: 240, Y: 240}}
+	gs.Monsters = make(map[string]*monster.Monster)
+
+	gs.monstersAdd(1)
+
+	if _, authoredID := gs.Monsters["team-bat-0"]; authoredID {
+		t.Fatal("solo mode used the authored team monster spawn path")
+	}
+	if len(gs.Monsters) != 1 {
+		t.Fatalf("solo monsters = %d, want one random monster", len(gs.Monsters))
 	}
 }
 
@@ -1558,6 +1626,7 @@ func TestEveryMonsterDamagePathRemovesKilledMonsterAndDropsHealth(t *testing.T) 
 			source := gs.Players["source"]
 			source.X, source.Y = 100, 100
 			source.AttackDmg = 2000
+			gs.randomHealthBoostDrop = func() bool { return false }
 			gs.Monsters["bat"] = monster.NewMonster(160, 100, 16, 512, 512, 1000)
 
 			tc.attack(gs, source)
@@ -1639,5 +1708,83 @@ func TestTeamDeathmatchStart(t *testing.T) {
 
 	if teams["Blue"]+teams["Red"] != len(gs.Players) {
 		t.Error("all players should have a team")
+	}
+}
+
+func TestTeamDeathmatchFillsBothTeamsWhenOnePlayerQueues(t *testing.T) {
+	gs := newTestGameState()
+	gs.Mode = ModeTeamDeathmatch
+	gs.MaxPlayers = 6
+	gs.State = GameStateLobby
+	gs.LobbyEndsAt = time.Now().Add(-time.Second).UnixMilli()
+	gs.PlayerAdd("p1", "Alice", "Viper")
+
+	gs.Update()
+
+	bots, teams := 0, map[string]int{}
+	for _, p := range gs.Players {
+		if p.IsBot {
+			bots++
+		}
+		teams[p.Team]++
+	}
+	if len(gs.Players) != 6 || bots != 5 {
+		t.Fatalf("players=%d bots=%d, want 6 players and 5 bots", len(gs.Players), bots)
+	}
+	if teams["Blue"] != 3 || teams["Red"] != 3 {
+		t.Fatalf("teams=%+v, want 3/3", teams)
+	}
+	humanTeam := gs.Players["p1"].Team
+	alliedBots, enemyBots := 0, 0
+	for id, p := range gs.Players {
+		if id == "p1" || !p.IsBot {
+			continue
+		}
+		if p.Team == humanTeam {
+			alliedBots++
+		} else {
+			enemyBots++
+		}
+	}
+	if alliedBots != 2 || enemyBots != 3 {
+		t.Fatalf("one-player team composition = allied bots %d, enemy bots %d; want 2/3", alliedBots, enemyBots)
+	}
+}
+
+func TestTeamDeathmatchStartUsesAuthoredNeutralSpawns(t *testing.T) {
+	gs := &GameState{
+		RoomName:   "team-test",
+		MapName:    "team-battle",
+		MaxPlayers: 2,
+		Mode:       ModeTeamDeathmatch,
+		Broadcast:  func(string, interface{}) {},
+	}
+	InitGameState(gs)
+	gs.State = GameStateLobby
+	gs.PlayerAdd("p1", "Alice", "Needle")
+	gs.PlayerAdd("p2", "Bob", "Mandy")
+
+	gs.startGame()
+
+	if len(gs.Monsters) != len(gs.Map.MonsterSpawns) {
+		t.Fatalf("team monsters = %d, want %d authored spawns", len(gs.Monsters), len(gs.Map.MonsterSpawns))
+	}
+	if len(gs.Props) != len(gs.Map.PickupSpawns)+HealthCratesCount {
+		t.Fatalf("team pickups = %d, want %d authored spawns plus health crates", len(gs.Props), len(gs.Map.PickupSpawns)+HealthCratesCount)
+	}
+	if gs.Monsters["team-bat-0"].Tier != gs.Monsters["team-bat-4"].Tier {
+		t.Fatalf("mirrored monster tiers = %d/%d, want equal", gs.Monsters["team-bat-0"].Tier, gs.Monsters["team-bat-4"].Tier)
+	}
+	for _, spawn := range gs.Map.PickupSpawns {
+		found := false
+		for _, pickup := range gs.Props {
+			if pickup.X == spawn.X && pickup.Y == spawn.Y && pickup.Type == spawn.Type {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("authored pickup at (%.0f,%.0f) was not spawned", spawn.X, spawn.Y)
+		}
 	}
 }

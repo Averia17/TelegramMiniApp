@@ -12,6 +12,7 @@ const GAME_MESSAGES = new Set([
   "error",
   "you_died",
   "match_found",
+  "party_state",
   "taunt",
 ])
 
@@ -171,7 +172,24 @@ export class GameClient {
       ...(profile.mode ? {mode: profile.mode} : {}),
       ...(profile.mapName ? {roomMap: profile.mapName} : {}),
       ...(profile.maxPlayers ? {maxPlayers: profile.maxPlayers} : {}),
+      ...(profile.partyId ? {partyId: profile.partyId} : {}),
+      ...(profile.partySize ? {partySize: profile.partySize} : {}),
     }))
+  }
+
+  createParty(maxSize = 3, partyId = "") {
+    if (this.ws?.readyState !== WebSocket.OPEN) return
+    this.ws.send(JSON.stringify({type: "party_create", maxSize, ...(partyId ? {partyId} : {})}))
+  }
+
+  joinParty(partyId, maxSize = 3) {
+    if (this.ws?.readyState !== WebSocket.OPEN) return
+    this.ws.send(JSON.stringify({type: "party_join", partyId, maxSize}))
+  }
+
+  leaveParty() {
+    if (this.ws?.readyState !== WebSocket.OPEN) return
+    this.ws.send(JSON.stringify({type: "party_leave"}))
   }
 
   move(x, y) {

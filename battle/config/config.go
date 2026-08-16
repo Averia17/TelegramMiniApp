@@ -1,12 +1,17 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 type Config struct {
-	Port       string
-	RedisAddr  string
-	KafkaAddr  string
-	AccountURL string
+	Port         string
+	RedisAddr    string
+	KafkaAddr    string
+	AccountURL   string
+	TeamSize     int
+	PartyMaxSize int
 }
 
 func Load() *Config {
@@ -26,10 +31,25 @@ func Load() *Config {
 	if accountURL == "" {
 		accountURL = "http://localhost:8000"
 	}
-	return &Config{
-		Port:       port,
-		RedisAddr:  redisAddr,
-		KafkaAddr:  kafkaAddr,
-		AccountURL: accountURL,
+	teamSize := configuredInt("TEAM_SIZE", 3)
+	partyMaxSize := configuredInt("MAX_PARTY_SIZE", teamSize)
+	if partyMaxSize > teamSize {
+		partyMaxSize = teamSize
 	}
+	return &Config{
+		Port:         port,
+		RedisAddr:    redisAddr,
+		KafkaAddr:    kafkaAddr,
+		AccountURL:   accountURL,
+		TeamSize:     teamSize,
+		PartyMaxSize: partyMaxSize,
+	}
+}
+
+func configuredInt(name string, fallback int) int {
+	value, err := strconv.Atoi(os.Getenv(name))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }

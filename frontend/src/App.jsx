@@ -14,6 +14,8 @@ const BattlePage = ({id}) => {
   const {roomId} = useParams()
   const location = useLocation()
   const hero = location.state?.heroName || loadBattleHero(id)
+  const mode = new URLSearchParams(location.search).get("mode") === "team" ? "team" : "solo"
+  const partyId = new URLSearchParams(location.search).get("party") || ""
   const [tauntActive, setTauntActive] = useState(Boolean(location.state?.tauntActive))
   useEffect(() => {
     axios.get(`${API_URL}/economy/me`).then(({data}) => {
@@ -22,7 +24,7 @@ const BattlePage = ({id}) => {
   }, [])
   return (
     <Suspense fallback={<BattleLoading progress={32} status="Загружаем арену..." />}>
-      <BattleGame playerId={id} roomId={roomId} heroName={hero} tauntActive={tauntActive}/>
+      <BattleGame playerId={id} roomId={roomId} heroName={hero} mode={mode} partyId={partyId} tauntActive={tauntActive}/>
     </Suspense>
   )
 }

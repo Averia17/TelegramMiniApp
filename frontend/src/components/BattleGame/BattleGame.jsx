@@ -6,7 +6,7 @@ import {Input} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
 import {getHeroSkill} from "./heroSkills.js"
 import {getBattlePlayerCount, getPlayerBattleStats, getPresentedBattleResult, getSynchronizedBattleView} from "./battleOutcome"
-import {AbilityButton, ActiveStatusEffects, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TauntButton, TeamBattleHud, TouchStick} from "./BattleGameUI.jsx"
+import {AbilityButton, ActiveStatusEffects, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TauntButton, TeamBattleHud, TeamObjectiveHud, TouchStick} from "./BattleGameUI.jsx"
 import {getAttackCooldownVisual} from "./attackCooldownVisual.js"
 import {getActiveStatusEffects} from "./statusEffects.js"
 import {formatBattleMessage} from "./battleMessages.js"
@@ -15,7 +15,7 @@ import {releaseAllPreviewContexts} from "./rendering/shared/previewContextRegist
 import {getBattlePerformanceSnapshot, recordBattleMetric} from "./rendering/shared/performance.js"
 import {isInsideConcealment} from "./rendering/shared/concealment.js"
 import {assetRegistry} from "./rendering/assets/AssetRegistry.js"
-import {WS_URL} from "../../utils/urls.js"
+import {MAX_PARTY_SIZE, WS_URL} from "../../utils/urls.js"
 import {getAccessToken} from "../../utils/auth.js"
 import {BattleLoading} from "../BattleLoading/BattleLoading.jsx"
 import {getBattleLoadingProgress} from "./battleLoadingProgress.js"
@@ -36,7 +36,7 @@ const profileBattleUi = (_id, phase, actualDuration) => {
   if (import.meta.env.DEV) recordBattleMetric("ui.commit", actualDuration, {phase})
 }
 
-export const BattleGame = ({playerId, roomId, heroName, tauntActive = false}) => {
+export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId = "", tauntActive = false}) => {
   const navigate = useNavigate()
   const canvasRef = useRef(null)
   const clientRef = useRef(null)
@@ -423,9 +423,12 @@ export const BattleGame = ({playerId, roomId, heroName, tauntActive = false}) =>
   useEffect(() => {
     if (connected && !roomId && !joinedRef.current && clientRef.current) {
       joinedRef.current = true
-      clientRef.current.findMatch(playerName, heroName)
+      if (mode === "team" && partyId) clientRef.current.joinParty(partyId, MAX_PARTY_SIZE)
+      clientRef.current.findMatch(playerName, heroName, mode === "team"
+        ? {mode: "team deathmatch", mapName: "team-battle", maxPlayers: 6, partyId, partySize: partyId ? MAX_PARTY_SIZE : 1}
+        : {})
     }
-  }, [connected, roomId, playerName, heroName, effectivePlayerId])
+  }, [connected, roomId, playerName, heroName, effectivePlayerId, mode, partyId])
 
   const handleBackToMenu = () => {
     joinedRef.current = false
@@ -572,6 +575,10 @@ export const BattleGame = ({playerId, roomId, heroName, tauntActive = false}) =>
             )}
             {gameState?.map && <BattleMiniMap state={gameState} localId={clientRef.current?.playerId} renderer={rendererRef.current}/>}
             <TeamBattleHud state={gameState} localId={clientRef.current?.playerId}/>
+            <TeamObjectiveHud state={gameState}/>
+            {localPlayer && Number(localPlayer.respawnAt) > Date.now() && (
+              <div className="team-respawn-notice" role="status">ВОЗРОЖДЕНИЕ ЧЕРЕЗ {Math.ceil((Number(localPlayer.respawnAt) - Date.now()) / 1000)}с</div>
+            )}
             {localPlayer && (
               <div className="battle-abilities">
                 <AbilityButton slot="primary" keyName="Q" label={getHeroSkill(localPlayer.hero, "primary").name} description={getHeroSkill(localPlayer.hero, "primary").description} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper onUse={() => clientRef.current?.ability?.("primary")}/>

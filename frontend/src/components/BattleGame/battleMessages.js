@@ -23,6 +23,8 @@ export const formatBattleMessage = message => {
     return params.roomName ? `Joined ${params.roomName}` : "Joined the battle room"
   case "match_found":
     return "Match found!"
+  case "party_state":
+    return `Party ${params.count || 0}/${params.maxSize || 0}`
   case "error":
     return params.message || "Battle connection error"
   case "you_died":

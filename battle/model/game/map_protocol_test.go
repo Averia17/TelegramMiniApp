@@ -34,3 +34,17 @@ func TestNewMapJSONKeepsIdentityOnCompactSnapshots(t *testing.T) {
 		t.Fatalf("compact map unexpectedly contains %d walls", len(got.Walls))
 	}
 }
+
+func TestNewMapJSONPublishesPassableTeamFeatures(t *testing.T) {
+	canonical := gamemap.GenerateTeamBattle(gamemap.CanonicalTeamBattleSeed)
+	got := NewMapJSON("team-battle", canonical, 0, true)
+	if got.ID != "team-battle@20260816" {
+		t.Fatalf("team map identity = %q", got.ID)
+	}
+	if len(got.Features) != len(canonical.Features) || len(got.Features) != 4 {
+		t.Fatalf("features = %d, want exactly 4", len(got.Features))
+	}
+	if got.Features[0].Type != "river" {
+		t.Fatalf("first team feature = %#v", got.Features[0])
+	}
+}

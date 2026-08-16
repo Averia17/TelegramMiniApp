@@ -56,7 +56,14 @@ func (gs *GameState) fillMissingBots() {
 	// Below 50% capacity add at most three bots. At 50% or more the match stays human-only.
 	minimumPlayers := (gs.MaxPlayers + 1) / 2
 	desiredBots := 0
-	if humans < minimumPlayers {
+	if gs.Mode == ModeTeamDeathmatch {
+		// Team matchmaking may start with one human after the queue fallback.
+		// Fill the complete 3v3 lobby so both sides always have a playable team.
+		desiredBots = gs.MaxPlayers - humans
+		if desiredBots < 0 {
+			desiredBots = 0
+		}
+	} else if humans < minimumPlayers {
 		desiredBots = gs.MaxPlayers - humans
 		if desiredBots > MaxBots {
 			desiredBots = MaxBots
@@ -227,13 +234,14 @@ func (gs *GameState) rememberBotMonster(botID, targetID string, target *monster.
 }
 
 type botTarget struct {
-	kind     string
-	id       string
-	player   *player.Player
-	monster  *monster.Monster
-	x, y     float64
-	distance float64
-	score    float64
+	kind      string
+	id        string
+	player    *player.Player
+	monster   *monster.Monster
+	objective *ObjectiveState
+	x, y      float64
+	distance  float64
+	score     float64
 }
 
 func (target *botTarget) radius() float64 {
@@ -245,6 +253,9 @@ func (target *botTarget) radius() float64 {
 	}
 	if target.monster != nil {
 		return target.monster.Radius
+	}
+	if target.objective != nil {
+		return target.objective.Radius
 	}
 	return 0
 }
@@ -369,7 +380,7 @@ func (gs *GameState) botPickupTarget(bot *player.Player) *prop.Prop {
 			if healthRatio >= .8 {
 				continue
 			}
-		case "power", "lunar_speed", "lunar_damage", "lunar_shield", "lunar_cooldown":
+		case "power", "health_boost", "lunar_speed", "lunar_damage", "lunar_shield", "lunar_cooldown":
 		default:
 			continue
 		}
@@ -443,7 +454,7 @@ func (gs *GameState) botStormCenterTarget(bot *player.Player) (float64, float64,
 	return centerX, centerY, true
 }
 
-func (gs *GameState) updateBots() {
+func (gs *GameState) updateBattleRoyaleBots() {
 	if gs.State != GameStateGame {
 		return
 	}
@@ -617,6 +628,12 @@ func (gs *GameState) botHasLineOfSight(bot *player.Player, target *botTarget) bo
 	}
 	if target.player != nil {
 		return gs.botCanSee(bot, target.player, time.Now().UnixMilli())
+	}
+	if target.objective != nil {
+		if math.Hypot(target.objective.X-bot.X, target.objective.Y-bot.Y) > BotVisionRange {
+			return false
+		}
+		return gs.Walls == nil || !segmentHitsBlockingWall(bot.X, bot.Y, target.objective.X, target.objective.Y, 2, gs.Walls)
 	}
 	return gs.botCanSeeMonster(bot, target.monster)
 }

@@ -32,6 +32,25 @@ test("taunt commands use the shared clown taunt contract", () => {
   assert.equal(sent[0].type, "taunt")
 })
 
+test("party commands use explicit create, join, and leave messages", () => {
+  const client = new GameClient("ws://example", "token", () => {})
+  const sent = []
+  const previousWebSocket = globalThis.WebSocket
+  globalThis.WebSocket = {OPEN: 1}
+  client.ws = {readyState: 1, send: payload => sent.push(JSON.parse(payload))}
+
+  client.createParty(3, "party-a")
+  client.joinParty("party-a", 3)
+  client.leaveParty()
+
+  globalThis.WebSocket = previousWebSocket
+  assert.deepEqual(sent, [
+    {type: "party_create", maxSize: 3, partyId: "party-a"},
+    {type: "party_join", partyId: "party-a", maxSize: 3},
+    {type: "party_leave"},
+  ])
+})
+
 test("clock sync responses estimate clock skew without treating transit as skew", () => {
   const client = new GameClient("ws://example", "token", () => {})
   const sentAt = Date.now()

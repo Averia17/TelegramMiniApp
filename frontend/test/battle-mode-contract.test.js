@@ -1,12 +1,13 @@
 import test from "node:test"
 import assert from "node:assert/strict"
+import {readFile} from "node:fs/promises"
 import {
   createBattleContext,
   createBattleMode,
   DEATHMATCH_MODE,
   TEAM_DEATHMATCH_MODE,
 } from "../src/components/BattleGame/battleMode.js"
-import {getTeamHudModel, normalizeTeamBattleResult} from "../src/components/BattleGame/teamBattleUi.js"
+import {getObjectiveHudModel, getTeamHudModel, normalizeTeamBattleResult} from "../src/components/BattleGame/teamBattleUi.js"
 
 test("battle mode contract keeps solo targets independent of team metadata", () => {
   const mode = createBattleMode(DEATHMATCH_MODE)
@@ -21,6 +22,15 @@ test("team mode encapsulates friendly-fire rules", () => {
   assert.equal(mode.areAllies({team: "Blue"}, ally), true)
   assert.equal(mode.canDamage({playerId: "a", team: "Blue"}, ally), false)
   assert.equal(mode.canDamage({playerId: "a", team: "Blue"}, {...ally, team: "Red"}), true)
+})
+
+test("team hero presentation clearly separates local, allied, and enemy heroes", async () => {
+  const source = await readFile(new URL("../src/components/BattleGame/rendering/heroes/HeroView.js", import.meta.url), "utf8")
+  assert.match(source, /role: "ВРАГ"/)
+  assert.match(source, /ring: "#ff334d"/)
+  assert.match(source, /role: "СОЮЗНИК"/)
+  assert.match(source, /team-marker/)
+  assert.match(source, /teamBattle && presentation\.role \? presentation\.color/)
 })
 
 test("battle context carries mode and authoritative map identity", () => {
@@ -52,4 +62,13 @@ test("team result resolves winner team without changing solo result semantics", 
   const result = normalizeTeamBattleResult({won: false, winner: "Blue team"}, state, "local")
   assert.equal(result.winnerTeam, "Blue")
   assert.equal(result.won, false)
+})
+
+test("team objective HUD exposes tower and town hall health", () => {
+  const objectives = getObjectiveHudModel({game: {mode: TEAM_DEATHMATCH_MODE}, objectives: [
+    {id: "red-tower", type: "tower", team: "Red", lives: 0, maxLives: 3000},
+    {id: "red-hall", type: "town_hall", team: "Red", lives: 9000, maxLives: 12000},
+  ]})
+  assert.equal(objectives[0].destroyed, true)
+  assert.equal(objectives[1].percent, 75)
 })

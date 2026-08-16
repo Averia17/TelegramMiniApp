@@ -2,7 +2,10 @@ package prop
 
 import "battle/service/geometry"
 
-const LunarCrateLives = 240
+const (
+	LunarCrateLives  = 240
+	HealthCrateLives = 500
+)
 
 type Prop struct {
 	geometry.CircleBody
@@ -30,6 +33,16 @@ func NewLunarCrate(x, y float64, lootType string) *Prop {
 		LootType:   lootType,
 		Lives:      LunarCrateLives,
 		MaxLives:   LunarCrateLives,
+		Active:     true,
+	}
+}
+
+func NewHealthCrate(x, y float64) *Prop {
+	return &Prop{
+		CircleBody: geometry.CircleBody{X: x, Y: y, Radius: 22},
+		Type:       "health_crate",
+		Lives:      HealthCrateLives,
+		MaxLives:   HealthCrateLives,
 		Active:     true,
 	}
 }

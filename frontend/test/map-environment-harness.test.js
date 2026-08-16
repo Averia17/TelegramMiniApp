@@ -9,6 +9,9 @@ test("map environment lab uses the complete battle renderer and canonical map", 
 
   assert.match(html, /from "\/src\/components\/BattleGame\/rendering\/three\/ThreeBattleRenderer\.js"/)
   assert.match(html, /loadCanonicalBattleMap/)
+	assert.match(html, /data-map-mode="team"/)
+  assert.match(html, /loadCanonicalBattleMap\(fetch, selectedMode\)/)
+	assert.match(html, /objectives: \(map\.objectives \|\| \[\]\)\.map/)
   assert.match(html, /new ThreeBattleRenderer\(canvas\)/)
   assert.match(html, /battleRenderer\.setState\(battleState\)/)
   assert.doesNotMatch(html, /new THREE\.Scene|new OrbitControls|new MapRenderer/)
