@@ -6,6 +6,8 @@ export const normalizeBattleMode = mode =>
     ? TEAM_DEATHMATCH_MODE
     : DEATHMATCH_MODE
 
+export const isTeamBattleMode = mode => normalizeBattleMode(mode) === TEAM_DEATHMATCH_MODE
+
 const isDefended = entity =>
   Number(entity?.invulnerable) > 0 ||
   Number(entity?.shield) > 0 ||
@@ -17,14 +19,14 @@ export const createBattleMode = mode => {
   const id = normalizeBattleMode(mode)
   return Object.freeze({
     id,
-    usesTeams: id === TEAM_DEATHMATCH_MODE,
+    usesTeams: isTeamBattleMode(id),
     areAllies: (source, target) => Boolean(
-      id === TEAM_DEATHMATCH_MODE && source?.team && target?.team && source.team === target.team,
+      isTeamBattleMode(id) && source?.team && target?.team && source.team === target.team,
     ),
     canDamage: (source, target) => Boolean(
       target && Number(target.lives) > 0 &&
       String(source?.playerId || "") !== String(target.playerId || "") &&
-      !(id === TEAM_DEATHMATCH_MODE && source?.team && target?.team && source.team === target.team) &&
+      !(isTeamBattleMode(id) && source?.team && target?.team && source.team === target.team) &&
       !isDefended(target),
     ),
   })

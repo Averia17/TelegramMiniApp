@@ -8,6 +8,7 @@ import (
 
 func TestBotPathRefreshIsThrottled(t *testing.T) {
 	walls := geometry.NewSpatialHash(TileSize)
+	walls.Insert(&geometry.WallTile{MinX: 200, MinY: 80, MaxX: 240, MaxY: 200, Type: "wall"})
 	gs := &GameState{
 		Map:   &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480},
 		Walls: walls,

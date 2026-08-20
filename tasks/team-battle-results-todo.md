@@ -1,0 +1,5 @@
+- [ ] Добавить counters в Player/GameState и тесты
+- [ ] Добавить поля в battle provider и leaderboard model
+- [ ] Передать статистику через room result и recovery
+- [ ] Обновить frontend result model и командный UI
+- [ ] Прогнать проверки и зафиксировать baseline-падения

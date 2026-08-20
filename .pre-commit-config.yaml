@@ -1,24 +1,38 @@
+default_stages: [pre-commit]
+exclude: ^\.agents/
+
 repos:
   - repo: https://github.com/psf/black
     rev: 25.1.0
     hooks:
       - id: black
-        language: python
+
   - repo: https://github.com/pycqa/isort
     rev: 6.0.1
     hooks:
       - id: isort
-        name: isort
-        entry: isort
-        language: python
-#  - repo: local
-#    hooks:
-#    - id: pytest
-#      name: pytest
-#      entry: docker-compose run backend pytest
-#      exclude: ^migrations
-#      language: system
-#      types: [python]
-#      pass_filenames: false
-#      always_run: true
-#      verbose: true
+        args: [--profile=black, --line-length=88]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: frontend-eslint
+        name: frontend eslint
+        entry: npm --prefix frontend run lint -- --fix
+        language: system
+        files: ^frontend/src/.*\.(js|jsx)$
+        pass_filenames: false
+
+      - id: gofmt
+        name: gofmt
+        entry: gofmt -w
+        language: system
+        types: [go]

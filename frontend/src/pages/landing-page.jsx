@@ -7,7 +7,7 @@ import {StoreTab} from "../components/Tabs/StoreTab.jsx"
 import "./landing-page.css"
 import {API_URL} from "../utils/urls.js"
 import {BattleLoading} from "../components/BattleLoading/BattleLoading.jsx"
-import {loadBattleHero, saveBattleHero} from "../utils/battlePreferences.js"
+import {loadBattleHero, loadBattleMode, saveBattleHero, saveBattleMode} from "../utils/battlePreferences.js"
 import {PartyPanel} from "../components/Party/PartyPanel.jsx"
 import {canStartTeamParty} from "../components/Party/partyRoster.js"
 import {PartyInviteNotifications} from "../components/Party/PartyInviteNotifications.jsx"
@@ -26,7 +26,7 @@ const LandingPage = ({id}) => {
   const [economy, setEconomy] = useState({energy:100,max_energy:100,gold:0,crystals:0,taunt_charges:0,next_energy_in:0})
   const [playError, setPlayError] = useState("")
   const [battleStarting, setBattleStarting] = useState(false)
-  const [battleMode, setBattleMode] = useState("solo")
+  const [battleMode, setBattleMode] = useState(() => loadBattleMode(id))
   const [partyId, setPartyId] = useState(() => new URLSearchParams(window.location.search).get("party") || "")
   const [partyState, setPartyState] = useState(null)
   const [partyOpen, setPartyOpen] = useState(false)
@@ -38,8 +38,14 @@ const LandingPage = ({id}) => {
     setSelectedHero(hero)
     saveBattleHero(id, hero)
   }, [id])
+  const changeBattleMode = useCallback(mode => {
+    const nextMode = mode === "team" ? "team" : "solo"
+    setBattleMode(nextMode)
+    saveBattleMode(id, nextMode)
+    setPlayError("")
+  }, [id])
   const handlePartyReady = useCallback(state => { setPartyState(state); setPartyId(state.partyId) }, [])
-  const handlePartyAccepted = useCallback(state => { setBattleMode("team"); handlePartyReady(state) }, [handlePartyReady])
+  const handlePartyAccepted = useCallback(state => { changeBattleMode("team"); handlePartyReady(state) }, [changeBattleMode, handlePartyReady])
 
   useEffect(() => {
     if (TABS.includes(tabParam) && tabParam !== tab) setTab(tabParam)
@@ -64,7 +70,12 @@ const LandingPage = ({id}) => {
     try {
       const {data}=await axios.post(`${API_URL}/economy/me/battle`)
       setEconomy(data)
-      navigate(battleMode === "team" ? `/battle?mode=team${partyId ? `&party=${encodeURIComponent(partyId)}` : ""}` : "/battle", {state: {heroName: selectedHero, tauntActive: Boolean(data.taunt_active)}})
+      navigate(battleMode === "team" ? `/battle?mode=team${partyId ? `&party=${encodeURIComponent(partyId)}` : ""}` : "/battle", {state: {
+        heroName: selectedHero,
+        tauntActive: Boolean(data.taunt_active),
+        startNewBattle: true,
+        battleIntentId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      }})
     } catch (error) {
       setBattleStarting(false)
       setPlayError(error.response?.data?.detail || "Не удалось начать бой")
@@ -101,12 +112,12 @@ const LandingPage = ({id}) => {
 
           <div className="lp-content lp-content--play">
             <Suspense fallback={<BattleLoading progress={28} status="Загружаем героев..." />}>
-              <HeroSelect onSelect={selectHero} selectedHero={selectedHero} battleMode={battleMode} onModeChange={mode => { setBattleMode(mode); setPlayError("") }}/>
+              <HeroSelect onSelect={selectHero} selectedHero={selectedHero} battleMode={battleMode} onModeChange={changeBattleMode}/>
             </Suspense>
           </div>
 
           <footer className="lp-battle-dock">
-            <button className={`lp-team-button ${battleMode === "team" ? "is-active" : ""}`} onClick={() => { setBattleMode("team"); setPartyOpen(true) }}><span>＋</span><small>{partyId ? "ПАТИ" : "КОМАНДА"}</small></button>
+            <button className={`lp-team-button ${battleMode === "team" ? "is-active" : ""}`} onClick={() => { changeBattleMode("team"); setPartyOpen(true) }}><span>＋</span><small>{partyId ? "ПАТИ" : "КОМАНДА"}</small></button>
             <div className="lp-event-card">
               <div className="lp-event-icon">☠</div>
               <div><small>{battleMode === "team" ? "КОМАНДНЫЙ БОЙ" : "ОДИНОЧНОЕ СТОЛКНОВЕНИЕ"}</small><strong>{battleMode === "team" ? "Командная арена" : "Песчаный лабиринт"}</strong><span>{battleMode === "team" ? "Две команды по три игрока" : "Новая карта через 3ч."}</span></div>

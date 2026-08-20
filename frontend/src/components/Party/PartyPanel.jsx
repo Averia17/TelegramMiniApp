@@ -60,7 +60,7 @@ export const PartyPanel = ({id, selectedHero, onClose, onPartyReady}) => {
   return <div className="party-panel" role="dialog" aria-modal="true">
     <div className="party-panel__card">
       <button className="party-panel__close" onClick={onClose} aria-label="Закрыть">×</button>
-    <div className="party-panel__eyebrow">TEAM BATTLE · {party?.maxSize || MAX_PARTY_SIZE} МЕСТА</div>
+      <div className="party-panel__eyebrow">TEAM BATTLE · {party?.maxSize || MAX_PARTY_SIZE} МЕСТА</div>
       <h2>ТВОЯ ПАТИ</h2>
       <div className="party-roster">{roster.length ? roster.map(member => <div className={`party-member ${member.owner ? "party-member--owner" : ""}`} key={member.playerId}><b>{member.name || member.playerId}</b><span>{member.hero || "Герой не выбран"}</span>{member.owner && <small>ЛИДЕР</small>}</div>) : <div className="party-empty">Создай пати и позови союзника</div>}</div>
       {party && <div className={`party-validation ${validation.ok ? "party-validation--ok" : ""}`}>{validation.ok ? "Герои пати уникальны" : validation.reason}</div>}

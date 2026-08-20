@@ -1,8 +1,13 @@
 from auth import AuthenticatedUser, current_user
 from fastapi import APIRouter, Depends, HTTPException
 from infrastructure import Repo
-from services import (open_chest, purchase_taunt_pack, spend_battle_energy,
-                      spend_taunt, wallet_view)
+from services import (
+    open_chest,
+    purchase_taunt_pack,
+    spend_battle_energy,
+    spend_taunt,
+    wallet_view,
+)
 from services.shop_catalog import ShopCatalogError
 
 from .deps import get_repo

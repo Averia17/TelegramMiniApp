@@ -57,6 +57,15 @@ export class ThreeBattleRenderer {
   setLocalPlayerId(id) {
     this.localPlayerId = String(id)
     this.combatFeedback.setLocalPlayerId(this.localPlayerId)
+    const localPlayer = this.state?.players?.[this.localPlayerId]
+    if (!localPlayer) return
+    const teamBattle = String(this.state.game?.mode || "").toLowerCase().replace(/[_-]/g, " ") === "team deathmatch"
+    const localTeam = localPlayer.team || ""
+    this.players.forEach((view, playerId) => {
+      view.setTeamContext(teamBattle, localTeam)
+      view.setLocalPlayer(String(playerId) === this.localPlayerId)
+    })
+    this.mapRenderer.setFocus?.(localPlayer.x, localPlayer.y)
   }
 
   showTaunt(playerId, tauntId = "clown_laugh") {

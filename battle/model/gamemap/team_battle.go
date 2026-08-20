@@ -11,6 +11,11 @@ const CanonicalTeamBattleSeed int64 = 20260816
 const (
 	teamBattleRiverCenter    = 0.0
 	teamBattleRiverHalfWidth = 2.2
+	// The river spans the whole playable island. The outer water ring owns the
+	// cells beyond these banks, so the river meets the ocean without drawing a
+	// second river strip through open water.
+	teamBattleRiverStart = 10.0
+	teamBattleRiverMouth = 70.0
 )
 
 // GenerateTeamBattle builds an authored 3v3 arena. The two bases sit on
@@ -76,6 +81,23 @@ func GenerateTeamBattle(seed int64) *GameMap {
 			for x := cx - radius; x <= cx+radius; x++ {
 				if math.Hypot(float64(x-cx), float64(y-cy)) <= float64(radius)+.35 {
 					clearMirrored(x, y)
+				}
+			}
+		}
+	}
+	bridgeCenters := [][2]int{{22, 22}, {39, 39}, {57, 57}}
+	bridgeCorridorCell := func(center, cell [2]int) bool {
+		alongBridge := absInt((cell[0] - center[0]) + (cell[1] - center[1]))
+		acrossBridge := absInt((cell[0] - center[0]) - (cell[1] - center[1]))
+		return alongBridge <= 1 && acrossBridge <= 8
+	}
+	clearBridgeApproaches := func() {
+		for _, center := range bridgeCenters {
+			for y := center[1] - 6; y <= center[1]+6; y++ {
+				for x := center[0] - 6; x <= center[0]+6; x++ {
+					if bridgeCorridorCell(center, [2]int{x, y}) {
+						clear(x, y)
+					}
 				}
 			}
 		}
@@ -180,28 +202,60 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	clearAreaMirrored(20, 54, 3)
 	clearAreaMirrored(58, 35, 3)
 
-	// Each base gets a wide two-block stone perimeter. The north-east opening
-	// faces the opposing town hall, leaving a single readable approach while
-	// preserving room for the hall, both towers, and the team spawn pocket.
+	// Each base gets a two-block stone arc instead of a rectangular perimeter.
+	// The arc wraps around the back of the base and opens toward the opposing
+	// town hall, leaving a broad readable approach while preserving room for the
+	// hall, both towers, and the team spawn pocket. The authored Blue arc is
+	// mirrored below, so Red receives the same enclosure on the opposite side.
 	addFortress := func(cx, cy int) {
 		clearAreaMirrored(cx, cy, 8)
-		for course := 0; course < 2; course++ {
-			topY, bottomY := cy-10+course, cy+6-course
-			leftX, rightX := cx-6+course, cx+6-course
-			for x := leftX; x <= rightX; x++ {
-				// The gate is deliberately on the enemy-facing north-east corner.
-				if x < cx+4 {
-					addMirrored(x, topY, "fortress_wall")
+		const innerRadius, outerRadius = 7.5, 10.5
+		isFortressArcCell := func(x, y int) bool {
+			dx, dy := float64(x-cx), float64(y-cy)
+			radius := math.Hypot(dx, dy)
+			// Keep the entrance open toward the enemy, but carry the arc a few
+			// cells farther around both side shoulders.
+			return radius >= innerRadius && radius <= outerRadius && dx-dy < 4.5
+		}
+		for y := cy - 11; y <= cy+11; y++ {
+			for x := cx - 11; x <= cx+11; x++ {
+				if !isFortressArcCell(x, y) {
+					continue
 				}
-				addMirrored(x, bottomY, "fortress_wall")
+				// Clear only the cells occupied by the arc. This prevents an
+				// existing bush or prop from punching a hole without disturbing
+				// nearby river-approach dressing.
+				clearMirrored(x, y)
 			}
-			for y := topY + 1; y <= bottomY-1; y++ {
-				addMirrored(leftX, y, "fortress_wall")
-				addMirrored(rightX, y, "fortress_wall")
+		}
+		for y := cy - 11; y <= cy+11; y++ {
+			for x := cx - 11; x <= cx+11; x++ {
+				if !isFortressArcCell(x, y) {
+					continue
+				}
+				addMirrored(x, y, "fortress_wall")
 			}
 		}
 	}
 	addFortress(16, 63)
+	clearBridgeApproaches()
+	// Frame every bridge with the same small bank landmark. The cover stays
+	// outside the bridge corridor, so the crossing remains the obvious route
+	// while each approach has a readable tactical pocket instead of empty lawn.
+	addBridgeBank := func(cx, cy int) {
+		for _, offset := range [][2]int{{5, -5}, {6, -5}, {5, -4}, {6, -4}, {7, -5}} {
+			addMirrored(cx+offset[0], cy+offset[1], "bush")
+		}
+		for _, offset := range [][2]int{{7, -7}, {8, -6}} {
+			addMirrored(cx+offset[0], cy+offset[1], "tree")
+		}
+		for _, offset := range [][2]int{{8, -4}, {9, -4}, {9, -3}} {
+			addMirrored(cx+offset[0], cy+offset[1], "ruin_wall")
+		}
+	}
+	for _, center := range bridgeCenters {
+		addBridgeBank(center[0], center[1])
+	}
 	// Clearing the shoreline can replace an old water tile with fortress stone;
 	// collapse those authored cells before the river pass so no cell publishes
 	// two conflicting collision types.
@@ -226,7 +280,10 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	gm.Collisions = filterOccupied(gm.Collisions)
 
 	isRiverCell := func(x, y int) bool {
-		return math.Abs((float64(x)+.5)-(float64(y)+.5)-teamBattleRiverCenter) <= teamBattleRiverHalfWidth
+		alongRiver := (float64(x) + .5 + float64(y) + .5) * .5
+		return alongRiver >= teamBattleRiverStart && alongRiver <= teamBattleRiverMouth &&
+			math.Abs((float64(x)+.5)-(float64(y)+.5)-teamBattleRiverCenter) <= teamBattleRiverHalfWidth &&
+			math.Hypot(float64(x)+.5-islandCenter, float64(y)+.5-islandCenter) <= islandRadius
 	}
 	riverProps := make(map[[2]int]string)
 	for _, wall := range gm.Collisions {
@@ -292,13 +349,27 @@ func GenerateTeamBattle(seed int64) *GameMap {
 			}
 		}
 	}
-	for _, opening := range []struct {
-		center [2]int
-		radius int
-	}{{[2]int{22, 22}, 2}, {[2]int{39, 39}, 2}, {[2]int{57, 57}, 2}} {
-		for y := opening.center[1] - opening.radius; y <= opening.center[1]+opening.radius; y++ {
-			for x := opening.center[0] - opening.radius; x <= opening.center[0]+opening.radius; x++ {
-				clear(x, y)
+	// Keep the river as a complete blocking surface and publish the bridge deck
+	// as a separate, explicitly passable collision layer. The deck follows the
+	// bridge's diagonal instead of clearing a square around its center; this
+	// prevents players from walking along the river beside the bridge.
+	for _, center := range bridgeCenters {
+		for y := center[1] - 6; y <= center[1]+6; y++ {
+			for x := center[0] - 6; x <= center[0]+6; x++ {
+				cell := [2]int{x, y}
+				if !bridgeCorridorCell(center, cell) {
+					continue
+				}
+				if !isRiverCell(x, y) {
+					add(x, y, "river_bridge")
+					continue
+				}
+				for _, wall := range gm.Collisions {
+					if int(wall.MinX/tile) == x && int(wall.MinY/tile) == y {
+						wall.Type = "river_bridge"
+						break
+					}
+				}
 			}
 		}
 	}
@@ -322,7 +393,10 @@ func GenerateTeamBattle(seed int64) *GameMap {
 		x, y := tileX*tile, tileY*tile
 		gm.PickupSpawns = append(gm.PickupSpawns, MapPickupSpawn{X: x, Y: y, Radius: 12, Type: "potion-red"})
 	}
-	pickupPoints := [][2]float64{{24.5, 55.5}, {31.5, 42.5}, {40.5, 34.5}, {49.5, 24.5}}
+	// Keep only two authored pickup pairs. The general match health crates still
+	// provide occasional sustain, while these fixed points mark the two most
+	// important rotations instead of covering every route with healing.
+	pickupPoints := [][2]float64{{31.5, 42.5}, {40.5, 34.5}}
 	for _, point := range pickupPoints {
 		addPickup(point[0], point[1])
 	}

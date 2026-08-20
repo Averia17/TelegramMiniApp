@@ -6,7 +6,7 @@ import {Input} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
 import {getHeroSkill} from "./heroSkills.js"
 import {getBattlePlayerCount, getPlayerBattleStats, getPresentedBattleResult, getSynchronizedBattleView} from "./battleOutcome"
-import {AbilityButton, ActiveStatusEffects, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TauntButton, TeamBattleHud, TeamObjectiveHud, TouchStick} from "./BattleGameUI.jsx"
+import {AbilityButton, ActiveStatusEffects, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TauntButton, TeamBattleHud, TeamObjectiveHud, TowerThreatNotice, TouchStick} from "./BattleGameUI.jsx"
 import {getAttackCooldownVisual} from "./attackCooldownVisual.js"
 import {getActiveStatusEffects} from "./statusEffects.js"
 import {formatBattleMessage} from "./battleMessages.js"
@@ -20,6 +20,8 @@ import {getAccessToken} from "../../utils/auth.js"
 import {BattleLoading} from "../BattleLoading/BattleLoading.jsx"
 import {getBattleLoadingProgress} from "./battleLoadingProgress.js"
 import {normalizeTeamBattleResult} from "./teamBattleUi.js"
+import {isTeamBattleMode} from "./battleMode.js"
+import {getBattleRecoveryDecision} from "./battleRecovery.js"
 import "./BattleGame.css"
 
 
@@ -28,7 +30,7 @@ const saveBattleResult = result => {
     const history = JSON.parse(window.localStorage.getItem("battle_history") || "[]")
     window.localStorage.setItem("battle_history", JSON.stringify([{...result, finishedAt: new Date().toISOString()}, ...history].slice(0, 20)))
     const stats = JSON.parse(window.localStorage.getItem("battle_stats") || "{}")
-    window.localStorage.setItem("battle_stats", JSON.stringify({battles:(stats.battles||0)+1,wins:(stats.wins||0)+(result.won?1:0),kills:(stats.kills||0)+(result.kills||0),monsters:(stats.monsters||0)+(result.monsters||0)}))
+    window.localStorage.setItem("battle_stats", JSON.stringify({battles:(stats.battles||0)+1,wins:(stats.wins||0)+(result.won?1:0),kills:(stats.kills||0)+(result.kills||0),monsters:(stats.monsters||0)+(result.monsters||0),deaths:(stats.deaths||0)+(result.deaths||0),towerDamage:(stats.towerDamage||0)+(result.towerDamage||0)}))
   } catch (error) { console.warn("Could not save battle result", error) }
 }
 
@@ -36,7 +38,7 @@ const profileBattleUi = (_id, phase, actualDuration) => {
   if (import.meta.env.DEV) recordBattleMetric("ui.commit", actualDuration, {phase})
 }
 
-export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId = "", tauntActive = false}) => {
+export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId = "", tauntActive = false, startNewBattle = false}) => {
   const navigate = useNavigate()
   const canvasRef = useRef(null)
   const clientRef = useRef(null)
@@ -68,6 +70,7 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
   const [sceneReady, setSceneReady] = useState(false)
   const [assetsReady, setAssetsReady] = useState(false)
   const [assetLoadError, setAssetLoadError] = useState(false)
+  const [recoveryAction, setRecoveryAction] = useState(null)
 
   const setView = useCallback((v) => {
     viewRef.current = v
@@ -90,7 +93,7 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
     )
     saveBattleResult(normalized)
     setBattleResult(normalized)
-    setView(normalized.won ? "result" : normalized.timedOut ? "timeout" : "dead")
+    setView(normalized.recovered ? "result" : normalized.won ? "result" : normalized.timedOut ? "timeout" : "dead")
     try {
       rendererRef.current?.setOutcome(normalized.won ? "victory" : "defeat")
     } catch (error) {
@@ -183,6 +186,10 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
         (state) => {
           latestStateRef.current = state
           const receivedAt = Date.now()
+          if (client.playerId) {
+            renderer.setLocalPlayerId(client.playerId)
+            simulation.setLocalPlayerId(client.playerId)
+          }
           simulation.ingest(state, client.clockOffset, receivedAt)
           const now = performance.now()
           const shouldUpdateUi = !lastUiUpdateRef.current || now - lastUiUpdateRef.current >= 100
@@ -203,9 +210,32 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
           if (msg.type === "taunt") {
             rendererRef.current?.showTaunt(msg.params?.targetId || msg.params?.playerId, msg.params?.tauntId)
           }
+          if (msg.type === "battle_recovered") {
+            const decision = getBattleRecoveryDecision({
+              status: msg.params?.status,
+              roomId: msg.params?.roomId,
+              result: msg.params?.result,
+              startNewBattle,
+            })
+            if (msg.params?.playerId && !client.playerId) client.playerId = msg.params.playerId
+            setRecoveryAction(decision.kind)
+            if (decision.kind === "resume") {
+              joinedRef.current = true
+              client.joinById(decision.roomId, playerName, heroName)
+            } else if (decision.kind === "result") {
+              finishBattle(decision.result)
+            } else if (decision.kind === "menu") {
+              navigate("/", {replace: true})
+            }
+          }
           if (msg.type === "room_joined") {
             setRoomInfo(msg.params)
             setView("lobby")
+            const localPlayerId = client.playerId || msg.params?.playerId
+            if (localPlayerId) {
+              renderer.setLocalPlayerId(localPlayerId)
+              simulation.setLocalPlayerId(localPlayerId)
+            }
             if (msg.params?.roomId) {
               window.history.replaceState(null, "", `/battle/${msg.params.roomId}`)
             }
@@ -243,9 +273,9 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
             pendingDeathInfoRef.current = info
             setDeathInfo(info)
           }
-          if (msg.type === "error" && roomId && msg.params?.message === "Room not found") {
+          if (msg.type === "error" && (msg.params?.message === "Room not found" || msg.params?.message === "Room access denied")) {
             joinedRef.current = false
-            navigate("/battle", {replace: true, state: {heroName}})
+            navigate("/", {replace: true})
           }
         },
         () => {
@@ -414,21 +444,20 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
   }, [gameState])
 
   useEffect(() => {
-    if (connected && roomId && !joinedRef.current && clientRef.current) {
-      joinedRef.current = true
-      clientRef.current.joinById(roomId, playerName, heroName)
+    if (connected && recoveryAction === null && clientRef.current) {
+      clientRef.current.recoverBattle(roomId || "")
     }
-  }, [connected, roomId, playerName, heroName, effectivePlayerId])
+  }, [connected, recoveryAction, roomId])
 
   useEffect(() => {
-    if (connected && !roomId && !joinedRef.current && clientRef.current) {
+    if (connected && recoveryAction === "new" && !joinedRef.current && clientRef.current) {
       joinedRef.current = true
       if (mode === "team" && partyId) clientRef.current.joinParty(partyId, MAX_PARTY_SIZE)
       clientRef.current.findMatch(playerName, heroName, mode === "team"
         ? {mode: "team deathmatch", mapName: "team-battle", maxPlayers: 6, partyId, partySize: partyId ? MAX_PARTY_SIZE : 1}
         : {})
     }
-  }, [connected, roomId, playerName, heroName, effectivePlayerId, mode, partyId])
+  }, [connected, recoveryAction, playerName, heroName, effectivePlayerId, mode, partyId])
 
   const handleBackToMenu = () => {
     joinedRef.current = false
@@ -474,6 +503,11 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
   const attackCooldownVisual = getAttackCooldownVisual(localPlayer || {})
   const activeStatusEffects = getActiveStatusEffects(localPlayer || {}, {inBush: localPlayerInBush})
   const islandPhase = gameState?.game?.phase || "none"
+  const isTeamBattle = mode === "team" || isTeamBattleMode(gameState?.game?.mode)
+  const isTeamPlayerDown = isTeamBattle && view === "game" && localPlayer && Number(localPlayer.lives) <= 0
+  const respawnSeconds = Number(localPlayer?.respawnAt) > Date.now()
+    ? Math.ceil((Number(localPlayer.respawnAt) - Date.now()) / 1000)
+    : null
   const loadingStatus = assetLoadError
     ? "Не удалось загрузить 3D-модели. Обновите страницу."
     : !assetsReady
@@ -548,8 +582,12 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
               <div className="battle-mode-pill"><span>⚡</span> BRAWL STARS</div>
               <div className="battle-alive"><i/> {alivePlayerCount} В БОЮ</div>
             </header>
-            <IslandPhaseHud state={gameState?.game}/>
-            <IslandVoiceNotice voice={islandVoice}/>
+            {!isTeamBattle && (
+              <IslandPhaseHud state={gameState?.game}/>
+            )}
+            {!isTeamBattle && (
+              <IslandVoiceNotice voice={islandVoice}/>
+            )}
             {localPlayer && (
               <div className="battle-player-card">
                 <div className="player-avatar">{String(localPlayer.hero || heroName || "H").slice(0, 1).toUpperCase()}</div>
@@ -575,9 +613,16 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
             )}
             {gameState?.map && <BattleMiniMap state={gameState} localId={clientRef.current?.playerId} renderer={rendererRef.current}/>}
             <TeamBattleHud state={gameState} localId={clientRef.current?.playerId}/>
-            <TeamObjectiveHud state={gameState}/>
-            {localPlayer && Number(localPlayer.respawnAt) > Date.now() && (
-              <div className="team-respawn-notice" role="status">ВОЗРОЖДЕНИЕ ЧЕРЕЗ {Math.ceil((Number(localPlayer.respawnAt) - Date.now()) / 1000)}с</div>
+            <TeamObjectiveHud state={gameState} localId={clientRef.current?.playerId}/>
+            <TowerThreatNotice state={gameState} localId={clientRef.current?.playerId}/>
+            {isTeamPlayerDown && (
+              <div className="team-respawn-overlay" role="status" aria-live="polite">
+                <div className="team-respawn-overlay__icon">↻</div>
+                <h2>ВОЗРОЖДЕНИЕ НА БАЗЕ</h2>
+                <p>Ты временно выбыл из боя</p>
+                <strong>{respawnSeconds === null ? "ОЖИДАНИЕ" : `ЧЕРЕЗ ${respawnSeconds} СЕК.`}</strong>
+                <small>Возродишься на своей базе. Бой продолжается.</small>
+              </div>
             )}
             {localPlayer && (
               <div className="battle-abilities">
@@ -600,7 +645,7 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
           </>
         )}
 
-        {view === "dead" && (
+        {view === "dead" && !isTeamBattle && (
           <div className="battle-overlay" style={{background: "rgba(139, 0, 0, 0.85)"}}>
             <div style={{textAlign: "center", color: "#fff"}}>
               <div className="death-skull">☠</div>
@@ -616,8 +661,8 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
           <div className="battle-overlay battle-result-overlay">
             <div className="battle-result-card">
               <div className="battle-result-crown">♛</div>
-              <h2>ПОБЕДА!</h2>
-              <p>Арена зачищена — результат сохранён.</p>
+              <h2>{battleResult?.won ? "ПОБЕДА!" : "РЕЗУЛЬТАТ БОЯ"}</h2>
+              <p>{battleResult?.won ? "Арена зачищена — результат сохранён." : "Бой завершён — результат сохранён."}</p>
               <BattleRewardNotice result={battleResult}/>
               <BattleResultStats result={battleResult}/>
               <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>

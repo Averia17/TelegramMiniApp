@@ -11,7 +11,7 @@ export const preserveAuthoritativeMapWalls = (map, previousMap) => {
 
 export const isBlockingWall = wall => typeof wall?.blocking === "boolean"
   ? wall.blocking
-  : wall?.type !== "half" && wall?.type !== "bush" && wall?.type !== "moon_mist"
+  : wall?.type !== "half" && wall?.type !== "bush" && wall?.type !== "moon_mist" && wall?.type !== "river_bridge"
 
 export const mapIdentity = map => ({
   id: map?.id || map?.name || "",

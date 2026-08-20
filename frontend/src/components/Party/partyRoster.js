@@ -34,4 +34,3 @@ export const arrangePartyMembers = (members, ownerId) => {
   const others = normalized.filter(member => member !== owner)
   return owner ? [others[0], owner, others[1]] : normalized
 }
-

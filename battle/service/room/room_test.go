@@ -103,6 +103,35 @@ func TestMatchQueueSinglePlayer(t *testing.T) {
 	matchQueue.mu.Unlock()
 }
 
+func TestMatchmakingIssuesRoomClaimBeforeJoinById(t *testing.T) {
+	room.ResetRooms()
+	defer room.ResetRooms()
+
+	client := newTestClient("matched-player")
+	client.Name = "Matched"
+	client.HeroName = "Needle"
+	client.Profile = room.DefaultMatchProfile()
+
+	matchQueue.mu.Lock()
+	matchQueue.queue = nil
+	matchQueue.mu.Unlock()
+	matchQueue.matchSolo(client)
+
+	message := <-client.Send
+	var match struct {
+		Type   string `json:"type"`
+		Params struct {
+			RoomID string `json:"roomId"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(message, &match); err != nil || match.Type != "match_found" {
+		t.Fatalf("matchmaking message = %s, %v; want match_found", message, err)
+	}
+	if client.PendingRoomID != match.Params.RoomID || match.Params.RoomID == "" {
+		t.Fatalf("pending room claim = %q, announced room = %q", client.PendingRoomID, match.Params.RoomID)
+	}
+}
+
 func TestGameStateInRoom(t *testing.T) {
 	r := room.GetOrCreateRoom("gs1", "GameState", "small", "deathmatch", 8)
 	gs := r.State

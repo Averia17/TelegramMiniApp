@@ -32,6 +32,71 @@ func TestTransportLifecycleKeepsNewestReconnectOwner(t *testing.T) {
 	}
 }
 
+func TestTransportLifecycleStopsDisconnectedPlayerMovement(t *testing.T) {
+	r := newLifecycleRoom()
+	emptySince := time.Time{}
+	client := &Client{Id: "p1", Send: make(chan []byte, 1)}
+	r.registerClient(client, &emptySince)
+	r.State.Players[client.Id].MoveX = 1
+	r.State.Players[client.Id].MoveY = -1
+	r.State.Players[client.Id].Aiming = true
+
+	r.unregisterClient(client, &emptySince)
+
+	p := r.State.Players[client.Id]
+	if p.MoveX != 0 || p.MoveY != 0 || p.Aiming {
+		t.Fatalf("disconnected player retained input: move=(%.1f, %.1f) aiming=%v", p.MoveX, p.MoveY, p.Aiming)
+	}
+}
+
+func TestTransportLifecycleReconnectClearsStaleMovement(t *testing.T) {
+	r := newLifecycleRoom()
+	emptySince := time.Time{}
+	old := &Client{Id: "p1", Name: "old", HeroName: "Needle", Send: make(chan []byte, 1)}
+	r.registerClient(old, &emptySince)
+	r.State.Players[old.Id].MoveX = -1
+	r.State.Players[old.Id].MoveY = 1
+	r.State.Players[old.Id].Aiming = true
+
+	newClient := &Client{Id: "p1", Name: "new", HeroName: "Mandy", Send: make(chan []byte, 1)}
+	r.registerClient(newClient, &emptySince)
+
+	p := r.State.Players[old.Id]
+	if p.MoveX != 0 || p.MoveY != 0 || p.Aiming {
+		t.Fatalf("reconnected player retained stale input: move=(%.1f, %.1f) aiming=%v", p.MoveX, p.MoveY, p.Aiming)
+	}
+}
+
+func TestTransportLifecycleReconnectDropsQueuedCommands(t *testing.T) {
+	r := newLifecycleRoom()
+	emptySince := time.Time{}
+	old := &Client{Id: "p1", Name: "old", HeroName: "Needle", Send: make(chan []byte, 1)}
+	r.registerClient(old, &emptySince)
+	r.State.PlayerPushAction(game.Action{PlayerId: old.Id, Type: "move", Ts: 1})
+
+	newClient := &Client{Id: "p1", Name: "new", HeroName: "Mandy", Send: make(chan []byte, 1)}
+	r.registerClient(newClient, &emptySince)
+
+	if len(r.State.Actions) != 0 {
+		t.Fatalf("reconnect retained %d queued commands for the replaced session", len(r.State.Actions))
+	}
+}
+
+func TestTransportLifecycleRejectsCommandsFromReplacedConnection(t *testing.T) {
+	r := newLifecycleRoom()
+	emptySince := time.Time{}
+	old := &Client{Id: "p1", Name: "old", HeroName: "Needle", Send: make(chan []byte, 1)}
+	newClient := &Client{Id: "p1", Name: "new", HeroName: "Mandy", Send: make(chan []byte, 1)}
+	r.registerClient(old, &emptySince)
+	r.registerClient(newClient, &emptySince)
+
+	r.HandleMessage(old, []byte(`{"type":"move","ts":100,"value":{"x":1,"y":0}}`))
+
+	if len(r.State.Actions) != 0 {
+		t.Fatal("replaced connection was still allowed to enqueue a movement command")
+	}
+}
+
 func TestTransportLifecycleDeliversBroadcastAndDropsSlowClient(t *testing.T) {
 	r := newLifecycleRoom()
 	fast := &Client{Id: "fast", Send: make(chan []byte, 1)}

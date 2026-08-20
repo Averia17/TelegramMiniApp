@@ -60,7 +60,7 @@ func (gs *GameState) CombatEnabled() bool {
 }
 
 func (gs *GameState) updateIsland(now int64) {
-	if gs.State != GameStateGame {
+	if gs.State != GameStateGame || gs.Mode == ModeTeamDeathmatch {
 		return
 	}
 	if gs.MatchStartedAt == 0 {

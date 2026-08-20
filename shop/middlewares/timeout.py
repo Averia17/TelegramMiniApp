@@ -17,5 +17,7 @@ class TimeoutMiddleware:
         try:
             await asyncio.wait_for(self.app(scope, receive, send), timeout=self.timeout)
         except asyncio.TimeoutError:
-            response = JSONResponse(status_code=504, content={"error": "Request timed out"})
+            response = JSONResponse(
+                status_code=504, content={"error": "Request timed out"}
+            )
             await response(scope, receive, send)

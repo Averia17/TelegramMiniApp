@@ -1,18 +1,23 @@
 package game
 
 import (
+	"battle/model/bullet"
 	"battle/model/player"
+	"fmt"
 	"math"
 	"time"
 )
 
 const (
-	teamTownHallLives = 12000
-	teamTowerLives    = 3000
-	teamTowerRange    = 620.0
-	teamTowerDamage   = 55
-	teamTowerCooldown = 1200
-	teamRespawnDelay  = 5000
+	teamTownHallLives  = 12000
+	teamTowerLives     = 3000
+	teamTowerRange     = 620.0
+	teamTowerDamage    = 55
+	teamTowerCooldown  = 1200
+	teamTowerWindup    = 420
+	teamTowerShotSpeed = 34 * RuntimeProjectileSpeedScale
+	teamTowerShotSize  = 13.0
+	teamRespawnDelay   = 5000
 )
 
 func newObjectiveStates(definitions []objectiveDefinition) map[string]*ObjectiveState {
@@ -22,7 +27,11 @@ func newObjectiveStates(definitions []objectiveDefinition) map[string]*Objective
 		if objective.Type == "town_hall" {
 			lives = teamTownHallLives
 		}
-		result[objective.ID] = &ObjectiveState{ID: objective.ID, Type: objective.Type, Team: objective.Team, X: objective.X, Y: objective.Y, Radius: objective.Radius, Lives: lives, MaxLives: lives}
+		attackRange := 0.0
+		if objective.Type == "tower" {
+			attackRange = teamTowerRange
+		}
+		result[objective.ID] = &ObjectiveState{ID: objective.ID, Type: objective.Type, Team: objective.Team, X: objective.X, Y: objective.Y, Radius: objective.Radius, Lives: lives, MaxLives: lives, AttackRange: attackRange}
 	}
 	return result
 }
@@ -71,10 +80,30 @@ func (gs *GameState) damageObjective(source *player.Player, objective *Objective
 	if objective.Type == "town_hall" && gs.objectiveTowersAlive(objective.Team) {
 		return false
 	}
+	livesBefore := objective.Lives
 	objective.Lives = int(math.Max(0, float64(objective.Lives-amount)))
+	dealt := livesBefore - objective.Lives
+	if objective.Type == "tower" {
+		source.TowerDamage += dealt
+		if livesBefore > 0 && objective.Lives == 0 {
+			source.TowersDestroyed++
+		}
+	} else if objective.Type == "town_hall" {
+		source.TownHallDamage += dealt
+		if livesBefore > 0 && objective.Lives == 0 {
+			source.TownHallsDestroyed++
+		}
+	}
 	objective.LastDamagedAt = time.Now().UnixMilli()
 	objective.LastDamagedBy = source.Team
 	gs.addEffect("objective_hit", objective.X, objective.Y, 0, 0, objective.Radius, 0, 0, 0, source.Color, amount, 300)
+	if gs.activeCommandID != "" {
+		gs.emitCombatEvent(CombatEvent{
+			Kind: "hit", CommandID: gs.activeCommandID, SourceID: source.PlayerId,
+			TargetType: "objectives", TargetID: objective.ID, ProjectileID: gs.activeProjectileID,
+			Damage: livesBefore - objective.Lives,
+		})
+	}
 	if objective.Lives == 0 {
 		gs.Broadcast("objective_destroyed", map[string]interface{}{"id": objective.ID, "type": objective.Type, "team": objective.Team})
 	}
@@ -86,7 +115,22 @@ func (gs *GameState) updateTeamObjectivesAt(now int64) {
 		return
 	}
 	for _, objective := range gs.Objectives {
-		if objective == nil || objective.Type != "tower" || objective.Lives <= 0 || objective.AttackAt > now {
+		if objective == nil || objective.Type != "tower" || objective.Lives <= 0 {
+			continue
+		}
+		if objective.AttackReleaseAt > 0 {
+			if objective.AttackReleaseAt > now {
+				continue
+			}
+			if objective.AttackTargetID != "" {
+				gs.spawnTowerShotAt(objective, objective.AttackTargetID, objective.AttackTargetX, objective.AttackTargetY)
+				gs.addEffect("tower_muzzle", objective.X, objective.Y, 0, 0, objective.Radius+18, math.Atan2(objective.AttackTargetY-objective.Y, objective.AttackTargetX-objective.X), 0, 0, player.GetTeamColor(objective.Team), teamTowerDamage, 260)
+			}
+			objective.AttackTargetID = ""
+			objective.AttackReleaseAt = 0
+			continue
+		}
+		if objective.AttackAt > now {
 			continue
 		}
 		var target *player.Player
@@ -96,6 +140,9 @@ func (gs *GameState) updateTeamObjectivesAt(now int64) {
 				continue
 			}
 			if distance := math.Hypot(candidate.X-objective.X, candidate.Y-objective.Y); distance <= best {
+				if segmentHitsBlockingWall(objective.X, objective.Y, candidate.X, candidate.Y, objective.Radius, gs.Walls) {
+					continue
+				}
 				best, target = distance, candidate
 			}
 		}
@@ -103,10 +150,49 @@ func (gs *GameState) updateTeamObjectivesAt(now int64) {
 			continue
 		}
 		objective.AttackAt = now + teamTowerCooldown
-		source := &player.Player{Name: objective.ID, PlayerId: objective.ID, Team: objective.Team}
-		gs.dealPlayerDamage(source, target, teamTowerDamage)
-		gs.addEffect("tower_beam", objective.X, objective.Y, target.X, target.Y, 0, 0, 0, 0, player.GetTeamColor(objective.Team), teamTowerDamage, 350)
+		objective.AttackTargetID = target.PlayerId
+		objective.AttackTargetX, objective.AttackTargetY = target.X, target.Y
+		objective.AttackReleaseAt = now + teamTowerWindup
+		gs.addEffect("tower_telegraph", objective.X, objective.Y, target.X, target.Y, target.Radius+22, 0, 0, 0, player.GetTeamColor(objective.Team), teamTowerDamage, teamTowerWindup+100)
 	}
+}
+
+func (gs *GameState) spawnTowerShot(objective *ObjectiveState, target *player.Player) *bullet.Bullet {
+	if target == nil {
+		return nil
+	}
+	return gs.spawnTowerShotAt(objective, target.PlayerId, target.X, target.Y)
+}
+
+func (gs *GameState) spawnTowerShotAt(objective *ObjectiveState, targetID string, targetX, targetY float64) *bullet.Bullet {
+	if gs == nil || objective == nil || targetID == "" {
+		return nil
+	}
+	angle := math.Atan2(targetY-objective.Y, targetX-objective.X)
+	x := objective.X + math.Cos(angle)*(objective.Radius+8)
+	y := objective.Y + math.Sin(angle)*(objective.Radius+8)
+	color := player.GetTeamColor(objective.Team)
+	var shot *bullet.Bullet
+	for _, candidate := range gs.Bullets {
+		if candidate != nil && !candidate.Active {
+			shot = candidate
+			shot.Reset(objective.ID, objective.Team, x, y, teamTowerShotSize, angle, color)
+			break
+		}
+	}
+	if shot == nil {
+		shot = bullet.NewBullet(objective.ID, objective.Team, x, y, teamTowerShotSize, angle, color)
+		gs.Bullets = append(gs.Bullets, shot)
+	}
+	shot.CommandID = fmt.Sprintf("tower:%s:%d", objective.ID, shot.ID)
+	shot.Kind = "tower_shot"
+	shot.Damage = teamTowerDamage
+	shot.Speed = teamTowerShotSpeed
+	shot.MaxRange = teamTowerRange + objective.Radius + 32
+	shot.TargetID = targetID
+	shot.TargetX, shot.TargetY = targetX, targetY
+	shot.SpawnedAt = time.Now().UnixMilli()
+	return shot
 }
 
 func (gs *GameState) updateTeamRespawns(now int64) {
@@ -124,6 +210,8 @@ func (gs *GameState) updateTeamRespawns(now int64) {
 		spawner := spawners[p.RespawnCount%len(spawners)]
 		p.RespawnCount++
 		p.X, p.Y = spawner.X+PlayerSize/2, spawner.Y+PlayerSize/2
+		p.MoveX, p.MoveY, p.Aiming, p.Ack = 0, 0, false, 0
+		p.HitImpulseX, p.HitImpulseY = 0, 0
 		p.Lives, p.RespawnAt = p.MaxLives, 0
 		p.Ammo, p.NextAmmoAt = p.MaxAmmo, 0
 		p.InvulnerableUntil = now + SpawnProtectionDuration.Milliseconds()

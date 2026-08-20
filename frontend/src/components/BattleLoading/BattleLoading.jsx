@@ -28,4 +28,3 @@ export const BattleLoading = ({progress = 28, status = "Подключаемся
     </div>
   )
 }
-

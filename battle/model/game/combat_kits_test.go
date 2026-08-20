@@ -1,6 +1,7 @@
 package game
 
 import (
+	"battle/model/player"
 	"battle/service/geometry"
 	"math"
 	"testing"
@@ -43,6 +44,34 @@ func TestTapAutoAimSelectsNearestEnemyInsideAttackRange(t *testing.T) {
 	}
 	if centerAngle := gs.Bullets[0].Rotation; math.Abs(centerAngle) > 1e-9 {
 		t.Fatalf("auto-aim center angle = %.3f, want nearest enemy at angle 0", centerAngle)
+	}
+}
+
+func TestTapAutoAimSelectsAnEnemyTowerWhenNoEnemyHeroIsInRange(t *testing.T) {
+	gs := newTeamObjectiveState()
+	gs.Map.Collisions = nil
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.Monsters = nil
+	source := gs.Players["blue"]
+	tower := gs.Objectives["red-tower-east"]
+	source.X, source.Y, source.Rotation = tower.X-220, tower.Y-80, math.Pi
+	gs.Players["red"].X, gs.Players["red"].Y = 3200, 3200
+	gs.Players = map[string]*player.Player{"blue": source, "red": gs.Players["red"]}
+	before := tower.Lives
+
+	angle, _ := gs.autoAimTarget(source.PlayerId)
+	if !gs.hasAutoAimTarget || math.Hypot(gs.autoAimTargetX-tower.X, gs.autoAimTargetY-tower.Y) > 1 {
+		t.Fatalf("auto-aim target=(%.1f,%.1f), want enemy tower=(%.1f,%.1f)", gs.autoAimTargetX, gs.autoAimTargetY, tower.X, tower.Y)
+	}
+	gs.playerShootWithMode(source.PlayerId, 1_000, angle, "tower-auto-aim", true)
+	if len(gs.Bullets) != 1 {
+		t.Fatalf("auto-aim projectiles=%d, want one projectile toward the tower", len(gs.Bullets))
+	}
+	for step := 0; step < 80 && tower.Lives == before; step++ {
+		gs.updateBullets()
+	}
+	if tower.Lives >= before {
+		t.Fatal("auto-aim projectile did not damage the selected enemy tower")
 	}
 }
 

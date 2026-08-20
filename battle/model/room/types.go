@@ -8,13 +8,17 @@ import (
 )
 
 type Client struct {
-	Id            string
-	AccessToken   string
-	Name          string
-	HeroName      string
-	Conn          *websocket.Conn
-	Room          *Room
-	Send          chan []byte
+	Id          string
+	AccessToken string
+	Name        string
+	HeroName    string
+	Conn        *websocket.Conn
+	Room        *Room
+	Send        chan []byte
+	// Handshake carries the room binding message separately from the latest-only
+	// state queue. The writer must deliver it before any snapshot so the client
+	// can identify its local player before rendering the first frame.
+	Handshake     chan []byte
 	State         chan []byte
 	MapRevision   int
 	MapSyncFrames int
@@ -26,6 +30,7 @@ type Client struct {
 	PartyID       string
 	PartySize     int
 	AssignedTeam  string
+	PendingRoomID string
 }
 
 type Room struct {
@@ -42,4 +47,24 @@ type Room struct {
 	Unregister   chan *Client
 	TauntSpender TauntSpender
 	mu           sync.RWMutex
+}
+
+func (r *Room) hasActivePlayer(playerID string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.State == nil || r.State.State == game.GameStateFinished {
+		return false
+	}
+	player, ok := r.State.Players[playerID]
+	return ok && player != nil && !player.IsBot
+}
+
+func (r *Room) HasPlayer(playerID string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.State == nil {
+		return false
+	}
+	player, ok := r.State.Players[playerID]
+	return ok && player != nil && !player.IsBot
 }

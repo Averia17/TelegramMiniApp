@@ -25,12 +25,18 @@ type BattleResult struct {
 }
 
 type PlayerResult struct {
-	PlayerId string `json:"playerId"`
-	PartyID  string `json:"partyId,omitempty"`
-	Team     string `json:"team,omitempty"`
-	Name     string `json:"name"`
-	Hero     string `json:"hero"`
-	Kills    int    `json:"kills"`
-	Lives    int    `json:"lives"`
-	Won      bool   `json:"won"`
+	PlayerId           string `json:"playerId"`
+	PartyID            string `json:"partyId,omitempty"`
+	Team               string `json:"team,omitempty"`
+	Name               string `json:"name"`
+	Hero               string `json:"hero"`
+	Kills              int    `json:"kills"`
+	Lives              int    `json:"lives"`
+	Deaths             int    `json:"deaths"`
+	PlayerDamage       int    `json:"playerDamage"`
+	TowerDamage        int    `json:"towerDamage"`
+	TownHallDamage     int    `json:"townHallDamage"`
+	TowersDestroyed    int    `json:"towersDestroyed"`
+	TownHallsDestroyed int    `json:"townHallsDestroyed"`
+	Won                bool   `json:"won"`
 }

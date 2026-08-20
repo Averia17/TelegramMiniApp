@@ -118,6 +118,129 @@ func TestIslandPhasesFollowMatchClock(t *testing.T) {
 	}
 }
 
+func TestTeamBattleDoesNotStartIslandPhasesOrHazards(t *testing.T) {
+	gs := newTestGameState()
+	gs.Mode = ModeTeamDeathmatch
+	gs.MapName = "team-battle"
+	gs.PlayerAdd("red", "Red", "Brock Zeus")
+	gs.PlayerAdd("blue", "Blue", "Needle")
+	gs.State = GameStateLobby
+	gs.startGame()
+
+	if gs.IslandPhase != "" || gs.PhaseStartedAt != 0 || gs.PhaseEndsAt != 0 {
+		t.Fatalf("team battle started with island phase state: phase=%q started=%d ends=%d", gs.IslandPhase, gs.PhaseStartedAt, gs.PhaseEndsAt)
+	}
+	if gs.StormRadius != 0 || gs.StormDamage != 0 || gs.BeaconOpen || gs.SuddenDeathDamage != 0 {
+		t.Fatalf("team battle started with island hazards: storm=%.1f/%d beacon=%v suddenDeath=%d", gs.StormRadius, gs.StormDamage, gs.BeaconOpen, gs.SuddenDeathDamage)
+	}
+
+	gs.MatchStartedAt -= int64((OpeningCombatDuration + ChallengeDuration + CollapseDuration + FinalPhaseDuration).Milliseconds())
+	gs.updateGame()
+
+	if gs.IslandPhase != "" || gs.StormRadius != 0 || gs.StormDamage != 0 || gs.BeaconOpen {
+		t.Fatalf("team battle acquired island state during update: phase=%q storm=%.1f/%d beacon=%v", gs.IslandPhase, gs.StormRadius, gs.StormDamage, gs.BeaconOpen)
+	}
+}
+
+func TestTeamBattleSchedulesRespawnAfterAnyLethalDamage(t *testing.T) {
+	gs := newTestGameState()
+	gs.Mode = ModeTeamDeathmatch
+	gs.State = GameStateGame
+	target := &player.Player{PlayerId: "target", Name: "Target", Lives: 10, MaxLives: 10}
+	target.SetTeam("Blue")
+	gs.Players[target.PlayerId] = target
+
+	gs.applyDamageAmount(target, target.Lives)
+
+	if target.IsAlive() {
+		t.Fatal("lethal damage did not kill the team player")
+	}
+	if target.RespawnAt <= time.Now().UnixMilli() {
+		t.Fatalf("team player has no future respawn time: %d", target.RespawnAt)
+	}
+}
+
+func TestTeamBattleBotsUseTheirOwnTeamSpawners(t *testing.T) {
+	for _, team := range []string{"Blue", "Red"} {
+		t.Run(team, func(t *testing.T) {
+			gs := &GameState{Mode: ModeTeamDeathmatch, MapName: "team-battle", MaxPlayers: 2}
+			InitGameState(gs)
+			human := &player.Player{PlayerId: "human", Team: team}
+			bot := &player.Player{PlayerId: "bot", Team: team, IsBot: true}
+			gs.Players = map[string]*player.Player{human.PlayerId: human, bot.PlayerId: bot}
+
+			gs.setPlayersPositionForTeams()
+			gs.setBotsPositionAtFreeSpawns()
+
+			for _, spawn := range gs.Map.TeamSpawners[team] {
+				if bot.X >= spawn.X && bot.X <= spawn.X+spawn.Width && bot.Y >= spawn.Y && bot.Y <= spawn.Y+spawn.Height {
+					return
+				}
+			}
+			t.Fatalf("%s bot spawned outside its team spawners at (%.0f, %.0f)", team, bot.X, bot.Y)
+		})
+	}
+}
+
+func TestLateJoinTeamPlayerUsesOwnTeamSpawner(t *testing.T) {
+	gs := &GameState{Mode: ModeTeamDeathmatch, MapName: "team-battle", MaxPlayers: 4, State: GameStateGame}
+	InitGameState(gs)
+	teammate := &player.Player{PlayerId: "teammate", Team: "Blue"}
+	joined := &player.Player{PlayerId: "joined", Team: "Blue"}
+	gs.Players = map[string]*player.Player{teammate.PlayerId: teammate, joined.PlayerId: joined}
+	gs.setPlayersPositionForTeams()
+
+	// Simulate PlayerAdd's initial random placement before the transport assigns
+	// the late joiner's final team.
+	enemySpawn := gs.Map.TeamSpawners["Red"][0]
+	joined.X, joined.Y = enemySpawn.X+PlayerSize/2, enemySpawn.Y+PlayerSize/2
+	gs.PlacePlayerAtTeamSpawn(joined.PlayerId)
+
+	for _, spawn := range gs.Map.TeamSpawners["Blue"] {
+		if joined.X >= spawn.X && joined.X <= spawn.X+spawn.Width && joined.Y >= spawn.Y && joined.Y <= spawn.Y+spawn.Height {
+			return
+		}
+	}
+	t.Fatalf("late Blue player spawned outside its team spawners at (%.0f, %.0f)", joined.X, joined.Y)
+}
+
+func TestTeamBattleSpawnClearsLobbyMovement(t *testing.T) {
+	gs := &GameState{Mode: ModeTeamDeathmatch, MapName: "team-battle", MaxPlayers: 2}
+	InitGameState(gs)
+	p := &player.Player{PlayerId: "moving", Team: "Blue", MoveX: 1, MoveY: -1, Aiming: true}
+	gs.Players = map[string]*player.Player{p.PlayerId: p}
+
+	gs.setPlayersPositionForTeams()
+
+	if p.MoveX != 0 || p.MoveY != 0 || p.Aiming {
+		t.Fatalf("team spawn retained lobby input: move=(%.1f, %.1f) aiming=%v", p.MoveX, p.MoveY, p.Aiming)
+	}
+}
+
+func TestTeamBattleDoesNotReplayLobbyActionsAfterSpawn(t *testing.T) {
+	gs := &GameState{Mode: ModeTeamDeathmatch, MapName: "team-battle", MaxPlayers: 2, State: GameStateLobby}
+	InitGameState(gs)
+	gs.State = GameStateLobby
+	gs.PlayerAdd("moving", "Moving", "Needle")
+	p := gs.Players["moving"]
+	p.SetTeam("Blue")
+	p.TeamLocked = true
+	gs.Players = map[string]*player.Player{p.PlayerId: p}
+	gs.LobbyEndsAt = time.Now().Add(-time.Second).UnixMilli()
+	spawn := gs.Map.TeamSpawners["Blue"][0]
+	gs.Actions = []Action{{PlayerId: p.PlayerId, Type: "move", Ts: gs.LobbyEndsAt - 1, Value: &MoveValue{X: 1, Y: 0}}}
+
+	gs.UpdateWithDelta(time.Second / 60)
+
+	wantX, wantY := spawn.X+PlayerSize/2, spawn.Y+PlayerSize/2
+	if p.X != wantX || p.Y != wantY {
+		t.Fatalf("stale lobby input moved player from team spawn: got=(%.2f,%.2f) want=(%.2f,%.2f) move=(%.1f,%.1f) actions=%d start=%d", p.X, p.Y, wantX, wantY, p.MoveX, p.MoveY, len(gs.Actions), gs.MatchStartedAt)
+	}
+	if p.MoveX != 0 || p.MoveY != 0 {
+		t.Fatalf("stale lobby movement remained active: move=(%.1f,%.1f)", p.MoveX, p.MoveY)
+	}
+}
+
 func TestCombatRemainsEnabledForLegacyLandingSnapshots(t *testing.T) {
 	gs := newTestGameState()
 	gs.MaxPlayers = 2

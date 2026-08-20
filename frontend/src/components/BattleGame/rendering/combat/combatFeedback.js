@@ -10,8 +10,14 @@ export const isConfirmedHitEvent = event => Boolean(
 export const resolveCombatTargetPosition = (event, state) => {
   if (!event || !state) return null
   const targetType = String(event.targetType || "players").toLowerCase()
-  const collection = targetType.startsWith("monster") ? state.monsters : state.players
   const targetId = asId(event.targetId)
+  if (targetType.startsWith("objective")) {
+    const target = (Array.isArray(state.objectives) ? state.objectives : [])
+      .find(objective => asId(objective?.id) === targetId)
+    if (!target || !Number.isFinite(Number(target.x)) || !Number.isFinite(Number(target.y))) return null
+    return {x: Number(target.x), y: Number(target.y), radius: Number(target.radius) || 42}
+  }
+  const collection = targetType.startsWith("monster") ? state.monsters : state.players
   const target = collection?.[targetId]
   if (!target || !Number.isFinite(Number(target.x)) || !Number.isFinite(Number(target.y))) return null
   return {x: Number(target.x), y: Number(target.y), radius: Number(target.radius) || 18}

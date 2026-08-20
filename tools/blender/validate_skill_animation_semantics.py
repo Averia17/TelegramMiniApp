@@ -8,7 +8,6 @@ from pathlib import Path
 
 import bpy
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SPEC_PATH = Path(__file__).with_name("hero_skill_animation_semantics.json")
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"

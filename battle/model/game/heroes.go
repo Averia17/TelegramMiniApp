@@ -106,8 +106,8 @@ func RandomHero() Hero {
 
 func withHeroKits(heroes []Hero) []Hero {
 	heroKits["Katty"] = HeroKit{
-		Basic:  AbilityDefinition{"paint_spray", "Краска-пшик", "Короткий направленный пшик наносит 42 урона, накладывает слой краски и оставляет облако радиусом 58: внутри враг получает по 6 урона каждые 0,4 секунды и замедляется.", "basic", "server"},
-		Super:  AbilityDefinition{"paint_grenade", "Баллон-граната", "После приземления лужа однократно ослепляет каждого вошедшего врага и наносит третий слой.", "primary", "server"},
+		Basic:  AbilityDefinition{"paint_spray", "Краска-пшик", "Короткий направленный пшик наносит 42 урона всем целям в радиусе 58 и оставляет облако краски вокруг точки попадания.", "basic", "server"},
+		Super:  AbilityDefinition{"paint_grenade", "Баллон-граната", "После приземления взрыв наносит 70 урона и наносит третий слой краски, а лужа радиусом 220 наносит по 12 урона каждые 0,6 секунды и замедляет врагов.", "primary", "server"},
 		Gadget: AbilityDefinition{"paint_flight", "Красколёт", "Рывок оставляет след краски, замедляющий врагов и ускоряющий Кэтти.", "secondary", "server"},
 	}
 	for index := range heroes {

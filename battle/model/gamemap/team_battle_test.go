@@ -23,7 +23,7 @@ func TestTeamBattleHasDiagonalBasesAndThreeSpawnsPerTeam(t *testing.T) {
 	}
 }
 
-func TestTeamBattleFortifiesBothBasesWithAFrontGate(t *testing.T) {
+func TestTeamBattleFortifiesBothBasesWithSemicircularRockWalls(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
 	fortress := make(map[[2]int]bool)
 	for _, wall := range mapValue.Collisions {
@@ -48,6 +48,19 @@ func TestTeamBattleFortifiesBothBasesWithAFrontGate(t *testing.T) {
 	for _, gate := range [][2]int{{15, 53}, {53, 15}} {
 		if fortress[gate] {
 			t.Fatalf("front gate at %v is blocked", gate)
+		}
+	}
+	// The old layout exposed square corners at the far north-west and north-east
+	// edges. A semicircular enclosure must leave those front corners open while
+	// extending the rock arc farther around both sides of each base.
+	for _, corner := range [][2]int{{10, 53}, {22, 53}, {53, 10}, {53, 22}} {
+		if fortress[corner] {
+			t.Fatalf("square fortress corner at %v should be open for a semicircular wall", corner)
+		}
+	}
+	for _, arc := range [][2]int{{7, 63}, {9, 57}, {10, 56}, {11, 55}, {22, 69}, {16, 72}, {63, 7}, {57, 9}, {56, 10}, {55, 11}, {69, 22}, {72, 16}} {
+		if !fortress[arc] {
+			t.Fatalf("semicircular rock arc is missing at %v", arc)
 		}
 	}
 }
@@ -105,7 +118,10 @@ func TestTeamBattleRiverClearsPropsAndLeavesOnlyBridgeCrossings(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
 	openings := [][2]int{{22, 22}, {39, 39}, {57, 57}}
 	isRiverCell := func(x, y int) bool {
-		return math.Abs((float64(x)+.5)-(float64(y)+.5)-teamBattleRiverCenter) <= teamBattleRiverHalfWidth
+		alongRiver := (float64(x) + .5 + float64(y) + .5) * .5
+		return alongRiver >= teamBattleRiverStart && alongRiver <= teamBattleRiverMouth &&
+			math.Abs((float64(x)+.5)-(float64(y)+.5)-teamBattleRiverCenter) <= teamBattleRiverHalfWidth &&
+			math.Hypot(float64(x)+.5-40.0, float64(y)+.5-40.0) <= 35.5
 	}
 	waterCells := 0
 	for _, wall := range mapValue.Collisions {
@@ -115,7 +131,7 @@ func TestTeamBattleRiverClearsPropsAndLeavesOnlyBridgeCrossings(t *testing.T) {
 		}
 		open := false
 		for _, center := range openings {
-			if absInt(x-center[0]) <= 2 && absInt(y-center[1]) <= 2 {
+			if absInt(x-center[0]) <= 1 && absInt(y-center[1]) <= 1 {
 				open = true
 			}
 		}
@@ -140,6 +156,129 @@ func TestTeamBattleRiverClearsPropsAndLeavesOnlyBridgeCrossings(t *testing.T) {
 			}
 			continue
 		}
+	}
+}
+
+func TestTeamBattleBridgeDoesNotOpenRiverAlongItsLength(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	river := make(map[[2]int]string)
+	cells := make(map[[2]int]string)
+	for _, wall := range mapValue.Collisions {
+		cell := [2]int{int(wall.MinX / 40), int(wall.MinY / 40)}
+		cells[cell] = wall.Type
+		if math.Abs((float64(cell[0])+.5)-(float64(cell[1])+.5)-teamBattleRiverCenter) <= teamBattleRiverHalfWidth {
+			river[cell] = wall.Type
+		}
+	}
+
+	for _, cell := range [][2]int{{20, 20}, {24, 24}, {37, 37}, {41, 41}, {55, 55}, {59, 59}} {
+		if river[cell] != "river" {
+			t.Fatalf("river cell %v was opened beyond the bridge deck: %q", cell, river[cell])
+		}
+	}
+	for _, cell := range [][2]int{{22, 22}, {21, 22}, {22, 21}, {21, 23}, {23, 21}, {39, 39}, {57, 57}} {
+		if river[cell] != "river_bridge" {
+			t.Fatalf("bridge cell %v = %q, want explicit river_bridge collision", cell, river[cell])
+		}
+	}
+	for _, center := range [][2]int{{22, 22}, {39, 39}, {57, 57}} {
+		for distance := -4; distance <= 4; distance++ {
+			cell := [2]int{center[0] + distance, center[1] - distance}
+			if cells[cell] != "river_bridge" {
+				t.Fatalf("bridge approach cell %v = %q, want a continuous passable deck", cell, cells[cell])
+			}
+		}
+	}
+	if !geometry.IsBlockingWall("river") {
+		t.Fatal("river collision must block movement")
+	}
+	if geometry.IsBlockingWall("river_bridge") {
+		t.Fatal("river_bridge collision must allow movement")
+	}
+}
+
+func TestTeamBattleRiverReachesTheOceanOnBothSides(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	cells := make(map[[2]int]string)
+	for _, wall := range mapValue.Collisions {
+		cells[[2]int{int(wall.MinX / 40), int(wall.MinY / 40)}] = wall.Type
+	}
+	isRiver := func(cell [2]int) bool {
+		return cells[cell] == "river" || cells[cell] == "river_bridge"
+	}
+
+	for _, cell := range [][2]int{{16, 16}, {18, 18}, {30, 30}, {50, 50}, {64, 64}} {
+		if !isRiver(cell) {
+			t.Fatalf("river does not reach the playable bank at %v: %q", cell, cells[cell])
+		}
+	}
+	for _, cell := range [][2]int{{13, 13}, {14, 14}, {66, 66}, {67, 67}} {
+		if isRiver(cell) {
+			t.Fatalf("river collision continues into the ocean at %v", cell)
+		}
+	}
+	for coordinate := 16; coordinate <= 64; coordinate++ {
+		if !isRiver([2]int{coordinate, coordinate}) {
+			t.Fatalf("land bypass remains beside the river at diagonal cell %d", coordinate)
+		}
+	}
+}
+
+func TestTeamBattleOnlyBridgesConnectTheTwoRiverBanks(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	type cell struct{ x, y int }
+	layout := make(map[cell]string, len(mapValue.Collisions))
+	for _, wall := range mapValue.Collisions {
+		layout[cell{int(wall.MinX / 40), int(wall.MinY / 40)}] = wall.Type
+	}
+	toCell := func(body *geometry.RectangleBody) cell {
+		return cell{int(body.X / 40), int(body.Y / 40)}
+	}
+	blue := make(map[cell]bool)
+	red := make(map[cell]bool)
+	for _, spawn := range mapValue.TeamSpawners["Blue"] {
+		blue[toCell(spawn)] = true
+	}
+	for _, spawn := range mapValue.TeamSpawners["Red"] {
+		red[toCell(spawn)] = true
+	}
+
+	reachesOppositeBank := func(bridgesOpen bool) bool {
+		queue := make([]cell, 0, len(blue))
+		visited := make(map[cell]bool)
+		for start := range blue {
+			queue = append(queue, start)
+			visited[start] = true
+		}
+		for head := 0; head < len(queue); head++ {
+			current := queue[head]
+			if red[current] {
+				return true
+			}
+			for _, direction := range [][2]int{{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}} {
+				next := cell{current.x + direction[0], current.y + direction[1]}
+				if next.x < 0 || next.y < 0 || next.x >= 80 || next.y >= 80 || visited[next] {
+					continue
+				}
+				kind := layout[next]
+				if !bridgesOpen && kind == "river_bridge" {
+					continue
+				}
+				if kind != "" && geometry.IsBlockingWall(kind) {
+					continue
+				}
+				visited[next] = true
+				queue = append(queue, next)
+			}
+		}
+		return false
+	}
+
+	if !reachesOppositeBank(true) {
+		t.Fatal("the authored bridge network does not connect the two river banks")
+	}
+	if reachesOppositeBank(false) {
+		t.Fatal("a non-bridge route still connects the two river banks")
 	}
 }
 
@@ -245,17 +384,17 @@ func TestTeamBattleHasFixedMirroredNeutralSpawns(t *testing.T) {
 	if len(mapValue.MonsterSpawns) != 8 {
 		t.Fatalf("monster spawns = %d, want 8", len(mapValue.MonsterSpawns))
 	}
-	if len(mapValue.PickupSpawns) != 8 {
-		t.Fatalf("pickup spawns = %d, want 8", len(mapValue.PickupSpawns))
+	if len(mapValue.PickupSpawns) != 4 {
+		t.Fatalf("pickup spawns = %d, want 4", len(mapValue.PickupSpawns))
 	}
 
 	centerX, centerY := mapValue.WidthInPixels/2, mapValue.HeightInPixels/2
-	for index := 0; index < 4; index++ {
+	for index := 0; index < 2; index++ {
 		monster, mirror := mapValue.MonsterSpawns[index], mapValue.MonsterSpawns[index+4]
 		if monster.X != mirror.Y || monster.Y != mirror.X {
 			t.Fatalf("monster pair %d is not mirrored across main diagonal: (%.0f,%.0f) / (%.0f,%.0f)", index, monster.X, monster.Y, mirror.X, mirror.Y)
 		}
-		pickup, pickupMirror := mapValue.PickupSpawns[index], mapValue.PickupSpawns[index+4]
+		pickup, pickupMirror := mapValue.PickupSpawns[index], mapValue.PickupSpawns[index+2]
 		if pickup.Type != "potion-red" || pickupMirror.Type != "potion-red" {
 			t.Fatalf("pickup pair %d types = %q / %q, want potion-red", index, pickup.Type, pickupMirror.Type)
 		}

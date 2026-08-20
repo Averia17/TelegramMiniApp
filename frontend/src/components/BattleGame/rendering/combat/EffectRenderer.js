@@ -16,7 +16,9 @@ const ORBITAL_KINDS = new Set([
 const PAINT_SPRAY_KINDS = new Set(["katty_paint_spray"])
 const TRAIL_KINDS = new Set(["kaze_dash", "mico_leap", "zeus_beam_hole"])
 const TELEGRAPH_KINDS = new Set(["zeus_strike_warning"])
-const IMPACT_KINDS = new Set(["mina_mark_burst", "mina_mark_break", "needle_root_burst", "wall_break"])
+const TOWER_TELEGRAPH_KINDS = new Set(["tower_telegraph"])
+const TOWER_BEAM_KINDS = new Set(["tower_beam"])
+const IMPACT_KINDS = new Set(["mina_mark_burst", "mina_mark_break", "needle_root_burst", "katty_paint_impact", "wall_break", "objective_hit", "tower_shot_blocked"])
 const CONTACT_KINDS = new Set(["last_contact"])
 
 const createSwingArc = (radius, arc, material, innerRadius = .62) => {
@@ -242,6 +244,50 @@ const createWallBreak = (radius, material) => {
   return group
 }
 
+const createTowerBeam = (radius, material) => {
+  const group = new THREE.Group()
+  group.userData.kind = "tower_beam"
+
+  const tracer = new THREE.Mesh(
+    new THREE.CylinderGeometry(Math.max(.045, radius * .055), Math.max(.075, radius * .095), 1, 8),
+    material.clone(),
+  )
+  tracer.name = "tower-shot-tracer"
+  tracer.userData.role = "tower-shot-tracer"
+  group.add(tracer)
+
+  const impact = new THREE.Group()
+  impact.name = "tower-shot-impact"
+  impact.userData.role = "tower-shot-impact"
+  const core = new THREE.Mesh(new THREE.SphereGeometry(Math.max(.12, radius * .25), 12, 8), material.clone())
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(Math.max(.18, radius * .34), Math.max(.025, radius * .045), 8, 24), material.clone())
+  ring.rotation.x = Math.PI / 2
+  impact.add(core, ring)
+  group.add(impact)
+  return group
+}
+
+const createTowerTelegraph = (radius, material, kind) => {
+  const group = new THREE.Group()
+  group.userData.kind = kind
+  const line = new THREE.Mesh(
+    new THREE.BoxGeometry(1, Math.max(.035, radius * .035), Math.max(.035, radius * .035)),
+    material.clone(),
+  )
+  line.name = "tower-telegraph-line"
+  line.userData.role = "tower-telegraph-line"
+  group.add(line)
+  const reticle = new THREE.Mesh(
+    new THREE.TorusGeometry(Math.max(.18, radius * .56), Math.max(.025, radius * .055), 8, 24),
+    material.clone(),
+  )
+  reticle.name = "tower-telegraph-reticle"
+  reticle.userData.role = "tower-telegraph-reticle"
+  reticle.rotation.x = Math.PI / 2
+  group.add(reticle)
+  return group
+}
+
 export class EffectRenderer {
   constructor(root) {
     this.root = root
@@ -280,6 +326,10 @@ export class EffectRenderer {
           mesh = createTelegraphEffect(radius, material, effect.kind)
         } else if (effect.kind === "wall_break") {
           mesh = createWallBreak(radius, material)
+        } else if (TOWER_TELEGRAPH_KINDS.has(effect.kind)) {
+          mesh = createTowerTelegraph(radius, material, effect.kind)
+        } else if (TOWER_BEAM_KINDS.has(effect.kind)) {
+          mesh = createTowerBeam(radius, material)
         } else if (IMPACT_KINDS.has(effect.kind) || CONTACT_KINDS.has(effect.kind)) {
           mesh = createImpactBurst(radius, material, effect.kind)
         } else if (MELEE_SWING_KINDS.has(effect.kind)) {
@@ -302,7 +352,7 @@ export class EffectRenderer {
         }
         if (!["heal", "kaze_cross_slash"].includes(effect.kind) &&
             !ORBITAL_KINDS.has(effect.kind) && !PAINT_SPRAY_KINDS.has(effect.kind) && !TRAIL_KINDS.has(effect.kind) &&
-            !TELEGRAPH_KINDS.has(effect.kind) && !IMPACT_KINDS.has(effect.kind)) {
+            !TELEGRAPH_KINDS.has(effect.kind) && !TOWER_TELEGRAPH_KINDS.has(effect.kind) && !IMPACT_KINDS.has(effect.kind) && !TOWER_BEAM_KINDS.has(effect.kind)) {
           mesh.rotation.x = -Math.PI / 2
         }
         this.meshes.set(id, mesh)
@@ -317,6 +367,35 @@ export class EffectRenderer {
         ))
         mesh.rotation.y = -(effect.angle || 0)
         mesh.scale.set(range * WORLD_SCALE, Math.max(100, (effect.radius || 50) * 2) * WORLD_SCALE, 1)
+      } else if (TOWER_TELEGRAPH_KINDS.has(mesh.userData.kind)) {
+        const endX = Number.isFinite(Number(effect.toX)) ? Number(effect.toX) : effect.x
+        const endY = Number.isFinite(Number(effect.toY)) ? Number(effect.toY) : effect.y
+        const start = worldToScene(effect.x, effect.y, 22)
+        const end = worldToScene(endX, endY, 22)
+        const delta = end.clone().sub(start)
+        const length = Math.max(.001, delta.length())
+        mesh.position.copy(start.clone().add(end).multiplyScalar(.5))
+        const line = mesh.getObjectByName("tower-telegraph-line")
+        line?.scale.set(length, 1, 1)
+        line?.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), delta.clone().normalize())
+        const reticle = mesh.getObjectByName("tower-telegraph-reticle")
+        reticle?.position.copy(delta.multiplyScalar(.5))
+        const progress = 1 - clamp(effect.life / (effect.maxLife || .32))
+        reticle?.scale.setScalar(.88 + Math.sin(progress * Math.PI * 5) * .14)
+      } else if (TOWER_BEAM_KINDS.has(mesh.userData.kind)) {
+        const endX = Number.isFinite(Number(effect.toX)) ? Number(effect.toX) : effect.x
+        const endY = Number.isFinite(Number(effect.toY)) ? Number(effect.toY) : effect.y
+        const start = worldToScene(effect.x, effect.y, 30)
+        const end = worldToScene(endX, endY, 30)
+        const delta = end.clone().sub(start)
+        const length = Math.max(.001, delta.length())
+        mesh.position.copy(start.clone().add(end).multiplyScalar(.5))
+        const tracer = mesh.getObjectByName("tower-shot-tracer")
+        tracer?.scale.set(1, length, 1)
+        tracer?.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.clone().normalize())
+        const impact = mesh.getObjectByName("tower-shot-impact")
+        impact?.position.copy(delta.multiplyScalar(.5))
+        impact?.scale.setScalar(.92 + Math.sin((1 - clamp(effect.life / (effect.maxLife || .35))) * Math.PI) * .22)
       } else if (TRAIL_KINDS.has(mesh.userData.kind)) {
         const dx = (effect.toX || effect.x) - effect.x
         const dy = (effect.toY || effect.y) - effect.y

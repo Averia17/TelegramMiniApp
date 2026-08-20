@@ -8,18 +8,29 @@ from pathlib import Path
 
 import bpy
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 SPEC = Path(__file__).with_name("hero_skill_animation_semantics.json")
 INTENTS = {
     "mandy": {"attack": "strike", "super": "wave_release", "gadget": "stance_lock"},
     "kaze": {"attack": "slash_2", "super": "dash_impact", "gadget": "vanish"},
-    "wukong-mico": {"attack": "staff_impact", "super": "vortex_open", "gadget": "armor_lock"},
+    "wukong-mico": {
+        "attack": "staff_impact",
+        "super": "vortex_open",
+        "gadget": "armor_lock",
+    },
     "needle": {"attack": "spore_release", "super": "root_plant", "gadget": "heal_tick"},
     "fairy-mina": {"attack": "star_fan", "super": "cocoon_follow", "gadget": "repel"},
-    "persephone-lumi": {"attack": "orb_cast", "super": "root_rise", "gadget": "garden_burst"},
-    "brock-zeus": {"attack": "thunder_fire", "super": "strike_3", "gadget": "cable_prime"},
+    "persephone-lumi": {
+        "attack": "orb_cast",
+        "super": "root_rise",
+        "gadget": "garden_burst",
+    },
+    "brock-zeus": {
+        "attack": "thunder_fire",
+        "super": "strike_3",
+        "gadget": "cable_prime",
+    },
 }
 EXPECTED_REVISIONS = {("kaze", "gadget"): 3}
 INTENT_FRAMES = {("brock-zeus", "super"): 42}
@@ -36,7 +47,9 @@ def main() -> None:
             markers = {marker.name: marker.frame for marker in scene.timeline_markers}
             expected_revision = EXPECTED_REVISIONS.get((hero, clip), 2)
             if scene.get("readability_revision") != expected_revision:
-                failures.append(f"{hero}/{clip}: readability revision is not {expected_revision}")
+                failures.append(
+                    f"{hero}/{clip}: readability revision is not {expected_revision}"
+                )
             if intent not in markers:
                 failures.append(f"{hero}/{clip}: missing intent marker {intent!r}")
             contract = spec["heroes"][hero][clip]

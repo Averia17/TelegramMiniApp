@@ -11,7 +11,6 @@ from pathlib import Path
 import bpy
 from mathutils import Euler
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 SPEC_PATH = Path(__file__).with_name("hero_skill_animation_semantics.json")
@@ -19,11 +18,23 @@ AUTHOR_PATH = Path(__file__).with_name("author_skill_animation_semantics.py")
 INTENTS = {
     "mandy": {"attack": "strike", "super": "wave_release", "gadget": "stance_lock"},
     "kaze": {"attack": "slash_2", "super": "dash_impact", "gadget": "vanish"},
-    "wukong-mico": {"attack": "staff_impact", "super": "vortex_open", "gadget": "armor_lock"},
+    "wukong-mico": {
+        "attack": "staff_impact",
+        "super": "vortex_open",
+        "gadget": "armor_lock",
+    },
     "needle": {"attack": "spore_release", "super": "root_plant", "gadget": "heal_tick"},
     "fairy-mina": {"attack": "star_fan", "super": "cocoon_follow", "gadget": "repel"},
-    "persephone-lumi": {"attack": "orb_cast", "super": "root_rise", "gadget": "garden_burst"},
-    "brock-zeus": {"attack": "thunder_fire", "super": "strike_3", "gadget": "cable_prime"},
+    "persephone-lumi": {
+        "attack": "orb_cast",
+        "super": "root_rise",
+        "gadget": "garden_burst",
+    },
+    "brock-zeus": {
+        "attack": "thunder_fire",
+        "super": "strike_3",
+        "gadget": "cable_prime",
+    },
 }
 ACTION_NAMES = {"attack": "Attack", "super": "super", "gadget": "Gadget"}
 
@@ -36,15 +47,30 @@ def load_author_module():
 
 
 def find_action(name):
-    return next((action for action in bpy.data.actions if action.name.casefold().split(".")[0] == name.casefold()), None)
+    return next(
+        (
+            action
+            for action in bpy.data.actions
+            if action.name.casefold().split(".")[0] == name.casefold()
+        ),
+        None,
+    )
 
 
 def add_offset(bone, offset):
     if bone.rotation_mode == "QUATERNION":
-        bone.rotation_quaternion = bone.rotation_quaternion @ Euler(offset, "XYZ").to_quaternion()
+        bone.rotation_quaternion = (
+            bone.rotation_quaternion @ Euler(offset, "XYZ").to_quaternion()
+        )
         return "rotation_quaternion"
-    mode = bone.rotation_mode if bone.rotation_mode in {"XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"} else "XYZ"
-    bone.rotation_euler = Euler(tuple(bone.rotation_euler[i] + offset[i] for i in range(3)), mode)
+    mode = (
+        bone.rotation_mode
+        if bone.rotation_mode in {"XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"}
+        else "XYZ"
+    )
+    bone.rotation_euler = Euler(
+        tuple(bone.rotation_euler[i] + offset[i] for i in range(3)), mode
+    )
     return "rotation_euler"
 
 

@@ -28,10 +28,12 @@ type PlayerRecord struct {
 var ctx = context.Background()
 
 const (
-	roomPrefix     = "battle:room:"
-	roomListKey    = "battle:rooms"
-	playerPrefix   = "battle:player:"
-	roomPlayersKey = "battle:room_players:"
+	roomPrefix          = "battle:room:"
+	roomListKey         = "battle:rooms"
+	playerPrefix        = "battle:player:"
+	roomPlayersKey      = "battle:room_players:"
+	resultPrefix        = "battle:result:"
+	playerResultsPrefix = "battle:player_results:"
 )
 
 type RedisProvider struct {
@@ -151,4 +153,48 @@ func (p *RedisProvider) RemovePlayerFromRoom(roomId, playerId string) error {
 	}
 	_, err = pipe.Exec(ctx)
 	return err
+}
+
+func (p *RedisProvider) SaveBattleResult(result *BattleResult) error {
+	if !p.connected || result == nil {
+		return nil
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+	const resultTTL = 24 * time.Hour
+	pipe := p.client.Pipeline()
+	pipe.Set(ctx, resultPrefix+result.RoomId, data, resultTTL)
+	for _, player := range result.Players {
+		pipe.ZAdd(ctx, playerResultsPrefix+player.PlayerId, redis.Z{Score: float64(result.EndedAt), Member: result.RoomId})
+		pipe.Expire(ctx, playerResultsPrefix+player.PlayerId, resultTTL)
+	}
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (p *RedisProvider) GetLatestBattleResult(playerId string) (*BattleResult, error) {
+	if !p.connected {
+		return nil, fmt.Errorf("redis not available")
+	}
+	roomIds, err := p.client.ZRevRange(ctx, playerResultsPrefix+playerId, 0, 0).Result()
+	if err != nil {
+		return nil, err
+	}
+	if len(roomIds) == 0 {
+		return nil, nil
+	}
+	data, err := p.client.Get(ctx, resultPrefix+roomIds[0]).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var result BattleResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }

@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from infrastructure.database.repo.transactions import TransactionsRepo
 from infrastructure.database.repo.users import UserRepo
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @dataclass

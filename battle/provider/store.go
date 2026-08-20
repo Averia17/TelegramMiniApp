@@ -6,4 +6,6 @@ type Store interface {
 	ListRooms() ([]RoomRecord, error)
 	AddPlayerToRoom(roomId string, player *PlayerRecord) error
 	RemovePlayerFromRoom(roomId, playerId string) error
+	SaveBattleResult(result *BattleResult) error
+	GetLatestBattleResult(playerId string) (*BattleResult, error)
 }

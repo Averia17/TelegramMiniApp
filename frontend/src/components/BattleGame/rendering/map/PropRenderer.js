@@ -126,25 +126,25 @@ const createTreeVisual = (width, height, depth, dead = false) => {
   const trunkMaterial = standardMaterial(dead ? 0x5b4431 : 0x68472f, {roughness: .98})
   const trunk = addVisualPart(group, new THREE.CylinderGeometry(radius * .76, radius * (dead ? 1 : 1.08), height * (dead ? .72 : .66), 7), trunkMaterial, "tree-trunk", new THREE.Vector3(0, height * (dead ? .36 : .33), 0))
   if (dead) {
-      trunk.rotation.z = -.1
-      const branches = [
-        {x: -.2, y: .38, z: -.02, length: .38, thick: .5, angle: -1.02, taper: .7},
-        {x: .14, y: .5, z: .04, length: .3, thick: .38, angle: .56, taper: .58},
-        {x: -.04, y: .6, z: -.1, length: .26, thick: .3, angle: -.34, taper: .5},
-        {x: .06, y: .69, z: .02, length: .23, thick: .26, angle: .78, taper: .46},
-        {x: -.01, y: .75, z: -.08, length: .17, thick: .2, angle: -.2, taper: .4},
-      ]
-      for (const branchSpec of branches) {
-        const branch = addVisualPart(
-          group,
-          new THREE.CylinderGeometry(radius * branchSpec.thick * .58, radius * branchSpec.thick, height * branchSpec.length, 6),
-          trunkMaterial,
-          "dead-tree-branch",
-          new THREE.Vector3(branchSpec.x * width, height * branchSpec.y, branchSpec.z * depth),
-          new THREE.Vector3(0, 0, branchSpec.angle),
-        )
-        branch.scale.y = branchSpec.taper
-      }
+    trunk.rotation.z = -.1
+    const branches = [
+      {x: -.2, y: .38, z: -.02, length: .38, thick: .5, angle: -1.02, taper: .7},
+      {x: .14, y: .5, z: .04, length: .3, thick: .38, angle: .56, taper: .58},
+      {x: -.04, y: .6, z: -.1, length: .26, thick: .3, angle: -.34, taper: .5},
+      {x: .06, y: .69, z: .02, length: .23, thick: .26, angle: .78, taper: .46},
+      {x: -.01, y: .75, z: -.08, length: .17, thick: .2, angle: -.2, taper: .4},
+    ]
+    for (const branchSpec of branches) {
+      const branch = addVisualPart(
+        group,
+        new THREE.CylinderGeometry(radius * branchSpec.thick * .58, radius * branchSpec.thick, height * branchSpec.length, 6),
+        trunkMaterial,
+        "dead-tree-branch",
+        new THREE.Vector3(branchSpec.x * width, height * branchSpec.y, branchSpec.z * depth),
+        new THREE.Vector3(0, 0, branchSpec.angle),
+      )
+      branch.scale.y = branchSpec.taper
+    }
     return group
   }
   const foliage = standardMaterial(0x3e9b4a, {roughness: 1})

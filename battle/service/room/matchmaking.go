@@ -4,6 +4,7 @@ import (
 	"battle/model/game"
 	"battle/model/room"
 	"encoding/json"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -108,6 +109,7 @@ func (mq *MatchQueue) matchSolo(p *room.Client) {
 
 	existing := room.FindLobbyRoomFor(profile)
 	if existing != nil {
+		p.PendingRoomID = existing.Id
 		data, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: existing.Id}))
 		p.Send <- data
 		return
@@ -116,6 +118,7 @@ func (mq *MatchQueue) matchSolo(p *room.Client) {
 	roomName := generateRoomId()
 	r := room.GetOrCreateRoomFor(roomName, roomName, profile)
 
+	p.PendingRoomID = r.Id
 	data, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: r.Id}))
 	p.Send <- data
 }
@@ -217,10 +220,14 @@ func (mq *MatchQueue) teamFallbackReady(indexes []int) bool {
 }
 
 func (mq *MatchQueue) launchTeamMatch(profile room.MatchProfile, chosenIndexes []int, assignments map[string]string) bool {
+	if rand.Intn(2) == 0 {
+		swapTeamAssignmentSides(assignments)
+	}
 	r := room.GetOrCreateRoomFor(generateRoomId(), "team-match", profile)
 	for _, queueIndex := range chosenIndexes {
 		client := mq.queue[queueIndex]
 		client.AssignedTeam = assignments[client.Id]
+		client.PendingRoomID = r.Id
 		data, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: r.Id}))
 		client.Send <- data
 	}
@@ -238,6 +245,21 @@ func (mq *MatchQueue) launchTeamMatch(profile room.MatchProfile, chosenIndexes [
 	}
 	mq.queue = remaining
 	return true
+}
+
+// swapTeamAssignmentSides keeps the balanced roster intact while randomizing
+// which authored base each team starts from. The client still presents the
+// local team as friendly and the opposing team as red, independent of this
+// server-side Blue/Red label swap.
+func swapTeamAssignmentSides(assignments map[string]string) {
+	for playerID, team := range assignments {
+		switch team {
+		case "Blue":
+			assignments[playerID] = "Red"
+		case "Red":
+			assignments[playerID] = "Blue"
+		}
+	}
 }
 
 func generateRoomId() string {

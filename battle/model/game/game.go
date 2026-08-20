@@ -115,7 +115,21 @@ func (gs *GameState) UpdateWithDelta(elapsed time.Duration) {
 }
 
 func (gs *GameState) updateWithDelta(elapsed time.Duration) {
+	wasLobby := gs.State == GameStateLobby
 	gs.updateGame()
+	if wasLobby && gs.State == GameStateGame {
+		// Actions are queued by the transport while the lobby is still live, but
+		// updateGame transitions to the battle before updatePlayers consumes that
+		// queue. Never replay a pre-start command from the lobby after the player
+		// has been teleported to the authoritative team spawn.
+		kept := gs.Actions[:0]
+		for _, action := range gs.Actions {
+			if action.Ts >= gs.MatchStartedAt {
+				kept = append(kept, action)
+			}
+		}
+		gs.Actions = kept
+	}
 	nominalStep := time.Second / 60
 	currentStep := elapsed
 	if currentStep <= 0 {
@@ -270,7 +284,9 @@ func (gs *GameState) updateGame() {
 			gs.startWaiting()
 			return
 		}
-		gs.updateIsland(time.Now().UnixMilli())
+		if gs.Mode != ModeTeamDeathmatch {
+			gs.updateIsland(time.Now().UnixMilli())
+		}
 		if gs.finishBattleIfDecided() {
 			return
 		}
@@ -506,6 +522,12 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 	shieldBefore := target.ShieldHP
 	target.TakeDamage(amount)
 	dealt := livesBefore - target.Lives + shieldBefore - target.ShieldHP
+	if livesBefore > 0 && target.Lives <= 0 {
+		target.Deaths++
+	}
+	if target.Lives <= 0 && gs.Mode == ModeTeamDeathmatch && target.RespawnAt == 0 {
+		target.RespawnAt = now + teamRespawnDelay
+	}
 	target.RevealedUntil = now + 2000
 	gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ff6b9f", dealt, 520)
 	return dealt
@@ -518,6 +540,9 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 	wasAlive := target != nil && target.IsAlive()
 	dealt := gs.applyDamageAmount(target, amount)
 	if dealt > 0 && target != nil {
+		if source != nil {
+			source.PlayerDamage += dealt
+		}
 		gs.recordLastContact(source, target)
 	}
 	if dealt > 0 && target != nil && gs.activeCommandID != "" {
@@ -531,9 +556,6 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		})
 	}
 	if wasAlive && !target.IsAlive() {
-		if gs.Mode == ModeTeamDeathmatch {
-			target.RespawnAt = time.Now().UnixMilli() + teamRespawnDelay
-		}
 		killerName := "Unknown"
 		if source != nil {
 			killerName = source.Name
@@ -788,6 +810,11 @@ func (gs *GameState) updateBullets() {
 				gs.addEffect("spin", p.X, p.Y, 0, 0, 90, 0, 0, 0, "#e8ffb2", 0, 350)
 				continue
 			}
+			if b.Kind == "katty_paint_spray" {
+				gs.resolveKattyPaintSprayImpact(b)
+				b.Active = false
+				break
+			}
 			b.HitPlayers[p.PlayerId] = true
 			dmg := b.Damage
 			if b.Kind == "sniper" {
@@ -843,13 +870,9 @@ func (gs *GameState) updateBullets() {
 				p.SlowMultiplier = .60
 				gs.addEffect("needle_spores", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#75d947", 0, cappedSkillDuration(NeedleSporeSlowDuration))
 			}
-			if b.Kind == "katty_paint" || b.Kind == "katty_paint_spray" {
+			if b.Kind == "katty_paint" {
 				now := time.Now().UnixMilli()
 				gs.applyKattyPaint(attacker, p, now, 1, false)
-				if b.Kind == "katty_paint_spray" && b.ZoneGroup == "" {
-					gs.spawnKattyPaintCloud(attacker, p.X, p.Y, now)
-					b.ZoneGroup = "katty_paint_cloud"
-				}
 			}
 			if b.Kind == "lumi_orb" {
 				gs.finishNewHeroProjectile(b)
@@ -860,7 +883,7 @@ func (gs *GameState) updateBullets() {
 			if b.Kind == "spore" {
 				gs.splitProjectile(b)
 			}
-			if b.Splash > 0 && b.Kind != "spore" && b.Kind != "quantum" {
+			if b.Splash > 0 && b.Kind != "spore" && b.Kind != "quantum" && b.Kind != "katty_paint_spray" {
 				gs.radialDamageExcept(b.PlayerId, b.X, b.Y, b.Splash, b.Damage, p.PlayerId)
 			}
 			if b.Chain > 0 {
@@ -872,41 +895,56 @@ func (gs *GameState) updateBullets() {
 				b.Active = false
 			}
 		}
-
-		for mid, m := range gs.Monsters {
-			if m == nil || !m.IsAlive() {
-				continue
-			}
-			monsterHitRadius := m.Radius + b.Radius
-			if b.Splash <= 0 && b.Kind != "spore" && b.Kind != "quantum" {
-				monsterHitRadius += b.HitRadius
-			}
-			if !segmentHitsCircle(previousX, previousY, b.X, b.Y, m.X, m.Y, monsterHitRadius) {
-				continue
-			}
-			b.Active = false
-			gs.finishNewHeroProjectile(b)
-			gs.damageMonster(mid, m, int(math.Max(1, float64(b.Damage))))
-			if b.Kind == "katty_paint_spray" && b.ZoneGroup == "" {
-				if attacker := gs.Players[b.PlayerId]; attacker != nil {
-					now := time.Now().UnixMilli()
-					gs.spawnKattyPaintCloud(attacker, m.X, m.Y, now)
-					b.ZoneGroup = "katty_paint_cloud"
-				}
-			}
+		if b.Kind == "katty_paint_spray" && !b.Active {
+			continue
 		}
-
-		for _, pr := range gs.Props {
-			if pr == nil || !pr.Active || !isBreakableCrate(pr) || !segmentHitsCircle(previousX, previousY, b.X, b.Y, pr.X, pr.Y, pr.Radius+b.Radius) {
+		if b.Kind != "tower_shot" {
+			// Tower shots are player-only defensive fire. They still reach the
+			// wall collision below, so cover can stop a shot after it is fired.
+			for mid, m := range gs.Monsters {
+				if m == nil || !m.IsAlive() {
+					continue
+				}
+				monsterHitRadius := m.Radius + b.Radius
+				if b.Splash <= 0 && b.Kind != "spore" && b.Kind != "quantum" {
+					monsterHitRadius += b.HitRadius
+				}
+				if !segmentHitsCircle(previousX, previousY, b.X, b.Y, m.X, m.Y, monsterHitRadius) {
+					continue
+				}
+				if b.Kind == "katty_paint_spray" {
+					gs.resolveKattyPaintSprayImpact(b)
+					b.Active = false
+					break
+				}
+				b.Active = false
+				gs.finishNewHeroProjectile(b)
+				gs.damageMonster(mid, m, int(math.Max(1, float64(b.Damage))))
+			}
+			if b.Kind == "katty_paint_spray" && !b.Active {
 				continue
 			}
-			gs.damageCrate(gs.Players[b.PlayerId], pr, b.Damage)
-			gs.finishNewHeroProjectile(b)
-			b.Active = false
-			break
+
+			for _, pr := range gs.Props {
+				if pr == nil || !pr.Active || !isBreakableCrate(pr) || !segmentHitsCircle(previousX, previousY, b.X, b.Y, pr.X, pr.Y, pr.Radius+b.Radius) {
+					continue
+				}
+				if b.Kind == "katty_paint_spray" {
+					gs.resolveKattyPaintSprayImpact(b)
+					b.Active = false
+					break
+				}
+				gs.damageCrate(gs.Players[b.PlayerId], pr, b.Damage)
+				gs.finishNewHeroProjectile(b)
+				b.Active = false
+				break
+			}
 		}
 
 		if segmentHitsBlockingWall(previousX, previousY, b.X, b.Y, b.Radius, gs.Walls) {
+			if b.Kind == "tower_shot" {
+				gs.addEffect("tower_shot_blocked", b.X, b.Y, 0, 0, b.Radius+18, b.Rotation, 0, 0, b.Color, 0, 260)
+			}
 			if b.DestroyWalls {
 				if gs.destroyNearestWallAt(b.X, b.Y, b.Radius) {
 					gs.addEffect("wall_break", b.X, b.Y, 0, 0, 42, b.Rotation, 0, 0, b.Color, 0, 520)
@@ -1038,9 +1076,9 @@ func (gs *GameState) startGame() {
 	gs.LobbyEndsAt = 0
 	gs.GameEndsAt = time.Now().Add(GameDuration).UnixMilli()
 	gs.MatchStartedAt = time.Now().UnixMilli()
-	gs.IslandPhase = IslandPhaseHunt
-	gs.PhaseStartedAt = gs.MatchStartedAt
-	gs.PhaseEndsAt = gs.MatchStartedAt + OpeningCombatDuration.Milliseconds()
+	gs.IslandPhase = ""
+	gs.PhaseStartedAt = 0
+	gs.PhaseEndsAt = 0
 	gs.IslandEvent = ""
 	gs.IslandVoiceNextAt = make(map[string]int64)
 	gs.IslandVoiceKillClaimed = make(map[string]bool)
@@ -1066,7 +1104,12 @@ func (gs *GameState) startGame() {
 	}
 	gs.healthCratesAdd(HealthCratesCount)
 	gs.monstersAdd(MonstersCount)
-	gs.emitIslandVoiceToAll(IslandVoiceTriggerPhase, gs.MatchStartedAt)
+	if gs.Mode != ModeTeamDeathmatch {
+		gs.IslandPhase = IslandPhaseHunt
+		gs.PhaseStartedAt = gs.MatchStartedAt
+		gs.PhaseEndsAt = gs.MatchStartedAt + OpeningCombatDuration.Milliseconds()
+		gs.emitIslandVoiceToAll(IslandVoiceTriggerPhase, gs.MatchStartedAt)
+	}
 	gs.Broadcast("start", map[string]interface{}{})
 }
 
@@ -2130,6 +2173,12 @@ func (gs *GameState) setPlayersActive(active bool) {
 		if active {
 			p.Lives = p.MaxLives
 			p.Kills = 0
+			p.Deaths = 0
+			p.PlayerDamage = 0
+			p.TowerDamage = 0
+			p.TownHallDamage = 0
+			p.TowersDestroyed = 0
+			p.TownHallsDestroyed = 0
 			p.SuperCharge = 100
 			p.LastPrimaryAt, p.LastSecondaryAt = 0, 0
 			p.FocusStartedAt, p.FocusCharge = 0, 0
@@ -2181,8 +2230,47 @@ func (gs *GameState) setPlayersPositionForTeams() {
 		used[p.Team]++
 		p.X = spawner.X + PlayerSize/2
 		p.Y = spawner.Y + PlayerSize/2
-		p.Ack = 0
+		p.MoveX, p.MoveY, p.Aiming, p.Ack = 0, 0, false, 0
 	}
+}
+
+// PlacePlayerAtTeamSpawn is used for players joining an already-running team
+// match. Their initial PlayerAdd position is intentionally mode-agnostic, so
+// the final team assignment must be followed by an authoritative placement.
+func (gs *GameState) PlacePlayerAtTeamSpawn(playerID string) {
+	if gs == nil || gs.Mode != ModeTeamDeathmatch || gs.Map == nil {
+		return
+	}
+	p := gs.Players[playerID]
+	if p == nil {
+		return
+	}
+	spawners := gs.Map.TeamSpawners[p.Team]
+	if len(spawners) == 0 {
+		return
+	}
+	for _, spawn := range spawners {
+		occupied := false
+		for id, other := range gs.Players {
+			if id == playerID || other == nil || other.Team != p.Team {
+				continue
+			}
+			if math.Hypot(other.X-spawn.CenterX(), other.Y-spawn.CenterY()) < PlayerSize {
+				occupied = true
+				break
+			}
+		}
+		if occupied {
+			continue
+		}
+		p.X, p.Y = spawn.CenterX(), spawn.CenterY()
+		p.MoveX, p.MoveY, p.Aiming, p.Ack = 0, 0, false, 0
+		return
+	}
+	// A full team still must never fall back to the enemy base.
+	spawn := spawners[0]
+	p.X, p.Y = spawn.CenterX(), spawn.CenterY()
+	p.MoveX, p.MoveY, p.Aiming, p.Ack = 0, 0, false, 0
 }
 
 func (gs *GameState) setPlayersTeamsRandomly() {

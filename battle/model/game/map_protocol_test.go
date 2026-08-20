@@ -48,3 +48,27 @@ func TestNewMapJSONPublishesPassableTeamFeatures(t *testing.T) {
 		t.Fatalf("first team feature = %#v", got.Features[0])
 	}
 }
+
+func TestNewMapJSONPublishesRiverAndBridgeCollisionLayers(t *testing.T) {
+	canonical := gamemap.GenerateTeamBattle(gamemap.CanonicalTeamBattleSeed)
+	got := NewMapJSON("team-battle", canonical, 0, true)
+
+	river, bridge := 0, 0
+	for _, wall := range got.Walls {
+		switch wall.Type {
+		case "river":
+			river++
+			if !wall.Blocking {
+				t.Fatalf("river wall is passable: %#v", wall)
+			}
+		case "river_bridge":
+			bridge++
+			if wall.Blocking {
+				t.Fatalf("bridge wall is blocking: %#v", wall)
+			}
+		}
+	}
+	if river == 0 || bridge == 0 {
+		t.Fatalf("serialized river layers = river %d, bridge %d", river, bridge)
+	}
+}

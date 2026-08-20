@@ -83,6 +83,33 @@ export const createNeedleSporeVisual = (projectile = {}, {held = false} = {}) =>
 export const createProjectileVisual = projectile => {
   if (String(projectile.kind).toLowerCase().includes("spore")) return createNeedleSporeVisual(projectile)
   const kind = String(projectile.kind || "").toLowerCase()
+  if (kind.includes("tower_shot")) {
+    const shot = new THREE.Group()
+    shot.userData.vfxType = "tower-shot"
+    const color = projectile.color || 0xff5f6d
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(.27, 12, 8),
+      standardMaterial(color, {emissive: color, emissiveIntensity: 1.8, roughness: .28}),
+    )
+    core.userData.role = "tower-shot-core"
+    shot.add(core)
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(.38, .045, 8, 24),
+      new THREE.MeshBasicMaterial({color, transparent: true, opacity: .85, depthWrite: false}),
+    )
+    ring.rotation.x = Math.PI / 2
+    ring.userData.role = "tower-shot-ring"
+    shot.add(ring)
+    const trail = new THREE.Mesh(
+      new THREE.ConeGeometry(.15, .72, 8, 1, true),
+      new THREE.MeshBasicMaterial({color, transparent: true, opacity: .48, depthWrite: false, side: THREE.DoubleSide}),
+    )
+    trail.rotation.z = Math.PI / 2
+    trail.position.x = -.42
+    trail.userData.role = "tower-shot-trail"
+    shot.add(trail)
+    return shot
+  }
   if (kind.includes("mina_star")) {
     const orb = new THREE.Group()
     const core = new THREE.Mesh(

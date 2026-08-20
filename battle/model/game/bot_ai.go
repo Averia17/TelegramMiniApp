@@ -24,7 +24,7 @@ func (botStrategyBase) emergency(gs *GameState, bot *player.Player, now int64) b
 		if flee {
 			gs.botRetreatFrom(bot.PlayerId, bot, threat.X, threat.Y, now)
 		} else {
-			gs.botEngageTarget(bot.PlayerId, bot, &botTarget{kind: "monster", id: "threat", monster: threat, x: threat.X, y: threat.Y, distance: math.Hypot(threat.X-bot.X, threat.Y-bot.Y)}, 0, now)
+			gs.botEngageTarget(bot.PlayerId, bot, &botTarget{kind: "monster", id: "threat", monster: threat, x: threat.X, y: threat.Y, distance: math.Hypot(threat.X-bot.X, threat.Y-bot.Y)}, now)
 		}
 		return true
 	}
@@ -76,7 +76,7 @@ func (defendObjectiveBehavior) Decide(ctx *teamBotContext) (teamBotIntent, bool)
 		return teamBotIntent{}, false
 	}
 	underAttack := ctx.ownObjective.LastDamagedAt > 0 && ctx.now-ctx.ownObjective.LastDamagedAt <= 2500
-	enemy := ctx.gs.nearestEnemyNear(ctx.bot.Team, ctx.ownObjective.X, ctx.ownObjective.Y, 520)
+	enemy := ctx.gs.nearestVisibleEnemyNear(ctx.bot, ctx.ownObjective.X, ctx.ownObjective.Y, 520, ctx.now)
 	if !underAttack && enemy == nil {
 		return teamBotIntent{}, false
 	}
@@ -93,7 +93,7 @@ func (supportAllyBehavior) Decide(ctx *teamBotContext) (teamBotIntent, bool) {
 	if ally == nil {
 		return teamBotIntent{}, false
 	}
-	enemy := ctx.gs.nearestEnemyNear(ctx.bot.Team, ally.X, ally.Y, 440)
+	enemy := ctx.gs.nearestVisibleEnemyNear(ctx.bot, ally.X, ally.Y, 440, ctx.now)
 	if enemy != nil {
 		return teamBotIntent{kind: teamIntentSupport, target: &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, x: enemy.X, y: enemy.Y, distance: math.Hypot(enemy.X-ctx.bot.X, enemy.Y-ctx.bot.Y)}}, true
 	}
@@ -108,6 +108,15 @@ type attackObjectiveBehavior struct{}
 func (attackObjectiveBehavior) Decide(ctx *teamBotContext) (teamBotIntent, bool) {
 	if ctx.enemyObjective == nil {
 		return teamBotIntent{}, false
+	}
+	if ctx.visibleTarget != nil && ctx.visibleTarget.player != nil {
+		// A nearby enemy is an immediate tactical problem. Humans do not keep
+		// walking toward an objective while an opponent is already in striking
+		// distance, even when an ally is present at the objective.
+		interruptDistance := math.Max(180, botAttackRange(ctx.bot)*1.35) + ctx.visibleTarget.radius()
+		if ctx.visibleTarget.distance <= interruptDistance {
+			return teamBotIntent{}, false
+		}
 	}
 	ally := ctx.gs.allyNearObjective(ctx.bot.Team, ctx.enemyObjective, 360)
 	if ally == nil && ctx.visibleTarget != nil {
@@ -174,10 +183,8 @@ func (s *teamBattleBotStrategy) Update(gs *GameState) {
 	}
 	now := time.Now().UnixMilli()
 	index := 0
-	for id, bot := range gs.Players {
-		if bot == nil || !bot.IsBot || !bot.IsAlive() {
-			continue
-		}
+	for _, id := range sortedBotIDs(gs.Players) {
+		bot := gs.Players[id]
 		if s.emergency(gs, bot, now) {
 			index++
 			continue
@@ -205,7 +212,7 @@ func (s *teamBattleBotStrategy) execute(gs *GameState, bot *player.Player, inten
 	switch intent.kind {
 	case teamIntentDefend, teamIntentSupport, teamIntentAttackPlayer, teamIntentAttackBase:
 		if intent.target != nil {
-			gs.botEngageTarget(bot.PlayerId, bot, intent.target, index, now)
+			gs.botEngageTarget(bot.PlayerId, bot, intent.target, now)
 			return
 		}
 		gs.moveBotTo(bot.PlayerId, bot, intent.x, intent.y, now)
@@ -244,6 +251,24 @@ func (gs *GameState) nearestEnemyNear(team string, x, y, radius float64) *player
 	bestDistance := math.Inf(1)
 	for _, candidate := range gs.Players {
 		if candidate == nil || !candidate.IsAlive() || candidate.Team == team {
+			continue
+		}
+		distance := math.Hypot(candidate.X-x, candidate.Y-y)
+		if distance <= radius && (distance < bestDistance || distance == bestDistance && candidate.PlayerId < best.PlayerId) {
+			best, bestDistance = candidate, distance
+		}
+	}
+	return best
+}
+
+func (gs *GameState) nearestVisibleEnemyNear(observer *player.Player, x, y, radius float64, now int64) *player.Player {
+	if observer == nil {
+		return nil
+	}
+	var best *player.Player
+	bestDistance := math.Inf(1)
+	for _, candidate := range gs.Players {
+		if candidate == nil || !candidate.IsAlive() || candidate.Team == observer.Team || !gs.botCanSee(observer, candidate, now) {
 			continue
 		}
 		distance := math.Hypot(candidate.X-x, candidate.Y-y)

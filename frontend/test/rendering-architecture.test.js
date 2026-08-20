@@ -501,6 +501,7 @@ test("team map mounts natural diagonal river features without adding collision o
 	mapRenderer.sync({
 		width: 3200, height: 3200, tileSize: 40, walls: [
 			{minX: 1540, minY: 1540, maxX: 1580, maxY: 1580, type: "river"},
+			{minX: 1580, minY: 1540, maxX: 1620, maxY: 1580, type: "river_bridge", blocking: false},
 		], features: [
 			{id: "team-river", type: "river", x: 1580, y: 1580, rotation: -Math.PI / 4, scale: 1},
 			{id: "bridge-a", type: "river_bridge", x: 1560, y: 1600, rotation: -Math.PI / 4, scale: 1},
@@ -509,7 +510,13 @@ test("team map mounts natural diagonal river features without adding collision o
 
 	assert.equal(mapRenderer.objects.size, 0)
 	assert.equal(mapRenderer.featureObjects.size, 2)
-	assert.ok(root.children.some(object => object.userData.featureId === "team-river"))
+	const river = root.children.find(object => object.userData.featureId === "team-river")
+	assert.ok(river)
+	const water = river.getObjectByName("team-river-water")
+	water.geometry.computeBoundingBox()
+	assert.ok(water.geometry.boundingBox.min.x <= -100, "river should reach the western ocean")
+	assert.ok(water.geometry.boundingBox.max.x >= 100, "river should reach the eastern ocean")
+	assert.ok(water.geometry.boundingBox.max.x < 120, "river mouth should not overshoot into a second ocean edge")
 	mapRenderer.dispose()
 })
 
@@ -1781,6 +1788,21 @@ test("map crate cells render as natural log piles instead of default box planks"
   })
 })
 
+test("tower projectile visual is a readable glowing shot with a trailing core", () => {
+  const shot = createProjectileVisual({kind: "tower_shot", radius: 13, color: "#ff5f6d"})
+  assert.equal(shot.userData.vfxType, "tower-shot")
+  assert.ok(shot.children.some(child => child.userData.role === "tower-shot-core"))
+  assert.ok(shot.children.some(child => child.userData.role === "tower-shot-trail"))
+})
+
+test("team death while the match is active waits for respawn instead of opening defeat", () => {
+  const state = {
+    game: {state: "game", mode: "team deathmatch"},
+    players: {local: {lives: 0, respawnAt: 0}},
+  }
+  assert.equal(getStateBattleResult(state, "local", "game"), null)
+})
+
 test("team battle ruin cells render as detailed stonework and thorny blockers", () => {
   const ruin = createProp(
     {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "ruin_wall"},
@@ -2092,6 +2114,87 @@ test("Brock armed beam renders as a directional lane instead of a ring", () => {
   const beam = root.children[0]
   assert.equal(beam.geometry.type, "PlaneGeometry")
   assert.ok(Math.abs(beam.scale.x - 800 * WORLD_SCALE) < .001)
+})
+
+test("enemy tower shots render as a directional tracer to the target", () => {
+  const root = new THREE.Group()
+  const renderer = new EffectRenderer(root)
+  renderer.sync([{
+    id: "tower-shot",
+    kind: "tower_beam",
+    x: 100,
+    y: 200,
+    toX: 500,
+    toY: 200,
+    radius: 24,
+    life: .3,
+    maxLife: .35,
+  }])
+
+  const beam = root.children[0]
+  assert.equal(beam.isGroup, true)
+  assert.equal(beam.userData.kind, "tower_beam")
+  assert.ok(beam.getObjectByName("tower-shot-tracer"))
+  assert.ok(beam.getObjectByName("tower-shot-impact"))
+})
+
+test("tower telegraph renders a warning lane and a target reticle", () => {
+  const root = new THREE.Group()
+  const renderer = new EffectRenderer(root)
+  renderer.sync([{
+    id: "tower-telegraph",
+    kind: "tower_telegraph",
+    x: 100,
+    y: 200,
+    toX: 500,
+    toY: 200,
+    radius: 44,
+    life: .2,
+    maxLife: .32,
+  }])
+
+  const telegraph = root.children[0]
+  assert.equal(telegraph.userData.kind, "tower_telegraph")
+  assert.ok(telegraph.getObjectByName("tower-telegraph-line"))
+  assert.ok(telegraph.getObjectByName("tower-telegraph-reticle"))
+})
+
+test("team structures mount world-space HP bars and protect the town hall visually", () => {
+  const root = new THREE.Group()
+  const renderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  renderer.syncObjectives([
+    {id: "blue-tower", type: "tower", team: "Blue", x: 300, y: 300, lives: 1500, maxLives: 3000, attackRange: 620},
+    {id: "blue-hall", type: "town_hall", team: "Blue", x: 500, y: 300, lives: 12000, maxLives: 12000},
+    {id: "red-tower", type: "tower", team: "Red", x: 700, y: 300, lives: 3000, maxLives: 3000, attackRange: 620},
+  ])
+
+  const tower = renderer.objectiveObjects.get("blue-tower")
+  const hall = renderer.objectiveObjects.get("blue-hall")
+  assert.ok(tower.userData.objectiveHealthBar)
+  assert.ok(tower.userData.objectiveHealthBar.scale.x >= 1.7)
+  assert.ok(tower.userData.objectiveHealthFill.userData.fullWidth >= 2.8)
+  assert.ok(tower.userData.objectiveHealthBar.children[0].renderOrder < tower.userData.objectiveHealthFill.renderOrder)
+  assert.ok(tower.userData.objectiveHealthFill.renderOrder < tower.userData.objectiveHealthBar.children[2].renderOrder)
+  assert.equal(tower.userData.objectiveHealthFill.scale.x, tower.userData.objectiveHealthFill.userData.fullWidth * .5)
+  assert.equal(hall.userData.objectiveProtection.visible, true)
+  assert.ok(hall.getObjectByName("town-hall-protected-shield"))
+  const protectionLabel = hall.getObjectByName("town-hall-protected-label")
+  assert.ok(protectionLabel)
+  assert.equal(protectionLabel.renderOrder, 4)
+  assert.ok(protectionLabel.scale.y >= .8)
+
+  renderer.syncObjectives([
+    {id: "blue-tower", type: "tower", team: "Blue", x: 300, y: 300, lives: 0, maxLives: 3000, attackRange: 620},
+    {id: "blue-hall", type: "town_hall", team: "Blue", x: 500, y: 300, lives: 12000, maxLives: 12000},
+  ])
+  assert.equal(hall.userData.objectiveProtection.visible, false)
+  renderer.dispose()
+})
+
+test("tower shots blocked by cover render a visible impact burst", async () => {
+  const source = await readFile(projectFile("src/components/BattleGame/rendering/combat/EffectRenderer.js"), "utf8")
+  assert.ok(source.includes('"tower_shot_blocked"'))
+  assert.ok(source.includes("createImpactBurst"))
 })
 
 test("Brock strike warnings render as readable target reticles", () => {

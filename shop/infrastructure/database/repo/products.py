@@ -11,7 +11,9 @@ class ProductRepo(BaseRepo):
         return result.mappings().all()
 
     async def get_by_id(self, product_id: int):
-        result = await self.session.execute(select(Product).where(Product.product_id == product_id))
+        result = await self.session.execute(
+            select(Product).where(Product.product_id == product_id)
+        )
         await self.session.commit()
         return result.scalar_one_or_none()
 

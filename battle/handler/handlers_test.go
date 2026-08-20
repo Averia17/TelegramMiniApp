@@ -14,6 +14,7 @@ import (
 	"battle/model/gamemap"
 	mroom "battle/model/room"
 	"battle/observability"
+	"battle/provider"
 	"github.com/gorilla/websocket"
 )
 
@@ -28,6 +29,21 @@ func TestNextClientMessagePrioritizesFreshState(t *testing.T) {
 	message, ok := nextClientMessage(client)
 	if !ok || string(message) != "state" {
 		t.Fatalf("next client message = %q, %v; want state, true", message, ok)
+	}
+}
+
+func TestNextClientMessagePrioritizesRoomHandshake(t *testing.T) {
+	client := &mroom.Client{
+		Handshake: make(chan []byte, 1),
+		Send:      make(chan []byte, 1),
+		State:     make(chan []byte, 1),
+	}
+	client.Handshake <- []byte(`{"type":"room_joined","params":{"playerId":"p1"}}`)
+	client.State <- []byte(`{"type":"state","players":{"p1":{"x":1,"y":2}}}`)
+
+	message, ok := nextClientMessage(client)
+	if !ok || string(message) != `{"type":"room_joined","params":{"playerId":"p1"}}` {
+		t.Fatalf("next client message = %q, %v; want room_joined handshake, true", message, ok)
 	}
 }
 
@@ -276,6 +292,149 @@ func TestWebSocketFindMatch(t *testing.T) {
 	err := conn.WriteMessage(websocket.TextMessage, []byte(findMsg))
 	if err != nil {
 		t.Fatalf("Write error: %v", err)
+	}
+
+	var roomID string
+	for i := 0; i < 10; i++ {
+		_, message, readErr := conn.ReadMessage()
+		if readErr != nil {
+			t.Fatalf("Read match error: %v", readErr)
+		}
+		if !strings.Contains(string(message), "match_found") {
+			continue
+		}
+		var response struct {
+			Params struct {
+				RoomID string `json:"roomId"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(message, &response); err != nil {
+			t.Fatalf("decode match response: %v", err)
+		}
+		roomID = response.Params.RoomID
+		break
+	}
+	if roomID == "" {
+		t.Fatal("matchmaking did not return a room id")
+	}
+	if err := conn.WriteJSON(map[string]string{"type": "join_by_id", "roomId": roomID, "playerName": "Matcher", "heroName": "Needle"}); err != nil {
+		t.Fatalf("Write join_by_id: %v", err)
+	}
+	for i := 0; i < 10; i++ {
+		_, message, readErr := conn.ReadMessage()
+		if readErr != nil {
+			t.Fatalf("Read room join error: %v", readErr)
+		}
+		if strings.Contains(string(message), "room_joined") {
+			return
+		}
+	}
+	t.Fatal("matched player could not join the room it was assigned")
+}
+
+func TestWebSocketJoinByIdRejectsPlayerOutsideRoom(t *testing.T) {
+	h := NewHandler()
+	mux := http.NewServeMux()
+	h.SetupRoutes(mux)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+	mroom.ResetRooms()
+	defer mroom.ResetRooms()
+
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
+	owner := dialAuthenticated(t, wsURL, 1010)
+	defer owner.Close()
+	if err := owner.WriteJSON(map[string]string{"type": "join", "roomName": "private-room", "roomMap": "small"}); err != nil {
+		t.Fatalf("owner join: %v", err)
+	}
+	joined := false
+	for i := 0; i < 5; i++ {
+		_, message, err := owner.ReadMessage()
+		if err != nil {
+			t.Fatalf("owner read: %v", err)
+		}
+		if strings.Contains(string(message), "room_joined") {
+			joined = true
+			break
+		}
+	}
+	if !joined {
+		t.Fatal("owner did not join room")
+	}
+
+	foreign := dialAuthenticated(t, wsURL, 1011)
+	defer foreign.Close()
+	if err := foreign.WriteJSON(map[string]interface{}{
+		"type": "join_by_id", "roomId": "private-room", "playerName": "Foreign",
+	}); err != nil {
+		t.Fatalf("foreign join: %v", err)
+	}
+	for i := 0; i < 5; i++ {
+		_, message, err := foreign.ReadMessage()
+		if err != nil {
+			t.Fatalf("foreign read: %v", err)
+		}
+		if strings.Contains(string(message), "Room access denied") {
+			return
+		}
+	}
+	t.Fatal("foreign player was not rejected")
+}
+
+func TestHandleRecoverBattleReturnsActiveFinishedOrNone(t *testing.T) {
+	mroom.ResetRooms()
+	defer mroom.ResetRooms()
+	store := provider.NewMockStore()
+	mroom.SetStore(store)
+	defer mroom.SetStore(nil)
+
+	active := mroom.GetOrCreateRoom("active-recovery", "active-recovery", "small", "deathmatch", 4)
+	active.State.PlayerAdd("active-player", "Active", "Needle")
+	client := &mroom.Client{Id: "active-player", Send: make(chan []byte, 1)}
+	HandleRecoverBattle(client, []byte(`{"roomId":"wrong-room"}`))
+	var activeMessage map[string]interface{}
+	if err := json.Unmarshal(<-client.Send, &activeMessage); err != nil {
+		t.Fatalf("decode active recovery: %v", err)
+	}
+	if activeMessage["type"] != "battle_recovered" || activeMessage["params"].(map[string]interface{})["status"] != "active" {
+		t.Fatalf("active recovery = %#v", activeMessage)
+	}
+
+	if err := store.SaveBattleResult(&provider.BattleResult{
+		RoomId:   "finished-recovery",
+		EndedAt:  100,
+		Duration: 12500,
+		Winner:   "Winner",
+		Players: []provider.PlayerResult{{
+			PlayerId: "finished-player", Won: true, Kills: 2, Deaths: 1,
+			PlayerDamage: 400, TowerDamage: 900, TownHallDamage: 120,
+			TowersDestroyed: 1,
+		}},
+	}); err != nil {
+		t.Fatalf("save finished result: %v", err)
+	}
+	finishedClient := &mroom.Client{Id: "finished-player", Send: make(chan []byte, 1)}
+	HandleRecoverBattle(finishedClient, []byte(`{"roomId":"missing-room"}`))
+	var finishedMessage map[string]interface{}
+	if err := json.Unmarshal(<-finishedClient.Send, &finishedMessage); err != nil {
+		t.Fatalf("decode finished recovery: %v", err)
+	}
+	finishedParams := finishedMessage["params"].(map[string]interface{})
+	finishedResult := finishedParams["result"].(map[string]interface{})
+	if finishedParams["status"] != "finished" || finishedResult["won"] != true ||
+		finishedResult["deaths"] != float64(1) || finishedResult["towerDamage"] != float64(900) ||
+		finishedResult["towersDestroyed"] != float64(1) {
+		t.Fatalf("finished recovery = %#v", finishedMessage)
+	}
+
+	noneClient := &mroom.Client{Id: "missing-player", Send: make(chan []byte, 1)}
+	HandleRecoverBattle(noneClient, []byte(`{}`))
+	var noneMessage map[string]interface{}
+	if err := json.Unmarshal(<-noneClient.Send, &noneMessage); err != nil {
+		t.Fatalf("decode empty recovery: %v", err)
+	}
+	if noneMessage["params"].(map[string]interface{})["status"] != "none" {
+		t.Fatalf("empty recovery = %#v", noneMessage)
 	}
 }
 

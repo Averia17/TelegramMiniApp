@@ -4,6 +4,7 @@ import (
 	"battle/model/game"
 	mroom "battle/model/room"
 	"battle/observability"
+	"battle/provider"
 	sroom "battle/service/room"
 	"encoding/json"
 	"log"
@@ -78,7 +79,7 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	observability.Default.AddGauge("battle_websocket_active", "Currently open battle WebSocket connections", 1, nil)
 
 	client := &mroom.Client{
-		Id: uuid.New().String(), Conn: conn, Send: make(chan []byte, 256), State: make(chan []byte, 1), MapRevision: -1,
+		Id: uuid.New().String(), Conn: conn, Send: make(chan []byte, 256), Handshake: make(chan []byte, 1), State: make(chan []byte, 1), MapRevision: -1,
 	}
 	conn.SetReadLimit(16 * 1024)
 	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
@@ -168,6 +169,12 @@ func clientReadPump(c *mroom.Client) {
 				continue
 			}
 			HandleJoinById(c, message)
+		case "recover_battle":
+			if !c.Authenticated {
+				sendError(c, "Authentication required")
+				continue
+			}
+			HandleRecoverBattle(c, message)
 		case "find_match":
 			if !c.Authenticated {
 				sendError(c, "Authentication required")
@@ -205,6 +212,14 @@ func clientReadPump(c *mroom.Client) {
 }
 
 func nextClientMessage(c *mroom.Client) ([]byte, bool) {
+	// The room binding must win over snapshots. Without this dedicated lane a
+	// tick can publish the first state before room_joined, leaving the frontend
+	// to render an arbitrary player until the next snapshot arrives.
+	select {
+	case message, ok := <-c.Handshake:
+		return message, ok
+	default:
+	}
 	// State updates are latest-only and time-sensitive. Drain one before the
 	// event channel so a burst of combat notifications cannot make snapshots
 	// wait behind an unbounded Send queue.
@@ -313,6 +328,11 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 		sendError(c, "Room not found")
 		return
 	}
+	if !r.HasPlayer(c.Id) && c.PendingRoomID != req.RoomId {
+		sendError(c, "Room access denied")
+		return
+	}
+	c.PendingRoomID = ""
 
 	c.Room = r
 	c.Name = req.PlayerName
@@ -324,6 +344,70 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 	r.Register <- c
 
 	sendRoomJoined(c, r)
+}
+
+func HandleRecoverBattle(c *mroom.Client, data []byte) {
+	var req struct {
+		RoomID string `json:"roomId"`
+	}
+	if err := json.Unmarshal(data, &req); err != nil {
+		sendError(c, "Invalid recovery request")
+		return
+	}
+	if r := mroom.FindRoomForPlayer(c.Id, req.RoomID); r != nil {
+		data, _ := json.Marshal(game.NewServerMessage("battle_recovered", map[string]interface{}{
+			"status":   "active",
+			"roomId":   r.Id,
+			"playerId": c.Id,
+		}))
+		c.Send <- data
+		return
+	}
+
+	result, err := mroom.GetLatestBattleResultForPlayer(c.Id)
+	if err != nil {
+		log.Printf("battle recovery result lookup error for player %s: %v", c.Id, err)
+	}
+	if result != nil {
+		var playerResult *provider.PlayerResult
+		for i := range result.Players {
+			if result.Players[i].PlayerId == c.Id {
+				candidate := result.Players[i]
+				playerResult = &candidate
+				break
+			}
+		}
+		if playerResult != nil {
+			data, _ := json.Marshal(game.NewServerMessage("battle_recovered", map[string]interface{}{
+				"status":   "finished",
+				"roomId":   result.RoomId,
+				"playerId": c.Id,
+				"result": map[string]interface{}{
+					"won":                playerResult.Won,
+					"winner":             result.Winner,
+					"mode":               result.Mode,
+					"duration":           result.Duration,
+					"kills":              playerResult.Kills,
+					"lives":              playerResult.Lives,
+					"hero":               playerResult.Hero,
+					"deaths":             playerResult.Deaths,
+					"playerDamage":       playerResult.PlayerDamage,
+					"towerDamage":        playerResult.TowerDamage,
+					"townHallDamage":     playerResult.TownHallDamage,
+					"towersDestroyed":    playerResult.TowersDestroyed,
+					"townHallsDestroyed": playerResult.TownHallsDestroyed,
+				},
+			}))
+			c.Send <- data
+			return
+		}
+	}
+
+	messageData, _ := json.Marshal(game.NewServerMessage("battle_recovered", map[string]interface{}{
+		"status":   "none",
+		"playerId": c.Id,
+	}))
+	c.Send <- messageData
 }
 
 func HandleFindMatch(c *mroom.Client, data []byte) {
@@ -515,6 +599,11 @@ func sendRoomJoined(c *mroom.Client, r *mroom.Room) {
 	}
 	msg := game.NewServerMessage("room_joined", params)
 	msgData, _ := json.Marshal(msg)
+	if c.Handshake != nil {
+		c.Handshake <- msgData
+		return
+	}
+	// Keep lightweight/unit-test clients and older in-process callers working.
 	c.Send <- msgData
 }
 

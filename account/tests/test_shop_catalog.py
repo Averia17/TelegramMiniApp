@@ -1,8 +1,11 @@
 import unittest
 
 import httpx
-from services.shop_catalog import (ShopCatalogClient, ShopCatalogError,
-                                   ShopProductNotFound)
+from services.shop_catalog import (
+    ShopCatalogClient,
+    ShopCatalogError,
+    ShopProductNotFound,
+)
 
 
 class ShopCatalogClientTests(unittest.IsolatedAsyncioTestCase):

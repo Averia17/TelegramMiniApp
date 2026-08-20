@@ -56,9 +56,6 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 		SendToPlayer: r.SendToPlayer,
 	})
 	gs.OnGameEnd = func(players map[string]*player.Player, winner string, duration int64) {
-		if Kafka == nil {
-			return
-		}
 		result := &provider.BattleResult{
 			RoomId:   roomId,
 			EndedAt:  provider.NowMillis(),
@@ -71,20 +68,16 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 			if p.IsBot {
 				continue
 			}
-			result.Players = append(result.Players, provider.PlayerResult{
-				PlayerId: p.PlayerId,
-				PartyID:  p.PartyID,
-				Team:     p.Team,
-				Name:     p.Name,
-				Hero:     p.HeroName,
-				Kills:    p.Kills,
-				Lives:    p.Lives,
-				Won: p.Name == winner ||
-					(winner == "Red team" && p.Team == "Red") ||
-					(winner == "Blue team" && p.Team == "Blue"),
-			})
+			result.Players = append(result.Players, buildPlayerResult(p, winner))
 		}
-		_ = Kafka.PublishBattleResult(result)
+		if Store != nil {
+			if err := Store.SaveBattleResult(result); err != nil {
+				observability.Default.IncCounter("battle_result_store_errors_total", "Battle results that failed to persist", nil)
+			}
+		}
+		if Kafka != nil {
+			_ = Kafka.PublishBattleResult(result)
+		}
 	}
 	gs.OnPlayerKilled = func(playerId, killerName string) {
 		r.SendToPlayer(playerId, "you_died", map[string]interface{}{
@@ -100,10 +93,57 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 	return r
 }
 
+func buildPlayerResult(p *player.Player, winner string) provider.PlayerResult {
+	return provider.PlayerResult{
+		PlayerId:           p.PlayerId,
+		PartyID:            p.PartyID,
+		Team:               p.Team,
+		Name:               p.Name,
+		Hero:               p.HeroName,
+		Kills:              p.Kills,
+		Lives:              p.Lives,
+		Deaths:             p.Deaths,
+		PlayerDamage:       p.PlayerDamage,
+		TowerDamage:        p.TowerDamage,
+		TownHallDamage:     p.TownHallDamage,
+		TowersDestroyed:    p.TowersDestroyed,
+		TownHallsDestroyed: p.TownHallsDestroyed,
+		Won: p.Name == winner ||
+			(winner == "Red team" && p.Team == "Red") ||
+			(winner == "Blue team" && p.Team == "Blue"),
+	}
+}
+
 func FindRoom(roomId string) *Room {
 	roomsMu.RLock()
 	defer roomsMu.RUnlock()
 	return rooms[roomId]
+}
+
+// FindRoomForPlayer is the recovery lookup. A room ID is only a hint: the
+// authoritative membership in the in-memory battle state decides whether a
+// player may resume a room. Finished rooms are handled by the result store.
+func FindRoomForPlayer(playerID, hintedRoomID string) *Room {
+	roomsMu.RLock()
+	defer roomsMu.RUnlock()
+	if hintedRoomID != "" {
+		if r := rooms[hintedRoomID]; r != nil && r.hasActivePlayer(playerID) {
+			return r
+		}
+	}
+	for _, r := range rooms {
+		if r.hasActivePlayer(playerID) {
+			return r
+		}
+	}
+	return nil
+}
+
+func GetLatestBattleResultForPlayer(playerID string) (*provider.BattleResult, error) {
+	if Store == nil {
+		return nil, nil
+	}
+	return Store.GetLatestBattleResult(playerID)
 }
 
 func FindLobbyRoom() *Room {

@@ -13,6 +13,7 @@ import {disposeObjectTree} from "../shared/disposal.js"
 import {WORLD_SCALE} from "../shared/coordinates.js"
 import {createMapSignature} from "./mapSignature.js"
 import {ISLAND_PHASE_ATMOSPHERES} from "../../phaseVisuals.js"
+import {isTeamBattleMode} from "../../battleMode.js"
 
 const ISLAND_TERRAIN_LAYER_HEIGHTS = [0.003, 0.006, 0.009]
 const STORM_SEGMENTS = 96
@@ -23,6 +24,138 @@ const STONE_PROP_TYPES = new Set(["wall", "destructible", "sacrificial_stone", "
 const DEFAULT_MAP_TILE_SIZE = 40
 const BEACON_VISUAL_SCALE = 24
 
+const objectiveHealthFraction = (lives, maxLives) => (
+  Math.max(0, Math.min(1, (Number(lives) || 0) / Math.max(1, Number(maxLives) || 1)))
+)
+
+const formatObjectiveHealth = (lives, maxLives) => {
+  const maximum = Math.max(1, Math.round(Number(maxLives) || 1))
+  const current = Math.max(0, Math.min(maximum, Math.round(Number(lives) || 0)))
+  return `${current} / ${maximum}`
+}
+
+const createObjectiveHealthBadge = color => {
+  const group = new THREE.Group()
+  group.name = "team-objective-health"
+  group.scale.setScalar(1.75)
+  group.userData.baseScale = 1.75
+  group.renderOrder = 24
+  const background = new THREE.Sprite(new THREE.SpriteMaterial({
+    color: 0x241329,
+    depthTest: false,
+    depthWrite: false,
+  }))
+  background.renderOrder = 1
+  background.scale.set(3.1, .36, 1)
+  const fill = new THREE.Sprite(new THREE.SpriteMaterial({
+    color,
+    depthTest: false,
+    depthWrite: false,
+  }))
+  fill.renderOrder = 2
+  fill.center.set(0, .5)
+  fill.scale.set(2.86, .22, 1)
+  fill.position.set(-1.43, -.11, .01)
+  fill.userData.fullWidth = 2.86
+
+  const label = new THREE.Sprite(new THREE.SpriteMaterial({
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+  }))
+  label.renderOrder = 3
+  label.scale.set(3.55, .62, 1)
+  label.position.set(0, .38, .02)
+  label.userData = {canvas: null, texture: null, signature: ""}
+  if (typeof document !== "undefined") {
+    const canvas = document.createElement("canvas")
+    canvas.width = 512
+    canvas.height = 80
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    label.material.map = texture
+    label.material.needsUpdate = true
+    label.userData.canvas = canvas
+    label.userData.texture = texture
+  }
+  group.add(background, fill, label)
+  return {group, fill, label}
+}
+
+const updateObjectiveHealthLabel = (label, objective) => {
+  if (!label?.userData?.canvas || !label.userData.texture) return
+  const text = formatObjectiveHealth(objective.lives, objective.maxLives)
+  if (label.userData.signature === text) return
+  label.userData.signature = text
+  const {canvas, texture} = label.userData
+  const context = canvas.getContext("2d")
+  context.clearRect(0, 0, canvas.width, canvas.height)
+  context.textAlign = "center"
+  context.textBaseline = "middle"
+  context.font = "900 56px Arial"
+  context.lineWidth = 12
+  context.strokeStyle = "#241329"
+  context.strokeText(text, canvas.width / 2, canvas.height / 2)
+  context.fillStyle = "#fff"
+  context.fillText(text, canvas.width / 2, canvas.height / 2)
+  texture.needsUpdate = true
+}
+
+const createProtectionBadge = color => {
+  const group = new THREE.Group()
+  group.name = "town-hall-protection"
+  const shield = new THREE.Mesh(
+    new THREE.SphereGeometry(4.45, 24, 16),
+    new THREE.MeshBasicMaterial({color: 0x8fe7ff, transparent: true, opacity: .14, wireframe: true, depthTest: false, depthWrite: false}),
+  )
+  shield.name = "town-hall-protected-shield"
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(3.15, .1, 8, 32),
+    new THREE.MeshBasicMaterial({color: 0xd8f7ff, transparent: true, opacity: .92, depthTest: false, depthWrite: false}),
+  )
+  ring.rotation.x = Math.PI / 2
+  ring.position.y = .15
+  ring.name = "town-hall-protected-ring"
+  const core = new THREE.Mesh(
+    new THREE.OctahedronGeometry(.52, 0),
+    new THREE.MeshBasicMaterial({color, transparent: true, opacity: .95, depthTest: false, depthWrite: false}),
+  )
+  core.position.y = 4.75
+  core.name = "town-hall-protected-lock"
+  const label = new THREE.Sprite(new THREE.SpriteMaterial({
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+  }))
+  label.renderOrder = 4
+  label.position.y = 4.45
+  label.scale.set(4.2, .85, 1)
+  label.name = "town-hall-protected-label"
+  label.userData.role = "town-hall-protected-label"
+  if (typeof document !== "undefined") {
+    const canvas = document.createElement("canvas")
+    canvas.width = 420
+    canvas.height = 64
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    const context = canvas.getContext("2d")
+    context.textAlign = "center"
+    context.textBaseline = "middle"
+    context.font = "900 36px Arial"
+    context.lineWidth = 9
+    context.strokeStyle = "#143b59"
+    context.strokeText("ЗАЩИЩЕНА", canvas.width / 2, canvas.height / 2)
+    context.fillStyle = "#d8f7ff"
+    context.fillText("ЗАЩИЩЕНА", canvas.width / 2, canvas.height / 2)
+    label.material.map = texture
+    label.material.needsUpdate = true
+    label.userData.texture = texture
+  }
+  group.add(shield, ring, core, label)
+  group.visible = false
+  return group
+}
+
 const createObjectiveVisual = objective => {
   const group = new THREE.Group()
   const blue = String(objective.team) === "Blue"
@@ -30,6 +163,11 @@ const createObjectiveVisual = objective => {
   const material = new THREE.MeshStandardMaterial({color, roughness: .72, metalness: .14, flatShading: true})
   const dark = new THREE.MeshStandardMaterial({color: blue ? 0x172d63 : 0x5e1826, roughness: .8, flatShading: true})
   const hall = objective.type === "town_hall"
+  const health = createObjectiveHealthBadge(blue ? 0x4b9dff : 0xff5f6d)
+  health.group.position.y = hall ? 5.55 : 4.82
+  const protection = hall ? createProtectionBadge(color) : null
+  if (protection) group.add(protection)
+  group.add(health.group)
   const base = new THREE.Mesh(new THREE.CylinderGeometry(hall ? 3.8 : 1.85, hall ? 4.35 : 2.25, hall ? .72 : .55, hall ? 8 : 8), dark)
   base.position.y = hall ? .36 : .28
   base.name = hall ? "team-town-hall-foundation" : "team-tower-foundation"
@@ -56,11 +194,24 @@ const createObjectiveVisual = objective => {
     const core = new THREE.Mesh(new THREE.OctahedronGeometry(.42, 0), new THREE.MeshBasicMaterial({color: 0xffe28a, transparent: true, opacity: .9}))
     core.position.y = 3.45
     core.name = "team-tower-core"
-    group.add(base, shaft, roof, core)
+    const attackRange = Number(objective.attackRange) || 0
+    const rangeRing = new THREE.Mesh(
+      new THREE.RingGeometry(Math.max(1, attackRange * WORLD_SCALE - .08), attackRange * WORLD_SCALE, 64),
+      new THREE.MeshBasicMaterial({color, transparent: true, opacity: .12, depthWrite: false, side: THREE.DoubleSide}),
+    )
+    rangeRing.rotation.x = Math.PI / 2
+    rangeRing.position.y = .08
+    rangeRing.name = "team-tower-attack-range"
+    group.add(base, shaft, roof, core, rangeRing)
+    group.userData.objectiveRangeRing = rangeRing
   }
   group.position.set(Number(objective.x) * WORLD_SCALE, 0, Number(objective.y) * WORLD_SCALE)
   group.userData.objectiveId = objective.id
   group.userData.objectiveMaterial = material
+  group.userData.objectiveHealthBar = health.group
+  group.userData.objectiveHealthFill = health.fill
+  group.userData.objectiveHealthLabel = health.label
+  group.userData.objectiveProtection = protection
   return group
 }
 
@@ -73,9 +224,11 @@ const shapeGeometry = points => {
 }
 
 const riverProfile = [
-  [-96, 2.05], [-82, 2.45], [-68, 2.15], [-54, 2.65], [-40, 2.25],
-  [-26, 2.5], [-12, 2.1], [0, 2.4], [12, 2.1], [26, 2.5],
-  [40, 2.25], [54, 2.65], [68, 2.15], [82, 2.45], [96, 2.05],
+  // Both banks widen into estuary mouths. The endpoints stop at the island's
+  // shoreline so the river joins the ocean instead of cutting through it.
+  [-108, 4.15], [-96, 3.5], [-84, 3.1], [-72, 2.8], [-60, 2.6], [-48, 2.3], [-36, 2.45],
+  [-24, 2.2], [-12, 2.4], [0, 2.2], [12, 2.4], [24, 2.2], [36, 2.45], [48, 2.3],
+  [60, 2.6], [72, 2.8], [84, 3.1], [96, 3.5], [108, 4.15],
 ]
 
 const riverBankGeometry = extra => shapeGeometry([
@@ -557,13 +710,14 @@ export class MapRenderer {
   }
 
   syncIsland(game, width, height) {
-    const isFirstTrial = game?.islandName === "Остров Первого Испытания"
+    const teamBattle = isTeamBattleMode(game?.mode)
+    const isFirstTrial = !teamBattle && game?.islandName === "Остров Первого Испытания"
     const themeChanged = (this.ground.theme === "island") !== isFirstTrial
     this.ground.setTheme(isFirstTrial ? "island" : "default")
     if (themeChanged && this.mapState) this.syncWildflowers()
     this.syncIslandTerrain(isFirstTrial, width, height)
-    this.syncPhaseAtmosphere(game?.phase, width, height)
-    const stormRadius = Number(game?.stormRadius) || 0
+    this.syncPhaseAtmosphere(teamBattle ? "" : game?.phase, width, height)
+    const stormRadius = teamBattle ? 0 : Number(game?.stormRadius) || 0
     if (stormRadius > 0) {
       const outerRadius = Math.hypot(width, height) * 0.5 * WORLD_SCALE
       const mapKey = `${width}:${height}:${outerRadius}`
@@ -741,7 +895,7 @@ export class MapRenderer {
         }
       })
     })
-    const nonBushWalls = walls.filter(wall => wall.type !== "bush" && wall.type !== "half" && wall.type !== "moon_mist" && wall.type !== "river")
+    const nonBushWalls = walls.filter(wall => wall.type !== "bush" && wall.type !== "half" && wall.type !== "moon_mist" && wall.type !== "river" && wall.type !== "river_bridge")
     const renderWalls = [
       ...mergeWalls(nonBushWalls.filter(wall => wall.type === "water")),
       ...nonBushWalls.filter(wall => wall.type !== "water" && !STONE_PROP_TYPES.has(wall.type)),
@@ -765,6 +919,9 @@ export class MapRenderer {
   syncObjectives(objectives) {
     const incoming = Array.isArray(objectives) ? objectives : []
     const active = new Set()
+    const towersAlive = new Set(incoming
+      .filter(objective => objective?.type === "tower" && Number(objective.lives) > 0)
+      .map(objective => String(objective.team)))
     incoming.forEach(objective => {
       if (!objective?.id) return
       active.add(String(objective.id))
@@ -777,11 +934,26 @@ export class MapRenderer {
       const material = object.userData.objectiveMaterial
       const maxLives = Math.max(1, Number(objective.maxLives) || 1)
       const lives = Math.max(0, Number(objective.lives) || 0)
-      const ratio = lives / maxLives
+      const ratio = objectiveHealthFraction(lives, maxLives)
       object.visible = lives > 0 || incoming.some(candidate => candidate?.team !== objective.team && candidate?.type === "town_hall" && Number(candidate.lives) > 0)
-      object.scale.setScalar(.82 + ratio * .18)
+      const visualScale = .82 + ratio * .18
+      object.scale.setScalar(visualScale)
+      if (object.userData.objectiveRangeRing) object.userData.objectiveRangeRing.scale.setScalar(1 / visualScale)
+      if (object.userData.objectiveRangeRing?.material) object.userData.objectiveRangeRing.material.opacity = lives > 0 ? .12 : 0
+      if (object.userData.objectiveHealthBar) {
+        const badgeScale = Number(object.userData.objectiveHealthBar.userData.baseScale) || 1
+        object.userData.objectiveHealthBar.scale.setScalar(badgeScale / visualScale)
+        object.userData.objectiveHealthFill.scale.x = object.userData.objectiveHealthFill.userData.fullWidth * ratio
+        updateObjectiveHealthLabel(object.userData.objectiveHealthLabel, objective)
+      }
+      if (object.userData.objectiveProtection) {
+        const protectedHall = objective.type === "town_hall" && lives > 0 && towersAlive.has(String(objective.team))
+        object.userData.objectiveProtection.visible = protectedHall
+        object.userData.objectiveProtection.scale.setScalar(1 / visualScale)
+      }
       if (material) material.emissive?.setHex?.(String(objective.team) === "Blue" ? 0x102f68 : 0x651622)
       object.userData.objectiveState = objective
+      object.userData.objectiveProtected = objective.type === "town_hall" && towersAlive.has(String(objective.team))
     })
     this.objectiveObjects.forEach((object, id) => {
       if (active.has(id)) return

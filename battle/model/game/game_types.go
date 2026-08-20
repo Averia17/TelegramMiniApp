@@ -53,8 +53,12 @@ const (
 	BotProgressDistance     = 1.0
 	BotSearchDuration       = 2800 * time.Millisecond
 	BotExploreDuration      = 2600 * time.Millisecond
-	AttackRateScale         = 1.55
-	ReloadTimeScale         = 1.22
+	// Bots should react quickly enough to feel active, but not so quickly that
+	// they look like they have access to the whole authoritative state.
+	BotReactionDelayMin = 140 * time.Millisecond
+	BotReactionDelayMax = 320 * time.Millisecond
+	AttackRateScale     = 1.55
+	ReloadTimeScale     = 1.22
 	// Public hero stats stay compact for the UX; these keep their combat pace
 	// in the same world-unit range as before the catalog compaction.
 	RuntimeMovementSpeedScale   = 12.0
@@ -151,7 +155,12 @@ type ObjectiveState struct {
 	ID, Type, Team  string
 	X, Y, Radius    float64
 	Lives, MaxLives int
+	AttackRange     float64
 	AttackAt        int64
+	AttackTargetID  string
+	AttackTargetX   float64
+	AttackTargetY   float64
+	AttackReleaseAt int64
 	LastDamagedAt   int64
 	LastDamagedBy   string
 }
@@ -161,21 +170,25 @@ type botPathCell struct {
 }
 
 type BotPerception struct {
-	TargetType              string
-	TargetID                string
-	LastSeenX, LastSeenY    float64
-	LastSeenAt, SearchUntil int64
-	ExploreX, ExploreY      float64
-	ExploreUntil            int64
-	ExploreIndex            int
-	Path                    []geometry.Vector2
-	PathGoalX, PathGoalY    int
-	PathMapRevision         int
-	PathRefreshAt           int64
-	PathLastX, PathLastY    float64
-	PathLastAt              int64
-	PathStuckSince          int64
-	PathReplanCount         int
+	TargetType               string
+	TargetID                 string
+	LastSeenX, LastSeenY     float64
+	LastSeenAt, SearchUntil  int64
+	ExploreX, ExploreY       float64
+	ExploreUntil             int64
+	ExploreIndex             int
+	Path                     []geometry.Vector2
+	PathGoalX, PathGoalY     int
+	PathMapRevision          int
+	PathRefreshAt            int64
+	PathLastX, PathLastY     float64
+	PathLastAt               int64
+	PathStuckSince           int64
+	PathReplanCount          int
+	DecisionUntil            int64
+	IntentMoveX, IntentMoveY float64
+	StrafeSign               float64
+	StrafeUntil              int64
 }
 
 type DelayedBattleEffect struct {

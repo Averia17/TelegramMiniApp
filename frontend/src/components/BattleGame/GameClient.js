@@ -12,6 +12,7 @@ const GAME_MESSAGES = new Set([
   "error",
   "you_died",
   "match_found",
+  "battle_recovered",
   "party_state",
   "taunt",
 ])
@@ -49,21 +50,37 @@ export class GameClient {
   }
 
   connect() {
-    this.ws = new WebSocket(this.url)
-    this.ws.onopen = () => {
-      this.ws.send(JSON.stringify({type: "auth", token: this.accessToken}))
+    const previousSocket = this.ws
+    if (this.clockSyncTimer) clearInterval(this.clockSyncTimer)
+    this.clockSyncTimer = null
+    this.clockSyncRequests.clear()
+    this.connected = false
+    this.ws = null
+    previousSocket?.close()
+
+    const socket = new WebSocket(this.url)
+    this.ws = socket
+    socket.onopen = () => {
+      if (this.ws !== socket) return
+      socket.send(JSON.stringify({type: "auth", token: this.accessToken}))
       this.connected = true
       this.onConnect?.()
       this.clockSyncTimer = setInterval(() => this.syncClock(), 2000)
     }
-    this.ws.onclose = () => {
+    socket.onclose = () => {
+      if (this.ws !== socket) return
+      this.ws = null
       this.connected = false
       if (this.clockSyncTimer) clearInterval(this.clockSyncTimer)
       this.clockSyncTimer = null
+      this.clockSyncRequests.clear()
       this.onDisconnect?.()
     }
-    this.ws.onerror = error => console.error("WebSocket error:", error)
-    this.ws.onmessage = event => {
+    socket.onerror = error => {
+      if (this.ws === socket) console.error("WebSocket error:", error)
+    }
+    socket.onmessage = event => {
+      if (this.ws !== socket) return
       try {
         this.lastStateBytes = typeof event.data === "string" ? event.data.length : 0
         this.handleMessage(JSON.parse(event.data))
@@ -177,6 +194,11 @@ export class GameClient {
     }))
   }
 
+  recoverBattle(roomId = "") {
+    if (this.ws?.readyState !== WebSocket.OPEN) return
+    this.ws.send(JSON.stringify({type: "recover_battle", ...(roomId ? {roomId} : {})}))
+  }
+
   createParty(maxSize = 3, partyId = "") {
     if (this.ws?.readyState !== WebSocket.OPEN) return
     this.ws.send(JSON.stringify({type: "party_create", maxSize, ...(partyId ? {partyId} : {})}))
@@ -238,7 +260,10 @@ export class GameClient {
   disconnect() {
     if (this.clockSyncTimer) clearInterval(this.clockSyncTimer)
     this.clockSyncTimer = null
-    this.ws?.close()
+    this.clockSyncRequests.clear()
+    const socket = this.ws
     this.ws = null
+    this.connected = false
+    socket?.close()
   }
 }

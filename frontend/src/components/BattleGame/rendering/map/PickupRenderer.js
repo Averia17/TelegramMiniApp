@@ -1,7 +1,7 @@
 import * as THREE from "three"
 import {worldToScene, WORLD_SCALE} from "../shared/coordinates.js"
 import {disposeObjectTree} from "../shared/disposal.js"
-import {createContactShadow, flatMaterial} from "../shared/materials.js"
+import {createColoredBox, createContactShadow, flatMaterial} from "../shared/materials.js"
 
 const pickupKey = pickup =>
   `${pickup.type}:${Math.round(Number(pickup.x) || 0)}:${Math.round(Number(pickup.y) || 0)}`
@@ -16,78 +16,50 @@ export const getPropHealthFraction = (current, maximum) => (
   Math.max(0, Math.min(1, (Number(current) || 0) / Math.max(1, Number(maximum) || 1)))
 )
 
-const roundedBarGeometry = (length, width) => {
-  const shape = new THREE.Shape()
-  const radius = width / 2
-  const half = length / 2
-  shape.moveTo(-half + radius, -radius)
-  shape.lineTo(half - radius, -radius)
-  shape.absarc(half - radius, 0, radius, -Math.PI / 2, Math.PI / 2, false)
-  shape.lineTo(-half + radius, radius)
-  shape.absarc(-half + radius, 0, radius, Math.PI / 2, Math.PI * 1.5, false)
-  const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: width * 0.9,
-    bevelEnabled: true,
-    bevelThickness: width * 0.18,
-    bevelSize: width * 0.18,
-    bevelSegments: 2,
-  })
-  geometry.center()
-  return geometry
-}
-
-const createHealGlow = radius => {
-  const glow = createContactShadow(radius)
-  glow.material.color.set(0x59ff7a)
-  glow.material.opacity = 0.45
-  glow.material.blending = THREE.AdditiveBlending
-  glow.position.y = 0.02
-  glow.userData.role = "heal-glow"
-  return glow
-}
-
-const createHealthPotion = pickup => {
+export const createHealthPotion = pickup => {
   const group = new THREE.Group()
   group.userData.type = pickup.type
+  group.userData.palette = "green"
+  group.userData.spin = true
   group.userData.pulse = true
 
-  const cross = new THREE.Group()
-  const barLength = 22 * WORLD_SCALE
-  const barWidth = 8.5 * WORLD_SCALE
-
-  const outlineMaterial = flatMaterial(0xf4fff6)
-  const outlineHorizontal = new THREE.Mesh(
-    roundedBarGeometry(barLength + 3 * WORLD_SCALE, barWidth + 3 * WORLD_SCALE),
-    outlineMaterial,
+  const halo = new THREE.Mesh(
+    new THREE.CircleGeometry(14 * WORLD_SCALE, 32),
+    flatMaterial(0x5dff76, {
+      transparent: true,
+      opacity: .22,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
   )
-  const outlineVertical = new THREE.Mesh(
-    roundedBarGeometry(barLength + 3 * WORLD_SCALE, barWidth + 3 * WORLD_SCALE),
-    outlineMaterial.clone(),
-  )
-  outlineVertical.rotation.z = Math.PI / 2
+  halo.rotation.x = -Math.PI / 2
+  halo.position.y = .03
+  halo.userData.role = "health-potion-halo"
 
-  const greenMaterial = flatMaterial(0x2fd65c)
-  const greenHorizontal = new THREE.Mesh(
-    roundedBarGeometry(barLength, barWidth),
-    greenMaterial,
-  )
-  greenHorizontal.position.y = 1.5 * WORLD_SCALE
-  greenHorizontal.position.z = 2 * WORLD_SCALE
-  greenHorizontal.renderOrder = 2
-  const greenVertical = new THREE.Mesh(
-    roundedBarGeometry(barLength, barWidth),
-    greenMaterial.clone(),
-  )
-  greenVertical.rotation.z = Math.PI / 2
-  greenVertical.position.y = 1.5 * WORLD_SCALE
-  greenVertical.position.z = 2 * WORLD_SCALE
-  greenVertical.renderOrder = 2
+  const cubeRoot = new THREE.Group()
+  cubeRoot.rotation.y = Math.PI / 4
+  const cubeSize = 17 * WORLD_SCALE
+  const cube = createColoredBox(cubeSize, cubeSize, cubeSize, 0x3fcf62)
+  cube.position.y = 11 * WORLD_SCALE
+  cube.userData.role = "health-potion-cube"
 
-  cross.add(outlineHorizontal, outlineVertical, greenHorizontal, greenVertical)
-  cross.position.y = 14 * WORLD_SCALE
-  cross.rotation.x = -0.35
+  const edge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(cubeSize * 1.02, cubeSize * 1.02, cubeSize * 1.02)),
+    new THREE.LineBasicMaterial({color: 0xb9ffc3, transparent: true, opacity: .7}),
+  )
+  edge.position.y = cube.position.y
+  edge.userData.role = "health-potion-edge"
 
-  group.add(createHealGlow(14 * WORLD_SCALE), cross)
+  const emblem = new THREE.Mesh(
+    new THREE.OctahedronGeometry(4.6 * WORLD_SCALE, 0),
+    flatMaterial(0xe8ffd9),
+  )
+  emblem.scale.y = .75
+  emblem.position.set(0, 11 * WORLD_SCALE, 9.2 * WORLD_SCALE)
+  emblem.userData.role = "health-potion-emblem"
+
+  cubeRoot.add(cube, edge, emblem)
+  group.add(createContactShadow(13 * WORLD_SCALE), halo, cubeRoot)
   return group
 }
 
@@ -163,49 +135,137 @@ export const createHealthCrate = pickup => {
   const group = new THREE.Group()
   group.userData.type = "health_crate"
   group.userData.spin = false
-  const bodyMaterial = flatMaterial(0x9b542d)
-  const body = new THREE.Mesh(new THREE.BoxGeometry(29 * WORLD_SCALE, 24 * WORLD_SCALE, 29 * WORLD_SCALE), bodyMaterial)
-  body.position.y = 14 * WORLD_SCALE
+
+  const body = createColoredBox(
+    31 * WORLD_SCALE,
+    31 * WORLD_SCALE,
+    31 * WORLD_SCALE,
+    0x98502a,
+  )
+  body.position.y = 16 * WORLD_SCALE
   body.userData.role = "health-crate-body"
 
-  const sideBand = new THREE.Mesh(
-    new THREE.BoxGeometry(31 * WORLD_SCALE, 4 * WORLD_SCALE, 6 * WORLD_SCALE),
-    flatMaterial(0xe7953d),
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(33 * WORLD_SCALE, 2 * WORLD_SCALE, 33 * WORLD_SCALE),
+    flatMaterial(0x5e301f),
   )
-  sideBand.position.y = 14 * WORLD_SCALE
-  sideBand.userData.role = "health-crate-band"
-  const frontBand = sideBand.clone()
-  frontBand.rotation.y = Math.PI / 2
+  base.position.y = 2 * WORLD_SCALE
+  base.userData.role = "health-crate-base"
 
-  const cap = new THREE.Mesh(
-    new THREE.BoxGeometry(21 * WORLD_SCALE, 5 * WORLD_SCALE, 21 * WORLD_SCALE),
-    flatMaterial(0x6e8792),
+  const edge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(32 * WORLD_SCALE, 32 * WORLD_SCALE, 32 * WORLD_SCALE)),
+    new THREE.LineBasicMaterial({color: 0xd17a3b, transparent: true, opacity: .7}),
   )
-  cap.position.y = 28 * WORLD_SCALE
-  cap.userData.role = "health-crate-cap"
-  const lock = new THREE.Mesh(
-    new THREE.BoxGeometry(7 * WORLD_SCALE, 5 * WORLD_SCALE, 3 * WORLD_SCALE),
-    flatMaterial(0xd9e6df),
+  edge.position.y = body.position.y
+  edge.userData.role = "health-crate-edge"
+
+  const frontPanel = new THREE.Mesh(
+    new THREE.BoxGeometry(27 * WORLD_SCALE, 27 * WORLD_SCALE, 1.3 * WORLD_SCALE),
+    flatMaterial(0x824323),
   )
-  lock.position.set(0, 28 * WORLD_SCALE, 11 * WORLD_SCALE)
-  lock.userData.role = "health-crate-lock"
+  frontPanel.position.set(0, 16 * WORLD_SCALE, 16.2 * WORLD_SCALE)
+  frontPanel.userData.role = "health-crate-front-panel"
+
+  const frontPlanks = [-9, 0, 9].map(x => {
+    const rail = new THREE.Mesh(
+      new THREE.BoxGeometry(1.8 * WORLD_SCALE, 27 * WORLD_SCALE, 1.8 * WORLD_SCALE),
+      flatMaterial(0x54291b),
+    )
+    rail.position.set(x * WORLD_SCALE, 16 * WORLD_SCALE, 17.2 * WORLD_SCALE)
+    rail.userData.role = "health-crate-plank"
+    return rail
+  })
+
+  const frontRails = [7, 24].map(y => {
+    const plank = new THREE.Mesh(
+      new THREE.BoxGeometry(27 * WORLD_SCALE, 1.8 * WORLD_SCALE, 1.8 * WORLD_SCALE),
+      flatMaterial(0x6d351f),
+    )
+    plank.position.set(0, y * WORLD_SCALE, 17.2 * WORLD_SCALE)
+    plank.userData.role = "health-crate-plank"
+    return plank
+  })
+
+  const corners = [-1, 1].flatMap(x => [5, 27].map(y => {
+    const corner = new THREE.Mesh(
+      new THREE.BoxGeometry(4 * WORLD_SCALE, 4 * WORLD_SCALE, 2.4 * WORLD_SCALE),
+      flatMaterial(0xc47a3a),
+    )
+    corner.position.set(x * 12.5 * WORLD_SCALE, y * WORLD_SCALE, 18 * WORLD_SCALE)
+    corner.userData.role = "health-crate-corner"
+    return corner
+  }))
+
+  const createCrack = points => {
+    const crack = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(
+        points.map(([x, y]) => new THREE.Vector3(x * WORLD_SCALE, y * WORLD_SCALE, 18.25 * WORLD_SCALE)),
+      ),
+      new THREE.LineBasicMaterial({color: 0x351d17, transparent: true, opacity: .95}),
+    )
+    crack.userData.role = "health-crate-crack"
+    return crack
+  }
+  const cracks = [
+    createCrack([[-7, 22], [-3, 18], [-1, 19], [2, 14]]),
+    createCrack([[2, 14], [5, 12], [4, 8], [8, 5]]),
+    createCrack([[-1, 19], [1, 22], [5, 24]]),
+  ]
+
+  const gemGlow = new THREE.Mesh(
+    new THREE.CircleGeometry(8 * WORLD_SCALE, 24),
+    flatMaterial(0x4dff72, {
+      transparent: true,
+      opacity: .18,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  )
+  gemGlow.position.set(0, 16 * WORLD_SCALE, 17.35 * WORLD_SCALE)
+  gemGlow.userData.role = "health-crate-gem-glow"
+
+  const gem = new THREE.Mesh(
+    new THREE.OctahedronGeometry(5 * WORLD_SCALE, 0),
+    flatMaterial(0x82ff91),
+  )
+  gem.scale.y = .78
+  gem.position.set(0, 16 * WORLD_SCALE, 18.35 * WORLD_SCALE)
+  gem.userData.role = "health-crate-energy-gem"
 
   const healthBar = createPropHealthBar(pickup)
   group.userData.healthBar = healthBar
   group.userData.healthFill = healthBar.userData.healthFill
-  group.add(createContactShadow(17 * WORLD_SCALE), body, sideBand, frontBand, cap, lock, healthBar)
+  group.add(
+    createContactShadow(18 * WORLD_SCALE),
+    base,
+    body,
+    edge,
+    frontPanel,
+    ...frontPlanks,
+    ...frontRails,
+    ...corners,
+    ...cracks,
+    gemGlow,
+    gem,
+    healthBar,
+  )
   return group
 }
 
-export const createHealthBoost = pickup => {
-  const group = createHealthPotion({...pickup, type: "health_boost"})
+export const createHealthBoost = () => {
+  const group = new THREE.Group()
   group.userData.type = "health_boost"
   group.userData.healthBoost = true
+  group.userData.palette = "purple"
+  group.userData.rarity = "hero"
+  group.userData.spin = true
+  group.userData.pulse = true
+
   const halo = new THREE.Mesh(
-    new THREE.CircleGeometry(15 * WORLD_SCALE, 28),
-    flatMaterial(0x59ff7a, {
+    new THREE.CircleGeometry(17 * WORLD_SCALE, 32),
+    flatMaterial(0xc55dff, {
       transparent: true,
-      opacity: .28,
+      opacity: .2,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     }),
@@ -213,7 +273,67 @@ export const createHealthBoost = pickup => {
   halo.rotation.x = -Math.PI / 2
   halo.position.y = .03
   halo.userData.role = "health-boost-halo"
-  group.add(halo)
+
+  const cubeRoot = new THREE.Group()
+  cubeRoot.rotation.y = Math.PI / 4
+  const cube = createColoredBox(
+    19 * WORLD_SCALE,
+    19 * WORLD_SCALE,
+    19 * WORLD_SCALE,
+    0x8747d7,
+  )
+  cube.position.y = 12 * WORLD_SCALE
+  cube.userData.role = "health-boost-cube"
+
+  const edge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(19.4 * WORLD_SCALE, 19.4 * WORLD_SCALE, 19.4 * WORLD_SCALE)),
+    new THREE.LineBasicMaterial({color: 0xf0c2ff, transparent: true, opacity: .82}),
+  )
+  edge.position.y = cube.position.y
+  edge.userData.role = "health-boost-edge"
+
+  const boltShape = new THREE.Shape()
+  const boltWidth = 5.5 * WORLD_SCALE
+  const boltHeight = 12 * WORLD_SCALE
+  boltShape.moveTo(-boltWidth * .1, boltHeight / 2)
+  boltShape.lineTo(-boltWidth * .82, -boltHeight * .02)
+  boltShape.lineTo(-boltWidth * .12, -boltHeight * .02)
+  boltShape.lineTo(-boltWidth * .52, -boltHeight / 2)
+  boltShape.lineTo(boltWidth * .82, boltHeight * .12)
+  boltShape.lineTo(boltWidth * .1, boltHeight * .12)
+  boltShape.closePath()
+  const bolt = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(boltShape, {
+      depth: 1.4 * WORLD_SCALE,
+      bevelEnabled: true,
+      bevelThickness: .45 * WORLD_SCALE,
+      bevelSize: .35 * WORLD_SCALE,
+      bevelSegments: 2,
+    }),
+    flatMaterial(0xfff3a3),
+  )
+  bolt.geometry.center()
+  bolt.position.set(0, 12 * WORLD_SCALE, 10.3 * WORLD_SCALE)
+  bolt.userData.role = "health-boost-bolt"
+
+  const shards = [
+    [-13, 18, 1],
+    [13, 16, -1],
+    [-2, 28, -8],
+    [1, 3, 9],
+  ].map(([x, y, z]) => {
+    const shard = new THREE.Mesh(
+      new THREE.OctahedronGeometry(2.2 * WORLD_SCALE, 0),
+      flatMaterial(0xd8a0ff),
+    )
+    shard.position.set(x * WORLD_SCALE, y * WORLD_SCALE, z * WORLD_SCALE)
+    shard.scale.y = 1.35
+    shard.userData.role = "health-boost-shard"
+    return shard
+  })
+
+  cubeRoot.add(cube, edge, bolt, ...shards)
+  group.add(createContactShadow(14 * WORLD_SCALE), halo, cubeRoot)
   return group
 }
 

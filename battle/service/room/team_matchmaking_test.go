@@ -99,3 +99,17 @@ func TestFormPartialTeamAssignmentsKeepsThreePlayersAsBalancedAsPossible(t *test
 		t.Fatalf("team counts = %#v, want 2/1", counts)
 	}
 }
+
+func TestSwapTeamAssignmentSidesPreservesRosterAndSwapsBases(t *testing.T) {
+	assignments := map[string]string{
+		"player-1": "Blue",
+		"player-2": "Blue",
+		"player-3": "Red",
+	}
+
+	swapTeamAssignmentSides(assignments)
+
+	if assignments["player-1"] != "Red" || assignments["player-2"] != "Red" || assignments["player-3"] != "Blue" {
+		t.Fatalf("assignments after side swap = %#v, want Blue/Red exchanged", assignments)
+	}
+}

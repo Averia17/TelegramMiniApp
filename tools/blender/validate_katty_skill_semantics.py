@@ -7,7 +7,6 @@ from pathlib import Path
 
 import bpy
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes" / "katty" / "katty.blend"
 EXPECTED = {

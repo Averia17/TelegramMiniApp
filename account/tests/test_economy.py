@@ -2,8 +2,12 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from services.economy import (open_chest, purchase_taunt_pack,
-                              refill_all_wallets, spend_taunt)
+from services.economy import (
+    open_chest,
+    purchase_taunt_pack,
+    refill_all_wallets,
+    spend_taunt,
+)
 from services.shop_catalog import ShopCatalogError
 
 
@@ -139,8 +143,9 @@ class EconomyChestTests(unittest.IsolatedAsyncioTestCase):
         session = _Session([wallet])
         catalog = _ShopCatalog(price=27)
 
-        with patch("services.economy.random.random", return_value=0.99), patch(
-            "services.economy.random.randint", return_value=7
+        with (
+            patch("services.economy.random.random", return_value=0.99),
+            patch("services.economy.random.randint", return_value=7),
         ):
             result = await open_chest(session, 42, 1001, catalog_client=catalog)
 
@@ -167,8 +172,9 @@ class EconomyChestTests(unittest.IsolatedAsyncioTestCase):
         wallet = _Wallet(50, now, crystals=1, gold=20)
         session = _Session([wallet])
 
-        with patch("services.economy.random.random", return_value=0.05), patch(
-            "services.economy.random.randint", side_effect=[7, 8]
+        with (
+            patch("services.economy.random.random", return_value=0.05),
+            patch("services.economy.random.randint", side_effect=[7, 8]),
         ):
             result = await open_chest(
                 session, 42, 1001, catalog_client=_ShopCatalog(20)

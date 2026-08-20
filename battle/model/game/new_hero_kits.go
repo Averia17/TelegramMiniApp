@@ -25,6 +25,10 @@ const (
 	KattySprayCloudSlow       = .72
 	KattySuperRadius          = 220.0
 	KattySuperDuration        = 7500 * time.Millisecond
+	KattySuperImpactDamage    = 70
+	KattySuperPuddleDamage    = 12
+	KattySuperPuddleTick      = 600 * time.Millisecond
+	KattySuperPuddleTicks     = 10
 	KattyPaintTrailWidth      = 42.0
 
 	// Active skill windows are deliberately short enough to leave counterplay;
@@ -63,6 +67,7 @@ type HeroZone struct {
 	ToX, ToY, Width                             float64
 	CreatedAt, ExpiresAt, NextTickAt, TriggerAt int64
 	Triggered                                   map[string]bool
+	ImpactDone                                  bool
 	Visual                                      *BattleEffect
 }
 
@@ -94,6 +99,7 @@ func (KattyKit) AttackRange() float64          { return KattySprayRange }
 
 func (KattyKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64) {
 	shot := gs.spawnAttackBullet(p, angle, "katty_paint_spray", p.AttackDmg, 30*RuntimeProjectileSpeedScale, 10, KattyKit{}.AttackRange(), 0, false, false)
+	shot.Splash = heroAttackConfigs["Katty"].SplashRadius
 	shot.CommandID = gs.activeCommandID
 	gs.addEffect("katty_paint_spray", p.X, p.Y, 0, 0, KattyKit{}.AttackRange(), angle, 0, .20, p.Color, p.AttackDmg, 260)
 }
@@ -109,6 +115,12 @@ func (KattyKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance
 	gs.HeroZones = append(gs.HeroZones, &HeroZone{
 		Owner: p.PlayerId, Kind: "katty_paint_puddle", X: x, Y: y, Radius: KattySuperRadius,
 		CreatedAt: ts, TriggerAt: ts + 500, ExpiresAt: ts + duration, NextTickAt: ts, Triggered: map[string]bool{},
+	})
+	gs.DamageZones = append(gs.DamageZones, &DamageZone{
+		Owner: p.PlayerId, Kind: "katty_paint_puddle", X: x, Y: y, Radius: KattySuperRadius,
+		Damage: KattySuperPuddleDamage, TicksLeft: KattySuperPuddleTicks,
+		NextTickAt: ts + 650, Interval: KattySuperPuddleTick.Milliseconds(), ExpiresAt: ts + duration,
+		Color: p.Color,
 	})
 	gs.addEffect("katty_paint_grenade", p.X, p.Y, x, y, 26, angle, distance, 0, p.Color, p.AttackDmg, 500)
 	return true
@@ -174,6 +186,109 @@ func (gs *GameState) spawnKattyPaintCloud(source *player.Player, x, y float64, t
 		Kind: "katty_paint_cloud", Color: source.Color,
 	})
 	gs.addEffect("katty_paint_cloud", x, y, 0, 0, KattySprayCloudRadius, 0, 0, 0, source.Color, KattySprayCloudDamage, KattySprayCloudDuration.Milliseconds())
+}
+
+func (gs *GameState) resolveKattySuperImpact(owner *player.Player, zone *HeroZone, ts int64) {
+	if gs == nil || owner == nil || zone == nil {
+		return
+	}
+	for _, target := range gs.Players {
+		if !target.CanBulletHurt(owner.PlayerId, owner.Team) || math.Hypot(target.X-zone.X, target.Y-zone.Y) > zone.Radius+target.Radius {
+			continue
+		}
+		if gs.dealPlayerDamage(owner, target, KattySuperImpactDamage) > 0 {
+			gs.applyKattyPaint(owner, target, ts, 3, true)
+		}
+		zone.Triggered[target.PlayerId] = true
+	}
+	for id, target := range gs.Monsters {
+		if target == nil || !target.IsAlive() || math.Hypot(target.X-zone.X, target.Y-zone.Y) > zone.Radius+target.Radius {
+			continue
+		}
+		gs.damageMonster(id, target, KattySuperImpactDamage)
+	}
+	for _, crate := range gs.Props {
+		if crate == nil || !crate.Active || !isBreakableCrate(crate) || math.Hypot(crate.X-zone.X, crate.Y-zone.Y) > zone.Radius+crate.Radius {
+			continue
+		}
+		gs.damageCrate(owner, crate, KattySuperImpactDamage)
+	}
+	gs.addEffect("katty_paint_impact", zone.X, zone.Y, 0, 0, 150, 0, 0, 0, owner.Color, KattySuperImpactDamage, 520)
+}
+
+func (gs *GameState) damageKattyPuddle(zone *DamageZone) int {
+	if gs == nil || zone == nil {
+		return 0
+	}
+	hits := 0
+	source := gs.Players[zone.Owner]
+	if source == nil {
+		return 0
+	}
+	for _, target := range gs.Players {
+		if !target.CanBulletHurt(source.PlayerId, source.Team) || math.Hypot(target.X-zone.X, target.Y-zone.Y) > zone.Radius+target.Radius {
+			continue
+		}
+		if gs.dealPlayerDamage(source, target, zone.Damage) > 0 {
+			hits++
+		}
+	}
+	for id, target := range gs.Monsters {
+		if target == nil || !target.IsAlive() || math.Hypot(target.X-zone.X, target.Y-zone.Y) > zone.Radius+target.Radius {
+			continue
+		}
+		gs.damageMonster(id, target, zone.Damage)
+		hits++
+	}
+	for _, crate := range gs.Props {
+		if crate == nil || !crate.Active || !isBreakableCrate(crate) || math.Hypot(crate.X-zone.X, crate.Y-zone.Y) > zone.Radius+crate.Radius {
+			continue
+		}
+		if gs.damageCrate(source, crate, zone.Damage) {
+			hits++
+		}
+	}
+	return hits
+}
+
+func (gs *GameState) resolveKattyPaintSprayImpact(shot *bullet.Bullet) {
+	if gs == nil || shot == nil {
+		return
+	}
+	source := gs.Players[shot.PlayerId]
+	if source == nil {
+		return
+	}
+	radius := shot.Splash
+	if radius <= 0 {
+		radius = KattySprayCloudRadius
+	}
+	damage := int(math.Max(1, float64(shot.Damage)))
+	now := time.Now().UnixMilli()
+
+	for _, target := range gs.Players {
+		if !target.CanBulletHurt(source.PlayerId, source.Team) || math.Hypot(target.X-shot.X, target.Y-shot.Y) > radius+target.Radius {
+			continue
+		}
+		distance := math.Max(1, math.Hypot(target.X-shot.X, target.Y-shot.Y))
+		target.HitImpulseX, target.HitImpulseY = (target.X-shot.X)/distance, (target.Y-shot.Y)/distance
+		if gs.dealPlayerDamage(source, target, damage) > 0 {
+			gs.applyKattyPaint(source, target, now, 1, false)
+		}
+	}
+	for id, target := range gs.Monsters {
+		if target == nil || !target.IsAlive() || math.Hypot(target.X-shot.X, target.Y-shot.Y) > radius+target.Radius {
+			continue
+		}
+		gs.damageMonster(id, target, damage)
+	}
+	for _, crate := range gs.Props {
+		if crate == nil || !crate.Active || !isBreakableCrate(crate) || math.Hypot(crate.X-shot.X, crate.Y-shot.Y) > radius+crate.Radius {
+			continue
+		}
+		gs.damageCrate(source, crate, damage)
+	}
+	gs.spawnKattyPaintCloud(source, shot.X, shot.Y, now)
 }
 
 func (MinaKit) Basic(gs *GameState, p *player.Player, _ int64, angle, _ float64) {
@@ -551,6 +666,10 @@ func (gs *GameState) updateNewHeroSystems() {
 			owner := gs.Players[z.Owner]
 			if z.Visual == nil && owner != nil {
 				z.Visual = gs.addEffect("katty_paint_puddle", z.X, z.Y, 0, 0, z.Radius, 0, 0, 0, owner.Color, 0, z.ExpiresAt-now)
+			}
+			if owner != nil && !z.ImpactDone {
+				gs.resolveKattySuperImpact(owner, z, now)
+				z.ImpactDone = true
 			}
 			for _, target := range gs.Players {
 				if owner != nil && target.CanBulletHurt(owner.PlayerId, owner.Team) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {

@@ -98,6 +98,31 @@ func (gs *GameState) autoAimTarget(owner string) (float64, float64) {
 		gs.autoAimTargetX, gs.autoAimTargetY, gs.autoAimTargetID, gs.hasAutoAimTarget = best.X, best.Y, best.PlayerId, true
 		return screenAngleFromWorld(math.Atan2(best.Y-source.Y, best.X-source.X)), bestDistance
 	}
+	if gs.Mode == ModeTeamDeathmatch {
+		// Siege auto-aim follows the same readable priority as the base rules:
+		// an enemy tower is a valid target once no enemy hero is nearby, and the
+		// town hall becomes targetable only after its towers are gone.
+		for _, targetType := range []string{"tower", "town_hall"} {
+			var objective *ObjectiveState
+			bestDistance := math.Inf(1)
+			for _, candidate := range gs.Objectives {
+				if candidate == nil || candidate.Type != targetType || candidate.Lives <= 0 || candidate.Team == source.Team {
+					continue
+				}
+				if candidate.Type == "town_hall" && gs.objectiveTowersAlive(candidate.Team) {
+					continue
+				}
+				distance := math.Hypot(candidate.X-source.X, candidate.Y-source.Y)
+				if distance <= reach+candidate.Radius && distance < bestDistance {
+					objective, bestDistance = candidate, distance
+				}
+			}
+			if objective != nil {
+				gs.autoAimTargetX, gs.autoAimTargetY, gs.hasAutoAimTarget = objective.X, objective.Y, true
+				return screenAngleFromWorld(math.Atan2(objective.Y-source.Y, objective.X-source.X)), bestDistance
+			}
+		}
+	}
 	var bestMonsterX, bestMonsterY float64
 	bestMonsterDistance := reach
 	hasMonster := false
@@ -243,6 +268,21 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 			damage = int(math.Round(float64(damage) * MandyFocusedDamageMultiplier))
 		}
 		gs.damageMonster(id, target, damage)
+	}
+	if gs.Mode == ModeTeamDeathmatch {
+		for _, objective := range gs.Objectives {
+			if objective == nil || objective.Lives <= 0 || objective.Team == source.Team || !gs.autoAimHitsTarget(source, objective.X, objective.Y, objective.Radius, angle, reach, halfArc) {
+				continue
+			}
+			damage := source.AttackDmg
+			if gadgetBoost > 1 {
+				damage = int(math.Round(float64(damage) * gadgetBoost))
+			}
+			if focused {
+				damage = int(math.Round(float64(damage) * MandyFocusedDamageMultiplier))
+			}
+			gs.damageObjective(source, objective, damage)
+		}
 	}
 	gs.addEffect("mandy_staff_swing", source.X, source.Y, 0, 0, reach, angle, reach, halfArc, source.Color, 0, 360)
 }
@@ -394,7 +434,9 @@ func (gs *GameState) updateDamageZones() {
 			continue
 		}
 		for zone.TicksLeft > 0 && now >= zone.NextTickAt {
-			if zone.Group == "" {
+			if zone.Kind == "katty_paint_puddle" {
+				gs.damageKattyPuddle(zone)
+			} else if zone.Group == "" {
 				damage := zone.Damage
 				if zone.PercentMaxHP > 0 {
 					gs.radialDamagePercentMaxHP(zone.Owner, zone.X, zone.Y, zone.Radius, zone.PercentMaxHP)

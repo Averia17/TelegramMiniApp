@@ -2,6 +2,7 @@ package game
 
 import (
 	"battle/model/monster"
+	"battle/model/prop"
 	"math"
 	"testing"
 	"time"
@@ -35,6 +36,42 @@ func TestNeedleSporeSlowUsesItsDurationOnTheFirstHit(t *testing.T) {
 	remaining := enemy.SlowUntil - time.Now().UnixMilli()
 	if remaining < 1800 || remaining > 2200 {
 		t.Fatalf("slow remaining=%dms, want about %dms", remaining, int(NeedleSporeSlowDuration/time.Millisecond))
+	}
+}
+
+func TestKattyBasicAttackDamagesEveryTargetInImpactRadius(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("katty", "Katty", "Katty")
+	gs.PlayerAdd("target", "Target", "Needle")
+	gs.PlayerAdd("bystander", "Bystander", "Mandy")
+	katty, target, bystander := gs.Players["katty"], gs.Players["target"], gs.Players["bystander"]
+	katty.X, katty.Y = 400, 400
+	target.X, target.Y = 500, 400
+	bystander.X, bystander.Y = 500, 440
+	gs.Monsters["bat"] = monster.NewMonster(500, 450, 16, gs.Map.WidthInPixels, gs.Map.HeightInPixels, monster.MonsterLives)
+	crate := prop.NewLunarCrate(500, 460, "damage")
+	gs.Props = append(gs.Props, crate)
+
+	KattyKit{}.Basic(gs, katty, time.Now().UnixMilli(), 0, 0)
+	shot := gs.Bullets[len(gs.Bullets)-1]
+	shot.X, shot.Y = target.X-4, target.Y
+	targetBefore, bystanderBefore := target.Lives, bystander.Lives
+	monsterBefore, crateBefore := gs.Monsters["bat"].Lives, crate.Lives
+
+	gs.updateBullets()
+
+	if dealt := targetBefore - target.Lives; dealt != katty.AttackDmg {
+		t.Fatalf("Katty impact dealt %d to direct target, want %d", dealt, katty.AttackDmg)
+	}
+	if dealt := bystanderBefore - bystander.Lives; dealt != katty.AttackDmg {
+		t.Fatalf("Katty impact dealt %d to nearby hero, want %d", dealt, katty.AttackDmg)
+	}
+	if dealt := monsterBefore - gs.Monsters["bat"].Lives; dealt != katty.AttackDmg {
+		t.Fatalf("Katty impact dealt %d to nearby monster, want %d", dealt, katty.AttackDmg)
+	}
+	if dealt := crateBefore - crate.Lives; dealt != katty.AttackDmg {
+		t.Fatalf("Katty impact dealt %d to nearby crate, want %d", dealt, katty.AttackDmg)
 	}
 }
 

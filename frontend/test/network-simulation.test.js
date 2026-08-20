@@ -241,6 +241,32 @@ test("local prediction sweeps through the same blocking wall geometry as the bac
   assert.equal(next.y, 80)
 })
 
+test("river cells block prediction while explicit bridge cells remain walkable", () => {
+  const river = {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "river", blocking: true}
+  const bridge = {minX: 100, minY: 0, maxX: 140, maxY: 40, type: "river_bridge", blocking: false}
+  const map = {width: 500, height: 500, walls: [river, bridge]}
+
+  const blocked = movePosition(
+    {x: 50, y: 80},
+    {x: 1, y: 0},
+    {radius: 10, movementSpeed: 320},
+    1,
+    map,
+    createCollisionIndex(map.walls),
+  )
+  const acrossBridge = movePosition(
+    {x: 50, y: 20},
+    {x: 1, y: 0},
+    {radius: 10, movementSpeed: 320},
+    1,
+    map,
+    createCollisionIndex([bridge]),
+  )
+
+  assert.equal(blocked.x, 90)
+  assert.equal(acrossBridge.x, 370)
+})
+
 test("local prediction applies authoritative prop collider insets", () => {
   const wall = {
     minX: 100, minY: 60, maxX: 140, maxY: 100, type: "tree", blocking: true,
@@ -404,6 +430,88 @@ test("large alive-player corrections are eased instead of snapped", () => {
   const displayed = simulation.getDisplayState(1116)
   assert.ok(displayed.players.local.x > 100)
   assert.ok(displayed.players.local.x < 300)
+})
+
+test("respawn snaps local prediction to the authoritative team spawn", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    map: {width: 2000, height: 2000, walls: []},
+    monsters: {},
+    bullets: [],
+  }
+
+  simulation.ingest({...base, ts: 1000, players: {
+    local: {x: 1200, y: 900, radius: 14, movementSpeed: 120, lives: 100, ack: 0, moveX: 1, moveY: 0},
+  }}, 0, 1000)
+  simulation.setLocalPlayerId("local")
+  simulation.setInput(1, 0, 1000)
+  simulation.advance(.2)
+
+  simulation.ingest({...base, ts: 2000, players: {
+    local: {x: 1200, y: 900, radius: 14, movementSpeed: 120, lives: 0, ack: 1000, moveX: 0, moveY: 0, respawnAt: 7000},
+  }}, 0, 2000)
+  simulation.setInput(0, 0, 2000)
+
+  simulation.ingest({...base, ts: 7000, players: {
+    local: {x: 180, y: 220, radius: 14, movementSpeed: 120, lives: 100, ack: 0, moveX: 0, moveY: 0, respawnAt: 0},
+  }}, 0, 7000)
+
+  const displayed = simulation.getDisplayState(7000).players.local
+  assert.equal(displayed.x, 180)
+  assert.equal(displayed.y, 220)
+  assert.equal(simulation.correction.x, 0)
+  assert.equal(simulation.correction.y, 0)
+})
+
+test("match start snaps local prediction after lobby movement", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    map: {width: 2000, height: 2000, walls: []},
+    monsters: {},
+    bullets: [],
+  }
+
+  simulation.ingest({...base, ts: 1000, game: {state: "lobby"}, players: {
+    local: {x: 1200, y: 900, radius: 14, movementSpeed: 120, lives: 100, ack: 0, moveX: 1, moveY: 0},
+  }}, 0, 1000)
+  simulation.setLocalPlayerId("local")
+  simulation.setInput(1, 0, 1000)
+  simulation.advance(.2)
+
+  simulation.ingest({...base, ts: 2000, game: {state: "game"}, players: {
+    local: {x: 180, y: 220, radius: 14, movementSpeed: 120, lives: 100, ack: 0, moveX: 0, moveY: 0},
+  }}, 0, 2000)
+
+  const displayed = simulation.getDisplayState(2000).players.local
+  assert.equal(displayed.x, 180)
+  assert.equal(displayed.y, 220)
+  assert.equal(simulation.correction.x, 0)
+  assert.equal(simulation.correction.y, 0)
+})
+
+test("duplicate snapshot timestamps cannot replace the accepted presentation state", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    map: {width: 1000, height: 1000, walls: []},
+    monsters: {},
+    bullets: [],
+  }
+
+  simulation.ingest({...base, ts: 1000, game: {state: "lobby"}, players: {
+    local: {x: 120, y: 140, radius: 14, movementSpeed: 120, lives: 100, moveX: 0, moveY: 0},
+  }}, 0, 1000)
+  simulation.setLocalPlayerId("local")
+
+  simulation.ingest({...base, ts: 1000, game: {state: "game"}, players: {
+    local: {x: 800, y: 840, radius: 14, movementSpeed: 120, lives: 100, moveX: 0, moveY: 0},
+  }}, 0, 1001)
+
+  assert.equal(simulation.latestState.game.state, "lobby")
+  assert.equal(simulation.getDisplayState(1000).players.local.x, 120)
+  assert.equal(simulation.getDisplayState(1000).players.local.y, 140)
 })
 
 test("stopping does not decay an older snapshot into a backward visual kick", () => {

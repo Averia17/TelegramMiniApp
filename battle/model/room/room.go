@@ -188,6 +188,9 @@ func (r *Room) HandleMessage(client *Client, data []byte) {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if current, ok := r.Clients[client.Id]; !ok || current != client {
+		return
+	}
 
 	switch msg.Type {
 	case "clock_sync":

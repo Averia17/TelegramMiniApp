@@ -62,3 +62,51 @@ test("clock sync responses estimate clock skew without treating transit as skew"
 
   assert.ok(Math.abs(client.clockOffset - 50) < 10)
 })
+
+test("stale WebSocket callbacks cannot overwrite a replacement connection", () => {
+  const sockets = []
+  const received = []
+  const previousWebSocket = globalThis.WebSocket
+
+  class FakeWebSocket {
+    static OPEN = 1
+
+    constructor() {
+      this.readyState = 0
+      sockets.push(this)
+    }
+
+    send() {}
+
+    close() {
+      this.readyState = 3
+      this.onclose?.()
+    }
+  }
+
+  globalThis.WebSocket = FakeWebSocket
+  try {
+    const client = new GameClient("ws://example", "token", state => received.push(state))
+    client.connect()
+    const staleSocket = sockets[0]
+    staleSocket.onopen()
+
+    client.connect()
+    const activeSocket = sockets[1]
+    activeSocket.onopen()
+
+    staleSocket.onmessage({data: JSON.stringify({type: "state", ts: 1, players: {old: {x: 1}}})})
+    staleSocket.onclose()
+    assert.equal(received.length, 0)
+    assert.equal(client.ws, activeSocket)
+    assert.equal(client.connected, true)
+
+    activeSocket.onmessage({data: JSON.stringify({type: "state", ts: 2, players: {new: {x: 2}}})})
+    assert.equal(received.length, 1)
+    assert.equal(received[0].players.new.x, 2)
+
+    client.disconnect()
+  } finally {
+    globalThis.WebSocket = previousWebSocket
+  }
+})

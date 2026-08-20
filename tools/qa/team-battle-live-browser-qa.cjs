@@ -1,9 +1,10 @@
 const assert = require("node:assert/strict")
 const path = require("node:path")
-const {chromium} = require("playwright")
+const {chromium} = require(path.resolve(__dirname, "../../frontend/node_modules/playwright"))
 const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cjs")
 
 const baseUrl = process.env.TEAM_BATTLE_QA_URL || "http://localhost"
+const devUser = "920000001"
 const output = path.resolve(__dirname, "../../output/playwright/team-battle-live.png")
 
 runWithBrowser(
@@ -15,7 +16,20 @@ runWithBrowser(
     page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()) })
     page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
 
-    await page.goto(`${baseUrl}/battle?mode=team&devUser=920000001`, {waitUntil: "domcontentloaded", timeout: 30000})
+    // Enter through the lobby so the route carries startNewBattle state. A
+    // direct /battle URL is intentionally treated as recovery and can return
+    // to the lobby when there is no authoritative room to resume.
+    await page.addInitScript(userId => {
+      localStorage.setItem(`battle_mode:${userId}`, "team")
+      localStorage.setItem(`battle_hero:${userId}`, "Needle")
+    }, devUser)
+    // Party notifications are optional for this battle QA and may be absent
+    // in a minimal local compose profile; keep that optional dependency from
+    // turning a map regression into a proxy error.
+    await page.route("**/api/party/**", route => route.fulfill({status: 200, contentType: "application/json", body: "{}"}))
+    await page.goto(`${baseUrl}/?devUser=${devUser}`, {waitUntil: "domcontentloaded", timeout: 30000})
+    await page.locator(".lp-play-btn:not([disabled])").waitFor({timeout: 30000})
+    await page.locator(".lp-play-btn:not([disabled])").click()
     await page.waitForFunction(() => {
       const state = window.__battleRenderer?.impl?.state || window.__battleClient?.lastState
       return state?.game?.mode === "team deathmatch" && Object.keys(state?.players || {}).length === 6
@@ -34,6 +48,20 @@ runWithBrowser(
         return source?.team && target?.team && source.team === target.team
       })
       const local = players.find(player => String(player.playerId) === String(client?.playerId))
+      const walls = Array.isArray(state?.map?.walls) ? state.map.walls : []
+      const riverWalls = walls.filter(wall => wall.type === "river" || wall.type === "river_bridge")
+      const bridgeWalls = riverWalls.filter(wall => wall.type === "river_bridge")
+      const riverAlong = wall => (Number(wall.minX) / 40 + .5 + Number(wall.minY) / 40 + .5) * .5
+      const riverFeature = renderer?.mapRenderer?.featureObjects?.get?.("team-river")
+      const riverWater = riverFeature?.getObjectByName?.("team-river-water")
+      let renderedRiverBounds = null
+      if (riverWater) {
+        riverWater.geometry.computeBoundingBox()
+        renderedRiverBounds = {
+          minX: riverWater.geometry.boundingBox.min.x,
+          maxX: riverWater.geometry.boundingBox.max.x,
+        }
+      }
       const views = [...(renderer?.players?.values?.() || [])].map(view => ({
         id: view.id,
         role: view.label?.userData?.role,
@@ -59,6 +87,12 @@ runWithBrowser(
         hasEnemyRedView: views.some(view => view.markerVisible && view.markerColor === "ff334d"),
         combatEvents: (state?.combatEvents || []).length,
         friendlyFireEvents,
+        mapId: state?.map?.id || null,
+        riverCellCount: riverWalls.length,
+        bridgeCellCount: bridgeWalls.length,
+        riverMinAlong: riverWalls.length ? Math.min(...riverWalls.map(riverAlong)) : null,
+        riverMaxAlong: riverWalls.length ? Math.max(...riverWalls.map(riverAlong)) : null,
+        renderedRiverBounds,
         screenshot: true,
       }
     })
@@ -69,6 +103,14 @@ runWithBrowser(
     assert.equal(report.botCount, 5, "one real player must produce five bots")
     assert.equal(report.hasEnemyRedView, true, "enemy red marker was not rendered")
     assert.deepEqual(report.friendlyFireEvents, [], "friendly-fire combat event detected")
+    assert.equal(report.mapId, "team-battle@20260816", "unexpected team map")
+    assert.ok(report.riverCellCount >= 300, "river collision layer is incomplete")
+    assert.ok(report.bridgeCellCount >= 60, "bridge collision layer is incomplete")
+    assert.equal(report.riverMinAlong, 15, "river does not reach the first island shoreline")
+    assert.equal(report.riverMaxAlong, 65, "river does not reach the second island shoreline")
+    assert.ok(report.renderedRiverBounds?.minX <= -100, "river does not reach the western ocean")
+    assert.ok(report.renderedRiverBounds?.maxX >= 100, "river does not reach the eastern ocean")
+    assert.ok(report.renderedRiverBounds?.maxX < 120, "river mouth overshoots into a second ocean edge")
     assert.deepEqual(consoleErrors, [])
     assert.deepEqual(pageErrors, [])
   },

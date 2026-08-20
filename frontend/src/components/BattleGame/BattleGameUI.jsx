@@ -1,7 +1,8 @@
 import {memo, useEffect, useRef} from "react"
 import {getBattleRewardMessage} from "./battleOutcome"
-import {getObjectiveHudModel, getTeamHudModel} from "./teamBattleUi.js"
+import {getIncomingTowerThreat, getObjectiveHudModel, getTeamHudModel, getTeamPerspectiveLabel} from "./teamBattleUi.js"
 import {getIslandPhaseIndex, getIslandPhaseProgress, ISLAND_PHASE_ORDER} from "./phaseVisuals.js"
+import {isTeamBattleMode} from "./battleMode.js"
 
 const ISLAND_PHASES = {
   hunt: {label: "Охота и бой", icon: "◈", tone: "hunt", hint: "Дерись с первой секунды и ломай лунные ящики"},
@@ -84,14 +85,31 @@ export const TouchStick = ({kind, control, cooldownVisual}) => {
   </div>
 }
 
-export const BattleResultStats = ({result}) => result && (
-  <div className="battle-result-stats">
-    <span><b>#{result.place || (result.won ? 1 : "—")}</b>место</span>
-    <span><b>{result.kills || 0}</b>бойцов</span>
-    <span><b>{result.monsters || 0}</b>мобов</span>
-    <span><b>{Math.round(result.duration || 0)}с</b>время</span>
-  </div>
-)
+export const BattleResultStats = ({result}) => {
+  if (!result) return null
+  const stats = result.teamBattle
+    ? [
+      [result.kills || 0, "убийства"],
+      [result.deaths || 0, "смерти"],
+      [result.playerDamage || 0, "урон бойцам"],
+      [result.towerDamage || 0, "урон башням"],
+      [result.townHallDamage || 0, "урон ратуше"],
+      [result.towersDestroyed || 0, "башни разрушены"],
+      [result.townHallsDestroyed || 0, "ратуши разрушены"],
+      [String(Math.round(result.duration || 0)) + "с", "время"],
+    ]
+    : [
+      ["#" + (result.place || (result.won ? 1 : "—")), "место"],
+      [result.kills || 0, "бойцов"],
+      [result.monsters || 0, "мобов"],
+      [String(Math.round(result.duration || 0)) + "с", "время"],
+    ]
+  return (
+    <div className={"battle-result-stats" + (result.teamBattle ? " battle-result-stats--team" : "")}>
+      {stats.map(([value, label]) => <span key={label}><b>{value}</b>{label}</span>)}
+    </div>
+  )
+}
 
 export const BattleRewardNotice = ({result}) => {
   const message = getBattleRewardMessage(result)
@@ -127,15 +145,16 @@ export const TeamBattleHud = ({state, localId}) => {
   const model = getTeamHudModel(state, localId)
   if (!model) return null
   return <section className="team-battle-hud" aria-label="Счёт команд">
-    {model.teams.map(team => <div key={team.id} className={`team-battle-hud__team${team.isLocal ? " is-local" : ""}`}>
+    {model.teams.map(team => <div key={team.id} className={`team-battle-hud__team${team.isLocal ? " is-local" : " is-enemy"}`}>
       <b>{team.label}</b><span>{team.alive} живы · {team.kills} фрагов</span>
     </div>)}
   </section>
 }
 
-export const TeamObjectiveHud = ({state}) => {
+export const TeamObjectiveHud = ({state, localId}) => {
   const objectives = getObjectiveHudModel(state)
   if (!objectives) return null
+  const localTeam = state?.players?.[localId]?.team || ""
   const grouped = objectives.reduce((result, objective) => {
     const team = result[objective.team] || []
     team.push(objective)
@@ -143,13 +162,22 @@ export const TeamObjectiveHud = ({state}) => {
     return result
   }, {})
   return <section className="team-objective-hud" aria-label="Состояние укреплений">
-    {Object.entries(grouped).map(([team, items]) => <div key={team} className="team-objective-hud__team">
-      <b>{team === "Blue" ? "СИНИЕ" : "КРАСНЫЕ"}</b>
+    {Object.entries(grouped).map(([team, items]) => <div key={team} className={`team-objective-hud__team${team === localTeam ? " is-local" : " is-enemy"}`}>
+      <b>{getTeamPerspectiveLabel(team, localTeam)}</b>
       {items.map(objective => <div key={objective.id} className={`team-objective-hud__objective${objective.destroyed ? " is-destroyed" : ""}`}>
-        <span>{objective.type === "town_hall" ? "РАТУША" : "БАШНЯ"}</span><i><em style={{width: `${objective.percent}%`}}/></i>
+        <span>{objective.type === "town_hall" ? (objective.protected ? "РАТУША 🔒" : "РАТУША") : "БАШНЯ"}</span><i><em style={{width: `${objective.percent}%`}}/></i>
       </div>)}
     </div>)}
   </section>
+}
+
+export const TowerThreatNotice = ({state, localId}) => {
+  const threat = getIncomingTowerThreat(state, localId)
+  if (!threat) return null
+  return <div className="tower-threat-notice" role="status" aria-live="polite">
+    <b>⚠ В ЗОНЕ ОБСТРЕЛА</b>
+    <span>Башня рядом · {Math.round(threat.distance)} м</span>
+  </div>
 }
 
 export const TauntButton = ({cooldown = 0, disabled = false, onUse}) => (
@@ -204,6 +232,10 @@ export const BattleMiniMap = ({state, localId, renderer}) => {
   if (!map) return null
   const width = map.width || 1
   const height = map.height || 1
+  const localTeam = state.players?.[localId]?.team || ""
+  const baseObjectives = isTeamBattleMode(state.game?.mode)
+    ? (state.objectives || []).filter(objective => objective?.type === "town_hall")
+    : []
   const visibleEnemies = Object.entries(state.players || {}).filter(([id]) =>
     String(id) !== String(localId) && renderer?.isPlayerVisible(id))
   return (
@@ -211,6 +243,14 @@ export const BattleMiniMap = ({state, localId, renderer}) => {
       {state.game?.stormRadius > 0 && <i className="mini-storm" style={{width: `${state.game.stormRadius / width * 200}%`, height: `${state.game.stormRadius / height * 200}%`}}/>}
       {state.game?.beaconOpen && <i className="mini-beacon"/>}
       <BattleMiniMapObstacles map={map}/>
+      {baseObjectives.map(objective => (
+        <i
+          key={objective.id}
+          className={`mini-base ${objective.team === localTeam ? "mini-base--own" : "mini-base--enemy"}${Number(objective.lives) <= 0 ? " is-destroyed" : ""}`}
+          style={{left: `${Number(objective.x || 0) / width * 100}%`, top: `${Number(objective.y || 0) / height * 100}%`}}
+          aria-label={objective.team === localTeam ? "Своя база" : "База противника"}
+        />
+      ))}
       {state.players[localId] && (
         <b className="mini-player mini-player--me" style={{left: `${state.players[localId].x / width * 100}%`, top: `${state.players[localId].y / height * 100}%`}}/>
       )}

@@ -1,3 +1,5 @@
+import {isTeamBattleMode} from "./battleMode.js"
+
 const DEFAULT_GAME_DURATION_MS = 5 * 60 * 1000
 
 export const getPlayerBattleStats = (state, playerId, now = Date.now(), {eliminated = false} = {}) => {
@@ -18,6 +20,14 @@ export const getPlayerBattleStats = (state, playerId, now = Date.now(), {elimina
     kills: player.kills || 0,
     monsters: player.monsters || player.monsterKills || 0,
     duration: startedAt ? Math.max(0, Math.round((now - startedAt) / 1000)) : 0,
+    ...(isTeamBattleMode(state?.game?.mode) ? {
+      deaths: player.deaths || 0,
+      playerDamage: player.playerDamage || 0,
+      towerDamage: player.towerDamage || 0,
+      townHallDamage: player.townHallDamage || 0,
+      towersDestroyed: player.towersDestroyed || 0,
+      townHallsDestroyed: player.townHallsDestroyed || 0,
+    } : {}),
   }
 }
 
@@ -38,6 +48,7 @@ export const getStateBattleResult = (state, playerId, currentView) => {
   if (!playerId || ["dead", "result", "timeout"].includes(currentView)) return null
   const authoritativeState = state?.game?.state
   if (currentView !== "game" && authoritativeState !== "game" && authoritativeState !== "finished") return null
+  if (isTeamBattleMode(state?.game?.mode) && authoritativeState === "game") return null
   const player = state?.players?.[playerId]
   if (!player || Number(player.lives) > 0 || Number(player.respawnAt) > Date.now()) return null
   return {

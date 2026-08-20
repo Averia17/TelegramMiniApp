@@ -10,6 +10,7 @@ type MockStore struct {
 	rooms   map[string]*RoomRecord
 	players map[string]*PlayerRecord
 	roomSet map[string]map[string]bool
+	results map[string]*BattleResult
 }
 
 func NewMockStore() *MockStore {
@@ -17,6 +18,7 @@ func NewMockStore() *MockStore {
 		rooms:   make(map[string]*RoomRecord),
 		players: make(map[string]*PlayerRecord),
 		roomSet: make(map[string]map[string]bool),
+		results: make(map[string]*BattleResult),
 	}
 }
 
@@ -85,6 +87,32 @@ func (m *MockStore) RemovePlayerFromRoom(roomId, playerId string) error {
 	return nil
 }
 
+func (m *MockStore) SaveBattleResult(result *BattleResult) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if result == nil {
+		return nil
+	}
+	cp := cloneBattleResult(result)
+	if previous, ok := m.results[result.RoomId]; !ok || previous.EndedAt <= result.EndedAt {
+		m.results[result.RoomId] = cp
+	}
+	return nil
+}
+
+func (m *MockStore) GetLatestBattleResult(playerId string) (*BattleResult, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var latest *BattleResult
+	for _, result := range m.results {
+		if !battleResultHasPlayer(result, playerId) || (latest != nil && latest.EndedAt >= result.EndedAt) {
+			continue
+		}
+		latest = cloneBattleResult(result)
+	}
+	return latest, nil
+}
+
 func (m *MockStore) RoomCount() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -103,4 +131,26 @@ func (m *MockStore) Reset() {
 	m.rooms = make(map[string]*RoomRecord)
 	m.players = make(map[string]*PlayerRecord)
 	m.roomSet = make(map[string]map[string]bool)
+	m.results = make(map[string]*BattleResult)
+}
+
+func cloneBattleResult(result *BattleResult) *BattleResult {
+	if result == nil {
+		return nil
+	}
+	cp := *result
+	cp.Players = append([]PlayerResult(nil), result.Players...)
+	return &cp
+}
+
+func battleResultHasPlayer(result *BattleResult, playerId string) bool {
+	if result == nil {
+		return false
+	}
+	for _, player := range result.Players {
+		if player.PlayerId == playerId {
+			return true
+		}
+	}
+	return false
 }

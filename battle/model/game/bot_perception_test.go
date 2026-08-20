@@ -211,10 +211,31 @@ func TestBotLeadsMovingTargetWhenAiming(t *testing.T) {
 	enemy.X, enemy.Y, enemy.MoveX, enemy.MoveY, enemy.Speed = 300, 100, 0, 1, 100
 	target := &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, x: enemy.X, y: enemy.Y, distance: 200}
 
-	gs.botEngageTarget(bot.PlayerId, bot, target, 0, time.Now().UnixMilli())
+	gs.botEngageTarget(bot.PlayerId, bot, target, time.Now().UnixMilli())
 
 	if bot.Rotation <= .01 {
 		t.Fatalf("bot aimed at current position instead of leading moving target: rotation=%.3f", bot.Rotation)
+	}
+}
+
+func TestBotTurnsTowardTargetWithoutInstantLockOn(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.X, bot.Y, bot.Rotation, bot.Ammo = 500, 500, 0, 0
+	enemy.X, enemy.Y = 500, 800
+	target := &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, x: enemy.X, y: enemy.Y, distance: 300}
+
+	gs.botEngageTarget(bot.PlayerId, bot, target, 10_000)
+	wanted := math.Pi / 2
+	if bot.Rotation <= 0 || bot.Rotation >= wanted {
+		t.Fatalf("bot snapped past the target while turning: rotation=%.3f wanted=%.3f", bot.Rotation, wanted)
+	}
+	if bot.Rotation >= wanted*.75 {
+		t.Fatalf("bot turned too far in one tick: rotation=%.3f wanted=%.3f", bot.Rotation, wanted)
 	}
 }
 
@@ -242,17 +263,18 @@ func TestBotEngagesVisibleTargetBeforeOpeningCrates(t *testing.T) {
 	gs.Walls = geometry.NewSpatialHash(TileSize)
 	gs.Walls.Insert(crate)
 	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
-	gs.State = GameStateGame
 	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
 	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	gs.State = GameStateGame
 	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
 	bot.IsBot, bot.X, bot.Y = true, 100, 100
+	bot.SuperCharge, bot.GadgetCharges = 0, 0
 	enemy.X, enemy.Y = 180, 100
 
 	gs.updateBots()
 
-	if math.Abs(bot.MoveY) >= .1 {
-		t.Fatalf("bot ignored a visible enemy for an opening crate: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	if memory := gs.BotMemory[bot.PlayerId]; memory == nil || memory.TargetID != enemy.PlayerId {
+		t.Fatalf("bot ignored a visible enemy for an opening crate: memory=%+v move=(%.2f, %.2f)", memory, bot.MoveX, bot.MoveY)
 	}
 }
 
@@ -300,6 +322,28 @@ func TestBotUsesReadyPrimaryAgainstVisibleTarget(t *testing.T) {
 
 	if bot.SuperPulse != 1 || !bot.LastAbilityOK || math.Abs(bot.AimDistance-80) > .01 {
 		t.Fatalf("bot did not use a correctly aimed primary: pulses=%d ok=%v aim=%.1f", bot.SuperPulse, bot.LastAbilityOK, bot.AimDistance)
+	}
+}
+
+func TestBotUsesControlSupersAtTheirActualAbilityRange(t *testing.T) {
+	enemy := perceptionPlayer("enemy", 0, 0)
+	tests := []struct {
+		hero     string
+		distance float64
+	}{
+		{hero: "Needle", distance: 500},
+		{hero: "Wukong Mico", distance: 250},
+		{hero: "Persephone Lumi", distance: 400},
+	}
+	for _, test := range tests {
+		t.Run(test.hero, func(t *testing.T) {
+			bot := perceptionPlayer("bot-"+test.hero, 0, 0)
+			bot.HeroName = test.hero
+			target := &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, distance: test.distance}
+			if !botPrimaryUseful(bot, target) {
+				t.Fatalf("%s super was rejected at %.0f distance", test.hero, test.distance)
+			}
+		})
 	}
 }
 
@@ -460,5 +504,126 @@ func TestBotFightsAttackingMonsterWhenHealthyAndFleesWhenWounded(t *testing.T) {
 	target, flee = gs.botMonsterThreat(bot)
 	if target != attacker || !flee {
 		t.Fatal("badly wounded bot should retreat from a monster chasing it")
+	}
+}
+
+func TestBotProfilesAreDeterministicButNotIdentical(t *testing.T) {
+	first := botProfileFor("bot-1")
+	repeat := botProfileFor("bot-1")
+	other := botProfileFor("bot-2")
+
+	if first != repeat {
+		t.Fatalf("bot profile changed between calls: first=%+v repeat=%+v", first, repeat)
+	}
+	if first == other {
+		t.Fatalf("all bots received the same movement profile: first=%+v other=%+v", first, other)
+	}
+	if first.ReactionDelay < BotReactionDelayMin || first.ReactionDelay > BotReactionDelayMax {
+		t.Fatalf("reaction delay=%d outside human range", first.ReactionDelay)
+	}
+}
+
+func TestBotKeepsCombatTargetDuringShortDecisionWindow(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("first", "First", "Needle")
+	gs.PlayerAdd("second", "Second", "Needle")
+	bot, first, second := gs.Players["bot"], gs.Players["first"], gs.Players["second"]
+	bot.X, bot.Y = 100, 100
+	first.X, first.Y = 590, 100
+	second.X, second.Y = 250, 100
+	second.Lives, second.MaxLives = 1, 100
+	first.LastShootAt = 9_900
+	gs.rememberBotTarget("bot", first, 10_000)
+
+	selected := gs.botSelectTarget(bot, 10_000)
+	if selected == nil || selected.id != "first" {
+		t.Fatalf("bot abandoned its current target during a short decision window: got %q", targetID(selected))
+	}
+}
+
+func TestBotCombatSteeringCommitsToOneStrafeSide(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.X, bot.Y, bot.Ammo = 100, 100, 1
+	enemy.X, enemy.Y = 400, 100
+	target := &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, x: enemy.X, y: enemy.Y, distance: 300}
+	now := int64(10_000)
+	gs.botEngageTarget(bot.PlayerId, bot, target, now)
+	firstSide := math.Copysign(1, bot.MoveY)
+	profile := botProfileFor(bot.PlayerId)
+	if math.Abs(bot.MoveY) < .1 {
+		t.Fatalf("bot did not choose a combat strafe: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+
+	target.x, target.y = enemy.X, enemy.Y
+	target.distance = math.Hypot(target.x-bot.X, target.y-bot.Y)
+	gs.botEngageTarget(bot.PlayerId, bot, target, now+profile.StrafePeriod/2)
+	if math.Copysign(1, bot.MoveY) != firstSide {
+		t.Fatalf("bot reversed strafe side before its commitment expired: first=%.2f second=%.2f", firstSide, bot.MoveY)
+	}
+	if memory := gs.BotMemory[bot.PlayerId]; memory == nil || memory.StrafeUntil <= now+profile.StrafePeriod/2 {
+		t.Fatalf("bot strafe commitment was not retained: memory=%+v", memory)
+	}
+}
+
+func TestBotUsesSmoothDiagonalSteeringInOpenSpace(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 800, HeightInPixels: 800}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	body := &geometry.CircleBody{X: 100, Y: 100, Radius: 16}
+
+	dx, dy := gs.botTravelDirection("bot-open-space", body, 500, 300, 10_000)
+
+	if math.Abs(dx) < .2 || math.Abs(dy) < .2 {
+		t.Fatalf("open-space steering fell into a grid staircase: direction=(%.2f, %.2f)", dx, dy)
+	}
+}
+
+func TestBotDoesNotAlternateAxesAcrossOpenSpaceTicks(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 800}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	gs.State = GameStateGame
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.IsBot, bot.X, bot.Y, bot.Ammo = true, 100, 100, 0
+	enemy.X, enemy.Y = 700, 400
+	target := &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, x: enemy.X, y: enemy.Y, distance: math.Hypot(enemy.X-bot.X, enemy.Y-bot.Y)}
+
+	for tick := 0; tick < 8; tick++ {
+		gs.botEngageTarget(bot.PlayerId, bot, target, int64(10_000+tick*16))
+		if math.Abs(bot.MoveX) < .15 || math.Abs(bot.MoveY) < .15 {
+			t.Fatalf("bot fell back to an axis-alternating command at tick %d: move=(%.2f, %.2f)", tick, bot.MoveX, bot.MoveY)
+		}
+		gs.updatePlayerMovement(16 * time.Millisecond)
+		target.distance = math.Hypot(enemy.X-bot.X, enemy.Y-bot.Y)
+	}
+}
+
+func TestBotSeparatesFromNearbyAllyWhileEngaging(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 800}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("ally", "Ally", "Needle")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	bot, ally, enemy := gs.Players["bot"], gs.Players["ally"], gs.Players["enemy"]
+	bot.X, bot.Y, bot.Ammo = 100, 100, 0
+	ally.X, ally.Y = 112, 100
+	enemy.X, enemy.Y = 500, 100
+	target := &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, x: enemy.X, y: enemy.Y, distance: 400}
+
+	gs.botEngageTarget(bot.PlayerId, bot, target, 10_000)
+	awayX, awayY := bot.X-ally.X, bot.Y-ally.Y
+	if bot.MoveX*awayX+bot.MoveY*awayY <= 0 {
+		t.Fatalf("bot moved into its ally while engaging: move=(%.2f, %.2f) away=(%.1f, %.1f)", bot.MoveX, bot.MoveY, awayX, awayY)
 	}
 }

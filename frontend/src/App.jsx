@@ -1,5 +1,5 @@
 import {lazy, Suspense, useEffect, useState} from "react"
-import {BrowserRouter, Route, Routes, useLocation, useParams} from "react-router-dom"
+import {BrowserRouter, Route, Routes, useLocation, useNavigate, useParams} from "react-router-dom"
 import axios from "axios"
 import {API_URL} from "./utils/urls.js"
 import {authenticate} from "./utils/auth.js"
@@ -13,10 +13,36 @@ const KattyLab = lazy(() => import("./pages/katty-lab.jsx"))
 const BattlePage = ({id}) => {
   const {roomId} = useParams()
   const location = useLocation()
+  const navigate = useNavigate()
   const hero = location.state?.heroName || loadBattleHero(id)
+  const battleIntentId = location.state?.battleIntentId || ""
+  const [startNewBattle] = useState(() => {
+    if (!location.state?.startNewBattle || !battleIntentId) return false
+    try {
+      return window.sessionStorage.getItem(`battle-start:${battleIntentId}`) !== "consumed"
+    } catch (_error) {
+      return true
+    }
+  })
   const mode = new URLSearchParams(location.search).get("mode") === "team" ? "team" : "solo"
   const partyId = new URLSearchParams(location.search).get("party") || ""
   const [tauntActive, setTauntActive] = useState(Boolean(location.state?.tauntActive))
+  useEffect(() => {
+    if (!startNewBattle || !battleIntentId) return
+    try {
+      window.sessionStorage.setItem(`battle-start:${battleIntentId}`, "consumed")
+    } catch (_error) {
+      // Recovery remains safe if session storage is unavailable: the server
+      // still decides whether an active or finished battle belongs to the user.
+    }
+    const nextState = {...(location.state || {})}
+    delete nextState.startNewBattle
+    delete nextState.battleIntentId
+    navigate(`${location.pathname}${location.search}`, {
+      replace: true,
+      state: Object.keys(nextState).length ? nextState : null,
+    })
+  }, [battleIntentId, location.pathname, location.search, location.state, navigate, startNewBattle])
   useEffect(() => {
     axios.get(`${API_URL}/economy/me`).then(({data}) => {
       setTauntActive(Boolean(data.taunt_active))
@@ -24,7 +50,7 @@ const BattlePage = ({id}) => {
   }, [])
   return (
     <Suspense fallback={<BattleLoading progress={32} status="Загружаем арену..." />}>
-      <BattleGame playerId={id} roomId={roomId} heroName={hero} mode={mode} partyId={partyId} tauntActive={tauntActive}/>
+      <BattleGame playerId={id} roomId={roomId} heroName={hero} mode={mode} partyId={partyId} tauntActive={tauntActive} startNewBattle={startNewBattle}/>
     </Suspense>
   )
 }

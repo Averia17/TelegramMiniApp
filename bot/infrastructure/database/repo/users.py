@@ -1,10 +1,9 @@
 from typing import Optional
 
-from sqlalchemy import select, update
-from sqlalchemy.dialects.postgresql import insert
-
 from infrastructure.database.models import User
 from infrastructure.database.repo.base import BaseRepo
+from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
 
 
 class UserRepo(BaseRepo):
@@ -56,6 +55,10 @@ class UserRepo(BaseRepo):
         await self.session.commit()
 
     async def update_completed_tasks(self, user_id: int, tasks: list, reward: int):
-        query = update(User).where(User.user_id == user_id).values(completed_tasks=tasks, clicks=User.clicks + reward)
+        query = (
+            update(User)
+            .where(User.user_id == user_id)
+            .values(completed_tasks=tasks, clicks=User.clicks + reward)
+        )
         await self.session.execute(query)
         await self.session.commit()

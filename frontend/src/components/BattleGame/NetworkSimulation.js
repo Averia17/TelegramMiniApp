@@ -367,14 +367,19 @@ export class NetworkSimulation {
     if (!state || state.type !== "state") return
     const map = preserveAuthoritativeMapWalls(state.map, this.latestState?.map)
     const normalizedState = map === state.map ? state : {...state, map}
+    const previousLocalPlayer = this.latestState?.players?.[this.playerId]
+    const nextLocalPlayer = normalizedState.players?.[this.playerId]
+    const localPlayerRespawned = Number(previousLocalPlayer?.lives) <= 0 && Number(nextLocalPlayer?.lives) > 0
+    const matchStarted = this.latestState?.game?.state === "lobby" && normalizedState.game?.state === "game"
     this.battleContext = createBattleContext(normalizedState)
     const timestamp = Number(state.ts)
     const lastTimestamp = Number(this.snapshots.at(-1)?.ts)
     if (Number.isFinite(timestamp) && Number.isFinite(lastTimestamp) && timestamp < lastTimestamp) return
-    if (Number.isFinite(timestamp) && Number.isFinite(lastTimestamp) && timestamp === lastTimestamp) {
-      this.latestState = normalizedState
-      return
-    }
+    // A duplicate timestamp is not a newer authoritative frame. Replacing
+    // latestState without appending to snapshots would split the state used by
+    // reconciliation from the presentation timeline and re-open lifecycle
+    // races around lobby start and respawn.
+    if (Number.isFinite(timestamp) && Number.isFinite(lastTimestamp) && timestamp === lastTimestamp) return
     const perfToken = startBattlePerformance("simulation.ingest")
     if (Number.isFinite(timestamp) && Number.isFinite(lastTimestamp)) {
       const interval = timestamp - lastTimestamp
@@ -409,6 +414,9 @@ export class NetworkSimulation {
     if (this.snapshots.length > 40) this.snapshots.shift()
     const snapshotLocalTime = this.serverTimeToLocal(timestamp || Date.now())
     this.predictionTime = Math.max(this.predictionTime ?? snapshotLocalTime, snapshotLocalTime)
+    if ((localPlayerRespawned || matchStarted) && nextLocalPlayer) {
+      this.resetLocalPresentationAtAuthoritativePosition(nextLocalPlayer, snapshotLocalTime)
+    }
     this.reconcile()
     endBattlePerformance(perfToken)
   }
@@ -511,6 +519,20 @@ export class NetworkSimulation {
       this.predicted = {x: player.x, y: player.y}
       this.predictionTime = this.serverTimeToLocal(this.latestState.ts || Date.now())
     }
+  }
+
+  resetLocalPresentationAtAuthoritativePosition(player, snapshotLocalTime) {
+    this.predicted = {x: Number(player.x) || 0, y: Number(player.y) || 0}
+    this.correction = {x: 0, y: 0}
+    this.correctionHoldRemaining = 0
+    this.pendingInputs = []
+    this.positionHistory.length = 0
+    this.pendingLocalAttack = null
+    this.recentlyStopped = false
+    this.lastNonZeroInput = {x: 0, y: 0}
+    this.input = {x: 0, y: 0}
+    this.movementInput = {x: 0, y: 0}
+    this.predictionTime = snapshotLocalTime
   }
 
   serverTimeToLocal(serverTime) {

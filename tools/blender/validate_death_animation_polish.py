@@ -7,7 +7,6 @@ from pathlib import Path
 
 import bpy
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 HEROES = (
@@ -43,7 +42,10 @@ def main():
         missing = REQUIRED_MARKERS - marker_names
         if missing:
             failures.append(f"{hero}: missing markers {sorted(missing)}")
-        if scene.get("death_polish_revision") != 1 or action.get("death_polish_revision") != 1:
+        if (
+            scene.get("death_polish_revision") != 1
+            or action.get("death_polish_revision") != 1
+        ):
             failures.append(f"{hero}: death polish revision is stale")
         style = action.get("death_style")
         if not style:

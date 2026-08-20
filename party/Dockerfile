@@ -9,4 +9,3 @@ FROM alpine:3.20
 COPY --from=build /party-service /party-service
 EXPOSE 8002
 ENTRYPOINT ["/party-service"]
-

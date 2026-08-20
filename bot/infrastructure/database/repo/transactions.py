@@ -1,12 +1,11 @@
 from typing import Optional
 
-from sqlalchemy import insert, select
-
 from infrastructure.database.models.transactions import (
     Transaction,
     TransactionType,
 )
 from infrastructure.database.repo.base import BaseRepo
+from sqlalchemy import insert, select
 
 
 class TransactionsRepo(BaseRepo):
@@ -47,6 +46,10 @@ class TransactionsRepo(BaseRepo):
         return result.scalar_one_or_none()
 
     async def get_user_transactions(self, user_id: int) -> list[Transaction]:
-        stmt = select(Transaction).where(Transaction.user_id == user_id).order_by(Transaction.created_at.desc())
+        stmt = (
+            select(Transaction)
+            .where(Transaction.user_id == user_id)
+            .order_by(Transaction.created_at.desc())
+        )
         result = await self.session.execute(stmt)
         return result.scalars().all()

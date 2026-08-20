@@ -55,3 +55,36 @@ func TestTeamBotJoinsAllyAtEnemyObjective(t *testing.T) {
 		t.Fatalf("attack intent = %#v, want enemy objective target", intent)
 	}
 }
+
+func TestTeamBotInterruptsObjectivePushForNearbyEnemy(t *testing.T) {
+	state := &GameState{Players: map[string]*player.Player{}, Objectives: map[string]*ObjectiveState{}}
+	bot := &player.Player{CircleBody: geometry.CircleBody{X: 100, Y: 100}, PlayerId: "bot", Team: "Blue", Lives: 100, MaxLives: 100}
+	ally := &player.Player{CircleBody: geometry.CircleBody{X: 850, Y: 850}, PlayerId: "ally", Team: "Blue", Lives: 100, MaxLives: 100}
+	enemy := &player.Player{CircleBody: geometry.CircleBody{X: 190, Y: 100}, PlayerId: "enemy", Team: "Red", Lives: 100, MaxLives: 100}
+	state.Players[bot.PlayerId], state.Players[ally.PlayerId], state.Players[enemy.PlayerId] = bot, ally, enemy
+	objective := &ObjectiveState{ID: "red-tower", Type: "tower", Team: "Red", X: 900, Y: 900, Radius: 44, Lives: 100, MaxLives: 100}
+	state.Objectives[objective.ID] = objective
+	visible := &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, x: enemy.X, y: enemy.Y, distance: 90}
+	ctx := &teamBotContext{gs: state, bot: bot, now: 10_000, visibleTarget: visible, enemyObjective: objective}
+
+	intent, ok := (attackObjectiveBehavior{}).Decide(ctx)
+	if ok {
+		t.Fatalf("objective push ignored a nearby enemy: intent=%#v", intent)
+	}
+}
+
+func TestTeamBotDoesNotAcquireDefenderThroughWall(t *testing.T) {
+	state := &GameState{Players: map[string]*player.Player{}, Objectives: map[string]*ObjectiveState{}, Walls: geometry.NewSpatialHash(TileSize)}
+	state.Walls.Insert(&geometry.WallTile{MinX: 140, MinY: 40, MaxX: 180, MaxY: 240, Type: "wall"})
+	bot := &player.Player{CircleBody: geometry.CircleBody{X: 100, Y: 100, Radius: 16}, PlayerId: "bot", Team: "Blue", Lives: 100, MaxLives: 100}
+	enemy := &player.Player{CircleBody: geometry.CircleBody{X: 220, Y: 100, Radius: 16}, PlayerId: "enemy", Team: "Red", Lives: 100, MaxLives: 100}
+	state.Players[bot.PlayerId], state.Players[enemy.PlayerId] = bot, enemy
+	objective := &ObjectiveState{ID: "blue-tower", Type: "tower", Team: "Blue", X: 100, Y: 100, Radius: 44, Lives: 100, MaxLives: 100, LastDamagedAt: 10_000}
+	state.Objectives[objective.ID] = objective
+	ctx := &teamBotContext{gs: state, bot: bot, now: 11_000, ownObjective: objective}
+
+	intent, ok := (defendObjectiveBehavior{}).Decide(ctx)
+	if !ok || intent.kind != teamIntentDefend || intent.target != nil {
+		t.Fatalf("defender acquired enemy through wall: intent=%#v ok=%v", intent, ok)
+	}
+}

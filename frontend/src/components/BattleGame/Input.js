@@ -15,6 +15,21 @@ export const canStartAttack = (player, now, lastShotAt, battleState = "game") =>
   return !lastShotAt || Number(now) - Number(lastShotAt) >= cadence
 }
 
+export const getKeyboardMoveDirection = keys => {
+  let dx = 0
+  let dy = 0
+
+  if (keys["KeyW"] || keys["ArrowUp"]) dy -= 1
+  if (keys["KeyS"] || keys["ArrowDown"]) dy += 1
+  if (keys["KeyA"] || keys["ArrowLeft"]) dx -= 1
+  if (keys["KeyD"] || keys["ArrowRight"]) dx += 1
+
+  if (dx !== 0 || dy !== 0) {
+    return normalizeEightWayMove(dx, dy)
+  }
+  return {x: 0, y: 0}
+}
+
 export class Input {
   constructor(canvas, gameClient, onTouchControlsChange = null, onMove = null) {
     this.canvas = canvas
@@ -330,17 +345,7 @@ export class Input {
   }
 
   sendKeyboardMove() {
-    let dx = 0
-    let dy = 0
-
-    if (this.keys["KeyW"] || this.keys["ArrowUp"]) dy -= 1
-    if (this.keys["KeyS"] || this.keys["ArrowDown"]) dy += 1
-    if (this.keys["KeyA"] || this.keys["ArrowLeft"]) dx -= 1
-    if (this.keys["KeyD"] || this.keys["ArrowRight"]) dx += 1
-
-    if (dx !== 0 || dy !== 0) {
-      ({x: dx, y: dy} = normalizeEightWayMove(dx, dy))
-    }
+    const {x: dx, y: dy} = getKeyboardMoveDirection(this.keys)
     if (this.moveTouchId === null) this.sendMove(dx, dy)
     else this.sendMove(this.lastMoveX || 0, this.lastMoveY || 0)
   }

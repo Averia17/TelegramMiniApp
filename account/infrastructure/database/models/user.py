@@ -11,7 +11,9 @@ class User(Base, TimestampMixin, TableNameMixin):
     username: Mapped[Optional[str]] = mapped_column(String(128))
     full_name: Mapped[str] = mapped_column(String(128))
     clicks: Mapped[int] = mapped_column(BIGINT, server_default="0")
-    completed_tasks: Mapped[list[int]] = mapped_column(ARRAY(Integer), default=[], server_default="{}")
+    completed_tasks: Mapped[list[int]] = mapped_column(
+        ARRAY(Integer), default=[], server_default="{}"
+    )
     tb_username: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
     received_invite: Mapped[list["Invite"]] = relationship(
@@ -28,6 +30,10 @@ class Invite(Base, TimestampMixin, TableNameMixin):
     inviter_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
     invitee_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), unique=True)
 
-    invitee: Mapped["User"] = relationship(back_populates="received_invite", foreign_keys="[Invite.invitee_id]")
+    invitee: Mapped["User"] = relationship(
+        back_populates="received_invite", foreign_keys="[Invite.invitee_id]"
+    )
 
-    __table_args__ = (UniqueConstraint("inviter_id", "invitee_id", name="unique_invites"),)
+    __table_args__ = (
+        UniqueConstraint("inviter_id", "invitee_id", name="unique_invites"),
+    )

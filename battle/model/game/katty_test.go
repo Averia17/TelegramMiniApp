@@ -2,6 +2,8 @@ package game
 
 import (
 	"battle/model/gamemap"
+	"battle/model/monster"
+	"battle/model/prop"
 	"battle/service/geometry"
 	"testing"
 	"time"
@@ -127,6 +129,63 @@ func TestKattySuperLandsThenPaintsEachEnemyEnteringThePuddle(t *testing.T) {
 	gs.updateNewHeroSystems()
 	if late.StunUntil <= now || late.BlindUntil <= now {
 		t.Fatalf("late entrant was not painted: stun=%d blind=%d", late.StunUntil, late.BlindUntil)
+	}
+}
+
+func TestKattySuperDealsImpactAndDamageOverTimeToEveryTargetType(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("katty", "Katty", "Katty")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	katty, enemy := gs.Players["katty"], gs.Players["enemy"]
+	katty.X, katty.Y, enemy.X, enemy.Y = 400, 400, 620, 400
+	gs.Monsters["bat"] = monster.NewMonster(620, 440, 16, gs.Map.WidthInPixels, gs.Map.HeightInPixels, monster.MonsterLives)
+	crate := prop.NewLunarCrate(620, 460, "damage")
+	gs.Props = append(gs.Props, crate)
+	now := time.Now().UnixMilli()
+
+	accepted := (KattyKit{}).Super(gs, katty, now, 0, 220)
+	if !accepted {
+		t.Fatal("Katty super was not accepted")
+	}
+	zone := gs.HeroZones[0]
+	zone.TriggerAt = now - 1
+	enemyBefore := enemy.Lives
+	monsterBefore, crateBefore := gs.Monsters["bat"].Lives, crate.Lives
+
+	gs.updateNewHeroSystems()
+
+	if got := enemyBefore - enemy.Lives; got != 83 {
+		t.Fatalf("Katty impact dealt %d to enemy, want 83 impact plus paint-break damage", got)
+	}
+	if got := monsterBefore - gs.Monsters["bat"].Lives; got != 70 {
+		t.Fatalf("Katty impact dealt %d to monster, want 70", got)
+	}
+	if got := crateBefore - crate.Lives; got != 70 {
+		t.Fatalf("Katty impact dealt %d to crate, want 70", got)
+	}
+	if len(gs.DamageZones) != 1 || gs.DamageZones[0].Kind != "katty_paint_puddle" {
+		t.Fatalf("puddle damage zones=%#v, want one active puddle damage zone", gs.DamageZones)
+	}
+	enemyAfterImpact := enemy.Lives
+	gs.updateNewHeroSystems()
+	if enemy.Lives != enemyAfterImpact {
+		t.Fatalf("Katty impact repeated on the next frame: lives %d -> %d", enemyAfterImpact, enemy.Lives)
+	}
+
+	damageZone := gs.DamageZones[0]
+	damageZone.NextTickAt = time.Now().UnixMilli() - 1
+	enemyBefore, monsterBefore, crateBefore = enemy.Lives, gs.Monsters["bat"].Lives, crate.Lives
+	gs.updateDamageZones()
+
+	if got := enemyBefore - enemy.Lives; got != 12 {
+		t.Fatalf("puddle tick dealt %d to enemy, want 12", got)
+	}
+	if got := monsterBefore - gs.Monsters["bat"].Lives; got != 12 {
+		t.Fatalf("puddle tick dealt %d to monster, want 12", got)
+	}
+	if got := crateBefore - crate.Lives; got != 12 {
+		t.Fatalf("puddle tick dealt %d to crate, want 12", got)
 	}
 }
 

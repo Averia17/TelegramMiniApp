@@ -27,9 +27,16 @@ def upgrade() -> None:
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("payment_key", sa.String(length=255), nullable=False),
         sa.Column("amount", sa.Integer(), nullable=False),
-        sa.Column("type", sa.Enum("PAYMENT", "REFUND", name="transactiontype"), nullable=False),
+        sa.Column(
+            "type", sa.Enum("PAYMENT", "REFUND", name="transactiontype"), nullable=False
+        ),
         sa.Column("related_transaction", sa.BigInteger(), nullable=True),
-        sa.Column("created_at", postgresql.TIMESTAMP(), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            postgresql.TIMESTAMP(),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(
             ["related_transaction"],
             ["transactions.id"],

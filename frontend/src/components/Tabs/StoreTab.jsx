@@ -81,7 +81,7 @@ export const StoreTab = ({economy, onEconomyChange}) => {
       <button type="button" disabled={tauntPurchase.disabled} title={tauntPurchase.title} onClick={buyTauntPack}><b>◆ {tauntPurchase.cost}</b><small>{tauntPurchase.buttonLabel}</small></button>
     </article>
     {status === "loading" && <StoreState text="Загружаем магазин..."/>}
-    {status === "error" && <StoreState text="Магазин временно недоступен" retry={load}/>} 
+    {status === "error" && <StoreState text="Магазин временно недоступен" retry={load}/>}
     {status === "ready" && products.length === 0 && <StoreState text="Сундуки скоро появятся"/>}
     {status === "ready" && <div className="store-grid">{products.map(product => <ChestCard
       key={product.product_id}
@@ -91,7 +91,7 @@ export const StoreTab = ({economy, onEconomyChange}) => {
       disabled={opening !== null || Number(economy?.gold || 0) < Number(product.price)}
       onOpen={() => openChest(product)}
     />)}</div>}
-    {reward && <RewardReveal reward={reward} onClose={() => setReward(null)}/>} 
+    {reward && <RewardReveal reward={reward} onClose={() => setReward(null)}/>}
   </section>
 }
 

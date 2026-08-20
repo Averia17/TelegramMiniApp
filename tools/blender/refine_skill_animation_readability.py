@@ -13,7 +13,6 @@ from pathlib import Path
 import bpy
 from mathutils import Euler
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 ACTION_NAMES = {"gadget": "Gadget", "super": "super"}
@@ -27,27 +26,120 @@ REFINEMENTS = {
     ("mandy", "gadget"): {
         "anchors": [
             (1, {}),
-            (4, {"hips_s_02": d(-10), "chest_s_033": d(12), "R_shoulder_s_061": d(-18, 0, 18), "L_shoulder_s_044": d(-18, 0, -18)}),
-            (8, {"hips_s_02": d(-14), "chest_s_033": d(18), "R_shoulder_s_061": d(-38, 0, 48), "L_shoulder_s_044": d(-38, 0, -48), "R_elbow_s_062": d(0, -42), "L_elbow_s_045": d(0, 42)}),
-            (12, {"hips_s_02": d(-12), "chest_s_033": d(15), "R_shoulder_s_061": d(-34, 0, 42), "L_shoulder_s_044": d(-34, 0, -42), "R_elbow_s_062": d(0, -36), "L_elbow_s_045": d(0, 36)}),
+            (
+                4,
+                {
+                    "hips_s_02": d(-10),
+                    "chest_s_033": d(12),
+                    "R_shoulder_s_061": d(-18, 0, 18),
+                    "L_shoulder_s_044": d(-18, 0, -18),
+                },
+            ),
+            (
+                8,
+                {
+                    "hips_s_02": d(-14),
+                    "chest_s_033": d(18),
+                    "R_shoulder_s_061": d(-38, 0, 48),
+                    "L_shoulder_s_044": d(-38, 0, -48),
+                    "R_elbow_s_062": d(0, -42),
+                    "L_elbow_s_045": d(0, 42),
+                },
+            ),
+            (
+                12,
+                {
+                    "hips_s_02": d(-12),
+                    "chest_s_033": d(15),
+                    "R_shoulder_s_061": d(-34, 0, 42),
+                    "L_shoulder_s_044": d(-34, 0, -42),
+                    "R_elbow_s_062": d(0, -36),
+                    "L_elbow_s_045": d(0, 36),
+                },
+            ),
             (17, {}),
         ],
-        "markers": {"anticipation": 4, "release": 8, "follow_through": 12, "guard_lock": 8},
+        "markers": {
+            "anticipation": 4,
+            "release": 8,
+            "follow_through": 12,
+            "guard_lock": 8,
+        },
     },
     ("kaze", "gadget"): {
         "revision": 3,
         "previous_anchors": [
             (0, {}),
-            (3, {"hips_s": d(-8), "chest_s": d(16), "head_s": d(-12), "L_shoulder_s": d(-20, 0, 22), "R_shoulder_s": d(-20, 0, -22)}),
-            (7, {"hips_s": d(-14), "chest_s": d(30), "head_s": d(-28), "L_shoulder_s": d(-42, 0, 48), "R_shoulder_s": d(-42, 0, -48), "L_elbow_s": d(0, -34), "R_elbow_s": d(0, 34)}),
-            (10, {"hips_s": d(-10), "chest_s": d(24), "head_s": d(-22), "L_shoulder_s": d(-34, 0, 38), "R_shoulder_s": d(-34, 0, -38)}),
+            (
+                3,
+                {
+                    "hips_s": d(-8),
+                    "chest_s": d(16),
+                    "head_s": d(-12),
+                    "L_shoulder_s": d(-20, 0, 22),
+                    "R_shoulder_s": d(-20, 0, -22),
+                },
+            ),
+            (
+                7,
+                {
+                    "hips_s": d(-14),
+                    "chest_s": d(30),
+                    "head_s": d(-28),
+                    "L_shoulder_s": d(-42, 0, 48),
+                    "R_shoulder_s": d(-42, 0, -48),
+                    "L_elbow_s": d(0, -34),
+                    "R_elbow_s": d(0, 34),
+                },
+            ),
+            (
+                10,
+                {
+                    "hips_s": d(-10),
+                    "chest_s": d(24),
+                    "head_s": d(-22),
+                    "L_shoulder_s": d(-34, 0, 38),
+                    "R_shoulder_s": d(-34, 0, -38),
+                },
+            ),
             (12, {}),
         ],
         "anchors": [
             (0, {}),
-            (3, {"hips_s": d(-8), "chest_s": d(16), "head_s": d(-12), "L_shoulder_s": d(-18, 0, -12), "R_shoulder_s": d(-18, 0, 12)}),
-            (7, {"hips_s": d(-14), "chest_s": d(30), "head_s": d(-28), "L_shoulder_s": d(-34, 0, -42), "R_shoulder_s": d(-34, 0, 42), "L_elbow_s": d(0, 30), "R_elbow_s": d(0, -30)}),
-            (10, {"hips_s": d(-10), "chest_s": d(24), "head_s": d(-22), "L_shoulder_s": d(-28, 0, -32), "R_shoulder_s": d(-28, 0, 32), "L_elbow_s": d(0, 20), "R_elbow_s": d(0, -20)}),
+            (
+                3,
+                {
+                    "hips_s": d(-8),
+                    "chest_s": d(16),
+                    "head_s": d(-12),
+                    "L_shoulder_s": d(-18, 0, -12),
+                    "R_shoulder_s": d(-18, 0, 12),
+                },
+            ),
+            (
+                7,
+                {
+                    "hips_s": d(-14),
+                    "chest_s": d(30),
+                    "head_s": d(-28),
+                    "L_shoulder_s": d(-34, 0, -42),
+                    "R_shoulder_s": d(-34, 0, 42),
+                    "L_elbow_s": d(0, 30),
+                    "R_elbow_s": d(0, -30),
+                },
+            ),
+            (
+                10,
+                {
+                    "hips_s": d(-10),
+                    "chest_s": d(24),
+                    "head_s": d(-22),
+                    "L_shoulder_s": d(-28, 0, -32),
+                    "R_shoulder_s": d(-28, 0, 32),
+                    "L_elbow_s": d(0, 20),
+                    "R_elbow_s": d(0, -20),
+                },
+            ),
             (12, {}),
         ],
         "markers": {"vanish": 7},
@@ -55,9 +147,36 @@ REFINEMENTS = {
     ("fairy-mina", "gadget"): {
         "anchors": [
             (0, {}),
-            (3, {"chest_s": d(16), "L_shoulder_s": d(-34, 0, 28), "R_shoulder_s": d(-34, 0, -28), "L_wing_down_s": d(0, 30), "R_wing_down_s": d(0, -30)}),
-            (7, {"chest_s": d(-22), "L_shoulder_s": d(58, 0, -52), "R_shoulder_s": d(58, 0, 52), "L_wing_up_s": d(0, 48), "R_wing_up_s": d(0, -48)}),
-            (10, {"chest_s": d(-14), "L_shoulder_s": d(40, 0, -38), "R_shoulder_s": d(40, 0, 38), "L_wing_up_s": d(0, 34), "R_wing_up_s": d(0, -34)}),
+            (
+                3,
+                {
+                    "chest_s": d(16),
+                    "L_shoulder_s": d(-34, 0, 28),
+                    "R_shoulder_s": d(-34, 0, -28),
+                    "L_wing_down_s": d(0, 30),
+                    "R_wing_down_s": d(0, -30),
+                },
+            ),
+            (
+                7,
+                {
+                    "chest_s": d(-22),
+                    "L_shoulder_s": d(58, 0, -52),
+                    "R_shoulder_s": d(58, 0, 52),
+                    "L_wing_up_s": d(0, 48),
+                    "R_wing_up_s": d(0, -48),
+                },
+            ),
+            (
+                10,
+                {
+                    "chest_s": d(-14),
+                    "L_shoulder_s": d(40, 0, -38),
+                    "R_shoulder_s": d(40, 0, 38),
+                    "L_wing_up_s": d(0, 34),
+                    "R_wing_up_s": d(0, -34),
+                },
+            ),
             (14, {}),
         ],
         "markers": {"repel": 7},
@@ -65,13 +184,66 @@ REFINEMENTS = {
     ("brock-zeus", "super"): {
         "anchors": [
             (0, {}),
-            (10, {"Chest": d(-8), "R_Shoulder": d(-24, 0, -14), "L_Shoulder": d(-18, 0, 14)}),
-            (18, {"Chest": d(10, 0, 18), "R_Shoulder": d(52, 0, 34), "R_Elbow": d(0, -28), "L_Shoulder": d(-18, 0, -16)}),
-            (24, {"Chest": d(-4, 0, -10), "R_Shoulder": d(8, 0, 8), "L_Shoulder": d(-22, 0, 20)}),
-            (30, {"Chest": d(8, 0, -18), "L_Shoulder": d(54, 0, -34), "L_Elbow": d(0, 28), "R_Shoulder": d(-16, 0, 16)}),
-            (36, {"Chest": d(-6), "R_Shoulder": d(-20, 0, -18), "L_Shoulder": d(-20, 0, 18)}),
-            (42, {"Chest": d(16), "R_Shoulder": d(48, 0, 30), "L_Shoulder": d(48, 0, -30), "R_Elbow": d(0, -20), "L_Elbow": d(0, 20)}),
-            (46, {"Chest": d(10), "R_Shoulder": d(34, 0, 20), "L_Shoulder": d(34, 0, -20)}),
+            (
+                10,
+                {
+                    "Chest": d(-8),
+                    "R_Shoulder": d(-24, 0, -14),
+                    "L_Shoulder": d(-18, 0, 14),
+                },
+            ),
+            (
+                18,
+                {
+                    "Chest": d(10, 0, 18),
+                    "R_Shoulder": d(52, 0, 34),
+                    "R_Elbow": d(0, -28),
+                    "L_Shoulder": d(-18, 0, -16),
+                },
+            ),
+            (
+                24,
+                {
+                    "Chest": d(-4, 0, -10),
+                    "R_Shoulder": d(8, 0, 8),
+                    "L_Shoulder": d(-22, 0, 20),
+                },
+            ),
+            (
+                30,
+                {
+                    "Chest": d(8, 0, -18),
+                    "L_Shoulder": d(54, 0, -34),
+                    "L_Elbow": d(0, 28),
+                    "R_Shoulder": d(-16, 0, 16),
+                },
+            ),
+            (
+                36,
+                {
+                    "Chest": d(-6),
+                    "R_Shoulder": d(-20, 0, -18),
+                    "L_Shoulder": d(-20, 0, 18),
+                },
+            ),
+            (
+                42,
+                {
+                    "Chest": d(16),
+                    "R_Shoulder": d(48, 0, 30),
+                    "L_Shoulder": d(48, 0, -30),
+                    "R_Elbow": d(0, -20),
+                    "L_Elbow": d(0, 20),
+                },
+            ),
+            (
+                46,
+                {
+                    "Chest": d(10),
+                    "R_Shoulder": d(34, 0, 20),
+                    "L_Shoulder": d(34, 0, -20),
+                },
+            ),
             (50, {}),
         ],
         "markers": {"strike_1": 18, "strike_2": 30, "strike_3": 42},
@@ -80,7 +252,14 @@ REFINEMENTS = {
 
 
 def find_action(name):
-    return next((action for action in bpy.data.actions if action.name.casefold().split(".")[0] == name.casefold()), None)
+    return next(
+        (
+            action
+            for action in bpy.data.actions
+            if action.name.casefold().split(".")[0] == name.casefold()
+        ),
+        None,
+    )
 
 
 def mix(a, b, amount):
@@ -95,7 +274,10 @@ def offsets_at(anchors, frame):
             break
     amount = (frame - left[0]) / max(1, right[0] - left[0])
     zero = (0.0, 0.0, 0.0)
-    return {bone: mix(left[1].get(bone, zero), right[1].get(bone, zero), amount) for bone in set(left[1]) | set(right[1])}
+    return {
+        bone: mix(left[1].get(bone, zero), right[1].get(bone, zero), amount)
+        for bone in set(left[1]) | set(right[1])
+    }
 
 
 def refine(hero, clip, refinement):
@@ -124,7 +306,11 @@ def refine(hero, clip, refinement):
         scene.frame_set(frame)
         for bone_name in bones:
             bone = armature.pose.bones[bone_name]
-            base[(frame, bone_name)] = (bone.rotation_mode, bone.rotation_quaternion.copy(), bone.rotation_euler.copy())
+            base[(frame, bone_name)] = (
+                bone.rotation_mode,
+                bone.rotation_quaternion.copy(),
+                bone.rotation_euler.copy(),
+            )
     for frame in range(anchors[0][0], anchors[-1][0] + 1):
         scene.frame_set(frame)
         offsets = offsets_at(anchors, frame)
@@ -142,10 +328,21 @@ def refine(hero, clip, refinement):
             bone = armature.pose.bones[bone_name]
             mode, quaternion, euler = base[(frame, bone_name)]
             if mode == "QUATERNION":
-                bone.rotation_quaternion = quaternion @ Euler(offset, "XYZ").to_quaternion()
-                bone.keyframe_insert("rotation_quaternion", frame=frame, group=bone_name)
+                bone.rotation_quaternion = (
+                    quaternion @ Euler(offset, "XYZ").to_quaternion()
+                )
+                bone.keyframe_insert(
+                    "rotation_quaternion", frame=frame, group=bone_name
+                )
             else:
-                bone.rotation_euler = Euler(tuple(euler[i] + offset[i] for i in range(3)), mode if mode in {"XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"} else "XYZ")
+                bone.rotation_euler = Euler(
+                    tuple(euler[i] + offset[i] for i in range(3)),
+                    (
+                        mode
+                        if mode in {"XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"}
+                        else "XYZ"
+                    ),
+                )
                 bone.keyframe_insert("rotation_euler", frame=frame, group=bone_name)
     for name, frame in refinement["markers"].items():
         existing = scene.timeline_markers.get(name)

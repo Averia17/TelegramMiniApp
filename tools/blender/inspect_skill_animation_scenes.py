@@ -14,7 +14,6 @@ from pathlib import Path
 
 import bpy
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 HEROES = (
@@ -35,7 +34,7 @@ def action_fcurves(action):
     curves = []
     for layer in action.layers:
         for strip in layer.strips:
-            for channelbag in getattr(strip, "channelbags", ()): 
+            for channelbag in getattr(strip, "channelbags", ()):
                 curves.extend(channelbag.fcurves)
     return curves
 
@@ -92,7 +91,9 @@ def main() -> None:
     ]
     output = ROOT / "output" / "blender" / "skill-animation-audit.json"
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    output.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print(f"WROTE {output}")
 
 
