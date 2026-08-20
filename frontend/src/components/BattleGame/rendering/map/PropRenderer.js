@@ -44,6 +44,61 @@ const addVisualPart = (group, geometry, material, role, position = null, rotatio
   return part
 }
 
+const createStoneCrack = (width, height, depth, side, variant = 0) => {
+  const crack = new THREE.Shape()
+  const offset = (variant % 3 - 1) * width * .12
+  const startY = height * (.28 + (variant % 2) * .08)
+  crack.moveTo(offset - width * .018, startY)
+  crack.lineTo(offset + width * .012, startY + height * .12)
+  crack.lineTo(offset - width * .008, startY + height * .23)
+  crack.lineTo(offset + width * .032, startY + height * .34)
+  crack.lineTo(offset + width * .012, startY + height * .43)
+  crack.lineTo(offset - width * .026, startY + height * .34)
+  crack.lineTo(offset - width * .045, startY + height * .22)
+  crack.lineTo(offset - width * .028, startY + height * .11)
+  crack.closePath()
+  const mesh = new THREE.Mesh(
+    new THREE.ShapeGeometry(crack),
+    standardMaterial(0x46504b, {
+      roughness: 1,
+      transparent: true,
+      opacity: .74,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    }),
+  )
+  mesh.position.set(0, height / 2, side * (depth * .5 + .012))
+  mesh.rotation.y = side < 0 ? Math.PI : 0
+  mesh.userData.role = "stone-crack"
+  mesh.castShadow = false
+  mesh.receiveShadow = false
+  return mesh
+}
+
+const createStoneDetailVisual = (width, height, depth, variant = 0) => {
+  const group = new THREE.Group()
+  group.add(createStoneCrack(width, height, depth, 1, variant))
+  group.add(createStoneCrack(width, height, depth, -1, variant + 1))
+
+  const chipMaterial = standardMaterial(variant % 2 ? 0x9ba79a : 0xaab09f, {roughness: .92})
+  for (const [x, z, scale] of [
+    [-.22, -.1, .72], [.18, .12, .55], [.04, .28, .42],
+  ]) {
+    const chip = addVisualPart(
+      group,
+      new THREE.TetrahedronGeometry(Math.min(width, depth) * .07 * scale, 0),
+      chipMaterial,
+      "stone-chip",
+      new THREE.Vector3(x * width, height / 2 + height * .57, z * depth),
+    )
+    chip.rotation.set(.18 + variant * .07, x * 2.2, z * 1.4)
+  }
+  return group
+}
+
 const createLogPileVisual = (width, height, depth, variant = 0) => {
   const group = new THREE.Group()
   const shortSide = Math.min(width, depth)
@@ -174,6 +229,19 @@ const createHorizontalRoot = (group, length, radius, position, angle, bark, cut,
   )
   end.quaternion.copy(log.quaternion)
   return {direction, log}
+}
+
+const createBranchSegment = (group, start, end, radius, material, role) => {
+  const direction = end.clone().sub(start)
+  const branch = addVisualPart(
+    group,
+    new THREE.CylinderGeometry(radius * .72, radius, direction.length(), 6),
+    material,
+    role,
+    start.clone().add(end).multiplyScalar(.5),
+  )
+  branch.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize())
+  return branch
 }
 
 const createRootClusterVisual = (width, height, depth, variant = 0) => {
@@ -319,6 +387,32 @@ const createRuinWallVisual = (width, height, depth, variant = 0) => {
     block.scale.set(blockWidth * scale, height * .19 * scale, blockDepth * scale)
     block.rotation.y = (variant % 2 ? -.12 : .08) + x * .25
   }
+  // A few cells carry a broken monumental pier. The distribution stays
+  // deterministic, so adjacent ruin cells read as one authored structure
+  // instead of identical repeated rocks.
+  if (Math.abs(Math.floor(variant)) % 3 !== 1) {
+    const pierMaterial = standardMaterial(stone === 0x77766d ? 0x686861 : 0x73736b, {roughness: .96})
+    for (const [x, y, lean] of [[-.38, .46, -.08], [.38, .38, .1]]) {
+      const pier = addVisualPart(
+        group,
+        new THREE.CylinderGeometry(width * .105, width * .15, height * .72, 6),
+        pierMaterial,
+        "ruin-pillar",
+        new THREE.Vector3(x * width, y * height, depth * .08),
+      )
+      pier.rotation.z = lean
+      pier.rotation.y = (variant % 2 ? -.12 : .1) + x
+    }
+  }
+  const fallenCap = addVisualPart(
+    group,
+    new THREE.BoxGeometry(width * .54, height * .12, depth * .48),
+    standardMaterial(variant % 2 ? 0x908d82 : 0x7d7e76, {roughness: .92}),
+    "ruin-capstone",
+    new THREE.Vector3((variant % 2 ? -.08 : .08) * width, height * .9, -depth * .04),
+  )
+  fallenCap.scale.set(width * .28, height * .1, depth * .34)
+  fallenCap.rotation.set(.08, variant * .13, variant % 2 ? -.12 : .1)
   addVisualPart(group, new THREE.BoxGeometry(width * .9, height * .045, depth * .9), mortar, "ruin-foundation", new THREE.Vector3(0, height * .04, 0))
   const ivy = addVisualPart(group, new THREE.CylinderGeometry(width * .035, width * .05, height * .58, 6), moss, "ruin-ivy", new THREE.Vector3(width * .31, height * .42, depth * .4), new THREE.Vector3(.18, 0, -.22))
   ivy.scale.x = .7
@@ -327,15 +421,173 @@ const createRuinWallVisual = (width, height, depth, variant = 0) => {
 
 const createThornVineVisual = (width, height, depth, variant = 0) => {
   const group = new THREE.Group()
-  const vine = standardMaterial(variant % 2 ? 0x315c3c : 0x3d7042, {roughness: 1})
-  const thorn = standardMaterial(0x777b55, {roughness: .96})
-  const radius = Math.min(width, depth) * .055
-  for (const [x, z, angle] of [[-.2, 0, -.5], [0, .04, .18], [.2, -.02, .62]]) {
-    const stem = addVisualPart(group, new THREE.CylinderGeometry(radius * .75, radius, height * .78, 6), vine, "thorn-vine-stem", new THREE.Vector3(x * width, height * .39, z * depth), new THREE.Vector3(0, 0, angle))
-    stem.scale.y = 1 + (variant % 3) * .12
-    const tip = addVisualPart(group, new THREE.ConeGeometry(radius * 1.6, height * .16, 5), thorn, "thorn-vine-spike", new THREE.Vector3((x + .07) * width, height * .65, (z + .02) * depth))
-    tip.rotation.z = angle - Math.PI / 2
+  const shortSide = Math.min(width, depth)
+  const vine = standardMaterial(variant % 2 ? 0x214b30 : 0x2d5b35, {roughness: 1})
+  const vineLight = standardMaterial(variant % 3 === 0 ? 0x3f7540 : 0x396a3c, {roughness: .98})
+  const leaf = standardMaterial(variant % 2 ? 0x4c873f : 0x3f7d3c, {roughness: 1})
+  const leafLight = standardMaterial(0x65a34c, {roughness: 1})
+  const thorn = standardMaterial(variant % 2 ? 0x59683a : 0x485934, {roughness: .96})
+  const bloom = standardMaterial(variant % 2 ? 0xb85a4e : 0xc87359, {
+    roughness: .82,
+    emissive: 0x1d0805,
+    emissiveIntensity: .08,
+  })
+  const bloomCore = standardMaterial(0xe2b45d, {roughness: .72})
+  const radius = shortSide * .05
+
+  const bed = addVisualPart(
+    group,
+    new THREE.CylinderGeometry(1, 1.08, .08, 12),
+    standardMaterial(variant % 2 ? 0x3e733e : 0x477d42, {roughness: 1}),
+    "thorn-vine-bed",
+    new THREE.Vector3(0, height * .045, 0),
+  )
+  bed.scale.set(width * .48, height * .65, depth * .42)
+
+  const rootSpecs = [
+    [[-.06, .08, -.02], [-.34, .25, -.1]],
+    [[.02, .08, .04], [.3, .24, .08]],
+    [[-.02, .08, .12], [-.14, .26, .24]],
+  ]
+  rootSpecs.forEach(([from, to]) => {
+    const start = new THREE.Vector3(from[0] * width, from[1] * height, from[2] * depth)
+    const end = new THREE.Vector3(to[0] * width, to[1] * height, to[2] * depth)
+    createBranchSegment(group, start, end, radius * 1.55, vine, "thorn-vine-root")
+  })
+
+  const branchSpecs = [
+    [[-.36, .12, -.12], [-.28, .58, -.08], [-.08, 1.08, .02], [.16, 1.34, -.02]],
+    [[-.1, .1, .1], [-.08, .56, .12], [.02, 1.08, .08], [.12, 1.46, .02]],
+    [[.18, .11, -.06], [.28, .6, -.02], [.2, 1.04, .04], [-.02, 1.34, .1]],
+    [[.06, .12, .18], [.36, .46, .2], [.44, .86, .16], [.32, 1.16, .1]],
+    [[-.02, .12, .16], [-.26, .4, .22], [-.34, .78, .18], [-.26, 1.06, .12]],
+  ]
+  branchSpecs.forEach((points, index) => {
+    const vectors = points.map(([x, y, z]) => new THREE.Vector3(x * width, y * height, z * depth))
+    const material = index % 2 === variant % 2 ? vine : vineLight
+    for (let segment = 0; segment < vectors.length - 1; segment++) {
+      createBranchSegment(
+        group,
+        vectors[segment],
+        vectors[segment + 1],
+        radius * Math.max(.55, 1.08 - index * .08 - segment * .14),
+        material,
+        "thorn-vine-stem",
+      )
+    }
+  })
+
+  const hangingTendrils = [
+    [[-.12, 1.28, .02], [-.38, 1.18, .05], [-.46, .86, .1], [-.3, .58, .12]],
+    [[.16, 1.34, .04], [.4, 1.2, .1], [.48, .88, .08], [.34, .58, .1]],
+    [[.04, 1.18, .16], [.24, .98, .22], [.16, .72, .22], [-.02, .52, .18]],
+  ]
+  hangingTendrils.forEach((points, index) => {
+    const vectors = points.map(([x, y, z]) => new THREE.Vector3(x * width, y * height, z * depth))
+    for (let segment = 0; segment < vectors.length - 1; segment++) {
+      createBranchSegment(
+        group,
+        vectors[segment],
+        vectors[segment + 1],
+        radius * Math.max(.34, .7 - segment * .1),
+        index % 2 ? vineLight : vine,
+        "thorn-vine-tendril",
+      )
+    }
+  })
+
+  const leaves = [
+    [-.3, .48, -.08, -.72, .9], [-.24, .78, -.04, .35, 1.05],
+    [-.12, 1.08, .02, -.3, .88], [-.08, 1.34, .04, .72, .98],
+    [.04, .55, .1, -.6, .92], [.02, .9, .08, .34, 1.08],
+    [.12, 1.25, .04, -.42, 1.18], [.24, .48, -.04, .72, .86],
+    [.28, .8, .02, -.6, .96], [.2, 1.12, .06, .34, 1.1],
+    [.38, .7, .16, .72, .84], [.36, 1.02, .12, -.36, .8],
+    [-.34, .68, .16, .46, .72], [.42, .52, .1, -.3, .7],
+  ]
+  leaves.forEach(([x, y, z, rotation, scale], index) => {
+    const leafMesh = addVisualPart(
+      group,
+      new THREE.IcosahedronGeometry(shortSide * .095, 0),
+      index % 3 === 0 ? leafLight : leaf,
+      "thorn-vine-leaf",
+      new THREE.Vector3(x * width, y * height, z * depth),
+    )
+    leafMesh.scale.set(scale * 1.25, .82, scale * .72)
+    leafMesh.rotation.set(.08 + (index % 2) * .16, rotation, -.18 + index * .11)
+  })
+
+  const leafClusters = [
+    [-.18, .7, -.02, .86], [.02, 1.02, .04, 1.04],
+    [.2, .82, .02, .92], [.3, .58, .12, .72],
+  ]
+  leafClusters.forEach(([x, y, z, scale], clusterIndex) => {
+    for (let petal = 0; petal < 2; petal++) {
+      const angle = clusterIndex * .52 + petal * Math.PI
+      const offset = shortSide * .07 * (petal ? 1 : -.72)
+      const leafMesh = addVisualPart(
+        group,
+        new THREE.DodecahedronGeometry(shortSide * .075, 0),
+        petal ? leaf : leafLight,
+        "thorn-vine-leaf-cluster",
+        new THREE.Vector3(x * width + Math.cos(angle) * offset, y * height, z * depth + Math.sin(angle) * offset),
+      )
+      leafMesh.scale.set(scale * 1.12, .55, scale * .5)
+      leafMesh.rotation.set(.16, angle, -.2 + petal * .15)
+    }
+  })
+
+  const createBloom = (x, y, z, scale, rotation) => {
+    const flower = new THREE.Group()
+    flower.position.set(x * width, y * height, z * depth)
+    flower.rotation.y = rotation
+    flower.userData.role = "thorn-vine-bloom"
+    for (let petal = 0; petal < 4; petal++) {
+      const angle = petal * Math.PI * .5
+      const petalMesh = addVisualPart(
+        flower,
+        new THREE.IcosahedronGeometry(shortSide * .052 * scale, 0),
+        bloom,
+        "thorn-vine-petal",
+        new THREE.Vector3(Math.cos(angle) * shortSide * .055 * scale, 0, Math.sin(angle) * shortSide * .055 * scale),
+      )
+      petalMesh.scale.set(1.25, .42, .72)
+      petalMesh.rotation.y = angle
+    }
+    addVisualPart(
+      flower,
+      new THREE.SphereGeometry(shortSide * .034 * scale, 6, 4),
+      bloomCore,
+      "thorn-vine-bloom-core",
+      new THREE.Vector3(0, shortSide * .018 * scale, 0),
+    )
+    group.add(flower)
   }
+
+  createBloom(-.08, 1.34, .03, 1, .2)
+  createBloom(.2, 1.12, .05, .78, -.24)
+  createBloom(-.3, .9, .12, .68, .38)
+
+  const thorns = [
+    [[-.28, .54, -.04], [-.4, .62, -.08]], [[-.2, .86, .02], [-.08, .96, .04]],
+    [[-.08, 1.18, .04], [.04, 1.28, .06]], [[.12, .58, .1], [.24, .66, .14]],
+    [[.22, .94, .05], [.36, 1.02, .08]], [[.24, 1.22, .08], [.12, 1.3, .1]],
+    [[.38, .72, .16], [.5, .76, .2]], [[-.04, .34, .11], [-.16, .4, .16]],
+    [[-.3, 1.0, .12], [-.42, 1.04, .16]], [[.34, 1.06, .1], [.44, 1.14, .14]],
+  ]
+  thorns.forEach(([from, to]) => {
+    const start = new THREE.Vector3(from[0] * width, from[1] * height, from[2] * depth)
+    const end = new THREE.Vector3(to[0] * width, to[1] * height, to[2] * depth)
+    const direction = end.clone().sub(start)
+    const spike = addVisualPart(
+      group,
+      new THREE.ConeGeometry(radius * 1.35, direction.length() * 2.4, 5),
+      thorn,
+      "thorn-vine-spike",
+      start.clone().add(end).multiplyScalar(.5),
+    )
+    spike.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize())
+  })
   return group
 }
 
@@ -370,6 +622,27 @@ const groundingColors = {
 }
 
 const createGroundingBed = (wall, width, depth, variant = 0) => {
+  if (wall.type === "thorn_vine") {
+    const group = new THREE.Group()
+    group.name = "prop-grounding-bed"
+    group.userData.role = "grounding-bed"
+    const base = addVisualPart(
+      group,
+      new THREE.IcosahedronGeometry(1, 0),
+      standardMaterial(variant % 2 ? 0x37693b : 0x416f3f, {
+        roughness: 1,
+        transparent: true,
+        opacity: .55,
+        depthWrite: false,
+      }),
+      "grounding-bed",
+      new THREE.Vector3(0, .025, 0),
+    )
+    base.scale.set(width * .5, .035, depth * .46)
+    base.castShadow = false
+    base.receiveShadow = true
+    return group
+  }
   if (wall.type === "shipwreck") {
     const bed = new THREE.Mesh(
       new THREE.IcosahedronGeometry(1, 0),
@@ -437,10 +710,10 @@ export const createProp = (wall, index, waterTexture) => {
     return group
   }
 
-  const height = wall.type === "fence" ? 0.9 : wall.type === "thorn_vine" ? 1.05 : wall.type === "crates" ? 1.65 : wall.type === "tree" ? 3.9 : wall.type === "dead_tree" ? 3.9 : wall.type === "shipwreck" ? 1.9 : wall.type === "menhir" ? 1.45 : wall.type === "ruin_wall" ? 2.35 : wall.type === "fortress_wall" ? 2.8 : 2.15
+  const height = wall.type === "fence" ? 0.9 : wall.type === "thorn_vine" ? 2.05 : wall.type === "crates" ? 1.65 : wall.type === "tree" ? 3.9 : wall.type === "dead_tree" ? 3.9 : wall.type === "shipwreck" ? 1.9 : wall.type === "menhir" ? 1.45 : wall.type === "ruin_wall" ? 3.25 : wall.type === "fortress_wall" ? 2.8 : 2.15
   const block = STONE_PROP_TYPES.has(wall.type)
     ? new THREE.Mesh(
-      createStoneBlockGeometry().scale(width, height, depth),
+      createStoneBlockGeometry(index + wall.minX * 13 + wall.minY * 7).scale(width, height, depth),
       new THREE.MeshStandardMaterial({
         color: STONE_COLORS[Math.abs(Math.floor(index + wall.minX / 40 * 13 + wall.minY / 40 * 7)) % STONE_COLORS.length],
         vertexColors: true,
@@ -459,6 +732,9 @@ export const createProp = (wall, index, waterTexture) => {
     block.position.y = 0
   }
   group.add(block)
+  if (STONE_PROP_TYPES.has(wall.type)) {
+    group.add(createStoneDetailVisual(width, height, depth, index + wall.minX * 13 + wall.minY * 7))
+  }
   group.add(createContactShadow(Math.max(width, depth) * 0.55))
   group.add(createGroundingBed(wall, width, depth, index))
   return group

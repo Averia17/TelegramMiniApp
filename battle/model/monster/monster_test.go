@@ -146,6 +146,42 @@ func TestMonsterStopsChasingBeyondItsLeashAndDoesNotImmediatelyReacquire(t *test
 	}
 }
 
+func TestMonsterReturnsToSpawnAfterLeavingItsLeash(t *testing.T) {
+	m := NewMonster(100, 100, 16, 1024, 1024, 3)
+	p := &player.Player{CircleBody: geometry.CircleBody{X: 150, Y: 100, Radius: 16}, PlayerId: "p1", MaxLives: 3, Lives: 3}
+	players := map[string]*player.Player{"p1": p}
+
+	m.Update(players)
+	m.X = m.SpawnX + MonsterChaseLeash + 1
+	p.X = m.X + 20
+	m.Update(players)
+	if !m.ReturningHome || m.TargetPlayerId != "" {
+		t.Fatalf("monster did not enter return-home state: returning=%v target=%q", m.ReturningHome, m.TargetPlayerId)
+	}
+
+	before := m.X
+	m.Update(players)
+	if m.X >= before {
+		t.Fatalf("monster did not move back toward spawn: before=%.1f after=%.1f spawn=%.1f", before, m.X, m.SpawnX)
+	}
+}
+
+func TestMonsterCoastsBrieflyWhenItsTargetDisappears(t *testing.T) {
+	m := NewMonster(100, 100, 16, 1024, 1024, 3)
+	m.State = MonsterChase
+	m.TargetPlayerId = "p1"
+	m.MoveX, m.MoveY, m.MoveScale = 1, 0, 1
+	m.X = 180
+	p := &player.Player{CircleBody: geometry.CircleBody{X: 200, Y: 100, Radius: 16}, PlayerId: "p1", MaxLives: 3, Lives: 0}
+
+	before := m.X
+	m.Update(map[string]*player.Player{"p1": p})
+
+	if !m.ReturningHome || m.X <= before {
+		t.Fatalf("monster stopped or reversed instantly after losing target: returning=%v before=%.2f after=%.2f", m.ReturningHome, before, m.X)
+	}
+}
+
 func TestMonsterChaseDeadPlayer(t *testing.T) {
 	m := NewMonster(100, 100, 16, 512, 512, 3)
 	m.State = MonsterChase

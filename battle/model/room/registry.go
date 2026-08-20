@@ -63,6 +63,8 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 			Mode:     string(profile.Mode),
 			Duration: duration,
 			Winner:   winner,
+			Reason:   gs.EndReason,
+			Draw:     winner == "",
 		}
 		for _, p := range players {
 			if p.IsBot {

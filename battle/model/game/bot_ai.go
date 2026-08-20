@@ -195,6 +195,10 @@ func (s *teamBattleBotStrategy) Update(gs *GameState) {
 			continue
 		}
 		visible := gs.botSelectTarget(bot, now)
+		if visible == nil && gs.botTryAbility(id, bot, nil, now) {
+			index++
+			continue
+		}
 		ctx := &teamBotContext{gs: gs, bot: bot, now: now, index: index, visibleTarget: visible, ownObjective: gs.teamObjective(bot.Team, true), enemyObjective: gs.teamObjective(bot.Team, false)}
 		intent := teamBotIntent{}
 		for _, behavior := range s.behaviors {
@@ -228,7 +232,7 @@ func (gs *GameState) moveBotTo(id string, bot *player.Player, x, y float64, now 
 		return
 	}
 	angle := math.Atan2(y-bot.Y, x-bot.X)
-	bot.Rotation = angle
+	gs.botRotateToward(id, bot, angle)
 	dx, dy := gs.botTravelDirection(id, &bot.CircleBody, x, y, now)
 	gs.playerMove(id, now, dx, dy)
 }

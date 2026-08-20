@@ -740,6 +740,37 @@ test("zero health authoritatively opens a defeat result even if you_died is miss
   assert.equal(getStateBattleResult(state, "missing", "game"), null)
 })
 
+test("team battle result keeps combat and objective statistics from the snapshot", () => {
+  const state = {
+    game: {mode: "team deathmatch", gameEndsAt: 1_300_000},
+    players: {
+      local: {
+        lives: 0,
+        kills: 4,
+        deaths: 2,
+        playerDamage: 740,
+        towerDamage: 1280,
+        townHallDamage: 360,
+        towersDestroyed: 1,
+        townHallsDestroyed: 0,
+      },
+    },
+  }
+
+  assert.deepEqual(getPlayerBattleStats(state, "local", 1_000_000), {
+    place: 1,
+    kills: 4,
+    monsters: 0,
+    duration: 0,
+    deaths: 2,
+    playerDamage: 740,
+    towerDamage: 1280,
+    townHallDamage: 360,
+    towersDestroyed: 1,
+    townHallsDestroyed: 0,
+  })
+})
+
 test("a death message cannot award first place from a stale alive snapshot", () => {
   const state = {
     game: {alivePlayers: 2},
@@ -858,10 +889,9 @@ test("battle reward message names the rewarded placement", () => {
 test("battle result stats keep their Cyrillic labels readable", async () => {
   const source = await readFile(projectFile("src/components/BattleGame/BattleGameUI.jsx"), "utf8")
   assert.match(source, /result\.won \? 1 : "—"/)
-  assert.match(source, /<\/b>место<\/span>/)
-  assert.match(source, /<\/b>бойцов<\/span>/)
-  assert.match(source, /<\/b>мобов<\/span>/)
-  assert.match(source, /<\/b>время<\/span>/)
+  for (const label of ["место", "бойцов", "мобов", "убийства", "смерти", "урон бойцам", "урон башням", "урон ратуше", "время"]) {
+    assert.match(source, new RegExp(`"${label}"`))
+  }
   assert.doesNotMatch(source, /РјРµСЃС‚Рѕ|Р±РѕР№С†РѕРІ|РјРѕР±РѕРІ|РІСЂРµРјСЏ/)
 })
 
@@ -1656,6 +1686,10 @@ test("high-quality stone props use the shared faceted block silhouette", () => {
   assert.ok(block)
   assert.equal(block.geometry.userData.stoneFacets, true)
   assert.equal(block.material.vertexColors, true)
+  const detailRoles = new Set()
+  prop.traverse(node => { if (node.userData?.role) detailRoles.add(node.userData.role) })
+  assert.equal(detailRoles.has("stone-crack"), true)
+  assert.equal(detailRoles.has("stone-chip"), true)
   prop.traverse(node => {
     if (node.geometry) node.geometry.dispose()
     if (node.material) node.material.dispose()
@@ -1821,9 +1855,20 @@ test("team battle ruin cells render as detailed stonework and thorny blockers", 
 
   assert.equal(ruin.userData.visualType, "ruin_wall")
   assert.equal(ruinRoles.has("ruin-stone"), true)
+  assert.equal(ruinRoles.has("ruin-pillar"), true)
+  assert.equal(ruinRoles.has("ruin-capstone"), true)
   assert.equal(ruinRoles.has("ruin-ivy"), true)
+  const ruinVisual = ruin.children.find(child => child.isGroup)
+  const ruinSize = new THREE.Box3().setFromObject(ruinVisual, true).getSize(new THREE.Vector3())
+  assert.ok(ruinSize.y >= 3)
   assert.equal(vineRoles.has("thorn-vine-stem"), true)
+  assert.equal(vineRoles.has("thorn-vine-root"), true)
+  assert.equal(vineRoles.has("thorn-vine-tendril"), true)
   assert.equal(vineRoles.has("thorn-vine-spike"), true)
+  assert.equal(vineRoles.has("thorn-vine-leaf"), true)
+  assert.equal(vineRoles.has("thorn-vine-leaf-cluster"), true)
+  assert.equal(vineRoles.has("thorn-vine-bloom"), true)
+  assert.equal(vineRoles.has("thorn-vine-bed"), true)
 
   for (const prop of [ruin, vine]) {
     prop.traverse(node => {
@@ -2163,9 +2208,9 @@ test("team structures mount world-space HP bars and protect the town hall visual
   const root = new THREE.Group()
   const renderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
   renderer.syncObjectives([
-    {id: "blue-tower", type: "tower", team: "Blue", x: 300, y: 300, lives: 1500, maxLives: 3000, attackRange: 620},
-    {id: "blue-hall", type: "town_hall", team: "Blue", x: 500, y: 300, lives: 12000, maxLives: 12000},
-    {id: "red-tower", type: "tower", team: "Red", x: 700, y: 300, lives: 3000, maxLives: 3000, attackRange: 620},
+    {id: "blue-tower", type: "tower", team: "Blue", x: 300, y: 300, lives: 500, maxLives: 1000, attackRange: 620},
+    {id: "blue-hall", type: "town_hall", team: "Blue", x: 500, y: 300, lives: 2000, maxLives: 2000},
+    {id: "red-tower", type: "tower", team: "Red", x: 700, y: 300, lives: 1000, maxLives: 1000, attackRange: 620},
   ])
 
   const tower = renderer.objectiveObjects.get("blue-tower")
@@ -2184,9 +2229,14 @@ test("team structures mount world-space HP bars and protect the town hall visual
   assert.ok(protectionLabel.scale.y >= .8)
 
   renderer.syncObjectives([
-    {id: "blue-tower", type: "tower", team: "Blue", x: 300, y: 300, lives: 0, maxLives: 3000, attackRange: 620},
-    {id: "blue-hall", type: "town_hall", team: "Blue", x: 500, y: 300, lives: 12000, maxLives: 12000},
+    {id: "blue-tower", type: "tower", team: "Blue", x: 300, y: 300, lives: 0, maxLives: 1000, attackRange: 620},
+    {id: "blue-hall", type: "town_hall", team: "Blue", x: 500, y: 300, lives: 2000, maxLives: 2000},
   ])
+  assert.equal(tower.visible, true)
+  assert.equal(tower.userData.objectiveBroken, true)
+  assert.equal(tower.getObjectByName("team-tower-roof").visible, false)
+  assert.equal(tower.getObjectByName("team-tower-broken-roof").visible, true)
+  assert.ok(tower.getObjectByName("team-tower-broken-crack"))
   assert.equal(hall.userData.objectiveProtection.visible, false)
   renderer.dispose()
 })

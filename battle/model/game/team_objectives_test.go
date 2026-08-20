@@ -27,6 +27,90 @@ func newTeamObjectiveState() *GameState {
 	return state
 }
 
+func TestTeamRespawnDelayRampsFromFiveToFifteenSeconds(t *testing.T) {
+	startedAt := int64(1_000_000)
+	state := newTeamObjectiveState()
+	state.MatchStartedAt = startedAt
+
+	tests := []struct {
+		name    string
+		elapsed time.Duration
+		want    time.Duration
+	}{
+		{name: "match start", elapsed: 0, want: 5 * time.Second},
+		{name: "match midpoint", elapsed: TeamBattleDuration / 2, want: 10 * time.Second},
+		{name: "match end", elapsed: TeamBattleDuration, want: 15 * time.Second},
+		{name: "after match end", elapsed: TeamBattleDuration + time.Minute, want: 15 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := state.teamRespawnDelayAt(startedAt + tt.elapsed.Milliseconds()); got != tt.want {
+				t.Fatalf("team respawn delay = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTeamObjectiveHealthUsesReducedBalanceValues(t *testing.T) {
+	state := newTeamObjectiveState()
+
+	for _, id := range []string{"blue-tower-west", "blue-tower-east", "red-tower-west", "red-tower-east"} {
+		objective := state.Objectives[id]
+		if objective.Lives != 1000 || objective.MaxLives != 1000 {
+			t.Fatalf("%s health = %d/%d, want 1000/1000", id, objective.Lives, objective.MaxLives)
+		}
+	}
+	for _, id := range []string{"blue-town-hall", "red-town-hall"} {
+		objective := state.Objectives[id]
+		if objective.Lives != 2000 || objective.MaxLives != 2000 {
+			t.Fatalf("%s health = %d/%d, want 2000/2000", id, objective.Lives, objective.MaxLives)
+		}
+	}
+}
+
+func TestTeamLethalDamageSchedulesRespawnUsingMatchProgress(t *testing.T) {
+	state := newTeamObjectiveState()
+	state.MatchStartedAt = time.Now().Add(-TeamBattleDuration / 2).UnixMilli()
+	target := state.Players["blue"]
+	target.Lives = 1
+
+	before := time.Now().UnixMilli()
+	state.applyDamageAmount(target, 1)
+	after := time.Now().UnixMilli()
+
+	if target.RespawnAt < before+10_000 || target.RespawnAt > after+10_000 {
+		t.Fatalf("respawn scheduled at %d, want about 10 seconds after damage (%d-%d)", target.RespawnAt, before+10_000, after+10_000)
+	}
+}
+
+func TestTeamObjectiveCollisionBlocksHeroMovement(t *testing.T) {
+	state := newTeamObjectiveState()
+	state.Walls = geometry.NewSpatialHash(TileSize)
+	for _, wall := range state.Map.Collisions {
+		if wall.Type == "objective" {
+			state.Walls.Insert(wall)
+		}
+	}
+	tower := state.Objectives["red-tower-west"]
+	body := geometry.CircleBody{X: tower.X - tower.Radius - 20, Y: tower.Y, Radius: 14}
+	var collider *geometry.WallTile
+	for _, wall := range state.Map.Collisions {
+		if wall.Type == "objective" && tower.X >= wall.MinX && tower.X <= wall.MaxX && tower.Y >= wall.MinY && tower.Y <= wall.MaxY {
+			collider = wall
+			break
+		}
+	}
+	if collider == nil {
+		t.Fatal("tower has no objective collider")
+	}
+	geometry.MoveCircleWithBlockingWalls(&body, state.Walls, 200, 0)
+	wantX := collider.MinX - body.Radius
+	if math.Abs(body.X-wantX) > .001 {
+		t.Fatalf("hero stopped at unexpected distance: x=%.1f, want=%.1f", body.X, wantX)
+	}
+}
+
 func TestTeamObjectivesKeepTownHallProtectedWhileItsTowersLive(t *testing.T) {
 	state := newTeamObjectiveState()
 	source := state.Players["blue"]

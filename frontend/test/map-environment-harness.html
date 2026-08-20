@@ -182,7 +182,7 @@
         map,
         game: {islandName: selectedMode === "team" ? "team-battle" : "Остров Первого Испытания", phase: "landing", stormRadius: 0},
         players: {"map-inspector": player},
-        objectives: (map.objectives || []).map(objective => ({...objective, lives: objective.type === "town_hall" ? 12000 : 3000, maxLives: objective.type === "town_hall" ? 12000 : 3000})),
+        objectives: (map.objectives || []).map(objective => ({...objective, lives: objective.type === "town_hall" ? 2000 : 1000, maxLives: objective.type === "town_hall" ? 2000 : 1000})),
         monsters: {}, props: [], bullets: [], effects: [],
       }
       const battleRenderer = new ThreeBattleRenderer(canvas)

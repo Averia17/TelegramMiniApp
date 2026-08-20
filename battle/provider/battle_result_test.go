@@ -9,6 +9,8 @@ func TestBattleResultJSONIncludesTeamBattleStats(t *testing.T) {
 	data, err := json.Marshal(BattleResult{
 		RoomId: "room-1",
 		Mode:   "team deathmatch",
+		Reason: "Ничья: у ратуш одинаковое здоровье.",
+		Draw:   true,
 		Players: []PlayerResult{{
 			PlayerId:           "player-1",
 			Deaths:             2,
@@ -24,12 +26,17 @@ func TestBattleResultJSONIncludesTeamBattleStats(t *testing.T) {
 	}
 
 	var payload struct {
+		Reason  string                   `json:"reason"`
+		Draw    bool                     `json:"draw"`
 		Players []map[string]interface{} `json:"players"`
 	}
 	if err := json.Unmarshal(data, &payload); err != nil {
 		t.Fatal(err)
 	}
 	player := payload.Players[0]
+	if payload.Reason != "Ничья: у ратуш одинаковое здоровье." || !payload.Draw {
+		t.Fatalf("result outcome = reason %q draw %v, want draw with reason", payload.Reason, payload.Draw)
+	}
 	for key, want := range map[string]float64{
 		"deaths": 2, "playerDamage": 480, "towerDamage": 1200,
 		"townHallDamage": 350, "towersDestroyed": 1, "townHallsDestroyed": 0,

@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["app", "config", "constants", "consumers", "exeptions", "middleware", "routes", "services", "utils"]
+py-modules = ["app", "auth", "config", "constants", "consumers", "exeptions", "utils"]
 
 [tool.setuptools.packages.find]
 include = ["infrastructure*", "migrations*"]

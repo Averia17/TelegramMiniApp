@@ -21,6 +21,7 @@ const STORM_SEGMENTS = 96
 // coarse so ordinary movement never turns into a stream of scene rebuilds.
 const ENVIRONMENT_FOCUS_REBUILD_DISTANCE = 256
 const STONE_PROP_TYPES = new Set(["wall", "destructible", "sacrificial_stone", "menhir"])
+const COLLISION_ONLY_TYPES = new Set(["objective"])
 const DEFAULT_MAP_TILE_SIZE = 40
 const BEACON_VISUAL_SCALE = 24
 
@@ -99,6 +100,90 @@ const updateObjectiveHealthLabel = (label, objective) => {
   context.fillStyle = "#fff"
   context.fillText(text, canvas.width / 2, canvas.height / 2)
   texture.needsUpdate = true
+}
+
+const createObjectiveCrack = (name, points, z) => {
+  const crack = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(
+      points.map(([x, y]) => new THREE.Vector3(x, y, z)),
+    ),
+    new THREE.LineBasicMaterial({color: 0x101827, transparent: true, opacity: .95}),
+  )
+  crack.name = name
+  crack.userData.role = "team-objective-crack"
+  return crack
+}
+
+const createBrokenObjectiveVisual = (hall, blue) => {
+  const group = new THREE.Group()
+  group.name = hall ? "team-town-hall-broken" : "team-tower-broken"
+  const brokenColor = blue ? 0x3a465f : 0x55313a
+  const brokenMaterial = new THREE.MeshStandardMaterial({
+    color: brokenColor,
+    roughness: .96,
+    metalness: .02,
+    flatShading: true,
+  })
+
+  if (hall) {
+    const brokenHouse = new THREE.Mesh(new THREE.BoxGeometry(4.9, 1.35, 3.9), brokenMaterial)
+    brokenHouse.position.y = 1.08
+    brokenHouse.name = "team-town-hall-broken-house"
+    const brokenRoof = new THREE.Mesh(new THREE.ConeGeometry(3.75, 1.05, 4), brokenMaterial)
+    brokenRoof.rotation.set(.08, Math.PI / 4, -.42)
+    brokenRoof.position.set(.35, 2.28, .05)
+    brokenRoof.name = "team-town-hall-broken-roof"
+    group.add(
+      brokenHouse,
+      brokenRoof,
+      createObjectiveCrack("team-town-hall-broken-crack", [[-.8, .55], [-.2, 1.12], [-.36, 1.65], [.4, 2.08]], 2.02),
+      createObjectiveCrack("team-town-hall-broken-crack-side", [[.65, .6], [.25, 1.05], [.7, 1.48]], -2.02),
+    )
+  } else {
+    const brokenShaft = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.55, 1.12, 8), brokenMaterial)
+    brokenShaft.position.y = .9
+    brokenShaft.name = "team-tower-broken-shaft"
+    const brokenRoof = new THREE.Mesh(new THREE.ConeGeometry(1.75, 1.18, 6), brokenMaterial)
+    brokenRoof.rotation.set(.08, .2, -.46)
+    brokenRoof.position.set(.3, 2.24, .04)
+    brokenRoof.name = "team-tower-broken-roof"
+    const brokenCore = new THREE.Mesh(
+      new THREE.OctahedronGeometry(.38, 0),
+      new THREE.MeshBasicMaterial({color: 0x29313e, transparent: true, opacity: .72}),
+    )
+    brokenCore.position.set(-.48, 1.65, .18)
+    brokenCore.rotation.z = .5
+    brokenCore.name = "team-tower-broken-core"
+    const debris = [
+      [-1.42, .42, .2, .34],
+      [1.34, .5, -.25, .28],
+      [.82, .31, .38, .22],
+    ].map(([x, y, z, size], index) => {
+      const shard = new THREE.Mesh(new THREE.TetrahedronGeometry(size, 0), brokenMaterial)
+      shard.position.set(x, y, z)
+      shard.rotation.set(index * .6, index * .8, -.25 * index)
+      shard.name = `team-tower-broken-debris-${index}`
+      return shard
+    })
+    group.add(
+      brokenShaft,
+      brokenRoof,
+      brokenCore,
+      ...debris,
+      createObjectiveCrack("team-tower-broken-crack", [[-.72, .48], [-.2, 1.02], [-.38, 1.55], [.35, 2.04]], 1.32),
+      createObjectiveCrack("team-tower-broken-crack-side", [[.65, .55], [.2, .95], [.62, 1.4]], -1.32),
+    )
+  }
+
+  group.visible = false
+  group.userData.role = "team-objective-broken"
+  return group
+}
+
+const setObjectiveBrokenState = (object, broken) => {
+  object.userData.objectiveBroken = broken
+  object.userData.objectiveLiveParts?.forEach(part => { part.visible = !broken })
+  if (object.userData.objectiveBrokenVisual) object.userData.objectiveBrokenVisual.visible = broken
 }
 
 const createProtectionBadge = color => {
@@ -205,6 +290,8 @@ const createObjectiveVisual = objective => {
     group.add(base, shaft, roof, core, rangeRing)
     group.userData.objectiveRangeRing = rangeRing
   }
+  const brokenVisual = createBrokenObjectiveVisual(hall, blue)
+  group.add(brokenVisual)
   group.position.set(Number(objective.x) * WORLD_SCALE, 0, Number(objective.y) * WORLD_SCALE)
   group.userData.objectiveId = objective.id
   group.userData.objectiveMaterial = material
@@ -212,6 +299,11 @@ const createObjectiveVisual = objective => {
   group.userData.objectiveHealthFill = health.fill
   group.userData.objectiveHealthLabel = health.label
   group.userData.objectiveProtection = protection
+  group.userData.objectiveBrokenVisual = brokenVisual
+  group.userData.objectiveLiveParts = hall
+    ? [group.getObjectByName("team-town-hall-house"), group.getObjectByName("team-town-hall-roof")]
+    : [group.getObjectByName("team-tower-shaft"), group.getObjectByName("team-tower-roof"), group.getObjectByName("team-tower-core")]
+  group.userData.objectiveBroken = false
   return group
 }
 
@@ -895,7 +987,7 @@ export class MapRenderer {
         }
       })
     })
-    const nonBushWalls = walls.filter(wall => wall.type !== "bush" && wall.type !== "half" && wall.type !== "moon_mist" && wall.type !== "river" && wall.type !== "river_bridge")
+    const nonBushWalls = walls.filter(wall => wall.type !== "bush" && wall.type !== "half" && wall.type !== "moon_mist" && wall.type !== "river" && wall.type !== "river_bridge" && !COLLISION_ONLY_TYPES.has(wall.type))
     const renderWalls = [
       ...mergeWalls(nonBushWalls.filter(wall => wall.type === "water")),
       ...nonBushWalls.filter(wall => wall.type !== "water" && !STONE_PROP_TYPES.has(wall.type)),
@@ -935,7 +1027,7 @@ export class MapRenderer {
       const maxLives = Math.max(1, Number(objective.maxLives) || 1)
       const lives = Math.max(0, Number(objective.lives) || 0)
       const ratio = objectiveHealthFraction(lives, maxLives)
-      object.visible = lives > 0 || incoming.some(candidate => candidate?.team !== objective.team && candidate?.type === "town_hall" && Number(candidate.lives) > 0)
+      object.visible = true
       const visualScale = .82 + ratio * .18
       object.scale.setScalar(visualScale)
       if (object.userData.objectiveRangeRing) object.userData.objectiveRangeRing.scale.setScalar(1 / visualScale)
@@ -951,6 +1043,7 @@ export class MapRenderer {
         object.userData.objectiveProtection.visible = protectedHall
         object.userData.objectiveProtection.scale.setScalar(1 / visualScale)
       }
+      setObjectiveBrokenState(object, lives <= 0)
       if (material) material.emissive?.setHex?.(String(objective.team) === "Blue" ? 0x102f68 : 0x651622)
       object.userData.objectiveState = objective
       object.userData.objectiveProtected = objective.type === "town_hall" && towersAlive.has(String(objective.team))

@@ -11,6 +11,11 @@ const CanonicalTeamBattleSeed int64 = 20260816
 const (
 	teamBattleRiverCenter    = 0.0
 	teamBattleRiverHalfWidth = 2.2
+	// Objective visuals are smaller than their gameplay target radius. Keep a
+	// compact physical footprint so heroes can stand close enough to attack
+	// without being stopped by a tile-sized square around the building.
+	teamBattleTownHallCollisionRadius = 72.0
+	teamBattleTowerCollisionRadius    = 36.0
 	// The river spans the whole playable island. The outer water ring owns the
 	// cells beyond these banks, so the river meets the ocean without drawing a
 	// second river strip through open water.
@@ -409,8 +414,11 @@ func GenerateTeamBattle(seed int64) *GameMap {
 		gm.Spawners = append(gm.Spawners, spawner)
 		gm.TeamSpawners[team] = append(gm.TeamSpawners[team], spawner)
 	}
-	for _, offset := range [][2]int{{0, 0}, {2, 1}, {1, 2}} {
-		x, y := 15+offset[0], 62+offset[1]
+	// Keep the three team pockets close to the hall, but outside its physical
+	// footprint plus the largest hero radius. The old offsets were inside the
+	// hall collider and made heroes appear to spawn from the building.
+	for _, offset := range [][2]int{{-3, 0}, {-3, -2}, {0, 3}} {
+		x, y := 16+offset[0], 63+offset[1]
 		addSpawnPair("Blue", x, y)
 		mx, my := mirror(x, y)
 		addSpawnPair("Red", mx, my)
@@ -433,8 +441,25 @@ func GenerateTeamBattle(seed int64) *GameMap {
 		{ID: "red-tower-west", Type: "tower", Team: "Red", X: 60.5 * tile, Y: 19.5 * tile, Radius: 52},
 		{ID: "red-tower-east", Type: "tower", Team: "Red", X: 58.5 * tile, Y: 15.5 * tile, Radius: 52},
 	}
+	for _, objective := range gm.Objectives {
+		collisionRadius := teamBattleObjectiveCollisionRadius(objective)
+		gm.Collisions = append(gm.Collisions, &geometry.WallTile{
+			MinX: objective.X - collisionRadius,
+			MinY: objective.Y - collisionRadius,
+			MaxX: objective.X + collisionRadius,
+			MaxY: objective.Y + collisionRadius,
+			Type: "objective",
+		})
+	}
 	_ = seed
 	return gm
+}
+
+func teamBattleObjectiveCollisionRadius(objective MapObjective) float64 {
+	if objective.Type == "town_hall" {
+		return teamBattleTownHallCollisionRadius
+	}
+	return teamBattleTowerCollisionRadius
 }
 
 func absInt(value int) int {

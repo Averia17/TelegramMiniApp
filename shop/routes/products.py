@@ -3,7 +3,7 @@ import logging
 from auth import AuthenticatedUser, current_user, require_shop_service
 from consumers import send_kafka_message
 from exeptions import InternalError, PaymentFailedError
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from infrastructure import RequestsRepo
 from services import process_transaction
 from utils import get_repo

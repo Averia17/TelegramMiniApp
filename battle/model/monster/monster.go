@@ -16,19 +16,26 @@ const (
 )
 
 const (
-	MonsterSpeedPatrol       = 0.75
-	MonsterSpeedChase        = 1.0
-	MonsterSight             = 176.0
-	MonsterChaseLeash        = 260.0
-	MonsterLostTargetDelay   = 2500
-	MonsterLives             = 260
-	EliteMonsterLives        = 380
-	MonsterAttackDamage      = 25
-	MonsterIdleDurationMin   = 1000
-	MonsterIdleDurationMax   = 3000
-	MonsterPatrolDurationMin = 1000
-	MonsterPatrolDurationMax = 3000
-	MonsterAttackBackoff     = 3000
+	MonsterSpeedPatrol        = 0.75
+	MonsterSpeedChase         = 1.15
+	MonsterSpeedReturn        = 0.9
+	MonsterSight              = 220.0
+	MonsterChaseLeash         = 320.0
+	MonsterChasePace          = 105.0
+	MonsterReturnPace         = 82.0
+	MonsterReturnStopDistance = 18.0
+	MonsterMoveTurnBlend      = 0.22
+	MonsterMoveRelease        = 0.84
+	MonsterMoveStopScale      = 0.045
+	MonsterLostTargetDelay    = 2500
+	MonsterLives              = 260
+	EliteMonsterLives         = 380
+	MonsterAttackDamage       = 25
+	MonsterIdleDurationMin    = 1000
+	MonsterIdleDurationMax    = 3000
+	MonsterPatrolDurationMin  = 1000
+	MonsterPatrolDurationMax  = 3000
+	MonsterAttackBackoff      = 3000
 )
 
 type Monster struct {
@@ -47,7 +54,13 @@ type Monster struct {
 	TargetPlayerId     string
 	ChaseOriginX       float64
 	ChaseOriginY       float64
+	SpawnX             float64
+	SpawnY             float64
+	ReturningHome      bool
 	IgnorePlayersUntil int64
+	MoveX              float64
+	MoveY              float64
+	MoveScale          float64
 }
 
 func NewMonster(x, y, radius, mapWidth, mapHeight float64, lives int) *Monster {
@@ -64,6 +77,8 @@ func NewMonster(x, y, radius, mapWidth, mapHeight float64, lives int) *Monster {
 		LastAttackAt: now,
 		ChaseOriginX: x,
 		ChaseOriginY: y,
+		SpawnX:       x,
+		SpawnY:       y,
 	}
 }
 
@@ -79,9 +94,14 @@ func (m *Monster) Update(players map[string]*player.Player) {
 }
 
 func (m *Monster) updateIdle(players map[string]*player.Player) {
+	if m.ReturningHome {
+		m.returnHome()
+		return
+	}
 	if m.lookForPlayer(players) {
 		return
 	}
+	m.coast(MonsterSpeedPatrol)
 	delta := NowMillis() - m.LastActionAt
 	if delta > int64(m.IdleDuration) {
 		m.startPatrol()
@@ -95,6 +115,7 @@ func (m *Monster) updatePatrol(players map[string]*player.Player) {
 	delta := NowMillis() - m.LastActionAt
 	if delta > int64(m.PatrolDuration) {
 		m.startIdle()
+		m.coast(MonsterSpeedPatrol)
 		return
 	}
 	m.move(MonsterSpeedPatrol, m.Rotation)
@@ -109,13 +130,15 @@ func (m *Monster) updatePatrol(players map[string]*player.Player) {
 func (m *Monster) updateChase(players map[string]*player.Player) {
 	p, ok := players[m.TargetPlayerId]
 	if !ok || !p.IsAlive() {
-		m.startIdle()
+		m.loseTarget()
+		m.coast(MonsterSpeedChase)
 		return
 	}
 	dist := geometry.GetDistance(m.X, m.Y, p.X, p.Y)
-	chaseDistance := geometry.GetDistance(m.X, m.Y, m.ChaseOriginX, m.ChaseOriginY)
+	chaseDistance := geometry.GetDistance(m.X, m.Y, m.SpawnX, m.SpawnY)
 	if dist > MonsterSight || chaseDistance > MonsterChaseLeash {
 		m.loseTarget()
+		m.coast(MonsterSpeedChase)
 		return
 	}
 	m.Rotation = geometry.CalculateAngle(p.X, p.Y, m.X, m.Y)
@@ -124,8 +147,8 @@ func (m *Monster) updateChase(players map[string]*player.Player) {
 
 func (m *Monster) startIdle() {
 	m.State = MonsterIdle
-	m.Rotation = 0
 	m.TargetPlayerId = ""
+	m.ReturningHome = false
 	m.IdleDuration = geometry.GetRandomInt(MonsterIdleDurationMin, MonsterIdleDurationMax)
 	m.LastActionAt = NowMillis()
 }
@@ -141,6 +164,7 @@ func (m *Monster) startPatrol() {
 func (m *Monster) startChase(playerId string) {
 	m.State = MonsterChase
 	m.TargetPlayerId = playerId
+	m.ReturningHome = false
 	m.ChaseOriginX, m.ChaseOriginY = m.X, m.Y
 	m.LastActionAt = NowMillis()
 }
@@ -160,8 +184,28 @@ func (m *Monster) lookForPlayer(players map[string]*player.Player) bool {
 }
 
 func (m *Monster) loseTarget() {
-	m.startIdle()
+	m.State = MonsterIdle
+	m.TargetPlayerId = ""
+	m.ReturningHome = true
+	m.LastActionAt = NowMillis()
 	m.IgnorePlayersUntil = NowMillis() + MonsterLostTargetDelay
+}
+
+func (m *Monster) returnHome() {
+	dx, dy := m.SpawnX-m.X, m.SpawnY-m.Y
+	distance := math.Hypot(dx, dy)
+	if distance <= MonsterReturnStopDistance {
+		m.X, m.Y = m.SpawnX, m.SpawnY
+		m.Rotation = 0
+		m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
+		m.ReturningHome = false
+		m.LastActionAt = NowMillis()
+		return
+	}
+	m.Rotation = math.Atan2(dy, dx)
+	m.move(MonsterSpeedReturn, m.Rotation)
+	m.X = geometry.Clamp(m.X, m.Radius, m.MapWidth-m.Radius)
+	m.Y = geometry.Clamp(m.Y, m.Radius, m.MapHeight-m.Radius)
 }
 
 func (m *Monster) Hurt(amount ...int) {
@@ -176,8 +220,38 @@ func (m *Monster) Hurt(amount ...int) {
 }
 
 func (m *Monster) move(speed, rotation float64) {
-	m.X += math.Cos(rotation) * speed
-	m.Y += math.Sin(rotation) * speed
+	desiredX, desiredY := math.Cos(rotation), math.Sin(rotation)
+	currentLength := math.Hypot(m.MoveX, m.MoveY)
+	if currentLength <= .01 {
+		m.MoveX, m.MoveY = desiredX, desiredY
+		m.MoveScale = math.Max(m.MoveScale, .4)
+	} else {
+		currentAngle := math.Atan2(m.MoveY, m.MoveX)
+		delta := math.Atan2(math.Sin(rotation-currentAngle), math.Cos(rotation-currentAngle))
+		currentAngle += delta * MonsterMoveTurnBlend
+		m.MoveX, m.MoveY = math.Cos(currentAngle), math.Sin(currentAngle)
+		m.MoveScale += (1 - m.MoveScale) * MonsterMoveTurnBlend
+	}
+	m.X += m.MoveX * m.MoveScale * speed
+	m.Y += m.MoveY * m.MoveScale * speed
+	m.X = geometry.Clamp(m.X, m.Radius, m.MapWidth-m.Radius)
+	m.Y = geometry.Clamp(m.Y, m.Radius, m.MapHeight-m.Radius)
+}
+
+func (m *Monster) coast(speed float64) {
+	if math.Hypot(m.MoveX, m.MoveY) <= .01 || m.MoveScale <= .01 {
+		m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
+		return
+	}
+	m.MoveScale *= MonsterMoveRelease
+	if m.MoveScale <= MonsterMoveStopScale {
+		m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
+		return
+	}
+	m.X += m.MoveX * m.MoveScale * speed
+	m.Y += m.MoveY * m.MoveScale * speed
+	m.X = geometry.Clamp(m.X, m.Radius, m.MapWidth-m.Radius)
+	m.Y = geometry.Clamp(m.Y, m.Radius, m.MapHeight-m.Radius)
 }
 
 func (m *Monster) Attack() {

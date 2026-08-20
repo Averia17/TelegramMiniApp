@@ -35,8 +35,9 @@ export const normalizeTeamBattleResult = (result, state, localId, mode = state?.
   const winnerTeam = result?.winnerTeam || Object.keys(state?.players || {})
     .map(id => state.players[id]?.team)
     .find(team => team && winnerText.toLowerCase() === `${String(team).toLowerCase()} team`)
-  const won = winnerTeam ? winnerTeam === localTeam : result?.won
-  return {...result, winnerTeam: winnerTeam || null, team: localTeam || null, teamBattle: true, won}
+  const draw = Boolean(result?.draw)
+  const won = draw ? false : winnerTeam ? winnerTeam === localTeam : result?.won
+  return {...result, winnerTeam: winnerTeam || null, team: localTeam || null, teamBattle: true, draw, won}
 }
 
 export const getObjectiveHudModel = (state, mode = state?.game?.mode) => {
@@ -50,6 +51,28 @@ export const getObjectiveHudModel = (state, mode = state?.game?.mode) => {
     destroyed: Number(objective.lives) <= 0,
     protected: objective.type === "town_hall" && towersAlive.has(asTeamId(objective.team)),
   }))
+}
+
+export const getTeamObjectiveGroups = (objectives = [], localTeam = "") => {
+  const grouped = objectives.reduce((result, objective) => {
+    const team = asTeamId(objective?.team)
+    if (!team) return result
+    const items = result[team] || []
+    items.push(objective)
+    result[team] = items
+    return result
+  }, {})
+  const objectiveOrder = {tower: 0, town_hall: 1}
+  Object.values(grouped).forEach(items => items.sort((left, right) => {
+    const typeOrder = (objectiveOrder[left?.type] ?? 2) - (objectiveOrder[right?.type] ?? 2)
+    return typeOrder || asTeamId(left?.id).localeCompare(asTeamId(right?.id))
+  }))
+  return Object.entries(grouped).sort(([left], [right]) => {
+    const leftIsLocal = left === asTeamId(localTeam)
+    const rightIsLocal = right === asTeamId(localTeam)
+    if (leftIsLocal !== rightIsLocal) return leftIsLocal ? -1 : 1
+    return left.localeCompare(right)
+  })
 }
 
 export const getIncomingTowerThreat = (state, localId, mode = state?.game?.mode) => {

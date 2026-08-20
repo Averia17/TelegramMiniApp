@@ -19,6 +19,9 @@ const (
 	regenerationInterval              = 2 * time.Second
 	regenerationPulsePercent          = 0.15
 	regenerationConcealedPulsePercent = 0.25
+	teamBaseRegenerationPercent       = 0.01
+	teamBaseSemicircleRadius          = 10.5 * TileSize
+	teamBaseSemicircleEntrance        = 4.5 * TileSize
 )
 
 func InitGameState(gs *GameState) {
@@ -194,6 +197,10 @@ func (gs *GameState) updateRegenerationAt(now int64) {
 		return
 	}
 	for _, p := range gs.Players {
+		if gs.isInOwnBaseSemicircle(p) {
+			gs.updateBaseRegenerationAt(p, now)
+			continue
+		}
 		if hasActiveHostileStatus(p, now) {
 			p.InterruptRegenerationAt(now)
 		}
@@ -217,6 +224,59 @@ func (gs *GameState) updateRegenerationAt(now int64) {
 		}
 		p.LastRegenAt = now
 	}
+}
+
+func (gs *GameState) updateBaseRegenerationAt(p *player.Player, now int64) {
+	if p == nil || !p.IsAlive() || p.IsFullLives() {
+		return
+	}
+	if p.LastRegenAt <= 0 {
+		p.LastRegenAt = now
+		return
+	}
+	elapsed := now - p.LastRegenAt
+	if elapsed <= 0 {
+		return
+	}
+	p.RegenCarry += float64(p.MaxLives) * teamBaseRegenerationPercent * float64(elapsed) / float64(time.Second/time.Millisecond)
+	heal := int(p.RegenCarry)
+	if heal > 0 {
+		missing := p.MaxLives - p.Lives
+		applied := int(math.Min(float64(missing), float64(heal)))
+		p.Lives += applied
+		p.RegenCarry -= float64(applied)
+	}
+	p.LastRegenAt = now
+}
+
+func (gs *GameState) isInOwnBaseSemicircle(source *player.Player) bool {
+	if gs == nil || gs.Mode != ModeTeamDeathmatch || gs.Map == nil || source == nil || source.Team == "" {
+		return false
+	}
+	var ownHall, enemyHall *gamemap.MapObjective
+	for index := range gs.Map.Objectives {
+		objective := &gs.Map.Objectives[index]
+		if objective.Type != "town_hall" {
+			continue
+		}
+		if objective.Team == source.Team {
+			ownHall = objective
+		} else if enemyHall == nil {
+			enemyHall = objective
+		}
+	}
+	if ownHall == nil || enemyHall == nil {
+		return false
+	}
+	directionX, directionY := enemyHall.X-ownHall.X, enemyHall.Y-ownHall.Y
+	directionLength := math.Hypot(directionX, directionY)
+	if directionLength == 0 {
+		return false
+	}
+	directionX, directionY = directionX/directionLength, directionY/directionLength
+	relativeX, relativeY := source.X-ownHall.X, source.Y-ownHall.Y
+	return math.Hypot(relativeX, relativeY) <= teamBaseSemicircleRadius &&
+		relativeX*directionX+relativeY*directionY <= teamBaseSemicircleEntrance
 }
 
 func hasActiveHostileStatus(p *player.Player, now int64) bool {
@@ -292,9 +352,10 @@ func (gs *GameState) updateGame() {
 		}
 		if gs.GameEndsAt < time.Now().UnixMilli() {
 			winner := gs.getTimeoutWinner()
+			gs.EndReason = resultReason(gs.matchRules(), gs, winner, true)
 			gs.onGameEnd(&ServerEvent{
 				Type:   "timeout",
-				Params: map[string]interface{}{"name": winner},
+				Params: map[string]interface{}{"name": winner, "reason": gs.EndReason, "draw": winner == ""},
 			})
 			gs.startFinished()
 			return
@@ -345,14 +406,20 @@ func (gs *GameState) updateMonsters() {
 		if m == nil || !m.IsAlive() {
 			continue
 		}
+		if m.ReturningHome {
+			gs.moveMonsterHome(monsterID, m)
+			continue
+		}
 		var target *player.Player
 		if m.TargetPlayerId != "" {
 			target = gs.Players[m.TargetPlayerId]
-			chaseDistance := math.Hypot(m.X-m.ChaseOriginX, m.Y-m.ChaseOriginY)
+			chaseDistance := math.Hypot(m.X-m.SpawnX, m.Y-m.SpawnY)
 			if target == nil || !gs.monsterCanSeePlayer(m, target) || chaseDistance > monster.MonsterChaseLeash {
 				m.State = monster.MonsterIdle
 				m.TargetPlayerId = ""
+				m.ReturningHome = true
 				m.IgnorePlayersUntil = now + monster.MonsterLostTargetDelay
+				gs.moveMonster(monsterID, m, 0, 0, monster.MonsterChasePace+float64(m.Tier)*12)
 				continue
 			}
 		} else if now >= m.IgnorePlayersUntil {
@@ -364,17 +431,16 @@ func (gs *GameState) updateMonsters() {
 			}
 		}
 		if target == nil {
+			gs.moveMonster(monsterID, m, 0, 0, monster.MonsterChasePace+float64(m.Tier)*12)
 			continue
 		}
 		closest := math.Hypot(target.X-m.X, target.Y-m.Y)
 		angle := math.Atan2(target.Y-m.Y, target.X-m.X)
-		m.Rotation = angle
 		if closest < monster.MonsterSight && closest >= 50 {
-			pace := 90 + float64(m.Tier)*12 + float64(index)
-			dx, dy := gs.navigatedDirection(&m.CircleBody, math.Cos(angle), math.Sin(angle), monsterID)
-			m.X += dx * pace / 60
-			m.Y += dy * pace / 60
-			geometry.CorrectCircleWithBlockingWalls(&m.CircleBody, gs.Walls)
+			pace := monster.MonsterChasePace + float64(m.Tier)*12 + float64(index)
+			gs.moveMonster(monsterID, m, math.Cos(angle), math.Sin(angle), pace)
+		} else {
+			gs.moveMonster(monsterID, m, 0, 0, monster.MonsterChasePace+float64(m.Tier)*12+float64(index))
 		}
 		cooldown := int64(1100)
 		if m.Tier == 2 {
@@ -396,6 +462,76 @@ func (gs *GameState) updateMonsters() {
 		}
 		index++
 	}
+}
+
+func (gs *GameState) steerMonster(m *monster.Monster, desiredX, desiredY float64) (float64, float64) {
+	if m == nil {
+		return 0, 0
+	}
+	desiredLength := math.Hypot(desiredX, desiredY)
+	currentLength := math.Hypot(m.MoveX, m.MoveY)
+	if desiredLength > .01 {
+		desiredX, desiredY = desiredX/desiredLength, desiredY/desiredLength
+		if currentLength <= .01 {
+			m.MoveX, m.MoveY = desiredX, desiredY
+			m.MoveScale = math.Max(m.MoveScale, .4)
+		} else {
+			currentAngle := math.Atan2(m.MoveY, m.MoveX)
+			desiredAngle := math.Atan2(desiredY, desiredX)
+			delta := math.Atan2(math.Sin(desiredAngle-currentAngle), math.Cos(desiredAngle-currentAngle))
+			currentAngle += delta * monster.MonsterMoveTurnBlend
+			m.MoveX, m.MoveY = math.Cos(currentAngle), math.Sin(currentAngle)
+			m.MoveScale += (1 - m.MoveScale) * monster.MonsterMoveTurnBlend
+		}
+	} else if currentLength > .01 {
+		m.MoveScale *= monster.MonsterMoveRelease
+		if m.MoveScale <= monster.MonsterMoveStopScale {
+			m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
+		}
+	} else {
+		m.MoveScale = 0
+	}
+	return m.MoveX, m.MoveY
+}
+
+func (gs *GameState) moveMonster(monsterID string, m *monster.Monster, desiredX, desiredY, pace float64) {
+	if m == nil {
+		return
+	}
+	if math.Hypot(desiredX, desiredY) > .01 {
+		desiredX, desiredY = gs.navigatedDirection(&m.CircleBody, desiredX, desiredY, monsterID)
+	}
+	dx, dy := gs.steerMonster(m, desiredX, desiredY)
+	if math.Hypot(dx, dy) <= .01 || m.MoveScale <= 0 {
+		return
+	}
+	m.Rotation = math.Atan2(dy, dx)
+	m.X += dx * pace * m.MoveScale / 60
+	m.Y += dy * pace * m.MoveScale / 60
+	geometry.CorrectCircleWithBlockingWalls(&m.CircleBody, gs.Walls)
+	if gs.Map != nil {
+		clamped := gs.Map.ClampCircle(&m.CircleBody)
+		m.X, m.Y = clamped.X, clamped.Y
+	}
+}
+
+func (gs *GameState) moveMonsterHome(monsterID string, m *monster.Monster) {
+	if m == nil {
+		return
+	}
+	dx, dy := m.SpawnX-m.X, m.SpawnY-m.Y
+	distance := math.Hypot(dx, dy)
+	if distance <= monster.MonsterReturnStopDistance {
+		m.X, m.Y = m.SpawnX, m.SpawnY
+		m.Rotation = 0
+		m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
+		m.ReturningHome = false
+		return
+	}
+	angle := math.Atan2(dy, dx)
+	dx, dy = math.Cos(angle), math.Sin(angle)
+	pace := monster.MonsterReturnPace + float64(m.Tier)*8
+	gs.moveMonster(monsterID, m, dx, dy, pace)
 }
 
 func (gs *GameState) closestVisibleMonsterPlayer(m *monster.Monster) *player.Player {
@@ -526,7 +662,7 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 		target.Deaths++
 	}
 	if target.Lives <= 0 && gs.Mode == ModeTeamDeathmatch && target.RespawnAt == 0 {
-		target.RespawnAt = now + teamRespawnDelay
+		target.RespawnAt = now + gs.teamRespawnDelayAt(now).Milliseconds()
 	}
 	target.RevealedUntil = now + 2000
 	gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ff6b9f", dealt, 520)
@@ -981,12 +1117,16 @@ func segmentHitsCircle(x1, y1, x2, y2, cx, cy, radius float64) bool {
 }
 
 func segmentHitsBlockingWall(x1, y1, x2, y2, radius float64, walls *geometry.SpatialHash) bool {
+	return segmentHitsBlockingWallExcept(x1, y1, x2, y2, radius, walls, "")
+}
+
+func segmentHitsBlockingWallExcept(x1, y1, x2, y2, radius float64, walls *geometry.SpatialHash, ignoredType string) bool {
 	distance := math.Hypot(x2-x1, y2-y1)
 	steps := int(math.Max(1, math.Ceil(distance/math.Max(4, radius))))
 	for step := 0; step <= steps; step++ {
 		t := float64(step) / float64(steps)
 		body := geometry.CircleBody{X: x1 + (x2-x1)*t, Y: y1 + (y2-y1)*t, Radius: radius}
-		if collidesCircleWithProjectileBlockingWalls(&body, walls) {
+		if collidesCircleWithProjectileBlockingWallsExcept(&body, walls, ignoredType) {
 			return true
 		}
 	}
@@ -994,10 +1134,14 @@ func segmentHitsBlockingWall(x1, y1, x2, y2, radius float64, walls *geometry.Spa
 }
 
 func collidesCircleWithProjectileBlockingWalls(body *geometry.CircleBody, walls *geometry.SpatialHash) bool {
+	return collidesCircleWithProjectileBlockingWallsExcept(body, walls, "")
+}
+
+func collidesCircleWithProjectileBlockingWallsExcept(body *geometry.CircleBody, walls *geometry.SpatialHash, ignoredType string) bool {
 	collides := false
 	walls.VisitRect(body.Left(), body.Top(), body.Right(), body.Bottom(), func(wall *geometry.WallTile) bool {
 		// River blocks movement but projectiles fly over it.
-		if wall.Type == "river" || !geometry.IsBlockingWall(wall.Type) {
+		if wall.Type == "river" || wall.Type == ignoredType || !geometry.IsBlockingWall(wall.Type) {
 			return true
 		}
 		wallRect := wall.ColliderRect()
@@ -1037,6 +1181,7 @@ func (gs *GameState) startWaiting() {
 	gs.LobbyEndsAt = 0
 	gs.GameEndsAt = 0
 	gs.MatchStartedAt = 0
+	gs.EndReason = ""
 	gs.IslandPhase = ""
 	gs.PhaseStartedAt = 0
 	gs.PhaseEndsAt = 0
@@ -1074,7 +1219,7 @@ func (gs *GameState) startFinished() {
 
 func (gs *GameState) startGame() {
 	gs.LobbyEndsAt = 0
-	gs.GameEndsAt = time.Now().Add(GameDuration).UnixMilli()
+	gs.GameEndsAt = time.Now().Add(gs.matchDuration()).UnixMilli()
 	gs.MatchStartedAt = time.Now().UnixMilli()
 	gs.IslandPhase = ""
 	gs.PhaseStartedAt = 0
@@ -1116,16 +1261,17 @@ func (gs *GameState) startGame() {
 func (gs *GameState) onGameEnd(event *ServerEvent) {
 	duration := int64(0)
 	if gs.GameEndsAt > 0 {
+		matchDuration := gs.matchDuration()
 		remaining := gs.GameEndsAt - time.Now().UnixMilli()
 		if remaining < 0 {
 			remaining = 0
 		}
-		duration = GameDuration.Milliseconds() - remaining
+		duration = matchDuration.Milliseconds() - remaining
 		if duration < 0 {
 			duration = 0
 		}
-		if duration > GameDuration.Milliseconds() {
-			duration = GameDuration.Milliseconds()
+		if duration > matchDuration.Milliseconds() {
+			duration = matchDuration.Milliseconds()
 		}
 	}
 	if event != nil {
@@ -1199,7 +1345,9 @@ func (gs *GameState) playerMove(id string, ts int64, dirX, dirY float64) {
 		return
 	}
 	p.Ack = ts
-	if math.Hypot(dirX, dirY) <= .01 {
+	if p.IsBot {
+		dirX, dirY = gs.smoothBotMove(id, ts, dirX, dirY)
+	} else if math.Hypot(dirX, dirY) <= .01 {
 		p.MoveX, p.MoveY = 0, 0
 		return
 	}
@@ -1246,6 +1394,11 @@ func (gs *GameState) updatePlayerMovement(elapsed ...time.Duration) {
 			continue
 		}
 		speed := EffectiveMovementSpeed(p, now) * step
+		if p.IsBot {
+			if memory := gs.BotMemory[p.PlayerId]; memory != nil && memory.MoveScale > 0 {
+				speed *= memory.MoveScale
+			}
+		}
 		magnitude := math.Hypot(p.MoveX, p.MoveY)
 		geometry.MoveCircleWithBlockingWalls(
 			&p.CircleBody,
@@ -2329,14 +2482,19 @@ func (gs *GameState) finishBattleIfDecided() bool {
 	if winner == "" {
 		// Elimination is terminal even when it happens before the island's
 		// beacon phase. There is no winner in a simultaneous all-dead result.
-		gs.onGameEnd(nil)
+		gs.EndReason = resultReason(gs.matchRules(), gs, winner, false)
+		gs.onGameEnd(&ServerEvent{
+			Type:   "won",
+			Params: map[string]interface{}{"name": "", "reason": gs.EndReason, "draw": true},
+		})
 		gs.startFinished()
 		return true
 	}
 
+	gs.EndReason = resultReason(gs.matchRules(), gs, winner, false)
 	gs.onGameEnd(&ServerEvent{
 		Type:   "won",
-		Params: map[string]interface{}{"name": winner},
+		Params: map[string]interface{}{"name": winner, "reason": gs.EndReason, "draw": false},
 	})
 	gs.startFinished()
 	return true
@@ -2360,6 +2518,13 @@ func (gs *GameState) matchRules() MatchRules {
 		gs.rules = NewMatchRules(gs.Mode)
 	}
 	return gs.rules
+}
+
+func (gs *GameState) matchDuration() time.Duration {
+	if gs.Mode == ModeTeamDeathmatch {
+		return TeamBattleDuration
+	}
+	return GameDuration
 }
 
 func (gs *GameState) getWinningTeam() string {

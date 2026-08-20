@@ -33,6 +33,8 @@ type BattleResult struct {
 	Mode     string         `json:"mode"`
 	Duration int64          `json:"duration"`
 	Winner   string         `json:"winner,omitempty"`
+	Reason   string         `json:"reason,omitempty"`
+	Draw     bool           `json:"draw"`
 	Players  []PlayerResult `json:"players"`
 }
 

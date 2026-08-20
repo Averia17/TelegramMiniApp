@@ -43,6 +43,11 @@ func (r *Room) registerClient(client *Client, emptySince *time.Time) {
 		if client.AssignedTeam == "Blue" || client.AssignedTeam == "Red" {
 			r.State.Players[client.Id].SetTeam(client.AssignedTeam)
 			r.State.Players[client.Id].TeamLocked = true
+			// PlayerAdd starts from a mode-agnostic random pad. Matchmaking has
+			// already assigned the authoritative team by this point, so place the
+			// player immediately; otherwise the lobby can visibly show them on the
+			// opposing base until startGame teleports everyone again.
+			r.State.PlacePlayerAtTeamSpawn(client.Id)
 		}
 		r.State.Players[client.Id].PartyID = client.PartyID
 		if lateJoin {

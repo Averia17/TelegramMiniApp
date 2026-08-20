@@ -89,6 +89,92 @@ func TestBattlePhasesRunAtDoubleSpeed(t *testing.T) {
 	}
 }
 
+func TestTeamBattleUsesFiveMinuteDuration(t *testing.T) {
+	if TeamBattleDuration != 5*time.Minute {
+		t.Fatalf("team battle duration = %s, want 5m", TeamBattleDuration)
+	}
+
+	gs := newTestGameState()
+	gs.Mode = ModeTeamDeathmatch
+	gs.PlayerAdd("p1", "Alice", "Brock Zeus")
+	gs.startGame()
+	if got := gs.GameEndsAt - gs.MatchStartedAt; got != TeamBattleDuration.Milliseconds() {
+		t.Fatalf("team battle end offset = %dms, want %dms", got, TeamBattleDuration.Milliseconds())
+	}
+}
+
+func TestTeamBattleTimeoutUsesTownHallHealth(t *testing.T) {
+	gs := newTeamObjectiveState()
+	gs.Players["blue"].Kills = 99
+	gs.Players["red"].Kills = 0
+	gs.Objectives["blue-town-hall"].Lives = 1000
+	gs.Objectives["red-town-hall"].Lives = 1500
+
+	if winner := (TeamDeathmatchRules{}).TimeoutWinner(gs); winner != "Blue team" {
+		t.Fatalf("timeout winner = %q, want Blue team from lower enemy town hall health", winner)
+	}
+}
+
+func TestTeamBattleTimeoutIsDrawWhenTownHallHealthMatches(t *testing.T) {
+	gs := newTeamObjectiveState()
+	gs.Players["blue"].Kills = 99
+	gs.Players["red"].Kills = 1
+	gs.Objectives["blue-town-hall"].Lives = 1000
+	gs.Objectives["red-town-hall"].Lives = 1000
+
+	if winner := (TeamDeathmatchRules{}).TimeoutWinner(gs); winner != "" {
+		t.Fatalf("timeout winner = %q, want draw when town hall health matches", winner)
+	}
+}
+
+func TestTeamBattleTimeoutBroadcastsTownHallReason(t *testing.T) {
+	gs := newTeamObjectiveState()
+	gs.rules = TeamDeathmatchRules{}
+	gs.GameEndsAt = time.Now().Add(-time.Second).UnixMilli()
+	gs.Objectives["blue-town-hall"].Lives = 1000
+	gs.Objectives["red-town-hall"].Lives = 1500
+	var timeoutParams map[string]interface{}
+	gs.Broadcast = func(messageType string, params interface{}) {
+		if messageType == "timeout" {
+			timeoutParams = params.(map[string]interface{})
+		}
+	}
+
+	gs.Update()
+
+	if timeoutParams["reason"] != "Победа по HP ратуши: у ратуши противника осталось меньше здоровья." {
+		t.Fatalf("timeout reason = %q, want town hall health reason", timeoutParams["reason"])
+	}
+	if timeoutParams["duration"] != int64(TeamBattleDuration/time.Millisecond) {
+		t.Fatalf("timeout duration = %v, want %dms", timeoutParams["duration"], TeamBattleDuration/time.Millisecond)
+	}
+}
+
+func TestTeamBattleTimeoutDrawBroadcastsTownHallReason(t *testing.T) {
+	gs := newTeamObjectiveState()
+	gs.rules = TeamDeathmatchRules{}
+	gs.GameEndsAt = time.Now().Add(-time.Second).UnixMilli()
+	gs.Players["blue"].Kills = 20
+	gs.Players["red"].Kills = 1
+	gs.Objectives["blue-town-hall"].Lives = 1000
+	gs.Objectives["red-town-hall"].Lives = 1000
+	var timeoutParams map[string]interface{}
+	gs.Broadcast = func(messageType string, params interface{}) {
+		if messageType == "timeout" {
+			timeoutParams = params.(map[string]interface{})
+		}
+	}
+
+	gs.Update()
+
+	if timeoutParams["draw"] != true || timeoutParams["name"] != "" {
+		t.Fatalf("timeout result = %#v, want draw", timeoutParams)
+	}
+	if timeoutParams["reason"] != "Ничья: у ратуш одинаковое здоровье." {
+		t.Fatalf("draw reason = %q, want equal town hall health reason", timeoutParams["reason"])
+	}
+}
+
 func TestIslandPhasesFollowMatchClock(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
@@ -179,6 +265,54 @@ func TestTeamBattleBotsUseTheirOwnTeamSpawners(t *testing.T) {
 			}
 			t.Fatalf("%s bot spawned outside its team spawners at (%.0f, %.0f)", team, bot.X, bot.Y)
 		})
+	}
+}
+
+func TestTeamBotLeavesItsSpawnWhenMatchStarts(t *testing.T) {
+	gs := &GameState{Mode: ModeTeamDeathmatch, MapName: "team-battle", MaxPlayers: 2}
+	InitGameState(gs)
+	gs.PlayerAdd("bot", "Bot", "Needle")
+	bot := gs.Players["bot"]
+	bot.IsBot = true
+	bot.SetTeam("Blue")
+	gs.State = GameStateGame
+	gs.setPlayersPositionForTeams()
+	startX, startY := bot.X, bot.Y
+
+	for tick := 0; tick < 120; tick++ {
+		gs.updatePlayerMovement(16 * time.Millisecond)
+		gs.updateBots()
+	}
+
+	if distance := math.Hypot(bot.X-startX, bot.Y-startY); distance < 20 {
+		t.Fatalf("team bot stayed at its spawn after AI updates: start=(%.1f, %.1f) now=(%.1f, %.1f) distance=%.1f move=(%.2f, %.2f)", startX, startY, bot.X, bot.Y, distance, bot.MoveX, bot.MoveY)
+	}
+}
+
+func TestTeamBotsDoNotClusterAtBaseAfterFullStart(t *testing.T) {
+	gs := &GameState{Mode: ModeTeamDeathmatch, MapName: "team-battle", MaxPlayers: 6}
+	InitGameState(gs)
+	gs.PlayerAdd("human", "Human", "Needle")
+	gs.Players["human"].SetTeam("Blue")
+	gs.State = GameStateLobby
+	gs.startGame()
+
+	starts := make(map[string]geometry.Vector2)
+	for id, bot := range gs.Players {
+		if bot.IsBot {
+			starts[id] = geometry.Vector2{X: bot.X, Y: bot.Y}
+		}
+	}
+	for tick := 0; tick < 120; tick++ {
+		gs.updatePlayerMovement(16 * time.Millisecond)
+		gs.updateBots()
+	}
+
+	for id, start := range starts {
+		bot := gs.Players[id]
+		if distance := math.Hypot(bot.X-start.X, bot.Y-start.Y); distance < 20 {
+			t.Fatalf("bot %s stayed at its team base after full match start: start=(%.1f, %.1f) now=(%.1f, %.1f) distance=%.1f move=(%.2f, %.2f)", id, start.X, start.Y, bot.X, bot.Y, distance, bot.MoveX, bot.MoveY)
+		}
 	}
 }
 
@@ -574,6 +708,53 @@ func TestUpdateRegenerationKeepsTwentyFivePercentPulseInConcealment(t *testing.T
 	if got := p.Lives - start; got != want {
 		t.Fatalf("regenerated %d HP in concealment, want %d", got, want)
 	}
+}
+
+func TestUpdateRegenerationHealsOnePercentPerSecondInOwnBaseSemicircleDuringCombat(t *testing.T) {
+	gs := newTeamRegenerationTestGameState(t)
+	p := gs.Players["blue"]
+	p.SetTeam("Blue")
+	blueSpawn := gs.Map.TeamSpawners["Blue"][0]
+	p.X, p.Y = blueSpawn.CenterX(), blueSpawn.CenterY()
+	p.Lives = p.MaxLives / 2
+	now := int64(10_000_000)
+	p.LastDamageAt = now
+	p.PoisonUntil = now + 5_000
+
+	gs.updateRegenerationAt(now)
+	gs.updateRegenerationAt(now + 1_000)
+
+	want := int(math.Round(float64(p.MaxLives) * .01))
+	if got := p.Lives - p.MaxLives/2; got != want {
+		t.Fatalf("base combat regeneration = %d HP, want %d", got, want)
+	}
+}
+
+func TestUpdateRegenerationDoesNotHealAtEnemyBase(t *testing.T) {
+	gs := newTeamRegenerationTestGameState(t)
+	p := gs.Players["blue"]
+	p.SetTeam("Blue")
+	redSpawn := gs.Map.TeamSpawners["Red"][0]
+	p.X, p.Y = redSpawn.CenterX(), redSpawn.CenterY()
+	p.Lives = p.MaxLives / 2
+	now := int64(10_000_000)
+	p.LastDamageAt = now
+
+	gs.updateRegenerationAt(now)
+	gs.updateRegenerationAt(now + 1_000)
+
+	if p.Lives != p.MaxLives/2 {
+		t.Fatalf("regenerated at enemy base: got %d, want %d", p.Lives, p.MaxLives/2)
+	}
+}
+
+func newTeamRegenerationTestGameState(t *testing.T) *GameState {
+	t.Helper()
+	gs := &GameState{RoomName: "test", MapName: "team-battle", MaxPlayers: 2, Mode: ModeTeamDeathmatch}
+	InitGameState(gs)
+	gs.State = GameStateGame
+	gs.PlayerAdd("blue", "Blue", "Needle")
+	return gs
 }
 
 func TestConnectedBushGroupRevealsPlayersAcrossGrass(t *testing.T) {

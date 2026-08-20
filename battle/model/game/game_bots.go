@@ -304,6 +304,56 @@ func (gs *GameState) botMemoryFor(id string) *BotPerception {
 	return gs.BotMemory[id]
 }
 
+// smoothBotMove turns AI intents into a small steering controller. MoveX/Y
+// remain the visible direction command, while MoveScale supplies acceleration
+// and coasting because player movement normalizes the direction every frame.
+func (gs *GameState) smoothBotMove(id string, now int64, desiredX, desiredY float64) (float64, float64) {
+	memory := gs.botMemoryFor(id)
+	delta := now - memory.MoveCommandAt
+	if delta <= 0 || delta > 120 {
+		delta = 16
+	}
+	ticks := math.Max(1, math.Min(8, float64(delta)/16))
+	turnBlend := 1 - math.Pow(1-BotMovementTurnBlend, ticks)
+	desiredLength := math.Hypot(desiredX, desiredY)
+	currentLength := math.Hypot(memory.MoveX, memory.MoveY)
+	if desiredLength > .01 {
+		desiredX, desiredY = desiredX/desiredLength, desiredY/desiredLength
+		if currentLength <= .01 {
+			memory.MoveX, memory.MoveY = desiredX, desiredY
+			memory.MoveScale = math.Max(memory.MoveScale, .4)
+		} else {
+			currentAngle := math.Atan2(memory.MoveY, memory.MoveX)
+			desiredAngle := math.Atan2(desiredY, desiredX)
+			angleDelta := math.Atan2(math.Sin(desiredAngle-currentAngle), math.Cos(desiredAngle-currentAngle))
+			currentAngle += angleDelta * turnBlend
+			memory.MoveX, memory.MoveY = math.Cos(currentAngle), math.Sin(currentAngle)
+			memory.MoveScale += (1 - memory.MoveScale) * turnBlend
+		}
+	} else if currentLength > .01 {
+		memory.MoveScale *= math.Pow(BotMovementRelease, ticks)
+		if memory.MoveScale <= BotMovementStopScale {
+			memory.MoveX, memory.MoveY, memory.MoveScale = 0, 0, 0
+		}
+	} else {
+		memory.MoveScale = 0
+	}
+	memory.MoveCommandAt = now
+	return memory.MoveX, memory.MoveY
+}
+
+func (gs *GameState) botRotateToward(id string, bot *player.Player, desired float64) {
+	if bot == nil {
+		return
+	}
+	delta := math.Atan2(math.Sin(desired-bot.Rotation), math.Cos(desired-bot.Rotation))
+	turn := math.Min(math.Abs(delta), botProfileFor(id).AimTurnRate)
+	if delta < 0 {
+		turn = -turn
+	}
+	bot.Rotation += turn
+}
+
 func (target *botTarget) radius() float64 {
 	if target == nil {
 		return 0
@@ -341,6 +391,20 @@ func (gs *GameState) botTargetScore(bot *player.Player, target *botTarget, now i
 		if target.player.LastShootAt > 0 && now-target.player.LastShootAt <= BotRecentThreatDuration.Milliseconds() {
 			score += 55
 		}
+		// Humans naturally collapse onto a target that a nearby ally has just
+		// damaged. This creates useful focus fire without making the whole team
+		// share one omniscient target variable.
+		if target.player.LastContactBy != "" && now-target.player.LastContactAt <= BotFocusFireDuration.Milliseconds() {
+			ally := gs.Players[target.player.LastContactBy]
+			if ally != nil && ally.IsAlive() && ally.Team != "" && ally.Team == bot.Team {
+				score += 32
+			}
+		}
+		if target.player.StunUntil > now {
+			// A short control window is a human-readable reason to finish this
+			// target before looking for a better one.
+			score += 24
+		}
 		if memory := gs.BotMemory[bot.PlayerId]; memory != nil && memory.TargetType == "player" &&
 			memory.TargetID == target.id && now-memory.LastSeenAt <= BotTargetStickDuration.Milliseconds() {
 			score += 18
@@ -359,6 +423,53 @@ func (gs *GameState) botTargetScore(bot *player.Player, target *botTarget, now i
 		score += 12
 	}
 	return score
+}
+
+// botCombatNumbers is intentionally local and perception-limited. A bot only
+// counts opponents it could currently see near the fight, so a wall or bush
+// still matters and the decision does not become a hidden map-wide query.
+func (gs *GameState) botCombatNumbers(bot *player.Player, now int64) (enemies, allies int) {
+	if gs == nil || bot == nil {
+		return 0, 0
+	}
+	radius := math.Max(360, botAttackRange(bot)*.6)
+	for _, candidate := range gs.Players {
+		if candidate == nil || candidate.PlayerId == bot.PlayerId || !candidate.IsAlive() {
+			continue
+		}
+		if math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y) > radius {
+			continue
+		}
+		if bot.Team != "" && candidate.Team == bot.Team {
+			allies++
+			continue
+		}
+		if gs.botCanSee(bot, candidate, now) {
+			enemies++
+		}
+	}
+	return enemies, allies
+}
+
+func (gs *GameState) botShouldDisengage(bot *player.Player, target *botTarget, now int64) bool {
+	if bot == nil || target == nil || target.player == nil || bot.MaxLives <= 0 || !target.player.IsAlive() {
+		return false
+	}
+	botHealth := float64(bot.Lives) / float64(bot.MaxLives)
+	targetHealth := float64(target.player.Lives) / math.Max(1, float64(target.player.MaxLives))
+	// A nearly defeated enemy is a valid all-in even when the local numbers
+	// look bad. Players recognise this as a finishing opportunity.
+	if targetHealth <= .18 {
+		return false
+	}
+	enemies, allies := gs.botCombatNumbers(bot, now)
+	if enemies <= allies+1 {
+		return false
+	}
+	if botIsMelee(bot) {
+		return botHealth < .45
+	}
+	return botHealth < .55
 }
 
 func (gs *GameState) botSelectTarget(bot *player.Player, now int64) *botTarget {
@@ -420,8 +531,8 @@ func botShouldKite(bot *player.Player, target *botTarget) bool {
 	return target.distance <= dangerDistance
 }
 
-func botTargetAimPoint(target *botTarget) (float64, float64) {
-	if target == nil {
+func botTargetAimPoint(bot *player.Player, target *botTarget) (float64, float64) {
+	if bot == nil || target == nil {
 		return 0, 0
 	}
 	x, y := target.x, target.y
@@ -432,7 +543,16 @@ func botTargetAimPoint(target *botTarget) (float64, float64) {
 	if moveLength <= .01 {
 		return x, y
 	}
-	lead := math.Min(100, math.Max(0, target.player.Speed*.14))
+	// Estimate how long the projectile needs to reach the target. The old
+	// constant lead made slow projectiles miss at range and over-led fast
+	// projectiles at close distance. Movement and projectile speeds use the
+	// same world-units-per-second contract in the simulation.
+	distance := math.Hypot(target.x-bot.X, target.y-bot.Y)
+	projectileSpeed := bot.BulletSpd
+	if projectileSpeed <= 0 {
+		projectileSpeed = 1
+	}
+	lead := math.Min(140, math.Max(0, target.player.Speed*distance/projectileSpeed))
 	return x + target.player.MoveX/moveLength*lead, y + target.player.MoveY/moveLength*lead
 }
 
@@ -469,7 +589,7 @@ func botAimAt(id string, bot *player.Player, target *botTarget) (float64, float6
 	if bot == nil || target == nil {
 		return 0, 0, math.Inf(1)
 	}
-	aimX, aimY := botTargetAimPoint(target)
+	aimX, aimY := botTargetAimPoint(bot, target)
 	desired := math.Atan2(aimY-bot.Y, aimX-bot.X)
 	delta := math.Atan2(math.Sin(desired-bot.Rotation), math.Cos(desired-bot.Rotation))
 	turn := math.Min(math.Abs(delta), botProfileFor(id).AimTurnRate)
@@ -587,7 +707,7 @@ func (gs *GameState) updateBattleRoyaleBots() {
 		}
 		if centerX, centerY, seekCenter := gs.botStormCenterTarget(bot); seekCenter {
 			angle := math.Atan2(centerY-bot.Y, centerX-bot.X)
-			bot.Rotation = angle
+			gs.botRotateToward(id, bot, angle)
 			dx, dy := gs.botTravelDirection(id, &bot.CircleBody, centerX, centerY, now)
 			gs.playerMove(id, now, dx, dy)
 			botIndex++
@@ -603,9 +723,13 @@ func (gs *GameState) updateBattleRoyaleBots() {
 			continue
 		}
 		visibleTarget := gs.botSelectTarget(bot, now)
+		if visibleTarget == nil && gs.botTryAbility(id, bot, nil, now) {
+			botIndex++
+			continue
+		}
 		if pickup := gs.botPickupTarget(bot); gs.botShouldCollectPickup(bot, pickup, visibleTarget) {
 			angle := math.Atan2(pickup.Y-bot.Y, pickup.X-bot.X)
-			bot.Rotation = angle
+			gs.botRotateToward(id, bot, angle)
 			distance := math.Hypot(pickup.X-bot.X, pickup.Y-bot.Y)
 			if distance > bot.Radius+pickup.Radius+4 {
 				dx, dy := gs.botTravelDirection(id, &bot.CircleBody, pickup.X, pickup.Y, now)
@@ -621,7 +745,7 @@ func (gs *GameState) updateBattleRoyaleBots() {
 				crateX, crateY := (crate.MinX+crate.MaxX)/2, (crate.MinY+crate.MaxY)/2
 				targetX, targetY := botWallApproachPoint(bot, crate)
 				angle := math.Atan2(crateY-bot.Y, crateX-bot.X)
-				bot.Rotation = angle
+				gs.botRotateToward(id, bot, angle)
 				distance := math.Hypot(targetX-bot.X, targetY-bot.Y)
 				if distance > 28 {
 					dx, dy := gs.botTravelDirection(id, &bot.CircleBody, targetX, targetY, now)
@@ -671,7 +795,7 @@ func (gs *GameState) updateBattleRoyaleBots() {
 				distance := math.Hypot(memory.LastSeenX-bot.X, memory.LastSeenY-bot.Y)
 				if distance > 34 {
 					angle := math.Atan2(memory.LastSeenY-bot.Y, memory.LastSeenX-bot.X)
-					bot.Rotation = angle
+					gs.botRotateToward(id, bot, angle)
 					// A small weave resembles searching instead of perfect tracking.
 					searchPhase := math.Sin(float64(now-memory.LastSeenAt)/240+float64(botIndex)) * .28
 					intentX := memory.LastSeenX + math.Cos(angle+math.Pi/2)*searchPhase*TileSize
@@ -707,9 +831,9 @@ func (gs *GameState) botEngageTarget(id string, bot *player.Player, target *botT
 	// Profiles make bots more or less eager to close in while staying inside
 	// the legacy combat distance envelope.
 	preferred := reach * profile.PreferredRangeScale
-	if botShouldKite(bot, target) {
+	if gs.botShouldDisengage(bot, target, now) || botShouldKite(bot, target) {
 		gs.botRetreatFrom(id, bot, target.x, target.y, now)
-		bot.Rotation = angle
+		gs.botRotateToward(id, bot, angle)
 	} else {
 		approach := 0.0
 		if target.distance > preferred {
@@ -753,7 +877,7 @@ func (gs *GameState) botEngageTarget(id string, bot *player.Player, target *botT
 		moveX, moveY := gs.botTravelDirection(id, &bot.CircleBody, intentX, intentY, now)
 		gs.playerMove(id, now, moveX, moveY)
 	}
-	if target.distance > attackDistance || !gs.botHasLineOfSight(bot, target) {
+	if !gs.botHasLineOfSight(bot, target) {
 		return
 	}
 	// A human can start moving immediately, but does not fire through a large
@@ -764,6 +888,9 @@ func (gs *GameState) botEngageTarget(id string, bot *player.Player, target *botT
 	}
 	bot.AimDistance = target.distance
 	if gs.botTryAbility(id, bot, target, now) {
+		return
+	}
+	if target.distance > attackDistance {
 		return
 	}
 	if bot.Ammo > 0 {
@@ -782,18 +909,47 @@ func (gs *GameState) botHasLineOfSight(bot *player.Player, target *botTarget) bo
 		if math.Hypot(target.objective.X-bot.X, target.objective.Y-bot.Y) > BotVisionRange {
 			return false
 		}
-		return gs.Walls == nil || !segmentHitsBlockingWall(bot.X, bot.Y, target.objective.X, target.objective.Y, 2, gs.Walls)
+		return gs.Walls == nil || !segmentHitsBlockingWallExcept(bot.X, bot.Y, target.objective.X, target.objective.Y, 2, gs.Walls, "objective")
 	}
 	return gs.botCanSeeMonster(bot, target.monster)
 }
 
 func (gs *GameState) botRetreatFrom(id string, bot *player.Player, threatX, threatY float64, now int64) {
-	angle := math.Atan2(threatY-bot.Y, threatX-bot.X)
-	bot.Rotation = angle
+	if bot == nil {
+		return
+	}
+	awayX, awayY := bot.X-threatX, bot.Y-threatY
+	primaryDistance := math.Hypot(awayX, awayY)
+	if primaryDistance > .01 {
+		awayX, awayY = awayX/primaryDistance, awayY/primaryDistance
+	}
+	// Do not flee from only the selected target. Add repulsion from every
+	// visible enemy in the local fight, with closer enemies contributing more.
+	for _, candidate := range gs.Players {
+		if candidate == nil || candidate.PlayerId == bot.PlayerId || !candidate.IsAlive() || bot.Team != "" && candidate.Team == bot.Team {
+			continue
+		}
+		dx, dy := bot.X-candidate.X, bot.Y-candidate.Y
+		distance := math.Hypot(dx, dy)
+		if distance <= .01 || distance > math.Max(360, botAttackRange(bot)*.6) || !gs.botCanSee(bot, candidate, now) {
+			continue
+		}
+		weight := 1 + (math.Max(0, math.Max(360, botAttackRange(bot)*.6)-distance) / math.Max(1, math.Max(360, botAttackRange(bot)*.6)))
+		awayX += dx / distance * weight
+		awayY += dy / distance * weight
+	}
+	awayLength := math.Hypot(awayX, awayY)
+	if awayLength <= .01 {
+		awayX, awayY = -1, 0
+		awayLength = 1
+	}
+	awayX, awayY = awayX/awayLength, awayY/awayLength
+	angle := math.Atan2(-awayY, -awayX)
+	gs.botRotateToward(id, bot, angle)
 	profile := botProfileFor(id)
-	// Retreat diagonally toward a new angle. Straight-line fleeing is easy to
-	// predict and keeps the bot in the attacker's firing lane.
-	retreatAngle := angle + profile.StrafeSign*math.Pi/2*profile.StrafeStrength*.55
+	// Retreat with a small lateral offset. A full perpendicular dodge would
+	// undo the group repulsion, so the offset is deliberately modest.
+	retreatAngle := angle + profile.StrafeSign*math.Pi/2*profile.StrafeStrength*.25
 	targetX := bot.X - math.Cos(retreatAngle)*300
 	targetY := bot.Y - math.Sin(retreatAngle)*300
 	if gs.Map != nil {
@@ -805,15 +961,42 @@ func (gs *GameState) botRetreatFrom(id string, bot *player.Player, threatX, thre
 }
 
 func (gs *GameState) botTryAbility(id string, bot *player.Player, target *botTarget, now int64) bool {
-	if bot == nil || target == nil {
+	if bot == nil {
 		return false
 	}
-	if SuperChargePercent(bot, now) >= 100 && botPrimaryUseful(bot, target) {
-		bot.AimDistance = target.distance
+	minaTarget := gs.botMinaSuperTarget(bot, now)
+	if target == nil && minaTarget == nil {
+		return false
+	}
+	if target != nil && target.kind == "objective" && minaTarget == nil {
+		// Current supers are authored around player control effects. Basic
+		// attacks can damage objectives, but spending a super here produces no
+		// useful objective damage for most heroes.
+		return false
+	}
+	primaryUseful := minaTarget != nil || target != nil && botPrimaryUseful(bot, target)
+	if SuperChargePercent(bot, now) >= 100 && primaryUseful {
+		if target != nil {
+			bot.AimDistance = target.distance
+		} else {
+			bot.AimDistance = math.Hypot(minaTarget.X-bot.X, minaTarget.Y-bot.Y)
+		}
+		if minaTarget != nil {
+			if gs.AbilityTargets == nil {
+				gs.AbilityTargets = make(map[string]string)
+			}
+			gs.AbilityTargets[id] = minaTarget.PlayerId
+		}
 		gs.playerAbility(id, now, "primary")
+		if minaTarget != nil {
+			delete(gs.AbilityTargets, id)
+		}
 		if bot.LastAbilityOK {
 			return true
 		}
+	}
+	if target == nil {
+		return false
 	}
 	if bot.GadgetCharges <= 0 || now-bot.LastSecondaryAt < AbilityCooldownMs(bot.HeroName, "secondary") || !botSecondaryUseful(bot, target) {
 		return false
@@ -821,6 +1004,30 @@ func (gs *GameState) botTryAbility(id string, bot *player.Player, target *botTar
 	bot.AimDistance = target.distance
 	gs.playerAbility(id, now, "secondary")
 	return bot.LastAbilityOK
+}
+
+func (gs *GameState) botMinaSuperTarget(bot *player.Player, now int64) *player.Player {
+	if gs == nil || bot == nil || bot.HeroName != "Fairy Mina" {
+		return nil
+	}
+	best := bot
+	bestHealthRatio := float64(bot.Lives) / math.Max(1, float64(bot.MaxLives))
+	for _, candidate := range gs.Players {
+		if candidate == nil || candidate.PlayerId == bot.PlayerId || !candidate.IsAlive() || candidate.Team != bot.Team {
+			continue
+		}
+		if math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y) > 600 || !gs.botCanSee(bot, candidate, now) {
+			continue
+		}
+		healthRatio := float64(candidate.Lives) / math.Max(1, float64(candidate.MaxLives))
+		if healthRatio < bestHealthRatio || healthRatio == bestHealthRatio && candidate.PlayerId < best.PlayerId {
+			best, bestHealthRatio = candidate, healthRatio
+		}
+	}
+	if best == bot || bestHealthRatio > .72 {
+		return nil
+	}
+	return best
 }
 
 func botPrimaryUseful(bot *player.Player, target *botTarget) bool {
@@ -920,7 +1127,7 @@ func (gs *GameState) botExplore(id string, bot *player.Player, now int64) {
 		memory.ExploreUntil = now + BotExploreDuration.Milliseconds()
 	}
 	angle := math.Atan2(memory.ExploreY-bot.Y, memory.ExploreX-bot.X)
-	bot.Rotation = angle
+	gs.botRotateToward(id, bot, angle)
 	dx, dy := gs.botTravelDirection(id, &bot.CircleBody, memory.ExploreX, memory.ExploreY, now)
 	gs.playerMove(id, now, dx, dy)
 }
@@ -1243,14 +1450,11 @@ func (gs *GameState) navigatedDirection(body *geometry.CircleBody, dx, dy float6
 		return dx, dy
 	}
 	angle := math.Atan2(dy, dx)
-	clear := func(candidate float64) bool {
+	clear := func(candidate, probeDistance float64) bool {
 		probe := *body
-		probe.X += math.Cos(candidate) * BotNavigationProbe
-		probe.Y += math.Sin(candidate) * BotNavigationProbe
+		probe.X += math.Cos(candidate) * probeDistance
+		probe.Y += math.Sin(candidate) * probeDistance
 		return !geometry.CollidesCircleWithBlockingWalls(&probe, gs.Walls)
-	}
-	if clear(angle) {
-		return dx, dy
 	}
 	side := 1.0
 	for _, char := range []byte(agentID) {
@@ -1258,15 +1462,28 @@ func (gs *GameState) navigatedDirection(body *geometry.CircleBody, dx, dy float6
 			side *= -1
 		}
 	}
-	for _, offset := range []float64{math.Pi / 4, math.Pi / 2, 3 * math.Pi / 4, math.Pi} {
-		for _, sign := range []float64{side, -side} {
-			candidate := angle + offset*sign
-			if clear(candidate) {
-				return math.Cos(candidate), math.Sin(candidate)
+	// Probe at the normal look-ahead first, then at shorter distances. The
+	// latter matters at objective corners and doorways: a 28px probe can touch
+	// a nearby collider even though the next few simulation steps have a valid
+	// sliding direction. Returning (0,0) here makes the movement smoother stop
+	// while the pathfinder is still waiting for its next refresh.
+	for _, probeDistance := range []float64{BotNavigationProbe, BotNavigationProbe * .7, BotNavigationProbe * .4, 8} {
+		if clear(angle, probeDistance) {
+			return dx, dy
+		}
+		for _, offset := range []float64{math.Pi / 6, math.Pi / 4, math.Pi / 2, 3 * math.Pi / 4, math.Pi} {
+			for _, sign := range []float64{side, -side} {
+				candidate := angle + offset*sign
+				if clear(candidate, probeDistance) {
+					return math.Cos(candidate), math.Sin(candidate)
+				}
 			}
 		}
 	}
-	return 0, 0
+	// If every short probe is occupied, let the authoritative collision solver
+	// resolve the contact instead of erasing the bot's intent. This preserves a
+	// recoverable steering signal for the next path refresh.
+	return dx, dy
 }
 
 func (gs *GameState) closestWallOfType(x, y float64, wallType string) *geometry.WallTile {

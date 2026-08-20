@@ -1,8 +1,9 @@
-import {memo, useEffect, useRef} from "react"
+import {memo, useEffect, useRef, useState} from "react"
 import {getBattleRewardMessage} from "./battleOutcome"
-import {getIncomingTowerThreat, getObjectiveHudModel, getTeamHudModel, getTeamPerspectiveLabel} from "./teamBattleUi.js"
+import {getIncomingTowerThreat, getObjectiveHudModel, getTeamHudModel, getTeamObjectiveGroups, getTeamPerspectiveLabel} from "./teamBattleUi.js"
 import {getIslandPhaseIndex, getIslandPhaseProgress, ISLAND_PHASE_ORDER} from "./phaseVisuals.js"
 import {isTeamBattleMode} from "./battleMode.js"
+import {formatBattleTime} from "./battleTimer.js"
 
 const ISLAND_PHASES = {
   hunt: {label: "Охота и бой", icon: "◈", tone: "hunt", hint: "Дерись с первой секунды и ломай лунные ящики"},
@@ -23,6 +24,21 @@ const ISLAND_PHASE_STEP_LABELS = {
   challenge: "ИСПЫТАНИЕ",
   collapse: "СЖАТИЕ",
   beacon: "МАЯК",
+}
+
+export const BattleMatchTimer = ({game}) => {
+  const endsAt = Number(game?.gameEndsAt)
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (!Number.isFinite(endsAt) || endsAt <= 0) return undefined
+    const timer = window.setInterval(() => setNow(Date.now()), 250)
+    return () => window.clearInterval(timer)
+  }, [endsAt])
+
+  if (!Number.isFinite(endsAt) || endsAt <= 0) return null
+  const time = formatBattleTime(endsAt, now)
+  return <div className="battle-match-timer" aria-label={`Время боя: ${time}`}><span>ВРЕМЯ БОЯ</span><strong>{time}</strong></div>
 }
 
 export const IslandPhaseHud = ({state}) => {
@@ -89,24 +105,27 @@ export const BattleResultStats = ({result}) => {
   if (!result) return null
   const stats = result.teamBattle
     ? [
-      [result.kills || 0, "убийства"],
-      [result.deaths || 0, "смерти"],
-      [result.playerDamage || 0, "урон бойцам"],
-      [result.towerDamage || 0, "урон башням"],
-      [result.townHallDamage || 0, "урон ратуше"],
-      [result.towersDestroyed || 0, "башни разрушены"],
-      [result.townHallsDestroyed || 0, "ратуши разрушены"],
-      [String(Math.round(result.duration || 0)) + "с", "время"],
+      ["⚔", result.kills || 0, "убийства", "combat"],
+      ["☠", result.deaths || 0, "смерти", "danger"],
+      ["✹", result.playerDamage || 0, "урон бойцам", "damage"],
+      ["▰", result.towerDamage || 0, "урон башням", "objective"],
+      ["⌂", result.townHallDamage || 0, "урон ратуше", "objective"],
+      ["◆", result.towersDestroyed || 0, "башни разрушены", "objective"],
+      ["⌂", result.townHallsDestroyed || 0, "ратуши разрушены", "objective"],
+      ["◷", String(Math.round(result.duration || 0)) + "с", "время", "time"],
     ]
     : [
-      ["#" + (result.place || (result.won ? 1 : "—")), "место"],
-      [result.kills || 0, "бойцов"],
-      [result.monsters || 0, "мобов"],
-      [String(Math.round(result.duration || 0)) + "с", "время"],
+      ["#", "#" + (result.place || (result.won ? 1 : "—")), "место", "place"],
+      ["⚔", result.kills || 0, "бойцов", "combat"],
+      ["✦", result.monsters || 0, "мобов", "damage"],
+      ["◷", String(Math.round(result.duration || 0)) + "с", "время", "time"],
     ]
   return (
     <div className={"battle-result-stats" + (result.teamBattle ? " battle-result-stats--team" : "")}>
-      {stats.map(([value, label]) => <span key={label}><b>{value}</b>{label}</span>)}
+      {stats.map(([icon, value, label, tone]) => <div className={`battle-result-stat battle-result-stat--${tone}`} key={label}>
+        <i aria-hidden="true">{icon}</i>
+        <span><b>{value}</b><small>{label}</small></span>
+      </div>)}
     </div>
   )
 }
@@ -114,6 +133,42 @@ export const BattleResultStats = ({result}) => {
 export const BattleRewardNotice = ({result}) => {
   const message = getBattleRewardMessage(result)
   return message ? <p className="battle-reward-notice">{message}</p> : null
+}
+
+export const BattleResultCard = ({result, timedOut = false, onBack}) => {
+  if (!result) return null
+  const teamBattle = Boolean(result.teamBattle)
+  const draw = Boolean(result.draw)
+  const outcome = draw ? "draw" : timedOut ? "timeout" : result.won ? "win" : "loss"
+  const title = draw ? "НИЧЬЯ" : timedOut ? (result.won ? "ПОБЕДА ПО ТАЙМЕРУ" : "ВРЕМЯ ВЫШЛО") : result.won ? (teamBattle ? "ПОБЕДА КОМАНДЫ" : "ПОБЕДА!") : "ПОРАЖЕНИЕ"
+  const subtitle = timedOut
+    ? draw ? "Команды закончили бой с одинаковым результатом." : "Матч завершён по таймеру."
+    : result.won
+      ? teamBattle ? "Союзники удержали арену до конца." : "Арена зачищена — результат сохранён."
+      : draw ? "Ни одна команда не получила преимущества." : teamBattle ? "Соперники забрали контроль над ареной." : "Бой завершён — результат сохранён."
+  const teamLine = teamBattle
+    ? draw ? "КОМАНДЫ РАЗОШЛИСЬ ВНИЧЬЮ" : result.won ? "ТВОЯ КОМАНДА ЗАБРАЛА АРЕНУ" : "СОПЕРНИКИ ЗАБРАЛИ АРЕНУ"
+    : null
+  return <div className={`battle-overlay battle-result-overlay battle-result-overlay--${outcome}`} role="dialog" aria-modal="true" aria-labelledby="battle-result-title">
+    <div className={`battle-result-card battle-result-card--${outcome}`}>
+      <div className="battle-result-card__shine" aria-hidden="true" />
+      <div className="battle-result-card__topline"><span>{teamBattle ? "КОМАНДНЫЙ БОЙ" : "БОЕВОЙ ОТЧЁТ"}</span><i aria-hidden="true" /><span className="battle-result-card__status">{timedOut ? "ФИНАЛЬНЫЙ СИГНАЛ" : "МАТЧ ЗАВЕРШЁН"}</span></div>
+      <div className="battle-result-card__hero">
+        <div className="battle-result-emblem" aria-hidden="true">{draw ? "＝" : timedOut ? "⌛" : result.won ? "✦" : "✕"}</div>
+        <div className="battle-result-card__heading">
+          <p className="battle-result-eyebrow">{timedOut ? "ФИНАЛЬНЫЙ СИГНАЛ" : result.won ? "АРЕНА ЗА ВАМИ" : "БОЙ ОКОНЧЕН"}</p>
+          <h2 id="battle-result-title">{title}</h2>
+          <p className="battle-result-subtitle">{subtitle}</p>
+        </div>
+      </div>
+      {teamLine && <div className="battle-result-team-line"><span>{teamLine}</span></div>}
+      {result.reason && <div className="battle-result-reason"><span>ПРИЧИНА РЕЗУЛЬТАТА</span><b>{result.reason}</b></div>}
+      <BattleRewardNotice result={result}/>
+      <div className="battle-result-section-label">ТВОЙ ВКЛАД</div>
+      <BattleResultStats result={result}/>
+      <button className="battle-result-button" autoFocus onClick={onBack}><span>В МЕНЮ</span><kbd>ENTER</kbd></button>
+    </div>
+  </div>
 }
 
 const formatEffectTime = seconds => seconds < 10 ? `${seconds.toFixed(1)}с` : `${Math.ceil(seconds)}с`
@@ -155,14 +210,9 @@ export const TeamObjectiveHud = ({state, localId}) => {
   const objectives = getObjectiveHudModel(state)
   if (!objectives) return null
   const localTeam = state?.players?.[localId]?.team || ""
-  const grouped = objectives.reduce((result, objective) => {
-    const team = result[objective.team] || []
-    team.push(objective)
-    result[objective.team] = team
-    return result
-  }, {})
+  const grouped = getTeamObjectiveGroups(objectives, localTeam)
   return <section className="team-objective-hud" aria-label="Состояние укреплений">
-    {Object.entries(grouped).map(([team, items]) => <div key={team} className={`team-objective-hud__team${team === localTeam ? " is-local" : " is-enemy"}`}>
+    {grouped.map(([team, items]) => <div key={team} className={`team-objective-hud__team${team === localTeam ? " is-local" : " is-enemy"}`}>
       <b>{getTeamPerspectiveLabel(team, localTeam)}</b>
       {items.map(objective => <div key={objective.id} className={`team-objective-hud__objective${objective.destroyed ? " is-destroyed" : ""}`}>
         <span>{objective.type === "town_hall" ? (objective.protected ? "РАТУША 🔒" : "РАТУША") : "БАШНЯ"}</span><i><em style={{width: `${objective.percent}%`}}/></i>

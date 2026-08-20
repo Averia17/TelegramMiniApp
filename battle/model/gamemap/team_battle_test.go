@@ -23,6 +23,83 @@ func TestTeamBattleHasDiagonalBasesAndThreeSpawnsPerTeam(t *testing.T) {
 	}
 }
 
+func TestTeamBattlePublishesBlockingCollisionForEveryObjective(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+
+	for _, objective := range mapValue.Objectives {
+		var collider *geometry.WallTile
+		minX, minY := math.MaxFloat64, math.MaxFloat64
+		maxX, maxY := -math.MaxFloat64, -math.MaxFloat64
+		for _, wall := range mapValue.Collisions {
+			if wall.Type != "objective" {
+				continue
+			}
+			minX, minY = math.Min(minX, wall.MinX), math.Min(minY, wall.MinY)
+			maxX, maxY = math.Max(maxX, wall.MaxX), math.Max(maxY, wall.MaxY)
+			if objective.X >= wall.MinX && objective.X <= wall.MaxX && objective.Y >= wall.MinY && objective.Y <= wall.MaxY {
+				collider = wall
+			}
+		}
+		if collider == nil {
+			t.Fatalf("objective %s has no collision volume", objective.ID)
+		}
+		if !geometry.IsBlockingWall(collider.Type) {
+			t.Fatalf("objective %s collision type %q is passable", objective.ID, collider.Type)
+		}
+		collisionRadius := teamBattleObjectiveCollisionRadius(objective)
+		if minX > objective.X-collisionRadius || maxX < objective.X+collisionRadius ||
+			minY > objective.Y-collisionRadius || maxY < objective.Y+collisionRadius {
+			t.Fatalf("objective %s collider = (%.0f,%.0f)-(%.0f,%.0f), want collision radius %.0f around (%.0f,%.0f)",
+				objective.ID, minX, minY, maxX, maxY, collisionRadius, objective.X, objective.Y)
+		}
+	}
+}
+
+func TestTeamBattleObjectiveCollidersDoNotExpandToWholeTileCells(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+
+	for _, objective := range mapValue.Objectives {
+		var matches []*geometry.WallTile
+		collisionRadius := teamBattleObjectiveCollisionRadius(objective)
+		for _, wall := range mapValue.Collisions {
+			if wall.Type == "objective" &&
+				wall.MinX >= objective.X-collisionRadius && wall.MaxX <= objective.X+collisionRadius &&
+				wall.MinY >= objective.Y-collisionRadius && wall.MaxY <= objective.Y+collisionRadius {
+				matches = append(matches, wall)
+			}
+		}
+		if len(matches) != 1 {
+			t.Fatalf("objective %s has %d exact collision volumes, want 1", objective.ID, len(matches))
+		}
+		collider := matches[0]
+		if math.Abs(collider.MinX-(objective.X-collisionRadius)) > .001 ||
+			math.Abs(collider.MaxX-(objective.X+collisionRadius)) > .001 ||
+			math.Abs(collider.MinY-(objective.Y-collisionRadius)) > .001 ||
+			math.Abs(collider.MaxY-(objective.Y+collisionRadius)) > .001 {
+			t.Fatalf("objective %s collider = (%.1f,%.1f)-(%.1f,%.1f), want exact radius %.1f",
+				objective.ID, collider.MinX, collider.MinY, collider.MaxX, collider.MaxY, collisionRadius)
+		}
+	}
+}
+
+func TestTeamBattleSpawnsAreOutsideAllObjectiveColliders(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	for team, spawners := range mapValue.TeamSpawners {
+		for index, spawn := range spawners {
+			body := &geometry.CircleBody{X: spawn.CenterX(), Y: spawn.CenterY(), Radius: 16}
+			for _, wall := range mapValue.Collisions {
+				if wall.Type != "objective" || !geometry.CircleToRectangle(body, &geometry.RectangleBody{
+					X: wall.MinX, Y: wall.MinY, Width: wall.MaxX - wall.MinX, Height: wall.MaxY - wall.MinY,
+				}) {
+					continue
+				}
+				t.Fatalf("%s spawn %d at (%.0f,%.0f) overlaps objective collider (%.0f,%.0f)-(%.0f,%.0f)",
+					team, index, body.X, body.Y, wall.MinX, wall.MinY, wall.MaxX, wall.MaxY)
+			}
+		}
+	}
+}
+
 func TestTeamBattleFortifiesBothBasesWithSemicircularRockWalls(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
 	fortress := make(map[[2]int]bool)
@@ -93,6 +170,9 @@ func TestTeamBattleUsesGroupedCoverAndAPassableDiagonalBorder(t *testing.T) {
 	}
 	occupied := make(map[[2]int]bool)
 	for _, wall := range mapValue.Collisions {
+		if wall.Type == "objective" {
+			continue
+		}
 		cell := [2]int{int(wall.MinX / 40), int(wall.MinY / 40)}
 		occupied[cell] = true
 	}
@@ -229,6 +309,9 @@ func TestTeamBattleOnlyBridgesConnectTheTwoRiverBanks(t *testing.T) {
 	type cell struct{ x, y int }
 	layout := make(map[cell]string, len(mapValue.Collisions))
 	for _, wall := range mapValue.Collisions {
+		if wall.Type == "objective" {
+			continue
+		}
 		layout[cell{int(wall.MinX / 40), int(wall.MinY / 40)}] = wall.Type
 	}
 	toCell := func(body *geometry.RectangleBody) cell {
@@ -323,6 +406,9 @@ func TestTeamBattleIsDenseAndMirroredAcrossMainDiagonal(t *testing.T) {
 	type cell struct{ x, y int }
 	layout := make(map[cell]string, len(mapValue.Collisions))
 	for _, wall := range mapValue.Collisions {
+		if wall.Type == "objective" {
+			continue
+		}
 		key := cell{int(wall.MinX / 40), int(wall.MinY / 40)}
 		if previous, exists := layout[key]; exists && previous != wall.Type {
 			t.Fatalf("cell %v has conflicting types %q and %q", key, previous, wall.Type)

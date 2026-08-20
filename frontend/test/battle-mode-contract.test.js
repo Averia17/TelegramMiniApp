@@ -7,7 +7,8 @@ import {
   DEATHMATCH_MODE,
   TEAM_DEATHMATCH_MODE,
 } from "../src/components/BattleGame/battleMode.js"
-import {getIncomingTowerThreat, getObjectiveHudModel, getTeamHudModel, getTeamPerspectiveLabel, normalizeTeamBattleResult} from "../src/components/BattleGame/teamBattleUi.js"
+import {getBattleResultView} from "../src/components/BattleGame/battleOutcome.js"
+import {getIncomingTowerThreat, getObjectiveHudModel, getTeamHudModel, getTeamObjectiveGroups, getTeamPerspectiveLabel, normalizeTeamBattleResult} from "../src/components/BattleGame/teamBattleUi.js"
 
 test("battle mode contract keeps solo targets independent of team metadata", () => {
   const mode = createBattleMode(DEATHMATCH_MODE)
@@ -70,10 +71,30 @@ test("team result resolves winner team without changing solo result semantics", 
   assert.equal(result.won, false)
 })
 
+test("team result keeps an authoritative draw and its reason", () => {
+  const state = {game: {mode: TEAM_DEATHMATCH_MODE}, players: {
+    local: {team: "Red", lives: 100}, enemy: {team: "Blue", lives: 100},
+  }}
+  const result = normalizeTeamBattleResult({draw: true, winner: "", won: false, reason: "Ничья: у ратуш одинаковое здоровье."}, state, "local")
+  assert.equal(result.draw, true)
+  assert.equal(result.won, false)
+  assert.equal(result.reason, "Ничья: у ратуш одинаковое здоровье.")
+})
+
+test("team defeat opens the result popup instead of the hidden solo death view", () => {
+  assert.equal(getBattleResultView({won: false, winner: "Blue team"}, TEAM_DEATHMATCH_MODE), "result")
+})
+
+test("battle result card renders the authoritative result reason", async () => {
+  const source = await readFile(new URL("../src/components/BattleGame/BattleGameUI.jsx", import.meta.url), "utf8")
+  assert.match(source, /result\.reason/)
+  assert.match(source, /ПРИЧИНА РЕЗУЛЬТАТА/)
+})
+
 test("team objective HUD exposes tower and town hall health", () => {
   const objectives = getObjectiveHudModel({game: {mode: TEAM_DEATHMATCH_MODE}, objectives: [
-    {id: "red-tower", type: "tower", team: "Red", lives: 0, maxLives: 3000},
-    {id: "red-hall", type: "town_hall", team: "Red", lives: 9000, maxLives: 12000},
+    {id: "red-tower", type: "tower", team: "Red", lives: 0, maxLives: 1000},
+    {id: "red-hall", type: "town_hall", team: "Red", lives: 1500, maxLives: 2000},
   ]})
   assert.equal(objectives[0].destroyed, true)
   assert.equal(objectives[1].percent, 75)
@@ -81,15 +102,31 @@ test("team objective HUD exposes tower and town hall health", () => {
 
 test("team objective HUD marks a town hall as protected while its tower lives", () => {
   const objectives = getObjectiveHudModel({game: {mode: TEAM_DEATHMATCH_MODE}, objectives: [
-    {id: "red-tower", type: "tower", team: "Red", lives: 3000, maxLives: 3000},
-    {id: "red-hall", type: "town_hall", team: "Red", lives: 12000, maxLives: 12000},
+    {id: "red-tower", type: "tower", team: "Red", lives: 1000, maxLives: 1000},
+    {id: "red-hall", type: "town_hall", team: "Red", lives: 2000, maxLives: 2000},
   ]})
   assert.equal(objectives[1].protected, true)
 })
 
+test("team objective HUD keeps the local team column on the left", () => {
+  const groups = getTeamObjectiveGroups([
+    {id: "blue-tower", type: "tower", team: "Blue", lives: 1000, maxLives: 1000},
+    {id: "red-tower", type: "tower", team: "Red", lives: 1000, maxLives: 1000},
+  ], "Red")
+  assert.deepEqual(groups.map(([team]) => team), ["Red", "Blue"])
+})
+
+test("team HUD layers reserve separate vertical slots", async () => {
+  const css = await readFile(new URL("../src/components/BattleGame/BattleGame.css", import.meta.url), "utf8")
+  assert.match(css, /--team-score-top:\s*calc\(/)
+  assert.match(css, /--team-objective-top:\s*calc\(/)
+  assert.match(css, /\.team-battle-hud[^}]*top:\s*var\(--team-score-top\)/)
+  assert.match(css, /\.team-objective-hud[^}]*top:\s*var\(--team-objective-top\)/)
+})
+
 test("team HUD exposes the nearest enemy tower threat only inside its real range", () => {
   const state = {game: {mode: TEAM_DEATHMATCH_MODE}, players: {local: {playerId: "local", team: "Blue", x: 400, y: 300, radius: 14}}, objectives: [
-    {id: "red-tower", type: "tower", team: "Red", x: 700, y: 300, lives: 3000, attackRange: 320},
+    {id: "red-tower", type: "tower", team: "Red", x: 700, y: 300, lives: 1000, attackRange: 320},
   ]}
   assert.equal(getIncomingTowerThreat(state, "local")?.objective.id, "red-tower")
   state.players.local.x = 50

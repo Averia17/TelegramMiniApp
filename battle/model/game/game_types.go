@@ -16,8 +16,9 @@ const (
 	GameStateGame     = "game"
 	GameStateFinished = "finished"
 
-	BattlePhaseSpeed = 2
-	LobbyDuration    = 10 * time.Second / BattlePhaseSpeed
+	BattlePhaseSpeed   = 2
+	LobbyDuration      = 10 * time.Second / BattlePhaseSpeed
+	TeamBattleDuration = 5 * time.Minute
 	// The beacon is a real final combat phase. Keep the match alive long
 	// enough for sudden death to reduce the field to one survivor.
 	GameDuration = OpeningCombatDuration + ChallengeDuration + CollapseDuration + FinalPhaseDuration
@@ -47,10 +48,14 @@ const (
 	BotVisionRange          = 620.0
 	BotRevealRange          = 900.0
 	BotRecentThreatDuration = 2 * time.Second
+	BotFocusFireDuration    = 1800 * time.Millisecond
 	BotTargetStickDuration  = 1200 * time.Millisecond
 	BotPathRefreshInterval  = 240 * time.Millisecond
 	BotStuckTimeout         = 650 * time.Millisecond
 	BotProgressDistance     = 1.0
+	BotMovementTurnBlend    = 0.22
+	BotMovementRelease      = 0.84
+	BotMovementStopScale    = 0.045
 	BotSearchDuration       = 2800 * time.Millisecond
 	BotExploreDuration      = 2600 * time.Millisecond
 	// Bots should react quickly enough to feel active, but not so quickly that
@@ -107,6 +112,7 @@ type GameState struct {
 	SendToPlayer            func(playerID, msgType string, params interface{})
 	OnGameEnd               func(players map[string]*player.Player, winner string, duration int64)
 	OnPlayerKilled          func(playerId, killerName string)
+	EndReason               string
 	MapRevision             int
 	rules                   MatchRules
 	mapProvider             MapProvider
@@ -189,6 +195,9 @@ type BotPerception struct {
 	IntentMoveX, IntentMoveY float64
 	StrafeSign               float64
 	StrafeUntil              int64
+	MoveX, MoveY             float64
+	MoveScale                float64
+	MoveCommandAt            int64
 }
 
 type DelayedBattleEffect struct {

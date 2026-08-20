@@ -82,6 +82,29 @@ func TestTransportLifecycleReconnectDropsQueuedCommands(t *testing.T) {
 	}
 }
 
+func TestTransportLifecyclePlacesAssignedTeamPlayerAtOwnSpawnInLobby(t *testing.T) {
+	r := &Room{
+		Id:           "team-transport-test",
+		Clients:      make(map[string]*Client),
+		Disconnected: make(map[string]time.Time),
+		State:        game.NewGameState(game.GameConfig{MapName: "team-battle", Mode: game.ModeTeamDeathmatch, MaxPlayers: 6}),
+	}
+	emptySince := time.Time{}
+	client := &Client{
+		Id: "p1", Name: "Blue player", HeroName: "Needle", AssignedTeam: "Blue",
+		Send: make(chan []byte, 1),
+	}
+
+	r.registerClient(client, &emptySince)
+	p := r.State.Players[client.Id]
+	for _, spawn := range r.State.Map.TeamSpawners["Blue"] {
+		if p.X >= spawn.X && p.X <= spawn.X+spawn.Width && p.Y >= spawn.Y && p.Y <= spawn.Y+spawn.Height {
+			return
+		}
+	}
+	t.Fatalf("assigned Blue player spawned outside the Blue base in lobby at (%.0f, %.0f)", p.X, p.Y)
+}
+
 func TestTransportLifecycleRejectsCommandsFromReplacedConnection(t *testing.T) {
 	r := newLifecycleRoom()
 	emptySince := time.Time{}

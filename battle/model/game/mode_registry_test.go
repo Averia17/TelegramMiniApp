@@ -8,6 +8,7 @@ func (testRules) Mode() GameMode                                  { return "capt
 func (testRules) AssignTeams(*GameState)                          {}
 func (testRules) EvaluateWinner(*GameState, int64) (string, bool) { return "", false }
 func (testRules) TimeoutWinner(*GameState) string                 { return "" }
+func (testRules) ResultReason(*GameState, string, bool) string    { return "test" }
 
 func TestMatchRulesRegistryAllowsAdditiveModes(t *testing.T) {
 	registry := NewMatchRulesRegistry()

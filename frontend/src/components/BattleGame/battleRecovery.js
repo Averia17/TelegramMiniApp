@@ -1,7 +1,7 @@
 export const normalizeRecoveredBattleResult = result => ({
   ...result,
   recovered: true,
-  teamBattle: result?.teamBattle || String(result?.mode || "").toLowerCase() === "team deathmatch",
+  ...(result?.teamBattle || String(result?.mode || "").toLowerCase() === "team deathmatch" ? {teamBattle: true} : {}),
   duration: Math.max(0, Math.round(Number(result?.duration || 0) / 1000)),
 })
 

@@ -5,8 +5,8 @@ import {Renderer} from "./Renderer"
 import {Input} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
 import {getHeroSkill} from "./heroSkills.js"
-import {getBattlePlayerCount, getPlayerBattleStats, getPresentedBattleResult, getSynchronizedBattleView} from "./battleOutcome"
-import {AbilityButton, ActiveStatusEffects, BattleMiniMap, BattleRewardNotice, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TauntButton, TeamBattleHud, TeamObjectiveHud, TowerThreatNotice, TouchStick} from "./BattleGameUI.jsx"
+import {getBattlePlayerCount, getBattleResultView, getPlayerBattleStats, getPresentedBattleResult, getSynchronizedBattleView} from "./battleOutcome"
+import {AbilityButton, ActiveStatusEffects, BattleMatchTimer, BattleMiniMap, BattleResultCard, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TauntButton, TeamBattleHud, TeamObjectiveHud, TowerThreatNotice, TouchStick} from "./BattleGameUI.jsx"
 import {getAttackCooldownVisual} from "./attackCooldownVisual.js"
 import {getActiveStatusEffects} from "./statusEffects.js"
 import {formatBattleMessage} from "./battleMessages.js"
@@ -93,7 +93,7 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
     )
     saveBattleResult(normalized)
     setBattleResult(normalized)
-    setView(normalized.recovered ? "result" : normalized.won ? "result" : normalized.timedOut ? "timeout" : "dead")
+    setView(getBattleResultView(normalized, mode))
     try {
       rendererRef.current?.setOutcome(normalized.won ? "victory" : "defeat")
     } catch (error) {
@@ -101,7 +101,7 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
       // never strand the player on the arena with zero health.
       console.warn("Could not play battle outcome animation", error)
     }
-  }, [setView])
+  }, [mode, setView])
 
   const revealPresentedDeath = useCallback(result => {
     if (!result || deathRevealStartedRef.current) return
@@ -254,14 +254,15 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
           if (msg.type === "timeout") {
             finishBattle({
               won: msg.params?.name === playerName,
+              draw: Boolean(msg.params?.draw),
               timedOut: true,
               winner: msg.params?.name,
-              reason: "Время вышло",
+              reason: msg.params?.reason || "Время вышло",
               duration: Math.round((msg.params?.duration || 0) / 1000),
             })
           }
           if (msg.type === "won") {
-            finishBattle({won:msg.params?.name === playerName,winner:msg.params?.name,duration:Math.round((msg.params?.duration || 0) / 1000)})
+            finishBattle({won:msg.params?.name === playerName,draw:Boolean(msg.params?.draw),winner:msg.params?.name,reason:msg.params?.reason,duration:Math.round((msg.params?.duration || 0) / 1000)})
           }
           if (msg.type === "you_died") {
             const info = {killerName: msg.params?.killerName || "Unknown"}
@@ -473,7 +474,14 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
   const localPlayer = clientRef.current?.playerId
     ? gameState?.players?.[clientRef.current.playerId]
     : null
-  const playerCount = Object.keys(gameState?.players || {}).length
+  const lobbyPlayers = Object.entries(gameState?.players || {}).map(([id, player]) => ({...player, id}))
+  const lobbyMaxPlayers = Math.max(1, Number(roomInfo?.maxPlayers) || 1)
+  const playerCount = lobbyPlayers.length
+  const lobbyState = gameState?.game?.state
+  const lobbyCountdown = lobbyState === "lobby" && gameState?.game?.lobbyEndsAt > 0
+    ? Math.max(0, Math.ceil((gameState.game.lobbyEndsAt - Date.now()) / 1000))
+    : null
+  const lobbyHasFoundMatch = lobbyState === "lobby"
   const alivePlayerCount = getBattlePlayerCount(gameState)
   const health = localPlayer?.lives ?? 0
   const maxHealth = localPlayer?.maxLives ?? 1
@@ -556,21 +564,61 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
 
         {view === "lobby" && roomInfo && (
           <div className="battle-lobby-hud">
-            <div className="lobby-info">
-              <div className="lobby-kicker">BATTLE ARENA</div>
-              <h3>{roomInfo.roomName}</h3>
-              <p className="lobby-mode">{roomInfo.mode} · {roomInfo.mapName === "battle-royale" ? "Остров Первого Испытания" : roomInfo.mapName}</p>
-              <div className="lobby-player-count"><strong>{playerCount}</strong><span>/{roomInfo.maxPlayers}</span></div>
-              <p>Код команды <span className="room-code" onClick={() => navigator.clipboard.writeText(roomInfo.roomId)} title="Скопировать">{roomInfo.roomId}</span></p>
-              {gameState?.players && clientRef.current?.playerId && (() => {
-                const me = gameState.players[clientRef.current.playerId]
-                return me?.hero ? <p className="hint">Your hero: {me.hero}</p> : null
-              })()}
-              {connected && gameState?.game?.state === "waiting" && <p className="hint">Ждём других бойцов...</p>}
-              {connected && gameState?.game?.state === "lobby" && gameState?.game?.lobbyEndsAt > 0 && (
-                <p className="hint">До начала: {Math.max(0, Math.ceil((gameState.game.lobbyEndsAt - Date.now()) / 1000))} сек.</p>
+            <div className="lobby-info" role="dialog" aria-labelledby="battle-lobby-title">
+              <div className="lobby-info__header">
+                <span className="lobby-kicker">ПОДБОР БОЯ</span>
+                <span className="lobby-live"><i/> LIVE</span>
+              </div>
+
+              <div className="lobby-mode-block">
+                <span className="lobby-mode-icon" aria-hidden="true">⚔</span>
+                <div>
+                  <h3 id="battle-lobby-title">{roomInfo.roomName}</h3>
+                  <p className="lobby-mode">{roomInfo.mode} · {roomInfo.mapName === "battle-royale" ? "Остров Первого Испытания" : roomInfo.mapName}</p>
+                </div>
+              </div>
+
+              <div className={`lobby-status${lobbyHasFoundMatch ? " is-ready" : ""}`}>
+                <span className="lobby-status__signal"><i/></span>
+                <div>
+                  <strong>{lobbyHasFoundMatch ? "Матч найден" : "Ищем бойцов"}</strong>
+                  <small>{lobbyHasFoundMatch ? "Состав собирается — старт скоро" : "Подключаем игроков к арене"}</small>
+                </div>
+              </div>
+
+              <div className="lobby-roster">
+                <div className="lobby-roster__label">
+                  <span>СОСТАВ БОЯ</span>
+                  <strong>{playerCount}<b>/{lobbyMaxPlayers}</b></strong>
+                </div>
+                <div className="lobby-slots" aria-label={`В бою ${playerCount} из ${lobbyMaxPlayers} игроков`}>
+                  {Array.from({length: lobbyMaxPlayers}, (_, index) => {
+                    const player = lobbyPlayers[index]
+                    const playerLetter = String(player?.hero || player?.name || "?").slice(0, 1).toUpperCase()
+                    return <span key={player?.id || player?.name || index} className={`lobby-slot${player ? " is-filled" : ""}${player?.id === clientRef.current?.playerId ? " is-me" : ""}`} title={player?.name || "Ожидаем игрока"}>{player ? playerLetter : "?"}</span>
+                  })}
+                </div>
+              </div>
+
+              {localPlayer?.hero && (
+                <div className="lobby-hero-card">
+                  <span className="lobby-hero-card__avatar">{String(localPlayer.hero).slice(0, 1).toUpperCase()}</span>
+                  <div><small>ТВОЙ БОЕЦ</small><strong>{localPlayer.hero}</strong></div>
+                  <span className="lobby-hero-card__ready">ГОТОВ</span>
+                </div>
               )}
-              <button onClick={handleBackToMenu}>ВЫЙТИ</button>
+
+              <div className="lobby-meta">
+                <button className="room-code" onClick={() => navigator.clipboard.writeText(roomInfo.roomId)} title="Скопировать код команды" aria-label={`Скопировать код команды ${roomInfo.roomId}`}>
+                  <span>КОД КОМАНДЫ</span><strong>{roomInfo.roomId}</strong><i aria-hidden="true">⧉</i>
+                </button>
+                <div className="lobby-timer">
+                  <span>{lobbyHasFoundMatch ? "СТАРТ ЧЕРЕЗ" : "ОЖИДАНИЕ"}</span>
+                  <strong>{lobbyCountdown !== null ? `${lobbyCountdown} сек.` : "···"}</strong>
+                </div>
+              </div>
+
+              <button className="lobby-cancel" onClick={handleBackToMenu}>ОТМЕНИТЬ ПОИСК</button>
             </div>
           </div>
         )}
@@ -579,7 +627,10 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
           <>
             <header className="battle-topbar">
               <button className="battle-exit-btn" onClick={handleBackToMenu} aria-label="Выйти">✕</button>
-              <div className="battle-mode-pill"><span>⚡</span> BRAWL STARS</div>
+              <div className="battle-topbar__center">
+                <div className="battle-mode-pill"><span>⚡</span> BRAWL STARS</div>
+                <BattleMatchTimer game={gameState?.game}/>
+              </div>
               <div className="battle-alive"><i/> {alivePlayerCount} В БОЮ</div>
             </header>
             {!isTeamBattle && (
@@ -658,29 +709,11 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
         )}
 
         {view === "result" && (
-          <div className="battle-overlay battle-result-overlay">
-            <div className="battle-result-card">
-              <div className="battle-result-crown">♛</div>
-              <h2>{battleResult?.won ? "ПОБЕДА!" : "РЕЗУЛЬТАТ БОЯ"}</h2>
-              <p>{battleResult?.won ? "Арена зачищена — результат сохранён." : "Бой завершён — результат сохранён."}</p>
-              <BattleRewardNotice result={battleResult}/>
-              <BattleResultStats result={battleResult}/>
-              <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
-            </div>
-          </div>
+          <BattleResultCard result={battleResult} onBack={handleBackToMenu}/>
         )}
 
         {view === "timeout" && (
-          <div className="battle-overlay battle-result-overlay">
-            <div className="battle-result-card">
-              <div className="battle-result-crown">⌛</div>
-              <h2>ВРЕМЯ ВЫШЛО</h2>
-              <p>Матч завершён по таймеру.</p>
-              <BattleRewardNotice result={battleResult}/>
-              <BattleResultStats result={battleResult}/>
-              <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
-            </div>
-          </div>
+          <BattleResultCard result={battleResult} timedOut onBack={handleBackToMenu}/>
         )}
 
         <div className="battle-messages">

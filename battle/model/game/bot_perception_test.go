@@ -157,6 +157,153 @@ func TestBotPrioritizesRecentlyAttackingTargetOverWoundedTarget(t *testing.T) {
 	}
 }
 
+func TestBotJoinsAnAllyAlreadyDamagingTheSameTarget(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("ally", "Ally", "Needle")
+	gs.PlayerAdd("focused", "Focused", "Needle")
+	gs.PlayerAdd("other", "Other", "Needle")
+
+	bot, ally := gs.Players["bot"], gs.Players["ally"]
+	bot.SetTeam("Blue")
+	ally.SetTeam("Blue")
+	bot.X, bot.Y = 100, 100
+	ally.X, ally.Y = 100, 180
+	focused := gs.Players["focused"]
+	focused.SetTeam("Red")
+	focused.X, focused.Y = 300, 100
+	focused.LastContactBy, focused.LastContactAt = ally.PlayerId, 9_900
+	other := gs.Players["other"]
+	other.SetTeam("Red")
+	other.X, other.Y = 200, 100
+
+	target := gs.botSelectTarget(bot, 10_000)
+	if target == nil || target.id != focused.PlayerId {
+		t.Fatalf("bot did not join ally focus fire: chose %q", targetID(target))
+	}
+}
+
+func TestBotDisengagesWhenLowHealthAndOutnumbered(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("first", "First", "Needle")
+	gs.PlayerAdd("second", "Second", "Needle")
+
+	bot := gs.Players["bot"]
+	bot.SetTeam("Blue")
+	bot.X, bot.Y, bot.Lives = 100, 100, 300
+	first := gs.Players["first"]
+	first.SetTeam("Red")
+	first.X, first.Y = 500, 100
+	second := gs.Players["second"]
+	second.SetTeam("Red")
+	second.X, second.Y = 500, 170
+	target := &botTarget{kind: "player", id: first.PlayerId, player: first, x: first.X, y: first.Y, distance: math.Hypot(first.X-bot.X, first.Y-bot.Y)}
+
+	gs.botEngageTarget(bot.PlayerId, bot, target, 10_000)
+
+	if bot.MoveX >= 0 {
+		t.Fatalf("low-health bot pushed into a two-player threat: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+}
+
+func TestBotKeepsPressureOnCriticallyWoundedTargetDespiteBeingOutnumbered(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("first", "First", "Needle")
+	gs.PlayerAdd("second", "Second", "Needle")
+
+	bot := gs.Players["bot"]
+	bot.SetTeam("Blue")
+	bot.X, bot.Y, bot.Lives = 100, 100, 150
+	first := gs.Players["first"]
+	first.SetTeam("Red")
+	first.X, first.Y, first.Lives = 450, 100, 1
+	second := gs.Players["second"]
+	second.SetTeam("Red")
+	second.X, second.Y = 450, 170
+	target := &botTarget{kind: "player", id: first.PlayerId, player: first, x: first.X, y: first.Y, distance: math.Hypot(first.X-bot.X, first.Y-bot.Y)}
+
+	gs.botEngageTarget(bot.PlayerId, bot, target, 10_000)
+
+	if bot.MoveX <= 0 {
+		t.Fatalf("bot abandoned a nearly defeated target: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+}
+
+func TestBotRetreatsAwayFromTheWholeVisibleThreatGroup(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("first", "First", "Needle")
+	gs.PlayerAdd("second", "Second", "Needle")
+
+	bot := gs.Players["bot"]
+	bot.X, bot.Y = 300, 300
+	first := gs.Players["first"]
+	first.X, first.Y = 500, 300
+	second := gs.Players["second"]
+	second.X, second.Y = 300, 100
+
+	gs.botRetreatFrom(bot.PlayerId, bot, first.X, first.Y, 10_000)
+
+	if bot.MoveX >= 0 || bot.MoveY <= 0 {
+		t.Fatalf("bot retreated toward part of the threat group: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+}
+
+func TestBotMovementTurnsGraduallyWhenItsIntentChanges(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	bot := gs.Players["bot"]
+	bot.IsBot = true
+
+	gs.playerMove(bot.PlayerId, 10_000, 1, 0)
+	gs.playerMove(bot.PlayerId, 10_016, -1, 0)
+
+	if bot.MoveX <= 0 {
+		t.Fatalf("bot snapped to the new direction: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+
+	for tick := int64(32); tick <= 128; tick += 16 {
+		gs.playerMove(bot.PlayerId, 10_000+tick, -1, 0)
+	}
+	if bot.MoveX >= 0 {
+		t.Fatalf("bot never completed its smooth turn: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+}
+
+func TestBotCoastsBrieflyWhenItsIntentStops(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	bot := gs.Players["bot"]
+	bot.IsBot = true
+
+	gs.playerMove(bot.PlayerId, 10_000, 1, 0)
+	gs.playerMove(bot.PlayerId, 10_016, 0, 0)
+
+	if bot.MoveX <= 0 {
+		t.Fatalf("bot stopped instantaneously after losing its intent: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+	if scale := gs.BotMemory[bot.PlayerId].MoveScale; scale <= 0 || scale >= 1 {
+		t.Fatalf("bot coast scale = %.2f, want a partial movement scale", scale)
+	}
+
+	for tick := int64(32); tick <= 320; tick += 16 {
+		gs.playerMove(bot.PlayerId, 10_000+tick, 0, 0)
+	}
+	if bot.MoveX != 0 || bot.MoveY != 0 || gs.BotMemory[bot.PlayerId].MoveScale != 0 {
+		t.Fatalf("bot kept coasting forever: move=(%.2f, %.2f) scale=%.2f", bot.MoveX, bot.MoveY, gs.BotMemory[bot.PlayerId].MoveScale)
+	}
+}
+
 func targetID(target *botTarget) string {
 	if target == nil {
 		return ""
@@ -215,6 +362,23 @@ func TestBotLeadsMovingTargetWhenAiming(t *testing.T) {
 
 	if bot.Rotation <= .01 {
 		t.Fatalf("bot aimed at current position instead of leading moving target: rotation=%.3f", bot.Rotation)
+	}
+}
+
+func TestBotLeadUsesProjectileTravelTime(t *testing.T) {
+	targetPlayer := perceptionPlayer("enemy", 400, 100)
+	targetPlayer.MoveX, targetPlayer.MoveY, targetPlayer.Speed = 0, 1, 12
+	target := &botTarget{kind: "player", id: targetPlayer.PlayerId, player: targetPlayer, x: targetPlayer.X, y: targetPlayer.Y, distance: 300}
+
+	slowBot := perceptionPlayer("slow", 100, 100)
+	slowBot.BulletSpd = 100
+	_, slowLeadY := botTargetAimPoint(slowBot, target)
+	fastBot := perceptionPlayer("fast", 100, 100)
+	fastBot.BulletSpd = 600
+	_, fastLeadY := botTargetAimPoint(fastBot, target)
+
+	if slowLeadY <= fastLeadY || fastLeadY <= targetPlayer.Y {
+		t.Fatalf("projectile lead ignored travel time: slow=%.2f fast=%.2f target=%.2f", slowLeadY, fastLeadY, targetPlayer.Y)
 	}
 }
 
@@ -344,6 +508,72 @@ func TestBotUsesControlSupersAtTheirActualAbilityRange(t *testing.T) {
 				t.Fatalf("%s super was rejected at %.0f distance", test.hero, test.distance)
 			}
 		})
+	}
+}
+
+func TestBotCastsPersephoneRootsBeforeBasicAttackRange(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Persephone Lumi")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.X, bot.Y, bot.SuperCharge = 100, 100, 100
+	enemy.X, enemy.Y = 500, 100
+	target := &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, x: enemy.X, y: enemy.Y, distance: 400}
+
+	gs.botEngageTarget(bot.PlayerId, bot, target, 10_000)
+	if bot.SuperPulse != 1 || len(gs.HeroZones) == 0 || gs.HeroZones[len(gs.HeroZones)-1].Kind != "lumi_roots" {
+		t.Fatalf("Persephone did not cast roots at ability range: pulses=%d zones=%+v", bot.SuperPulse, gs.HeroZones)
+	}
+}
+
+func TestBotDoesNotSpendSuperOnObjective(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("bot", "Bot", "Kaze")
+	bot := gs.Players["bot"]
+	bot.SuperCharge = 100
+	objective := &ObjectiveState{ID: "red-tower", Team: "Red", Type: "tower", X: 180, Y: 100, Radius: 44, Lives: 100}
+	target := &botTarget{kind: "objective", id: objective.ID, objective: objective, x: objective.X, y: objective.Y, distance: 80}
+
+	if gs.botTryAbility(bot.PlayerId, bot, target, 10_000) {
+		t.Fatal("bot spent a player-only super on an objective")
+	}
+	if bot.SuperPulse != 0 || bot.SuperCharge != 100 {
+		t.Fatalf("objective consumed bot super: pulses=%d charge=%d", bot.SuperPulse, bot.SuperCharge)
+	}
+}
+
+func TestFairyMinaBotFindsWoundedAllyForSuper(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("mina", "Mina", "Fairy Mina")
+	gs.PlayerAdd("ally", "Ally", "Kaze")
+	mina, ally := gs.Players["mina"], gs.Players["ally"]
+	mina.X, mina.Y, mina.Lives = 100, 100, mina.MaxLives
+	ally.X, ally.Y, ally.Lives = 250, 100, ally.MaxLives/2
+
+	target := gs.botMinaSuperTarget(mina, 10_000)
+	if target != ally {
+		t.Fatalf("Mina selected %v as super target, want wounded ally", target)
+	}
+}
+
+func TestFairyMinaUsesReadySuperForAllyWithoutEnemyTarget(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mina", "Mina", "Fairy Mina")
+	gs.PlayerAdd("ally", "Ally", "Kaze")
+	mina, ally := gs.Players["mina"], gs.Players["ally"]
+	mina.X, mina.Y, mina.SuperCharge = 100, 100, 100
+	ally.X, ally.Y, ally.Lives = 250, 100, ally.MaxLives/2
+
+	if !gs.botTryAbility(mina.PlayerId, mina, nil, 10_000) {
+		t.Fatal("Mina did not use a ready support super without an enemy target")
+	}
+	if ally.ShieldHP <= 0 || ally.ShieldUntil <= 10_000 {
+		t.Fatalf("Mina support super did not shield ally: shield=%d until=%d", ally.ShieldHP, ally.ShieldUntil)
 	}
 }
 

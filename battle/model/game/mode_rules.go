@@ -52,6 +52,16 @@ func (DeathmatchRules) TimeoutWinner(state *GameState) string {
 	return winner.Name
 }
 
+func (DeathmatchRules) ResultReason(_ *GameState, winner string, timedOut bool) string {
+	if winner == "" {
+		return "Ничья: все бойцы выбыли."
+	}
+	if timedOut {
+		return "Победа по оставшемуся HP бойца."
+	}
+	return "Последний выживший."
+}
+
 type TeamDeathmatchRules struct{}
 
 func (TeamDeathmatchRules) Mode() GameMode               { return ModeTeamDeathmatch }
@@ -74,17 +84,49 @@ func (TeamDeathmatchRules) EvaluateWinner(state *GameState, _ int64) (string, bo
 }
 
 func (TeamDeathmatchRules) TimeoutWinner(state *GameState) string {
-	teamLives := map[string]int{"Red": 0, "Blue": 0}
-	for _, candidate := range state.Players {
-		teamLives[candidate.Team] += candidate.Lives
-	}
-	if teamLives["Red"] == teamLives["Blue"] {
+	blueHallLives, blueFound := townHallLives(state, "Blue")
+	redHallLives, redFound := townHallLives(state, "Red")
+	if !blueFound || !redFound || blueHallLives == redHallLives {
 		return ""
 	}
-	if teamLives["Red"] > teamLives["Blue"] {
+	if blueHallLives > redHallLives {
 		return "Red team"
 	}
 	return "Blue team"
+}
+
+func (TeamDeathmatchRules) ResultReason(_ *GameState, winner string, timedOut bool) string {
+	if winner == "" {
+		if timedOut {
+			return "Ничья: у ратуш одинаковое здоровье."
+		}
+		return "Ничья: ратуши не разрушены."
+	}
+	if timedOut {
+		return "Победа по HP ратуши: у ратуши противника осталось меньше здоровья."
+	}
+	return "Ратуша противника разрушена."
+}
+
+func resultReason(rules MatchRules, state *GameState, winner string, timedOut bool) string {
+	switch rules.(type) {
+	case TeamDeathmatchRules:
+		return (TeamDeathmatchRules{}).ResultReason(state, winner, timedOut)
+	default:
+		return (DeathmatchRules{}).ResultReason(state, winner, timedOut)
+	}
+}
+
+func townHallLives(state *GameState, team string) (int, bool) {
+	if state == nil {
+		return 0, false
+	}
+	for _, objective := range state.Objectives {
+		if objective != nil && objective.Type == "town_hall" && objective.Team == team {
+			return objective.Lives, true
+		}
+	}
+	return 0, false
 }
 
 func NewMatchRules(mode GameMode) MatchRules {

@@ -9,15 +9,16 @@ import (
 )
 
 const (
-	teamTownHallLives  = 12000
-	teamTowerLives     = 3000
-	teamTowerRange     = 620.0
-	teamTowerDamage    = 55
-	teamTowerCooldown  = 1200
-	teamTowerWindup    = 420
-	teamTowerShotSpeed = 34 * RuntimeProjectileSpeedScale
-	teamTowerShotSize  = 13.0
-	teamRespawnDelay   = 5000
+	teamTownHallLives   = 2000
+	teamTowerLives      = 1000
+	teamTowerRange      = 620.0
+	teamTowerDamage     = 55
+	teamTowerCooldown   = 1200
+	teamTowerWindup     = 420
+	teamTowerShotSpeed  = 34 * RuntimeProjectileSpeedScale
+	teamTowerShotSize   = 13.0
+	teamRespawnDelayMin = 5 * time.Second
+	teamRespawnDelayMax = 15 * time.Second
 )
 
 func newObjectiveStates(definitions []objectiveDefinition) map[string]*ObjectiveState {
@@ -140,7 +141,7 @@ func (gs *GameState) updateTeamObjectivesAt(now int64) {
 				continue
 			}
 			if distance := math.Hypot(candidate.X-objective.X, candidate.Y-objective.Y); distance <= best {
-				if segmentHitsBlockingWall(objective.X, objective.Y, candidate.X, candidate.Y, objective.Radius, gs.Walls) {
+				if segmentHitsBlockingWallExcept(objective.X, objective.Y, candidate.X, candidate.Y, objective.Radius, gs.Walls, "objective") {
 					continue
 				}
 				best, target = distance, candidate
@@ -169,8 +170,8 @@ func (gs *GameState) spawnTowerShotAt(objective *ObjectiveState, targetID string
 		return nil
 	}
 	angle := math.Atan2(targetY-objective.Y, targetX-objective.X)
-	x := objective.X + math.Cos(angle)*(objective.Radius+8)
-	y := objective.Y + math.Sin(angle)*(objective.Radius+8)
+	x := objective.X + math.Cos(angle)*(objective.Radius+teamTowerShotSize+2)
+	y := objective.Y + math.Sin(angle)*(objective.Radius+teamTowerShotSize+2)
 	color := player.GetTeamColor(objective.Team)
 	var shot *bullet.Bullet
 	for _, candidate := range gs.Bullets {
@@ -217,6 +218,16 @@ func (gs *GameState) updateTeamRespawns(now int64) {
 		p.InvulnerableUntil = now + SpawnProtectionDuration.Milliseconds()
 		gs.Broadcast("respawn", map[string]interface{}{"playerId": p.PlayerId, "team": p.Team})
 	}
+}
+
+func (gs *GameState) teamRespawnDelayAt(now int64) time.Duration {
+	if gs == nil || gs.MatchStartedAt <= 0 || now <= gs.MatchStartedAt {
+		return teamRespawnDelayMin
+	}
+
+	elapsed := time.Duration(now-gs.MatchStartedAt) * time.Millisecond
+	progress := math.Min(1, float64(elapsed)/float64(TeamBattleDuration))
+	return teamRespawnDelayMin + time.Duration(float64(teamRespawnDelayMax-teamRespawnDelayMin)*progress)
 }
 
 func (gs *GameState) teamHallDestroyed(team string) bool {

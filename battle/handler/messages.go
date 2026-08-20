@@ -387,6 +387,8 @@ func HandleRecoverBattle(c *mroom.Client, data []byte) {
 					"winner":             result.Winner,
 					"mode":               result.Mode,
 					"duration":           result.Duration,
+					"reason":             result.Reason,
+					"draw":               result.Draw,
 					"kills":              playerResult.Kills,
 					"lives":              playerResult.Lives,
 					"hero":               playerResult.Hero,
