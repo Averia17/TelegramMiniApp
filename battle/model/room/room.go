@@ -6,14 +6,20 @@ import (
 	"battle/provider"
 	"encoding/json"
 	"log"
+	"sync"
 	"time"
 )
 
 var Store provider.Store
 var Kafka *provider.KafkaProducer
+var dependenciesMu sync.RWMutex
 
 const reconnectGracePeriod = 2 * time.Minute
-const snapshotEveryFrames = 1
+
+// The simulation remains authoritative at 60Hz, while transport snapshots
+// use a stable 30Hz cadence. Local prediction and remote interpolation cover
+// the gap without creating per-client quality profiles or changing gameplay.
+const snapshotEveryFrames = 2
 const nominalTickDuration = time.Second / 60
 const tauntCooldown = 1500 * time.Millisecond
 
@@ -39,11 +45,27 @@ type preparedStateUpdate struct {
 }
 
 func SetStore(s provider.Store) {
+	dependenciesMu.Lock()
+	defer dependenciesMu.Unlock()
 	Store = s
 }
 
 func SetKafka(k *provider.KafkaProducer) {
+	dependenciesMu.Lock()
+	defer dependenciesMu.Unlock()
 	Kafka = k
+}
+
+func currentStore() provider.Store {
+	dependenciesMu.RLock()
+	defer dependenciesMu.RUnlock()
+	return Store
+}
+
+func currentKafka() *provider.KafkaProducer {
+	dependenciesMu.RLock()
+	defer dependenciesMu.RUnlock()
+	return Kafka
 }
 
 func (r *Room) Run() {
@@ -128,8 +150,8 @@ func (r *Room) Run() {
 				Status:      r.State.State,
 			}
 			r.mu.RUnlock()
-			if Store != nil {
-				Store.SaveRoom(roomRecord)
+			if store := currentStore(); store != nil {
+				store.SaveRoom(roomRecord)
 			}
 		}
 	}

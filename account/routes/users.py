@@ -1,10 +1,11 @@
 import re
 
 from auth import AuthenticatedUser, current_user
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from infrastructure import Repo
 from infrastructure.database.models import Invite, User
-from sqlalchemy import desc, select, update
+from services.nickname import normalize_nickname
+from sqlalchemy import String, cast, desc, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import func
@@ -35,6 +36,7 @@ async def _profile_for(user_id: int, repo: Repo):
         "clicks": user.clicks,
         "username": user.username,
         "full_name": user.full_name,
+        "nickname": user.nickname,
         "invited_users": [invite.invitee.username for invite in invites],
     }
 
@@ -43,6 +45,7 @@ async def _profile_for(user_id: int, repo: Repo):
 async def get_leaderboard(repo: Repo = Depends(get_repo)):
     result = await repo.session.execute(
         select(
+            User.nickname,
             User.username,
             User.full_name,
             User.clicks,
@@ -58,6 +61,61 @@ async def my_profile(
     repo: Repo = Depends(get_repo), user: AuthenticatedUser = Depends(current_user)
 ):
     return await _profile_for(user.user_id, repo)
+
+
+@router.patch("/me/nickname")
+async def update_my_nickname(
+    request: Request,
+    repo: Repo = Depends(get_repo),
+    user: AuthenticatedUser = Depends(current_user),
+):
+    data = await request.json()
+    try:
+        nickname = normalize_nickname(data.get("nickname"))
+    except (AttributeError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    db_user = await repo.users.get_by_id(user.user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    db_user.nickname = nickname
+    await repo.session.commit()
+    return {"nickname": db_user.nickname}
+
+
+@router.get("/search")
+async def search_users(
+    prefix: str | None = Query(None, min_length=3, max_length=19, pattern=r"^\d+$"),
+    query: str | None = Query(None, min_length=1, max_length=20),
+    limit: int = Query(20, ge=1, le=20),
+    repo: Repo = Depends(get_repo),
+):
+    term = (query if query is not None else prefix or "").strip()
+    if not term:
+        raise HTTPException(status_code=400, detail="Search query is required")
+    if term.isdigit():
+        filters = [cast(User.user_id, String).like(f"{term}%")]
+    else:
+        pattern = f"%{term}%"
+        filters = [
+            or_(
+                User.nickname.ilike(pattern),
+                User.username.ilike(pattern),
+                User.full_name.ilike(pattern),
+            )
+        ]
+    result = await repo.session.execute(
+        select(
+            User.user_id.label("player_id"),
+            User.username,
+            User.full_name,
+            User.nickname,
+        )
+        .where(*filters)
+        .order_by(User.user_id)
+        .limit(limit)
+    )
+    return [dict(row) for row in result.mappings().all()]
 
 
 @router.post("/me/accept_invite")

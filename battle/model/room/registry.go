@@ -72,13 +72,13 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 			}
 			result.Players = append(result.Players, buildPlayerResult(p, winner))
 		}
-		if Store != nil {
-			if err := Store.SaveBattleResult(result); err != nil {
+		if store := currentStore(); store != nil {
+			if err := store.SaveBattleResult(result); err != nil {
 				observability.Default.IncCounter("battle_result_store_errors_total", "Battle results that failed to persist", nil)
 			}
 		}
-		if Kafka != nil {
-			_ = Kafka.PublishBattleResult(result)
+		if kafka := currentKafka(); kafka != nil {
+			_ = kafka.PublishBattleResult(result)
 		}
 	}
 	gs.OnPlayerKilled = func(playerId, killerName string) {
@@ -110,6 +110,7 @@ func buildPlayerResult(p *player.Player, winner string) provider.PlayerResult {
 		TownHallDamage:     p.TownHallDamage,
 		TowersDestroyed:    p.TowersDestroyed,
 		TownHallsDestroyed: p.TownHallsDestroyed,
+		Place:              p.Place,
 		Won: p.Name == winner ||
 			(winner == "Red team" && p.Team == "Red") ||
 			(winner == "Blue team" && p.Team == "Blue"),
@@ -141,11 +142,34 @@ func FindRoomForPlayer(playerID, hintedRoomID string) *Room {
 	return nil
 }
 
+// FindConnectedRoomForPlayer deliberately excludes disconnected players who
+// are retained for reconnect grace. It is used by matchmaking, where an
+// intentional/temporary transport disconnect must not block a fresh battle.
+func FindConnectedRoomForPlayer(playerID string) *Room {
+	roomsMu.RLock()
+	defer roomsMu.RUnlock()
+	for _, r := range rooms {
+		if r.hasConnectedPlayer(playerID) {
+			return r
+		}
+	}
+	return nil
+}
+
 func GetLatestBattleResultForPlayer(playerID string) (*provider.BattleResult, error) {
-	if Store == nil {
+	store := currentStore()
+	if store == nil {
 		return nil, nil
 	}
-	return Store.GetLatestBattleResult(playerID)
+	return store.GetLatestBattleResult(playerID)
+}
+
+func ListBattleResultsForPlayer(playerID string, beforeEndedAt int64, beforeRoomID string, limit int) ([]*provider.BattleResult, error) {
+	store := currentStore()
+	if store == nil {
+		return nil, nil
+	}
+	return store.ListBattleResults(playerID, beforeEndedAt, beforeRoomID, limit)
 }
 
 func FindLobbyRoom() *Room {
@@ -157,10 +181,13 @@ func FindLobbyRoomFor(profile MatchProfile) *Room {
 	roomsMu.RLock()
 	defer roomsMu.RUnlock()
 	for _, r := range rooms {
+		r.mu.RLock()
 		if (r.State.State == "waiting" || r.State.State == "lobby") && len(r.Clients) < r.MaxPlayers &&
 			profile.Compatible(MatchProfile{Mode: game.GameMode(r.Mode), MapName: r.MapName, MaxPlayers: r.MaxPlayers}) {
+			r.mu.RUnlock()
 			return r
 		}
+		r.mu.RUnlock()
 	}
 	return nil
 }
@@ -180,8 +207,9 @@ func ResetRooms() {
 }
 
 func ListRoomsFromStore() ([]provider.RoomRecord, error) {
-	if Store == nil {
+	store := currentStore()
+	if store == nil {
 		return nil, nil
 	}
-	return Store.ListRooms()
+	return store.ListRooms()
 }

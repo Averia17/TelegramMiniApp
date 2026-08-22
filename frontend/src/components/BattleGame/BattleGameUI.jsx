@@ -4,6 +4,7 @@ import {getIncomingTowerThreat, getObjectiveHudModel, getTeamHudModel, getTeamOb
 import {getIslandPhaseIndex, getIslandPhaseProgress, ISLAND_PHASE_ORDER} from "./phaseVisuals.js"
 import {isTeamBattleMode} from "./battleMode.js"
 import {formatBattleTime} from "./battleTimer.js"
+import {getTeamMinimapAllies} from "./minimapMarkers.js"
 
 const ISLAND_PHASES = {
   hunt: {label: "Охота и бой", icon: "◈", tone: "hunt", hint: "Дерись с первой секунды и ломай лунные ящики"},
@@ -78,6 +79,19 @@ export const IslandVoiceNotice = ({voice}) => {
   )
 }
 
+export const NetworkStatusNotice = ({quality}) => {
+  if (!quality || quality.state === "good") return null
+  const detail = quality.rttMs === null || quality.state === "offline"
+    ? quality.detail
+    : `${quality.detail} · RTT ${Math.round(quality.rttMs)} мс`
+  return (
+    <aside className={`network-status-notice network-status-notice--${quality.state}`} role="status" aria-live="polite">
+      <span className="network-status-notice__signal" aria-hidden="true"><i/><i/><i/></span>
+      <span><b>{quality.label}</b><small>{detail}</small></span>
+    </aside>
+  )
+}
+
 export const TouchStick = ({kind, control, cooldownVisual}) => {
   let x = 0
   let y = 0
@@ -93,7 +107,7 @@ export const TouchStick = ({kind, control, cooldownVisual}) => {
   const state = isFire ? cooldownVisual?.state : null
   const className = `mobile-stick mobile-stick-${kind}${control ? " mobile-stick--active" : ""}${state ? ` mobile-stick-fire--${state}` : ""}`
   const style = control
-    ? {left: control.start.x, top: control.start.y, "--stick-x": `${x}px`, "--stick-y": `${y}px`, ...(isFire ? {"--cooldown-progress": cooldownVisual?.progress || 0} : {})}
+    ? {"--stick-x": `${x}px`, "--stick-y": `${y}px`, ...(isFire ? {"--cooldown-progress": cooldownVisual?.progress || 0} : {})}
     : isFire ? {"--cooldown-progress": cooldownVisual?.progress || 0} : undefined
   return <div className={className} style={style} aria-label={isFire && state === "cooldown" ? `Атака перезаряжается, ${cooldownVisual.remaining.toFixed(1)} с` : undefined}>
     <span>{kind === "fire" ? "✦" : ""}</span>
@@ -188,20 +202,43 @@ export const ActiveStatusEffects = ({effects = []}) => {
   )
 }
 
-export const AbilityButton = ({keyName, label, description, cooldown = 0, charge = 100, isSuper = false, disabled = false, onUse}) => (
-  <button className={`battle-ability${isSuper && charge >= 100 ? " battle-ability--ready" : ""}`} title={`${label}: ${description}`} aria-label={`${label}: ${description}`} disabled={disabled || cooldown > 0 || (isSuper && charge < 100)} onClick={onUse} style={isSuper ? {"--charge": `${charge}%`} : undefined}>
-    {isSuper && <i className="battle-ability__charge"/>}
-    <b>{cooldown > 0 ? cooldown.toFixed(1) : isSuper && charge < 100 ? `${Math.round(charge)}%` : keyName}</b>
-    <span>{label}</span>
-  </button>
-)
+const useTouchPressHandlers = onUse => {
+  const lastTouchAt = useRef(0)
+  const activateTouch = event => {
+    if (event.pointerType && event.pointerType !== "touch" && event.pointerType !== "pen") return
+    event.preventDefault?.()
+    const now = Date.now()
+    if (now - lastTouchAt.current < 500) return
+    lastTouchAt.current = now
+    onUse?.()
+  }
+  const activateClick = () => {
+    if (Date.now() - lastTouchAt.current < 500) return
+    onUse?.()
+  }
+  return {onClick: activateClick, onPointerUp: activateTouch, onTouchEnd: activateTouch}
+}
+
+export const AbilityButton = ({keyName, label, description, cooldown = 0, charge = 100, isSuper = false, disabled = false, onUse}) => {
+  const pressHandlers = useTouchPressHandlers(onUse)
+  return (
+    <button className={`battle-ability${isSuper && charge >= 100 ? " battle-ability--ready" : ""}`} title={`${label}: ${description}`} aria-label={`${label}: ${description}`} disabled={disabled || cooldown > 0 || (isSuper && charge < 100)} {...pressHandlers} style={isSuper ? {"--charge": `${charge}%`} : undefined}>
+      {isSuper && <i className="battle-ability__charge"/>}
+      <b>{cooldown > 0 ? cooldown.toFixed(1) : isSuper && charge < 100 ? `${Math.round(charge)}%` : keyName}</b>
+      <span>{label}</span>
+    </button>
+  )
+}
 
 export const TeamBattleHud = ({state, localId}) => {
   const model = getTeamHudModel(state, localId)
   if (!model) return null
   return <section className="team-battle-hud" aria-label="Счёт команд">
     {model.teams.map(team => <div key={team.id} className={`team-battle-hud__team${team.isLocal ? " is-local" : " is-enemy"}`}>
-      <b>{team.label}</b><span>{team.alive} живы · {team.kills} фрагов</span>
+      <b><i className="team-battle-hud__swatch" aria-hidden="true"/>{team.label}</b>
+      <span className="team-battle-hud__stats" aria-label={`${team.alive} живы, ${team.kills} фрагов`}>
+        <strong className="team-battle-hud__value">{team.alive}</strong><small>живы</small><em aria-hidden="true">·</em><strong className="team-battle-hud__value">{team.kills}</strong><small>фраги</small>
+      </span>
     </div>)}
   </section>
 }
@@ -230,12 +267,15 @@ export const TowerThreatNotice = ({state, localId}) => {
   </div>
 }
 
-export const TauntButton = ({cooldown = 0, disabled = false, onUse}) => (
-  <button className="battle-ability battle-taunt" title="Показать клоуна над ближайшим противником" aria-label="Показать клоуна над ближайшим противником" disabled={disabled || cooldown > 0} onClick={onUse}>
-    <b>{cooldown > 0 ? cooldown.toFixed(1) : "🤡"}</b>
-    <span>НАСМЕШКА</span>
-  </button>
-)
+export const TauntButton = ({cooldown = 0, disabled = false, onUse}) => {
+  const pressHandlers = useTouchPressHandlers(onUse)
+  return (
+    <button className="battle-ability battle-taunt" title="Показать клоуна над ближайшим противником" aria-label="Показать клоуна над ближайшим противником" disabled={disabled || cooldown > 0} {...pressHandlers}>
+      <b>{cooldown > 0 ? cooldown.toFixed(1) : "🤡"}</b>
+      <span>НАСМЕШКА</span>
+    </button>
+  )
+}
 
 const MINI_MAP_COLORS = {
   bush: "#48ad50",
@@ -283,6 +323,9 @@ export const BattleMiniMap = ({state, localId, renderer}) => {
   const width = map.width || 1
   const height = map.height || 1
   const localTeam = state.players?.[localId]?.team || ""
+  const teamAllies = isTeamBattleMode(state.game?.mode)
+    ? getTeamMinimapAllies(state.players, localId)
+    : []
   const baseObjectives = isTeamBattleMode(state.game?.mode)
     ? (state.objectives || []).filter(objective => objective?.type === "town_hall")
     : []
@@ -304,6 +347,9 @@ export const BattleMiniMap = ({state, localId, renderer}) => {
       {state.players[localId] && (
         <b className="mini-player mini-player--me" style={{left: `${state.players[localId].x / width * 100}%`, top: `${state.players[localId].y / height * 100}%`}}/>
       )}
+      {teamAllies.map(([id, player]) => (
+        <b key={id} className="mini-player mini-player--ally" style={{left: `${player.x / width * 100}%`, top: `${player.y / height * 100}%`}} aria-label="Союзник"/>
+      ))}
       {visibleEnemies.map(([id, player]) => (
         <b key={id} className="mini-player" style={{left: `${player.x / width * 100}%`, top: `${player.y / height * 100}%`}}/>
       ))}

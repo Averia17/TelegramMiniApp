@@ -17,3 +17,10 @@ test("Needle is the canonical hero name across frontend contracts", () => {
   assert.equal(resolveHeroName("needle"), "Needle")
   assert.equal(resolveHeroName("shadow"), "Needle")
 })
+
+test("Needle fallback kit keeps the wall-breaking basic attack contract", () => {
+  assert.equal(
+    HERO_KITS.Needle.basic.description,
+    "Спора летит по прямой, ломает ближайшую разрушаемую стену и при попадании или в конце полёта раскрывается шестью фиксированными радиальными шипами.",
+  )
+})

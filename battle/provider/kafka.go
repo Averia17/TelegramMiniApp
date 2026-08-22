@@ -45,6 +45,7 @@ type PlayerResult struct {
 	Name               string `json:"name"`
 	Hero               string `json:"hero"`
 	Kills              int    `json:"kills"`
+	Place              int    `json:"place,omitempty"`
 	Lives              int    `json:"lives"`
 	Deaths             int    `json:"deaths"`
 	PlayerDamage       int    `json:"playerDamage"`

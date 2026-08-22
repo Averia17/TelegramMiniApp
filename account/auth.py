@@ -1,4 +1,5 @@
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -34,7 +35,12 @@ def verify_telegram_init_data(init_data: str, max_age_seconds: int = 3600) -> in
 
     values = dict(parse_qsl(init_data, keep_blank_values=True))
     received_hash = values.pop("hash", "")
-    auth_date = int(values.get("auth_date", "0") or 0)
+    try:
+        auth_date = int(values.get("auth_date", "0") or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=401, detail="Telegram authentication data has expired"
+        ) from None
     if (
         not received_hash
         or auth_date <= 0
@@ -93,10 +99,13 @@ def verify_access_token(token: str) -> AuthenticatedUser:
         if not secret or not hmac.compare_digest(expected, signature):
             raise ValueError
         claims = json.loads(_b64decode(payload))
-        if int(claims["exp"]) < int(time.time()):
+        if int(claims["exp"]) <= int(time.time()):
             raise ValueError
-        return AuthenticatedUser(user_id=int(claims["sub"]))
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        user_id = int(claims["sub"])
+        if user_id <= 0:
+            raise ValueError
+        return AuthenticatedUser(user_id=user_id)
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError, binascii.Error):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired access token",

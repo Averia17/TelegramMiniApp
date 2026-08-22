@@ -21,6 +21,10 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	// Battle snapshots repeat the same field names and metadata for every
+	// player. Negotiate one uniform per-message deflate policy for all clients
+	// so team matches do not pay the full JSON payload on every snapshot.
+	EnableCompression: true,
 	CheckOrigin: func(r *http.Request) bool {
 		if strings.ToLower(os.Getenv("APP_ENV")) != "production" {
 			return true
@@ -66,6 +70,7 @@ func (h *Handler) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", h.HandleHealth)
 	mux.HandleFunc("/heroes", h.HandleHeroes)
 	mux.HandleFunc("/map-preview", h.HandleMapPreview)
+	mux.HandleFunc("/history", h.HandleBattleHistory)
 	mux.Handle("/metrics", observability.Default)
 }
 
@@ -201,6 +206,9 @@ func clientReadPump(c *mroom.Client) {
 			HandlePartyLeave(c)
 		case "cancel_match":
 			HandleCancelMatch(c)
+		case "leave_battle":
+			HandleLeaveBattle(c)
+			return
 		case "list_rooms":
 			HandleListRooms(c)
 		default:
@@ -334,12 +342,28 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 	}
 	c.PendingRoomID = ""
 
-	c.Room = r
 	c.Name = req.PlayerName
 	c.HeroName = req.HeroName
+	partyID := c.PartyID
+	partySize := c.PartySize
+	if r.HasPlayer(c.Id) {
+		partyID = r.PartyIDForPlayer(c.Id)
+		if partyID != "" && partySize <= 0 {
+			partySize = mroom.DefaultPartyMaxSize
+		}
+	}
 	teamParties.Leave(c.Id)
-	c.PartyID = ""
-	c.PartySize = 0
+	c.PartyID = partyID
+	c.PartySize = partySize
+	if c.PartyID != "" {
+		snapshot, err := teamParties.Join(c.PartyID, c.Id, c.PartySize)
+		if err != nil {
+			sendError(c, partyErrorMessage(err))
+			return
+		}
+		c.PartySize = snapshot.MaxSize
+	}
+	c.Room = r
 
 	r.Register <- c
 
@@ -414,14 +438,15 @@ func HandleRecoverBattle(c *mroom.Client, data []byte) {
 
 func HandleFindMatch(c *mroom.Client, data []byte) {
 	var req struct {
-		Type       string `json:"type"`
-		PlayerName string `json:"playerName"`
-		HeroName   string `json:"heroName"`
-		RoomMap    string `json:"roomMap"`
-		MaxPlayers int    `json:"maxPlayers"`
-		Mode       string `json:"mode"`
-		PartyID    string `json:"partyId"`
-		PartySize  int    `json:"partySize"`
+		Type        string `json:"type"`
+		PlayerName  string `json:"playerName"`
+		HeroName    string `json:"heroName"`
+		RoomMap     string `json:"roomMap"`
+		MaxPlayers  int    `json:"maxPlayers"`
+		Mode        string `json:"mode"`
+		PartyID     string `json:"partyId"`
+		PartySize   int    `json:"partySize"`
+		PartyTicket string `json:"partyTicket"`
 	}
 	if err := json.Unmarshal(data, &req); err != nil {
 		sendError(c, "Invalid match request")
@@ -439,13 +464,32 @@ func HandleFindMatch(c *mroom.Client, data []byte) {
 	c.Name = req.PlayerName
 	c.HeroName = req.HeroName
 	c.Profile = mroom.NormalizeMatchProfile(req.Mode, req.RoomMap, req.MaxPlayers)
-	c.PartyID = boundedText(req.PartyID, 64)
-	c.PartySize = req.PartySize
+	c.PartyID = ""
+	c.PartySize = 0
 	if c.Profile.Mode == game.ModeTeamDeathmatch {
-		if c.PartyID != "" {
+		partyID := boundedText(req.PartyID, 64)
+		if partyID != "" {
+			claims, err := verifyBattleTicket(req.PartyTicket, partyID, c.Id)
+			if err != nil {
+				sendError(c, "Valid party battle ticket required")
+				return
+			}
+			c.PartyID = claims.PartyID
+			c.PartySize = claims.MaxSize
+			if memberID := connectedPartyBattleMember(c.PartyID); memberID != "" {
+				sendError(c, "Party member is already in battle")
+				return
+			}
 			snapshot, err := teamParties.Join(c.PartyID, c.Id, c.PartySize)
 			if err != nil {
 				sendError(c, partyErrorMessage(err))
+				return
+			}
+			if memberID := connectedPartyBattleMember(c.PartyID); memberID != "" {
+				if memberID != c.Id {
+					teamParties.Leave(c.Id)
+				}
+				sendError(c, "Party member is already in battle")
 				return
 			}
 			c.PartySize = snapshot.MaxSize
@@ -456,6 +500,19 @@ func HandleFindMatch(c *mroom.Client, data []byte) {
 	}
 
 	sroom.AddToMatchQueue(c)
+}
+
+func connectedPartyBattleMember(partyID string) string {
+	snapshot, ok := teamParties.Snapshot(partyID)
+	if !ok {
+		return ""
+	}
+	for _, memberID := range snapshot.MemberIDs {
+		if mroom.FindConnectedRoomForPlayer(memberID) != nil {
+			return memberID
+		}
+	}
+	return ""
 }
 
 func shortID(id string) string {
@@ -478,38 +535,47 @@ func HandleCancelMatch(c *mroom.Client) {
 	sroom.RemoveFromMatchQueue(c.Id)
 }
 
+func HandleLeaveBattle(c *mroom.Client) {
+	if c == nil {
+		return
+	}
+	sroom.RemoveFromMatchQueue(c.Id)
+	teamParties.Leave(c.Id)
+	if c.Room != nil {
+		room := c.Room
+		c.Room = nil
+		room.LeaveForReconnect(c)
+	}
+	c.PendingRoomID = ""
+	c.PartyID = ""
+	c.PartySize = 0
+}
+
 var teamParties = sroom.NewPartyRegistry()
 
 func HandlePartyCreate(c *mroom.Client, data []byte) {
-	var req struct {
-		PartyID string `json:"partyId"`
-		MaxSize int    `json:"maxSize"`
-	}
-	if err := json.Unmarshal(data, &req); err != nil {
-		sendError(c, "Invalid party request")
-		return
-	}
-	partyID := boundedText(req.PartyID, 64)
-	if partyID == "" {
-		partyID = "party-" + shortID(uuid.NewString())
-	}
-	HandlePartyJoinRequest(c, partyID, req.MaxSize)
+	sendError(c, "Party creation is managed by the party service")
 }
 
 func HandlePartyJoin(c *mroom.Client, data []byte) {
 	var req struct {
-		PartyID string `json:"partyId"`
-		MaxSize int    `json:"maxSize"`
+		PartyID     string `json:"partyId"`
+		PartyTicket string `json:"partyTicket"`
 	}
 	if err := json.Unmarshal(data, &req); err != nil {
 		sendError(c, "Invalid party request")
 		return
 	}
-	HandlePartyJoinRequest(c, boundedText(req.PartyID, 64), req.MaxSize)
+	HandlePartyJoinRequest(c, boundedText(req.PartyID, 64), req.PartyTicket)
 }
 
-func HandlePartyJoinRequest(c *mroom.Client, partyID string, maxSize int) {
-	snapshot, err := teamParties.Join(partyID, c.Id, maxSize)
+func HandlePartyJoinRequest(c *mroom.Client, partyID, ticket string) {
+	claims, err := verifyBattleTicket(ticket, partyID, c.Id)
+	if err != nil {
+		sendError(c, "Valid party battle ticket required")
+		return
+	}
+	snapshot, err := teamParties.Join(claims.PartyID, c.Id, claims.MaxSize)
 	if err != nil {
 		sendError(c, partyErrorMessage(err))
 		return
@@ -581,13 +647,10 @@ func HandleListRooms(c *mroom.Client) {
 }
 
 func sendRoomJoined(c *mroom.Client, r *mroom.Room) {
+	mapRevision, mapReady := r.JoinSnapshot()
 	mapID := ""
-	mapRevision := 0
-	if r.State != nil {
-		mapRevision = r.State.MapRevision
-		if r.State.Map != nil {
-			mapID = r.MapName
-		}
+	if mapReady {
+		mapID = r.MapName
 	}
 	params := game.RoomJoinedParams{
 		PlayerId:    c.Id,

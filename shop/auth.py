@@ -1,4 +1,5 @@
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -41,10 +42,13 @@ async def current_user(authorization: str = Header(default="")) -> Authenticated
             raise ValueError
         decoded = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
         claims = json.loads(decoded)
-        if int(claims["exp"]) < int(time.time()):
+        if int(claims["exp"]) <= int(time.time()):
             raise ValueError
-        return AuthenticatedUser(int(claims["sub"]))
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        user_id = int(claims["sub"])
+        if user_id <= 0:
+            raise ValueError
+        return AuthenticatedUser(user_id)
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError, binascii.Error):
         raise HTTPException(
             status_code=401, detail="Invalid or expired access token"
         ) from None

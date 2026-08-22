@@ -2,13 +2,14 @@ import {useEffect, useMemo, useState} from "react"
 import axios from "axios"
 import {BATTLE_URL} from "../../utils/urls.js"
 import {HeroModelPreview} from "./HeroModelPreview.jsx"
+import {getPartyHeroLineup} from "./partyHeroLineup.js"
 import {assetRegistry} from "../BattleGame/rendering/assets/AssetRegistry.js"
 import "./HeroSelect.css"
 
 const heroDisplay = hero => hero?.displayName || hero?.name
 const combatType = hero => hero.attack?.archetype?.startsWith("melee") ? "БЛИЖНИЙ БОЙ" : "ДАЛЬНИЙ БОЙ"
 
-export const HeroSelect = ({onSelect, selectedHero, battleMode = "solo", onModeChange}) => {
+export const HeroSelect = ({onSelect, selectedHero, battleMode = "solo", onModeChange, party, playerId}) => {
   const [heroes, setHeroes] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -49,6 +50,21 @@ export const HeroSelect = ({onSelect, selectedHero, battleMode = "solo", onModeC
     () => heroes.find(hero => hero.name === selectedHero) || heroes[0],
     [heroes, selectedHero]
   )
+  const partyLineup = useMemo(
+    () => getPartyHeroLineup(party, playerId, heroes, selectedHero),
+    [heroes, party, playerId, selectedHero]
+  )
+
+  useEffect(() => {
+    if (partyLineup.length < 2) return undefined
+    const warm = () => assetRegistry.preloadHeroes(partyLineup.map(member => member.hero.name), 1)
+    if (typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(warm, {timeout: 1400})
+      return () => window.cancelIdleCallback?.(idleId)
+    }
+    const timer = window.setTimeout(warm, 180)
+    return () => window.clearTimeout(timer)
+  }, [partyLineup])
 
   if (loading) {
     return <div className="hero-select-loading"><span/>ЗАГРУЖАЕМ БОЙЦОВ...</div>
@@ -65,11 +81,20 @@ export const HeroSelect = ({onSelect, selectedHero, battleMode = "solo", onModeC
 
   return (
     <section className="hero-select" style={{"--hero-color": selected.color}}>
-      <div className="hero-showcase">
+      <div className={`hero-showcase ${partyLineup.length > 1 ? "hero-showcase--party" : ""}`}>
         <div className="hero-rays"/>
         <div className="hero-float-particle hero-float-particle--one">✦</div>
         <div className="hero-float-particle hero-float-particle--two">✦</div>
-        <HeroPortrait hero={selected} stage/>
+        {partyLineup.length > 1 ? (
+          <div className={`hero-party-lineup hero-party-lineup--${partyLineup.length}`}>
+            {partyLineup.map(member => (
+              <div className={`hero-party-member ${member.isLocal ? "is-local" : ""}`} key={member.playerId}>
+                <div className="hero-party-name" title={member.name || "Игрок"}>{member.isLocal ? "ТЫ" : (member.name || "Игрок")}</div>
+                <HeroPortrait hero={member.hero} party/>
+              </div>
+            ))}
+          </div>
+        ) : <HeroPortrait hero={selected} stage/>}
         <div className="hero-stage-shadow"/>
       </div>
 
@@ -81,7 +106,7 @@ export const HeroSelect = ({onSelect, selectedHero, battleMode = "solo", onModeC
 
       <div className="hero-quick-stats">
         <QuickStat icon="❤" value={selected.maxLives} label="ЗДОРОВЬЕ"/>
-        <QuickStat icon="⚡" value={selected.speed} label="СКОРОСТЬ"/>
+        <QuickStat icon="➤" iconClass="hero-quick-stat-icon--speed" value={selected.speed} label="СКОРОСТЬ"/>
         <QuickStat icon="✹" value={selected.attackDamage} label="УРОН"/>
       </div>
 
@@ -148,9 +173,9 @@ const roleIcon = role => ({
   Attacker: "✹",
 }[role] || "✦")
 
-const QuickStat = ({icon, value, label}) => (
+const QuickStat = ({icon, iconClass = "", value, label}) => (
   <div className="hero-quick-stat">
-    <span>{icon}</span>
+    <span className={`hero-quick-stat-icon ${iconClass}`} aria-hidden="true">{icon}</span>
     <strong>{value}</strong>
     <small>{label}</small>
   </div>
@@ -171,12 +196,12 @@ const HeroCard = ({hero, selected, onClick}) => (
   </button>
 )
 
-const HeroPortrait = ({hero, stage = false}) => {
+const HeroPortrait = ({hero, stage = false, party = false}) => {
   const slug = hero.name.toLowerCase().replace(/\s+/g, "-")
   return (
-    <div className={`hero-portrait ${stage ? "hero-portrait--stage" : ""} hero-portrait--${slug}`} style={{"--hero-color": hero.color}}>
+    <div className={`hero-portrait ${stage ? "hero-portrait--stage" : ""} ${party ? "hero-portrait--party" : ""} hero-portrait--${slug}`} style={{"--hero-color": hero.color}}>
       <div className="hp-shadow"/>
-      <HeroModelPreview hero={hero} stage={stage}/>
+      <HeroModelPreview hero={hero} stage={stage || party}/>
     </div>
   )
 }

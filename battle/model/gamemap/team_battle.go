@@ -14,8 +14,8 @@ const (
 	// Objective visuals are smaller than their gameplay target radius. Keep a
 	// compact physical footprint so heroes can stand close enough to attack
 	// without being stopped by a tile-sized square around the building.
-	teamBattleTownHallCollisionRadius = 72.0
-	teamBattleTowerCollisionRadius    = 36.0
+	teamBattleTownHallCollisionRadius = 56.0
+	teamBattleTowerCollisionRadius    = 28.0
 	// The river spans the whole playable island. The outer water ring owns the
 	// cells beyond these banks, so the river meets the ocean without drawing a
 	// second river strip through open water.

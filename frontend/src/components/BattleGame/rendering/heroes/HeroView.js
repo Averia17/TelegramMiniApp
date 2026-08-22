@@ -7,24 +7,33 @@ import {createContactShadow} from "../shared/materials"
 import {advanceSmoothTurn, blendAngle} from "./turning"
 import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG, RUNTIME_ANIMATION_REFERENCE_SPEED} from "../../heroesConfig"
 import {isInsideConcealment} from "../shared/concealment.js"
-import {formatHeroHealthLabel, getHeroHealthFraction} from "./healthBadge.js"
+import {
+  createHealthBadge,
+  getHeroCombatMarker,
+  updateHealthBadge,
+} from "./healthBadge.js"
 import {
   BUSH_HERO_OPACITY,
   getBushConcealmentMix,
 } from "./BushConcealment"
 import {createClownTaunt} from "./tauntVisuals.js"
 import {AttackReloadIndicator} from "./AttackReloadIndicator.js"
+import {getSpawnProtectionVisualState} from "./spawnProtectionVisuals.js"
 import {
   DEATH_PULSE_DURATION,
   getDeathFade,
   getDeathPulseState,
   getHeroDeathPalette,
 } from "./deathVisuals.js"
+import {
+  FLIGHT_HOVER_HEIGHT,
+  advanceFlightVisualHeight,
+  getFlightBodyHeight,
+} from "./flightVisuals.js"
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const blend = (speed, delta) => 1 - Math.exp(-speed * delta)
 const heroSpeed = heroName => HEROES_CONFIG.find(hero => hero.name === heroName)?.speed || ANIMATION_REFERENCE_SPEED
-
 export const getTeamPresentation = (state, teamBattle, localTeam, isLocalPlayer = false) => {
   if (!teamBattle || !state?.team) return {role: "", color: "#55df57", ring: "#55df57"}
   if (isLocalPlayer) return {role: "ТЫ", color: "#49d9ff", ring: "#ffd84d"}
@@ -33,17 +42,7 @@ export const getTeamPresentation = (state, teamBattle, localTeam, isLocalPlayer 
 }
 
 const createLabel = (state, teamBattle = false, localTeam = "", isLocalPlayer = false) => {
-  const canvas = document.createElement("canvas")
-  canvas.width = 256
-  canvas.height = 80
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
-  const material = new THREE.SpriteMaterial({map: texture, transparent: true, depthTest: false, depthWrite: false})
-  const sprite = new THREE.Sprite(material)
-  sprite.scale.set(4.8, 1.45, 1)
-  sprite.position.y = 4.5
-  sprite.renderOrder = 20
-  sprite.userData = {canvas, texture, signature: ""}
+  const sprite = createHealthBadge({scale: [4.8, 1.45, 1], positionY: 4.5})
   sprite.userData.teamBattle = teamBattle
   sprite.userData.localTeam = localTeam
   sprite.userData.isLocalPlayer = isLocalPlayer
@@ -55,31 +54,13 @@ const updateLabel = (sprite, state) => {
   if (!sprite) return
   const {teamBattle = false, localTeam = "", isLocalPlayer = false} = sprite.userData || {}
   const presentation = getTeamPresentation(state, teamBattle, localTeam, isLocalPlayer)
-  const signature = `${state.name}:${state.lives}:${state.maxLives}:${presentation.role}`
-  if (sprite.userData.signature === signature) return
-  sprite.userData.signature = signature
-  const {canvas, texture} = sprite.userData
-  const context = canvas.getContext("2d")
-  const health = getHeroHealthFraction(state)
-  context.clearRect(0, 0, canvas.width, canvas.height)
-  context.textAlign = "center"
-  context.textBaseline = "middle"
-  context.font = "800 19px Arial"
-  context.lineWidth = 6
-  context.strokeStyle = "#17213b"
+  const marker = getHeroCombatMarker(state)
   const displayName = presentation.role ? `${presentation.role} · ${state.name || state.hero || "Hero"}` : (state.name || state.hero || "Hero")
-  context.strokeText(displayName, 128, 16)
-  context.fillStyle = "#fff"
-  context.fillText(displayName, 128, 16)
-  context.font = "900 14px Arial"
-  const healthText = formatHeroHealthLabel(state)
-  context.strokeText(healthText, 128, 34)
-  context.fillText(healthText, 128, 34)
-  context.fillStyle = "#151d34"
-  context.fillRect(38, 47, 180, 17)
-  context.fillStyle = teamBattle && presentation.role ? presentation.color : health < 0.35 ? "#ff4b57" : health < 0.65 ? "#ffc934" : "#55df57"
-  context.fillRect(43, 52, 170 * health, 7)
-  texture.needsUpdate = true
+  updateHealthBadge(sprite, state, {
+    displayName,
+    healthColor: teamBattle && presentation.role ? presentation.color : undefined,
+    marker,
+  })
 }
 
 const collectMaterials = model => {
@@ -100,6 +81,19 @@ const setOpacity = (materials, opacity) => {
     else material.opacity = opacity
     material.transparent = opacity < 0.999
     material.depthWrite = opacity >= 0.999
+  }
+}
+
+const installFlightDepthReset = model => {
+  let firstMesh = null
+  model.traverse(child => {
+    if (!firstMesh && child.isMesh) firstMesh = child
+  })
+  if (!firstMesh) return
+  const previousOnBeforeRender = firstMesh.onBeforeRender
+  firstMesh.onBeforeRender = function(...args) {
+    if (model.userData.flightDepthActive) args[0].clearDepth()
+    previousOnBeforeRender?.apply(this, args)
   }
 }
 
@@ -154,6 +148,42 @@ const createDeathBurst = heroName => {
   return group
 }
 
+const createSpawnProtectionAura = () => {
+  const group = new THREE.Group()
+  group.visible = false
+  group.name = "spawn-protection-aura"
+  const shieldMaterial = new THREE.MeshBasicMaterial({
+    color: "#7ce8ff",
+    transparent: true,
+    opacity: 0.045,
+    wireframe: true,
+    depthTest: false,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  })
+  const shield = new THREE.Mesh(new THREE.SphereGeometry(1.24, 18, 12), shieldMaterial)
+  shield.position.y = 1.28
+  shield.userData.role = "spawn-protection-shield"
+  const ringMaterial = new THREE.MeshBasicMaterial({
+    color: "#7ce8ff",
+    transparent: true,
+    opacity: 0.72,
+    depthTest: false,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  })
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.06, 0.045, 8, 48), ringMaterial)
+  ring.rotation.x = Math.PI / 2
+  ring.position.y = 0.08
+  ring.userData.role = "spawn-protection-ring"
+  const innerRing = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.025, 8, 40), ringMaterial.clone())
+  innerRing.rotation.x = Math.PI / 2
+  innerRing.position.y = 0.1
+  innerRing.userData.role = "spawn-protection-inner-ring"
+  group.add(shield, ring, innerRing)
+  return group
+}
+
 export class HeroView {
   constructor(id, state, isLocalPlayer = false, teamBattle = false, localTeam = "") {
     this.id = id
@@ -175,13 +205,14 @@ export class HeroView {
     this.teamMarker.position.y = .06
     this.teamMarker.renderOrder = 12
     this.teamMarker.userData.role = "team-marker"
+    this.spawnProtectionAura = createSpawnProtectionAura()
     this.deathBurst = createDeathBurst(state.hero)
     this.taunt = createClownTaunt()
     this.tauntRemaining = 0
     this.bushConcealmentMix = 0
     this.deathTime = 0
     this.deathElapsed = 0
-    this.group.add(this.teamMarker, this.model, this.deathBurst, this.taunt)
+    this.group.add(this.teamMarker, this.spawnProtectionAura, this.model, this.deathBurst, this.taunt)
     if (this.shadow) this.group.add(this.shadow)
     if (this.label) this.group.add(this.label)
     this.x = this.targetX = state.x
@@ -194,6 +225,7 @@ export class HeroView {
     this.lastSuperPulse = state.superPulse
     this.lastLives = state.lives
     this.spawnPulse = 0
+    this.flightVisualHeight = 0
     this.recoil = 0
     this.hit = 0
     this.animation = null
@@ -218,6 +250,7 @@ export class HeroView {
     this.modelMaterials = collectMaterials(this.model)
     this.hitMaterials = collectHitMaterials(this.modelMaterials)
     this.modelOpacity = 1
+    installFlightDepthReset(this.model)
     this.animation = new GLBHeroController(instance.root, instance.animations, instance.asset.clips, {
       companionAnimations: instance.companionAnimations,
       heroName,
@@ -259,7 +292,18 @@ export class HeroView {
     }
     if (this.lastLives <= 0 && state.lives > 0) {
       this.spawnPulse += 1
+      // A respawn is a new authoritative placement, not ordinary network
+      // movement. Snap both the interpolation target and current position
+      // so the hero never visibly travels from the death site to base.
+      this.x = state.x
+      this.y = state.y
+      this.targetX = state.x
+      this.targetY = state.y
+      this.deathTime = 0
+      this.deathElapsed = 0
+      this.deathBurst.visible = false
       this.model.visible = true
+      this.flightVisualHeight = 0
     }
     this.lastPulse = state.attackPulse
     this.lastLives = state.lives
@@ -308,6 +352,10 @@ export class HeroView {
     this.teamMarker.visible = this.teamBattle && Boolean(this.state?.team)
     if (this.teamMarker.material) this.teamMarker.material.color.set(presentation.ring)
     this.teamMarker.scale.setScalar(this.state?.lives > 0 ? 1 : .86)
+    const protectionColor = presentation.ring || "#7ce8ff"
+    this.spawnProtectionAura.traverse(child => {
+      if (child.material?.color) child.material.color.set(protectionColor)
+    })
   }
 
   setResult(result) {
@@ -371,6 +419,30 @@ export class HeroView {
     const attackFacingMix = clamp(this.recoil * 5, 0, 1)
     const visualAngle = blendAngle(this.bodyAngle, this.aimAngle, attackFacingMix)
     this.group.position.copy(worldToScene(this.x, this.y))
+    // Keep the contact shadow and team ring on the ground while the hero body
+    // rises above the authored wall tops during the authoritative flight window.
+    this.flightVisualHeight = advanceFlightVisualHeight(this.flightVisualHeight, this.state, delta)
+    const flightMix = clamp(this.flightVisualHeight / FLIGHT_HOVER_HEIGHT, 0, 1)
+    const flightBodyHeight = getFlightBodyHeight(this.flightVisualHeight, time)
+    if (this.label) this.label.position.y = 4.5 + this.flightVisualHeight
+    if (this.taunt) this.taunt.position.y = 5.5 + this.flightVisualHeight + Math.sin((Number(time) || 0) * 6) * .12
+    if (this.shadow) {
+      const shadowScale = 1 - flightMix * .32
+      this.shadow.scale.set(shadowScale, .48, shadowScale)
+    }
+    const protection = getSpawnProtectionVisualState(this.state, this.teamBattle)
+    this.spawnProtectionAura.visible = protection.active
+    if (protection.active) {
+      const pulse = 0.5 + 0.5 * Math.sin((Number(time) || 0) * 7)
+      const remainingMix = clamp(protection.remaining / 3, 0, 1)
+      this.spawnProtectionAura.scale.setScalar(1 + pulse * 0.06)
+      const shield = this.spawnProtectionAura.children.find(child => child.userData.role === "spawn-protection-shield")
+      const ring = this.spawnProtectionAura.children.find(child => child.userData.role === "spawn-protection-ring")
+      const innerRing = this.spawnProtectionAura.children.find(child => child.userData.role === "spawn-protection-inner-ring")
+      if (shield?.material) shield.material.opacity = 0.025 + pulse * 0.035
+      if (ring?.material) ring.material.opacity = 0.4 + remainingMix * 0.32 + pulse * 0.12
+      if (innerRing?.material) innerRing.material.opacity = 0.25 + remainingMix * 0.26 + pulse * 0.1
+    }
     this.model.rotation.y = visualAngle
     this.model.userData.animate?.(time, moving ? 1 : 0.08, this.recoil)
     if (this.animation) {
@@ -433,7 +505,7 @@ export class HeroView {
       const entrance = Math.min(1, elapsed / .18)
       const exit = this.tauntRemaining < .28 ? this.tauntRemaining / .28 : 1
       this.taunt.visible = this.tauntRemaining > 0
-      this.taunt.position.y = 5.5 + Math.sin(elapsed * 6) * .12
+      this.taunt.position.y = 5.5 + this.flightVisualHeight + Math.sin(elapsed * 6) * .12
       this.taunt.rotation.y += delta * 3.8
       this.taunt.scale.setScalar((.92 + .12 * Math.sin(elapsed * 8)) * entrance * exit)
     }
@@ -449,7 +521,19 @@ export class HeroView {
       setOpacity(this.modelMaterials, opacity)
       this.modelOpacity = opacity
     }
-    if (this.shadow) this.shadow.material.opacity = THREE.MathUtils.lerp(0.34, 0.18, this.bushConcealmentMix) * deathFade
+    if (this.shadow) {
+      this.shadow.material.opacity = THREE.MathUtils.lerp(0.34, 0.18, this.bushConcealmentMix)
+        * THREE.MathUtils.lerp(1, .55, flightMix)
+        * deathFade
+    }
+    // Authored animation clips may touch the root transform. Apply the flight
+    // offset after the mixer so the model cannot be pulled back into a prop.
+    this.model.position.y = flightBodyHeight
+    this.model.userData.flightDepthActive = flightMix > 0.05
+    // The depth reset lets the elevated model pass over obstacles. Keep the
+    // GLB's normal depth testing so overlapping body parts retain their own
+    // order; disabling it makes inner surfaces bleed through as black patches.
+    this.model.renderOrder = flightMix > 0.05 ? 16 : 0
     if (this.label) this.label.material.opacity = deathFade
   }
 

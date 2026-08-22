@@ -3,13 +3,14 @@ import {WORLD_SCALE, worldToScene} from "../shared/coordinates.js"
 import {disposeObjectTree} from "../shared/disposal.js"
 import {flatMaterial} from "../shared/materials.js"
 import {endBattlePerformance, startBattlePerformance} from "../shared/performance.js"
+import {getCombatEffectPhase} from "./combatEffectPhase.js"
 
 const clamp = value => Math.max(0, Math.min(1, value))
 const MELEE_SWING_KINDS = new Set(["mandy_staff_swing", "mico_staff_swing", "lumi_scythe_swing"])
 const ORBITAL_KINDS = new Set([
   "mina_healing_aura", "zeus_storm_target", "kaze_veil_step",
   "mico_staff_spin", "mico_ruyi_bind",
-  "lumi_roots", "lumi_seedburst", "zeus_thunderbrand",
+  "lumi_roots", "zeus_thunderbrand",
   "needle_root_cast", "needle_moisture_reserve", "mico_suppressed_rage", "mandy_stance",
   "kaze_followup_ready", "katty_paint_puddle", "katty_paint_cloud", "lumi_flower",
 ])
@@ -18,7 +19,7 @@ const TRAIL_KINDS = new Set(["kaze_dash", "mico_leap", "zeus_beam_hole"])
 const TELEGRAPH_KINDS = new Set(["zeus_strike_warning"])
 const TOWER_TELEGRAPH_KINDS = new Set(["tower_telegraph"])
 const TOWER_BEAM_KINDS = new Set(["tower_beam"])
-const IMPACT_KINDS = new Set(["mina_mark_burst", "mina_mark_break", "needle_root_burst", "katty_paint_impact", "wall_break", "objective_hit", "tower_shot_blocked"])
+const IMPACT_KINDS = new Set(["mina_mark_burst", "mina_mark_break", "needle_root_burst", "katty_paint_impact", "katty_paint_stick", "lumi_seedburst", "wall_break", "objective_hit", "tower_shot_blocked"])
 const CONTACT_KINDS = new Set(["last_contact"])
 
 const createSwingArc = (radius, arc, material, innerRadius = .62) => {
@@ -299,6 +300,7 @@ export class EffectRenderer {
     const active = new Set()
     effects.forEach((effect, index) => {
       const id = String(effect.id || `${effect.kind}:${index}`)
+      const phase = getCombatEffectPhase(effect)
       active.add(id)
       let mesh = this.meshes.get(id)
       if (!mesh) {
@@ -355,9 +357,11 @@ export class EffectRenderer {
             !TELEGRAPH_KINDS.has(effect.kind) && !TOWER_TELEGRAPH_KINDS.has(effect.kind) && !IMPACT_KINDS.has(effect.kind) && !TOWER_BEAM_KINDS.has(effect.kind)) {
           mesh.rotation.x = -Math.PI / 2
         }
+        mesh.userData.phase = phase
         this.meshes.set(id, mesh)
         this.root.add(mesh)
       }
+      mesh.userData.phase = phase
       if (mesh.userData.kind === "mandy_super_wave") {
         const range = Math.max(1, effect.range || Math.hypot((effect.toX || effect.x) - effect.x, (effect.toY || effect.y) - effect.y))
         mesh.position.copy(worldToScene(

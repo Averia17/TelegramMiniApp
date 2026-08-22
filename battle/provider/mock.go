@@ -2,6 +2,7 @@ package provider
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -111,6 +112,45 @@ func (m *MockStore) GetLatestBattleResult(playerId string) (*BattleResult, error
 		latest = cloneBattleResult(result)
 	}
 	return latest, nil
+}
+
+func (m *MockStore) ListBattleResults(playerId string, beforeEndedAt int64, beforeRoomId string, limit int) ([]*BattleResult, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if limit <= 0 {
+		limit = 20
+	}
+	results := make([]*BattleResult, 0, len(m.results))
+	for _, result := range m.results {
+		if battleResultHasPlayer(result, playerId) {
+			results = append(results, result)
+		}
+	}
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].EndedAt != results[j].EndedAt {
+			return results[i].EndedAt > results[j].EndedAt
+		}
+		return results[i].RoomId > results[j].RoomId
+	})
+
+	page := make([]*BattleResult, 0, minInt(limit, len(results)))
+	for _, result := range results {
+		if beforeEndedAt > 0 && (result.EndedAt > beforeEndedAt || (result.EndedAt == beforeEndedAt && result.RoomId >= beforeRoomId)) {
+			continue
+		}
+		page = append(page, cloneBattleResult(result))
+		if len(page) == limit {
+			break
+		}
+	}
+	return page, nil
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (m *MockStore) RoomCount() int {

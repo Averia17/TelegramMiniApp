@@ -3,6 +3,7 @@ import {WORLD_SCALE, worldToScene} from "../shared/coordinates.js"
 import {disposeObjectTree} from "../shared/disposal.js"
 import {flatMaterial} from "../shared/materials.js"
 import {collectNewCombatHits, resolveCombatTargetPosition} from "./combatFeedback.js"
+import {battleCanvasFont} from "../../battleTypography.js"
 
 const FEEDBACK_LIFE = .62
 const clamp01 = value => Math.max(0, Math.min(1, value))
@@ -17,7 +18,7 @@ const createDamageTexture = damage => {
   context.clearRect(0, 0, canvas.width, canvas.height)
   context.textAlign = "center"
   context.textBaseline = "middle"
-  context.font = "900 54px Impact, Arial Black, sans-serif"
+  context.font = battleCanvasFont(900, 54)
   context.lineJoin = "round"
   context.lineWidth = 11
   context.strokeStyle = "rgba(32, 18, 53, .92)"

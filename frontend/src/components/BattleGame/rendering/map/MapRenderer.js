@@ -13,6 +13,7 @@ import {disposeObjectTree} from "../shared/disposal.js"
 import {WORLD_SCALE} from "../shared/coordinates.js"
 import {createMapSignature} from "./mapSignature.js"
 import {ISLAND_PHASE_ATMOSPHERES} from "../../phaseVisuals.js"
+import {battleCanvasFont, getBattleHealthFontSize} from "../../battleTypography.js"
 import {isTeamBattleMode} from "../../battleMode.js"
 
 const ISLAND_TERRAIN_LAYER_HEIGHTS = [0.003, 0.006, 0.009]
@@ -21,9 +22,10 @@ const STORM_SEGMENTS = 96
 // coarse so ordinary movement never turns into a stream of scene rebuilds.
 const ENVIRONMENT_FOCUS_REBUILD_DISTANCE = 256
 const STONE_PROP_TYPES = new Set(["wall", "destructible", "sacrificial_stone", "menhir"])
-const COLLISION_ONLY_TYPES = new Set(["objective"])
+const COLLISION_ONLY_TYPES = new Set(["objective", "beacon"])
 const DEFAULT_MAP_TILE_SIZE = 40
 const BEACON_VISUAL_SCALE = 24
+const OBJECTIVE_HEALTH_FONT_SIZE = getBattleHealthFontSize({canvasHeight: 80, spriteHeight: .62, parentScale: 1.75})
 
 const objectiveHealthFraction = (lives, maxLives) => (
   Math.max(0, Math.min(1, (Number(lives) || 0) / Math.max(1, Number(maxLives) || 1)))
@@ -93,8 +95,8 @@ const updateObjectiveHealthLabel = (label, objective) => {
   context.clearRect(0, 0, canvas.width, canvas.height)
   context.textAlign = "center"
   context.textBaseline = "middle"
-  context.font = "900 56px Arial"
-  context.lineWidth = 12
+  context.font = battleCanvasFont(900, OBJECTIVE_HEALTH_FONT_SIZE)
+  context.lineWidth = Math.max(5, Math.round(OBJECTIVE_HEALTH_FONT_SIZE * .32))
   context.strokeStyle = "#241329"
   context.strokeText(text, canvas.width / 2, canvas.height / 2)
   context.fillStyle = "#fff"
@@ -226,7 +228,7 @@ const createProtectionBadge = color => {
     const context = canvas.getContext("2d")
     context.textAlign = "center"
     context.textBaseline = "middle"
-    context.font = "900 36px Arial"
+    context.font = battleCanvasFont(900, 36)
     context.lineWidth = 9
     context.strokeStyle = "#143b59"
     context.strokeText("ЗАЩИЩЕНА", canvas.width / 2, canvas.height / 2)
@@ -466,6 +468,8 @@ const createBeaconVisual = () => {
     pedestalMaterial,
   )
   pedestal.name = "beacon-pedestal"
+  pedestal.renderOrder = -1
+  pedestal.material.depthWrite = false
   pedestal.position.y = .14 * WORLD_SCALE
 
   const pedestalInset = new THREE.Mesh(
@@ -473,6 +477,8 @@ const createBeaconVisual = () => {
     new THREE.MeshStandardMaterial({color: 0x6e7d7e, roughness: .82, flatShading: true}),
   )
   pedestalInset.name = "beacon-pedestal-inset"
+  pedestalInset.renderOrder = -1
+  pedestalInset.material.depthWrite = false
   pedestalInset.position.y = .32 * WORLD_SCALE
 
   const activationRing = new THREE.Mesh(

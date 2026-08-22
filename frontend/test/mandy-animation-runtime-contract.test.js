@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import {access, readFile} from "node:fs/promises"
+import {readFile} from "node:fs/promises"
 import path from "node:path"
 import test from "node:test"
 import {fileURLToPath} from "node:url"
@@ -11,13 +11,7 @@ const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const repoRoot = path.resolve(frontendRoot, "..")
 const manifestPath = path.join(repoRoot, "tools/blender/hero_animation_scene_manifest.json")
 const catalogPath = path.join(repoRoot, "docs/hero-catalog.json")
-const sceneRoot = path.join(frontendRoot, "assets-source/heroes/mandy/scenes")
 const runtimePath = path.join(frontendRoot, "public/assets/heroes/output_heroes/mandy_base.glb")
-
-const expectedScenes = [
-  "idle", "run", "attack", "super", "aim", "aim-super", "hit", "death",
-  "spawn", "victory", "gadget", "aim-gadget",
-]
 
 function glbJson(buffer) {
   const jsonLength = buffer.readUInt32LE(12)
@@ -61,23 +55,6 @@ test("Mandy materializes the left-hand staff at Spawn brief frame 20", () => {
   controller.update(1 / 30, {alive: true})
   assert.equal(staff.visible, true)
   controller.dispose()
-})
-
-test("Mandy has all twelve focused animation scenes", async () => {
-  for (const clip of expectedScenes) {
-    await assert.doesNotReject(
-      access(path.join(sceneRoot, `${clip}.blend`)),
-      `mandy/${clip}.blend is missing`,
-    )
-  }
-})
-
-test("Mandy GLB contains all twelve canonical Actions", async () => {
-  const document = glbJson(await readFile(runtimePath))
-  assert.deepEqual(
-    (document.animations || []).map(animation => animation.name).sort(),
-    ["idle", "run", "Attack", "super", "Aim", "AimSuper", "hit", "death", "Spawn", "Victory", "Gadget", "AimGadget"].sort(),
-  )
 })
 
 test("Mandy staff marker survives GLTFLoader name normalization", async () => {

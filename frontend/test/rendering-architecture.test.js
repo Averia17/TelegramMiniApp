@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import {readFile} from "node:fs/promises"
+import {readFile as readFileUncached} from "node:fs/promises"
 import {fileURLToPath} from "node:url"
 
 import {
@@ -66,6 +66,13 @@ import {ANIMATION_REFERENCE_SPEED, HEROES_CONFIG, RUNTIME_ANIMATION_REFERENCE_SP
 import {WORLD_SCALE, worldToScene, sceneToWorld} from "../src/components/BattleGame/rendering/shared/coordinates.js"
 import * as THREE from "three"
 
+const readFileCache = new Map()
+const readFile = (file, encoding) => {
+  const key = `${String(file)}:${encoding}`
+  if (!readFileCache.has(key)) readFileCache.set(key, readFileUncached(file, encoding))
+  return readFileCache.get(key)
+}
+
 const projectFile = relativePath => fileURLToPath(new URL(`../${relativePath}`, import.meta.url))
 
 test("compact mobile snapshots cannot erase an already received battle map", () => {
@@ -79,11 +86,15 @@ test("compact mobile snapshots cannot erase an already received battle map", () 
   assert.equal(preserveAuthoritativeMapWalls(
     {width: 1200, height: 900, walls: []},
     previous,
-  ).walls, walls)
+  ).walls.length, 0)
   assert.deepEqual(preserveAuthoritativeMapWalls(
     {width: 1400, height: 900, walls: []},
     previous,
   ).walls, [])
+  assert.equal(preserveAuthoritativeMapWalls(
+    {id: "new-map", revision: 2, width: 1200, height: 900, walls: null},
+    {...previous, id: "old-map", revision: 1},
+  ).walls, null)
 })
 
 test("world coordinates round-trip through the shared 2.5D transform", () => {
@@ -260,6 +271,21 @@ test("monster health bar is a single red fraction of current HP", () => {
   assert.equal(getHealthBarFraction(62, 100), 0.62)
   assert.equal(getHealthBarFraction(140, 100), 1)
   assert.equal(getHealthBarFraction(-20, 100), 0)
+})
+
+test("monster health badge is one shared canvas instead of separate bar sprites", () => {
+  const root = new THREE.Group()
+  const monsters = new MonsterRenderer(root)
+  monsters.sync({
+    bat_1: {x: 120, y: 220, radius: 24, lives: 184, maxLives: 260},
+  })
+
+  const {healthBar, healthFill, healthLabel} = monsters.views.get("bat_1")
+  assert.equal(healthFill, null)
+  assert.equal(healthBar.children.length, 1)
+  assert.equal(healthBar.children[0], healthLabel)
+  assert.equal(healthLabel.userData.healthBadge, true)
+  monsters.dispose()
 })
 
 test("monster health drops are visible until the player collects them", () => {
@@ -897,7 +923,7 @@ test("battle result stats keep their Cyrillic labels readable", async () => {
 
 test("the result popup is committed before an optional renderer outcome animation", async () => {
   const source = await readFile(projectFile("src/components/BattleGame/BattleGame.jsx"), "utf8")
-  const finishBattle = source.slice(source.indexOf("const finishBattle"), source.indexOf("const debugPlayerId"))
+  const finishBattle = source.slice(source.indexOf("const finishBattle"), source.indexOf("const addMessage"))
   assert.equal(finishBattle.indexOf("setBattleResult(normalized)") < finishBattle.indexOf("setOutcome("), true)
   assert.match(finishBattle, /try\s*\{[\s\S]*setOutcome/)
 })
@@ -2141,6 +2167,26 @@ test("combat effects keep the full orbital visual on the shared path", () => {
   assert.equal(root.children[0].children.length, 9)
 })
 
+test("Lumi seedburst uses a short impact burst instead of the persistent-zone visual", () => {
+  const root = new THREE.Group()
+  const renderer = new EffectRenderer(root)
+  renderer.sync([{
+    id: "lumi-seedburst",
+    kind: "lumi_seedburst",
+    x: 120,
+    y: 220,
+    radius: 42,
+    phase: "impact",
+    life: .3,
+    maxLife: .6,
+  }])
+
+  const burst = root.children[0]
+  assert.equal(burst.userData.phase, "impact")
+  assert.equal(burst.children.length, 8)
+  assert.equal(burst.children[0].userData.role, "impact-shard")
+})
+
 test("Brock armed beam renders as a directional lane instead of a ring", () => {
   const root = new THREE.Group()
   const renderer = new EffectRenderer(root)
@@ -2445,9 +2491,13 @@ test("first-trial beacon is a layered faceted landmark with animated energy deta
   }
 
   const tower = beacon.getObjectByName("beacon-tower")
+  const pedestal = beacon.getObjectByName("beacon-pedestal")
+  const pedestalInset = beacon.getObjectByName("beacon-pedestal-inset")
   const beam = beacon.getObjectByName("beacon-beam")
   const beamCore = beacon.getObjectByName("beacon-beam-core")
   const core = beacon.getObjectByName("beacon-core")
+  assert.equal(pedestal.material.depthWrite, false)
+  assert.equal(pedestalInset.material.depthWrite, false)
   assert.equal(tower.material.flatShading, true)
   assert.equal(tower.geometry.parameters.radialSegments, 8)
   assert.equal(beam.material.depthWrite, false)
@@ -2469,6 +2519,11 @@ test("first-trial beacon is a layered faceted landmark with animated energy deta
   assert.ok(core.material.emissiveIntensity > closedCoreIntensity)
 
   mapRenderer.dispose()
+})
+
+test("first-trial beacon collision is not rendered as a duplicate map prop", async () => {
+  const source = await readFile(projectFile("src/components/BattleGame/rendering/map/MapRenderer.js"), "utf8")
+  assert.match(source, /const COLLISION_ONLY_TYPES = new Set\(\["objective", "beacon"\]\)/)
 })
 
 test("map atmosphere changes with every playable island phase", () => {

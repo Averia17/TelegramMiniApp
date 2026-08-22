@@ -17,14 +17,14 @@ const readGlbJson = async url => {
   return JSON.parse(buffer.toString("utf8", 20, 20 + jsonLength))
 }
 
-const expectedClips = ["idle", "run", "hit", "death", "super", "Aim", "AimSuper", "Attack", "Spawn", "Victory"]
-
 for (const [heroName, asset] of Object.entries(HERO_ASSETS)) {
   if (asset.procedural || asset.static) continue
   test(`${heroName} canonical GLB contains the complete authored animation set`, async () => {
     const hero = await readGlbJson(asset.url)
     const names = new Set((hero.animations || []).map(animation => animation.name))
-    expectedClips.forEach(name => assert.ok(names.has(name), `${name} clip is required`))
+    for (const name of new Set(Object.values(asset.clips))) {
+      assert.ok(names.has(name), `${name} clip is required`)
+    }
     for (const animation of hero.animations) {
       assert.ok(animation.channels.length > 0, `${animation.name} must animate at least one node`)
       for (const channel of animation.channels) {

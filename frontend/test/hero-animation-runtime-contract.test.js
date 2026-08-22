@@ -1,6 +1,13 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import {readFile} from "node:fs/promises"
+import {readFile as readFileUncached} from "node:fs/promises"
+
+const readFileCache = new Map()
+const readFile = (file, encoding) => {
+  const key = `${String(file)}:${encoding}`
+  if (!readFileCache.has(key)) readFileCache.set(key, readFileUncached(file, encoding))
+  return readFileCache.get(key)
+}
 
 test("gameplay and GLB harness use the authored full-body super animation", async () => {
   const heroView = await readFile(new URL("../src/components/BattleGame/rendering/heroes/HeroView.js", import.meta.url), "utf8")
@@ -18,6 +25,11 @@ test("forced harness skills pulse after the controller baseline is initialized",
   assert.match(harness, /player\.attackPulse\+\+/)
   assert.match(harness, /player\.superPulse\+\+/)
   assert.match(harness, /player\.gadgetPulse\+\+/)
+})
+
+test("network respawn snaps the hero to its authoritative base position", async () => {
+  const heroView = await readFile(new URL("../src/components/BattleGame/rendering/heroes/HeroView.js", import.meta.url), "utf8")
+  assert.match(heroView, /if \(this\.lastLives <= 0 && state\.lives > 0\) \{[\s\S]*?this\.x = state\.x[\s\S]*?this\.y = state\.y/)
 })
 
 test("runtime hero export preserves authored Actions and samples them by default", async () => {

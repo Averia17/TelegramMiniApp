@@ -5,13 +5,20 @@ export const normalizeRecoveredBattleResult = result => ({
   duration: Math.max(0, Math.round(Number(result?.duration || 0) / 1000)),
 })
 
+export const BATTLE_RECOVERY_TIMEOUT_MS = 10_000
+
+export const getBattleRecoveryTimeoutDecision = ({startNewBattle = false} = {}) => (
+  startNewBattle ? {kind: "new"} : {kind: "menu"}
+)
+
 export const getBattleRecoveryDecision = ({status, roomId, result, startNewBattle = false} = {}) => {
+  // A deliberate new-battle intent must never recover the previous room. The
+  // server can briefly report a finished match as active while its room is
+  // being torn down, so recovery has to yield to the player's explicit action.
+  if (startNewBattle) return {kind: "new"}
   if (status === "active" && roomId) return {kind: "resume", roomId}
-  if (status === "finished" && result && !startNewBattle) {
+  if (status === "finished" && result) {
     return {kind: "result", result: normalizeRecoveredBattleResult(result)}
-  }
-  if (status === "none" || (status === "finished" && startNewBattle)) {
-    return startNewBattle ? {kind: "new"} : {kind: "menu"}
   }
   return {kind: "menu"}
 }

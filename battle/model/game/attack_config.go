@@ -45,7 +45,7 @@ var heroAttackConfigs = map[string]AttackConfig{
 	"Kaze":            {Archetype: AttackMeleeCone, AimShape: "cone", Range: 125, HalfArcDegrees: 60, Modifier: "kaze_double"},
 	"Wukong Mico":     {Archetype: AttackMeleeCone, AimShape: "cone", Range: 140, HalfArcDegrees: 60, Modifier: "mico_staff"},
 	"Persephone Lumi": {Archetype: AttackMeleeCone, AimShape: "cone", Range: 120, HalfArcDegrees: 60, Modifier: "lumi_scythe"},
-	"Katty":           {Archetype: AttackProjectile, AimShape: "line", Range: KattySprayRange, ProjectileKind: "katty_paint_spray", SplashRadius: KattySprayCloudRadius, Modifier: "katty_paint_cloud"},
+	"Katty":           {Archetype: AttackProjectile, AimShape: "line", Range: 220, ProjectileKind: "katty_paint_spray", SplashRadius: 58, Modifier: "katty_paint_cloud"},
 }
 
 // GetAttackConfig returns the immutable wire-facing attack metadata without

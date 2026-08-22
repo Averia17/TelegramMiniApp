@@ -81,6 +81,7 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			ShieldHP:           p.ShieldHP,
 			ShieldStacks:       p.ShieldStacks,
 			Marks:              p.Marks,
+			PaintStacks:        r.State.KattyPaintStacksFor(p.PlayerId),
 			SuperCharge:        game.SuperChargePercent(p, now),
 			Heat:               p.Heat,
 			AttackPulse:        p.AttackPulse,
@@ -89,6 +90,7 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			FocusCharge:        p.FocusCharge,
 			SuppressedRage:     p.SuppressedRage,
 			MicoRage:           p.MicoRage,
+			LumiFlowers:        p.LumiFlowers,
 			KazeCombo:          p.KazeCombo,
 			GadgetArmed:        p.GadgetArmed,
 			GadgetCharges:      p.GadgetCharges,
@@ -178,28 +180,13 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 		}
 	}
 
-	props := make([]game.PropJSON, 0, len(r.State.Props))
-	for _, p := range r.State.Props {
-		if p.Active {
-			props = append(props, game.PropJSON{
-				X:        p.X,
-				Y:        p.Y,
-				Radius:   p.Radius,
-				Type:     p.Type,
-				LootType: p.LootType,
-				Lives:    p.Lives,
-				MaxLives: p.MaxLives,
-				Active:   p.Active,
-			})
-		}
-	}
 	effects := make([]game.EffectJSON, 0, len(r.State.Effects))
 	for _, effect := range r.State.Effects {
 		if effect == nil || effect.ExpiresAt <= now {
 			continue
 		}
 		maxLife := float64(effect.ExpiresAt-effect.CreatedAt) / 1000
-		effects = append(effects, game.EffectJSON{Id: fmt.Sprintf("%d:%s:%.0f:%.0f", effect.CreatedAt, effect.Kind, effect.X, effect.Y), Kind: effect.Kind, X: effect.X, Y: effect.Y, ToX: effect.ToX, ToY: effect.ToY, Radius: effect.Radius, Angle: effect.Angle, Range: effect.Range, Arc: effect.Arc, Color: effect.Color, Damage: effect.Damage, Life: float64(effect.ExpiresAt-now) / 1000, MaxLife: maxLife})
+		effects = append(effects, game.EffectJSON{Id: fmt.Sprintf("%d:%s:%.0f:%.0f", effect.CreatedAt, effect.Kind, effect.X, effect.Y), Kind: effect.Kind, Phase: string(effect.Phase), X: effect.X, Y: effect.Y, ToX: effect.ToX, ToY: effect.ToY, Radius: effect.Radius, Angle: effect.Angle, Range: effect.Range, Arc: effect.Arc, Color: effect.Color, Damage: effect.Damage, Life: float64(effect.ExpiresAt-now) / 1000, MaxLife: maxLife})
 	}
 	gameState := game.GameStateJSON{
 		State:             r.State.State,
@@ -252,8 +239,13 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			mapJSON = fullMapJSON
 		}
 		visiblePlayers := visiblePlayersForClient(r.State, client.Id, players, now)
+		viewer := r.State.Players[client.Id]
+		visibleMonsters := monstersForClient(viewer, monsters)
+		visibleBullets := bulletsForClient(client.Id, viewer, r.State.Players, bullets)
+		visibleEffects := effectsForClient(viewer, effects)
+		visibleProps := propsForClient(viewer, r.State.Props)
 		combatEvents := combatEventsForClient(r.State.CombatEvents, client.Id, now)
-		clientState := game.NewStateUpdate(&gameState, &mapJSON, visiblePlayers, monsters, bullets, props, effects, combatEvents)
+		clientState := game.NewStateUpdate(&gameState, &mapJSON, visiblePlayers, visibleMonsters, visibleBullets, visibleProps, visibleEffects, combatEvents)
 		for _, objective := range r.State.Objectives {
 			if objective != nil {
 				clientState.Objectives = append(clientState.Objectives, game.ObjectiveStateJSON{ID: objective.ID, Type: objective.Type, Team: objective.Team, X: objective.X, Y: objective.Y, Lives: objective.Lives, MaxLives: objective.MaxLives, AttackRange: objective.AttackRange})

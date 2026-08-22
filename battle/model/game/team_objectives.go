@@ -214,6 +214,7 @@ func (gs *GameState) updateTeamRespawns(now int64) {
 		p.MoveX, p.MoveY, p.Aiming, p.Ack = 0, 0, false, 0
 		p.HitImpulseX, p.HitImpulseY = 0, 0
 		p.Lives, p.RespawnAt = p.MaxLives, 0
+		p.FlyingUntil, p.FlightSpeedMultiplier = 0, 0
 		p.Ammo, p.NextAmmoAt = p.MaxAmmo, 0
 		p.InvulnerableUntil = now + SpawnProtectionDuration.Milliseconds()
 		gs.Broadcast("respawn", map[string]interface{}{"playerId": p.PlayerId, "team": p.Team})

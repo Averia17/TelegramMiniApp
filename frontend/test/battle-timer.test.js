@@ -13,3 +13,12 @@ test("the match timer layer stays above the solo phase HUD", async () => {
   const phaseHudZIndex = Number(css.match(/\.island-phase-hud \{[\s\S]*?z-index:\s*(\d+)/)?.[1])
   assert.ok(topbarZIndex > phaseHudZIndex)
 })
+
+test("the match timer stays viewport-centered and the phase card starts below the topbar", async () => {
+  const css = await readFile(new URL("../src/components/BattleGame/BattleGame.css", import.meta.url), "utf8")
+
+  assert.match(css, /--battle-topbar-height:\s*48px/)
+  assert.match(css, /--battle-phase-gap:\s*16px/)
+  assert.match(css, /\.battle-topbar__center\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?left:\s*50%;/)
+  assert.match(css, /\.island-phase-hud\s*\{[\s\S]*?top:\s*calc\(var\(--battle-safe-top\) \+ var\(--battle-topbar-height\) \+ var\(--battle-phase-gap\)\)/)
+})

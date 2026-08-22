@@ -61,6 +61,7 @@ type PendingMandySuper struct {
 const (
 	AutoAimAssistRadius           = 34.0
 	MeleeMovingTargetAssistRadius = 20.0
+	MandyMaxBasicDamageMultiplier = 2.0
 )
 
 func CombatKitFor(hero string) CombatKit {
@@ -228,23 +229,16 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 	}
 	halfArc := heroAttackConfigs["Mandy"].HalfArcDegrees * math.Pi / 180
 	slowUntil := int64(0)
-	gadgetBoost := 1.0
-	if source.GadgetArmed {
+	gadgetArmed := source.GadgetArmed
+	if gadgetArmed {
 		slowUntil = ts + 1200
-		gadgetBoost = 1.5
 		source.GadgetArmed = false
 	}
 	for _, target := range gs.Players {
 		if !target.CanBulletHurt(source.PlayerId, source.Team) || !gs.autoAimHitsTarget(source, target.X, target.Y, meleeTargetRadius(source, target), angle, reach, halfArc) {
 			continue
 		}
-		damage := source.AttackDmg
-		if gadgetBoost > 1 {
-			damage = int(math.Round(float64(damage) * gadgetBoost))
-		}
-		if focused {
-			damage = int(math.Round(float64(damage) * MandyFocusedDamageMultiplier))
-		}
+		damage := mandyStrikeDamage(source.AttackDmg, focused, gadgetArmed)
 		if gs.dealPlayerDamage(source, target, damage) > 0 {
 			stunDuration := MandyStaffStunDuration
 			if focused {
@@ -260,13 +254,7 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 		if target == nil || !target.IsAlive() || !gs.autoAimHitsTarget(source, target.X, target.Y, target.Radius, angle, reach, halfArc) {
 			continue
 		}
-		damage := source.AttackDmg
-		if gadgetBoost > 1 {
-			damage = int(math.Round(float64(damage) * gadgetBoost))
-		}
-		if focused {
-			damage = int(math.Round(float64(damage) * MandyFocusedDamageMultiplier))
-		}
+		damage := mandyStrikeDamage(source.AttackDmg, focused, gadgetArmed)
 		gs.damageMonster(id, target, damage)
 	}
 	if gs.Mode == ModeTeamDeathmatch {
@@ -274,17 +262,22 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 			if objective == nil || objective.Lives <= 0 || objective.Team == source.Team || !gs.autoAimHitsTarget(source, objective.X, objective.Y, objective.Radius, angle, reach, halfArc) {
 				continue
 			}
-			damage := source.AttackDmg
-			if gadgetBoost > 1 {
-				damage = int(math.Round(float64(damage) * gadgetBoost))
-			}
-			if focused {
-				damage = int(math.Round(float64(damage) * MandyFocusedDamageMultiplier))
-			}
+			damage := mandyStrikeDamage(source.AttackDmg, focused, gadgetArmed)
 			gs.damageObjective(source, objective, damage)
 		}
 	}
 	gs.addEffect("mandy_staff_swing", source.X, source.Y, 0, 0, reach, angle, reach, halfArc, source.Color, 0, 360)
+}
+
+func mandyStrikeDamage(base int, focused, gadgetArmed bool) int {
+	multiplier := 1.0
+	if focused {
+		multiplier += MandyFocusedDamageMultiplier - 1
+	}
+	if gadgetArmed {
+		multiplier += .5
+	}
+	return int(math.Round(float64(base) * math.Min(MandyMaxBasicDamageMultiplier, multiplier)))
 }
 
 func (MandyKit) Super(gs *GameState, source *player.Player, ts int64, angle, _ float64) bool {

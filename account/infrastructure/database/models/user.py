@@ -1,6 +1,14 @@
 from typing import Optional
 
-from sqlalchemy import ARRAY, BIGINT, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    ARRAY,
+    BIGINT,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TableNameMixin, TimestampMixin
@@ -10,6 +18,7 @@ class User(Base, TimestampMixin, TableNameMixin):
     user_id: Mapped[int] = mapped_column(BIGINT, primary_key=True, autoincrement=False)
     username: Mapped[Optional[str]] = mapped_column(String(128))
     full_name: Mapped[str] = mapped_column(String(128))
+    nickname: Mapped[str] = mapped_column(String(20), nullable=False)
     clicks: Mapped[int] = mapped_column(BIGINT, server_default="0")
     completed_tasks: Mapped[list[int]] = mapped_column(
         ARRAY(Integer), default=[], server_default="{}"
@@ -20,6 +29,13 @@ class User(Base, TimestampMixin, TableNameMixin):
         back_populates="invitee", foreign_keys="[Invite.invitee_id]"
     )
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")
+
+    __table_args__ = (
+        CheckConstraint(
+            "char_length(btrim(nickname)) > 3",
+            name="ck_users_nickname_min_length",
+        ),
+    )
 
     def __repr__(self):
         return f"<User {self.user_id} {self.username} {self.full_name}>"

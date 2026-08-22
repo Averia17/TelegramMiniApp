@@ -3,6 +3,7 @@ import test from "node:test"
 
 import {
   getBattleHeroKey,
+  getBattleRoute,
   getBattleModeKey,
   loadBattleHero,
   loadBattleMode,
@@ -53,4 +54,9 @@ test("battle mode preference ignores unsupported values", () => {
   assert.equal(loadBattleMode("42"), "solo")
   saveBattleMode("42", "invalid")
   assert.equal(loadBattleMode("42"), "solo")
+})
+
+test("team mode keeps a team battle route after leaving a party", () => {
+  assert.equal(getBattleRoute("team"), "/battle?mode=team")
+  assert.equal(getBattleRoute("team", "party-42"), "/battle?mode=team&party=party-42")
 })

@@ -42,6 +42,18 @@ test("game snapshots publish bounded transport metrics", () => {
   assert.equal(snapshot["network.snapshot_age"].last.state, "game")
 })
 
+test("stale game snapshots do not reach the state consumer", () => {
+  let updates = 0
+  const client = new GameClient("ws://example", "token", () => { updates += 1 })
+  const state = {type: "state", ts: 2_000, game: {state: "game"}, players: {}, map: {}}
+
+  client.handleMessage(state)
+  client.handleMessage({...state, ts: 1_999})
+  client.handleMessage({...state, ts: 2_000})
+
+  assert.equal(updates, 1)
+})
+
 test("clock sync prefers the lowest-RTT recent sample", () => {
   const client = new GameClient("ws://example", "token", () => {})
   const now = Date.now()

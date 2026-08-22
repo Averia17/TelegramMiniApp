@@ -3,6 +3,8 @@ package gamemap
 import (
 	"math"
 	"testing"
+
+	"battle/service/geometry"
 )
 
 func TestBattleRoyaleLoaderUsesCanonicalArena(t *testing.T) {
@@ -57,6 +59,32 @@ func TestGenerateBattleRoyaleContainsFirstTrialLandmarks(t *testing.T) {
 	}
 	if len(gameMap.Spawners) != 8 {
 		t.Fatalf("landing pads = %d, want 8 paired pads across four zones", len(gameMap.Spawners))
+	}
+}
+
+func TestGenerateBattleRoyalePublishesBlockingBeaconCollider(t *testing.T) {
+	gameMap := GenerateBattleRoyale(CanonicalBattleRoyaleSeed)
+	const center = 1200.0
+	const beaconRadius = battleRoyaleBeaconCollisionRadius
+
+	var beacon *geometry.WallTile
+	for _, wall := range gameMap.Collisions {
+		if wall.Type == "beacon" {
+			if beacon != nil {
+				t.Fatal("battle royale map publishes more than one beacon collider")
+			}
+			beacon = wall
+		}
+	}
+	if beacon == nil {
+		t.Fatal("battle royale map has no beacon collider")
+	}
+	if !geometry.IsBlockingWall(beacon.Type) {
+		t.Fatalf("beacon collider type %q is passable", beacon.Type)
+	}
+	if beacon.MinX != center-beaconRadius || beacon.MinY != center-beaconRadius ||
+		beacon.MaxX != center+beaconRadius || beacon.MaxY != center+beaconRadius {
+		t.Fatalf("beacon collider = (%.0f,%.0f)-(%.0f,%.0f), want centered %.0f radius %.0f", beacon.MinX, beacon.MinY, beacon.MaxX, beacon.MaxY, center, beaconRadius)
 	}
 }
 

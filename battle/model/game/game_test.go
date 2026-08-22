@@ -40,6 +40,54 @@ func TestProjectilesFlyOverTeamRiverButStopAtStone(t *testing.T) {
 	}
 }
 
+func TestProjectileCannotDamageHeroThroughBlockingWall(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	wall := &geometry.WallTile{MinX: 180, MinY: 0, MaxX: 220, MaxY: 240, Type: "wall"}
+	gs.Map.Collisions = append(gs.Map.Collisions, wall)
+	gs.Walls.Insert(wall)
+	gs.PlayerAdd("attacker", "Attacker", "Needle")
+	gs.PlayerAdd("target", "Target", "Needle")
+	attacker, target := gs.Players["attacker"], gs.Players["target"]
+	attacker.X, attacker.Y = 100, 120
+	target.X, target.Y = 300, 120
+	before := target.Lives
+	gs.spawnAttackBullet(attacker, 0, "bolt", attacker.AttackDmg, 600, attacker.BulletSz, 700, 0, false, false)
+
+	for step := 0; step < 80 && len(gs.Bullets) > 0; step++ {
+		gs.updateBullets()
+	}
+
+	if target.Lives != before {
+		t.Fatalf("projectile damaged hero through blocking wall: lives=%d want=%d", target.Lives, before)
+	}
+}
+
+func TestPlayerMovementCannotEnterActiveHealthCrate(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.Map = &gamemap.GameMap{WidthInPixels: 400, HeightInPixels: 240}
+	gs.Walls = geometry.NewSpatialHash(float64(TileSize))
+	crate := prop.NewHealthCrate(140, 100)
+	gs.Props = []*prop.Prop{crate}
+
+	p := &player.Player{
+		CircleBody: geometry.CircleBody{X: 80, Y: 100, Radius: 16},
+		PlayerId:   "player",
+		Lives:      100,
+		MaxLives:   100,
+		Speed:      600,
+		MoveX:      1,
+	}
+	gs.Players = map[string]*player.Player{p.PlayerId: p}
+
+	gs.updatePlayerMovement(time.Second)
+
+	if geometry.CircleToCircle(&p.CircleBody, &crate.CircleBody) {
+		t.Fatalf("player entered active health crate: player=(%.1f,%.1f), crate=(%.1f,%.1f)", p.X, p.Y, crate.X, crate.Y)
+	}
+}
+
 func TestTeamBattleNeverDealsFriendlyFireThroughDamageGateway(t *testing.T) {
 	gs := newTestGameState()
 	gs.Mode = ModeTeamDeathmatch
@@ -243,6 +291,26 @@ func TestTeamBattleSchedulesRespawnAfterAnyLethalDamage(t *testing.T) {
 	}
 	if target.RespawnAt <= time.Now().UnixMilli() {
 		t.Fatalf("team player has no future respawn time: %d", target.RespawnAt)
+	}
+}
+
+func TestSoloLethalDamageRecordsPlacementOrder(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	for _, candidate := range []*player.Player{
+		{PlayerId: "winner", Name: "Winner", Lives: 10, MaxLives: 10},
+		{PlayerId: "third", Name: "Third", Lives: 10, MaxLives: 10},
+		{PlayerId: "second", Name: "Second", Lives: 10, MaxLives: 10},
+	} {
+		gs.Players[candidate.PlayerId] = candidate
+	}
+
+	gs.applyDamageAmount(gs.Players["third"], 10)
+	gs.applyDamageAmount(gs.Players["second"], 10)
+	gs.finalizeBattlePlaces("Winner")
+
+	if gs.Players["winner"].Place != 1 || gs.Players["second"].Place != 2 || gs.Players["third"].Place != 3 {
+		t.Fatalf("placements = winner:%d second:%d third:%d, want 1/2/3", gs.Players["winner"].Place, gs.Players["second"].Place, gs.Players["third"].Place)
 	}
 }
 
@@ -560,6 +628,28 @@ func TestSuddenDeathDamageAppliesToThreeRemainingPlayers(t *testing.T) {
 	}
 }
 
+func TestAbilityPullCannotMoveHeroThroughBlockingWall(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	wall := &geometry.WallTile{MinX: 180, MinY: 0, MaxX: 220, MaxY: 240, Type: "wall"}
+	gs.Map.Collisions = append(gs.Map.Collisions, wall)
+	gs.Walls.Insert(wall)
+	gs.PlayerAdd("source", "Source", "Needle")
+	gs.PlayerAdd("target", "Target", "Needle")
+	source, target := gs.Players["source"], gs.Players["target"]
+	source.X, source.Y = 100, 120
+	target.X, target.Y = 300, 120
+
+	gs.pullTargets(source, source.X, source.Y, 260, 150)
+
+	if target.X < wall.MaxX+target.Radius-1 {
+		t.Fatalf("ability pull crossed blocking wall: target x=%.1f, want at least %.1f", target.X, wall.MaxX+target.Radius-1)
+	}
+	if geometry.CollidesCircleWithBlockingWalls(&target.CircleBody, gs.Walls) {
+		t.Fatalf("ability pull left target inside blocking wall at (%.1f, %.1f)", target.X, target.Y)
+	}
+}
+
 func TestSuddenDeathLeavesOneSurvivorWhenATickWouldKillEveryone(t *testing.T) {
 	gs := newTestGameState()
 	gs.MaxPlayers = 3
@@ -584,6 +674,7 @@ func TestSuddenDeathLeavesOneSurvivorWhenATickWouldKillEveryone(t *testing.T) {
 
 func TestUpdateRegenerationAppliesBatchedFifteenPercentPulse(t *testing.T) {
 	gs := newTestGameState()
+	gs.MaxPlayers = 1
 	gs.State = GameStateGame
 	gs.PlayerAdd("regen", "Regen", "Needle")
 	p := gs.Players["regen"]
@@ -594,14 +685,77 @@ func TestUpdateRegenerationAppliesBatchedFifteenPercentPulse(t *testing.T) {
 
 	gs.updateRegenerationAt(now)
 
-	want := int(math.Round(float64(p.MaxLives) * .15))
+	want := int(math.Round(float64(p.MaxLives) * regenerationPulsePercent * p.RegenRate / .01))
 	if got := p.Lives - start; got != want {
 		t.Fatalf("regenerated %d HP in one pulse, want %d", got, want)
 	}
 }
 
+func TestUpdateRegenerationUsesHeroSpecificRate(t *testing.T) {
+	gs := newTestGameState()
+	gs.MaxPlayers = 2
+	gs.State = GameStateGame
+	gs.PlayerAdd("mina", "Mina", "Fairy Mina")
+	gs.PlayerAdd("needle", "Needle", "Needle")
+	mina, needle := gs.Players["mina"], gs.Players["needle"]
+	mina.Lives, needle.Lives = mina.MaxLives/2, needle.MaxLives/2
+	now := int64(10_000_000)
+	mina.LastDamageAt, needle.LastDamageAt = now-4_000, now-4_000
+
+	gs.updateRegenerationAt(now)
+
+	minaHealed := mina.Lives - mina.MaxLives/2
+	needleHealed := needle.Lives - needle.MaxLives/2
+	if minaHealed != 71 || needleHealed != 102 {
+		t.Fatalf("passive regeneration Mina=%d HP, Needle=%d HP; want 71 and 102", minaHealed, needleHealed)
+	}
+}
+
+func TestUpdateRegenerationStopsWhenVisibleEnemyIsPursuingInOpenField(t *testing.T) {
+	gs := newTestGameState()
+	gs.MaxPlayers = 2
+	gs.State = GameStateGame
+	gs.PlayerAdd("regen", "Regen", "Needle")
+	gs.PlayerAdd("hunter", "Hunter", "Mandy")
+	p, hunter := gs.Players["regen"], gs.Players["hunter"]
+	p.X, p.Y = 300, 300
+	hunter.X, hunter.Y = 450, 300
+	p.Lives = p.MaxLives / 2
+	now := int64(10_000_000)
+	p.LastDamageAt = now - int64(10*time.Second/time.Millisecond)
+
+	gs.updateRegenerationAt(now)
+
+	if p.Lives != p.MaxLives/2 {
+		t.Fatalf("regenerated while a visible enemy was pursuing in the open field: got %d", p.Lives)
+	}
+}
+
+func TestUpdateRegenerationStillWorksWhenPursuedIntoBush(t *testing.T) {
+	gs := newTestGameState()
+	gs.MaxPlayers = 2
+	gs.State = GameStateGame
+	gs.PlayerAdd("regen", "Regen", "Needle")
+	gs.PlayerAdd("hunter", "Hunter", "Mandy")
+	p, hunter := gs.Players["regen"], gs.Players["hunter"]
+	p.X, p.Y = 110, 110
+	hunter.X, hunter.Y = 150, 110
+	p.Lives = p.MaxLives / 2
+	now := int64(10_000_000)
+	p.LastDamageAt = now - int64(10*time.Second/time.Millisecond)
+	gs.Map.Collisions = []*geometry.WallTile{{MinX: 100, MinY: 100, MaxX: 140, MaxY: 140, Type: "bush", BushGroup: 1}}
+
+	gs.updateRegenerationAt(now)
+
+	want := int(math.Round(float64(p.MaxLives) * heroRegenerationPulsePercent(p, false)))
+	if got := p.Lives - p.MaxLives/2; got != want {
+		t.Fatalf("regenerated %d HP in bush while pursued, want %d", got, want)
+	}
+}
+
 func TestUpdateRegenerationWaitsBetweenPulsesAndAfterDamage(t *testing.T) {
 	gs := newTestGameState()
+	gs.MaxPlayers = 1
 	gs.State = GameStateGame
 	gs.PlayerAdd("regen", "Regen", "Needle")
 	p := gs.Players["regen"]
@@ -642,6 +796,7 @@ func TestUpdateRegenerationWaitsDuringHostileStatusAndStartsCooldownAfterIt(t *t
 	for name, setStatus := range statusSetters {
 		t.Run(name, func(t *testing.T) {
 			gs := newTestGameState()
+			gs.MaxPlayers = 1
 			gs.State = GameStateGame
 			gs.PlayerAdd("regen", "Regen", "Needle")
 			p := gs.Players["regen"]
@@ -690,6 +845,7 @@ func TestBlockedHostileHitStillInterruptsRegeneration(t *testing.T) {
 
 func TestUpdateRegenerationKeepsTwentyFivePercentPulseInConcealment(t *testing.T) {
 	gs := newTestGameState()
+	gs.MaxPlayers = 2
 	gs.PlayerAdd("regen", "Regen", "Needle")
 	gs.PlayerAdd("enemy", "Enemy", "Mandy")
 	gs.State = GameStateGame
@@ -704,7 +860,7 @@ func TestUpdateRegenerationKeepsTwentyFivePercentPulseInConcealment(t *testing.T
 	start := p.Lives
 	gs.updateRegenerationAt(now)
 
-	want := int(math.Round(float64(p.MaxLives) * .25))
+	want := int(math.Round(float64(p.MaxLives) * heroRegenerationPulsePercent(p, true)))
 	if got := p.Lives - start; got != want {
 		t.Fatalf("regenerated %d HP in concealment, want %d", got, want)
 	}
@@ -906,14 +1062,14 @@ func TestEffectiveMovementSpeedUsesEachModifierOnce(t *testing.T) {
 func TestAbilityAppliesCooldownAndShield(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Tank", "Viper")
+	gs.PlayerAdd("p1", "Tank", "Wukong Mico")
 	p := gs.Players["p1"]
 	gs.playerAbility("p1", 10_000, "secondary")
-	if p.ShieldUntil != 12_200 {
-		t.Fatalf("ShieldUntil = %d, want 12200", p.ShieldUntil)
+	if p.ShieldUntil != 14_000 {
+		t.Fatalf("ShieldUntil = %d, want 14000", p.ShieldUntil)
 	}
 	gs.playerAbility("p1", 11_000, "secondary")
-	if p.ShieldUntil != 12_200 {
+	if p.ShieldUntil != 14_000 {
 		t.Fatalf("cooldown allowed duplicate shield: %d", p.ShieldUntil)
 	}
 }
@@ -1093,7 +1249,7 @@ func TestPlayerRotate(t *testing.T) {
 	gs.PlayerAdd("p1", "Alice", "")
 
 	gs.playerRotate("p1", 100, 1.5)
-	want := worldAngleFromScreen(1.5)
+	want := quantizeAttackAngle(worldAngleFromScreen(1.5))
 	if math.Abs(gs.Players["p1"].Rotation-want) > 1e-9 {
 		t.Errorf("Rotation = %v, want %v", gs.Players["p1"].Rotation, want)
 	}
@@ -1126,7 +1282,7 @@ func TestHeroCombatProfiles(t *testing.T) {
 	}{
 		"Needle":     {12, 65, 420},
 		"Brock Zeus": {12, 80, 520},
-		"Katty":      {14, 42, 520},
+		"Katty":      {14, 52, 520},
 	}
 	for name, expected := range want {
 		hero := GetHeroByName(name)
@@ -1180,10 +1336,10 @@ func TestShadowShortAimStillFiresSporeProjectile(t *testing.T) {
 	}
 }
 
-func TestSlamDealsDamageWithoutProjectile(t *testing.T) {
+func TestMeleeBasicDealsDamageWithoutProjectile(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("p1", "Vulkan", "Viper")
+	gs.PlayerAdd("p1", "Mico", "Wukong Mico")
 	gs.PlayerAdd("p2", "Target", "Needle")
 	source, target := gs.Players["p1"], gs.Players["p2"]
 	target.X, target.Y = source.X+60, source.Y
@@ -1242,6 +1398,8 @@ func TestSetPlayersActive(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("p1", "Alice", "")
 	gs.PlayerAdd("p2", "Bob", "")
+	gs.Players["p1"].FlyingUntil = time.Now().UnixMilli() + 1_000
+	gs.Players["p1"].FlightSpeedMultiplier = 1.6
 
 	gs.setPlayersActive(true)
 	for _, p := range gs.Players {
@@ -1251,12 +1409,107 @@ func TestSetPlayersActive(t *testing.T) {
 		if p.Kills != 0 {
 			t.Errorf("Player Kills = %v, want 0", p.Kills)
 		}
+		if p.FlyingUntil != 0 || p.FlightSpeedMultiplier != 0 {
+			t.Errorf("Player flight state survived match reset: until=%v multiplier=%.2f", p.FlyingUntil, p.FlightSpeedMultiplier)
+		}
 	}
 
 	gs.setPlayersActive(false)
 	for _, p := range gs.Players {
 		if p.Lives != 0 {
 			t.Errorf("Player Lives = %v, want 0", p.Lives)
+		}
+	}
+}
+
+func TestSetPlayersActiveStartsEveryPlayerWithFreshMatchAbilityState(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("p1", "Alice", "Katty")
+	p := gs.Players["p1"]
+
+	p.MaxLives, p.BaseMaxLives, p.HealthBoosts = 900, 640, 4
+	p.Speed, p.PowerCores, p.DamageMultiplier = 999, 3, 1.35
+	p.ShieldHP, p.ShieldStacks, p.Marks = 300, 4, 2
+	p.SuperCharge, p.Heat, p.AttackPulse, p.SuperPulse, p.GadgetPulse = 12, 80, 7, 8, 9
+	p.Dodges, p.Souls, p.Deflect, p.Evolution = 3, 2, 1, 4
+	p.LumiFlowers, p.SuppressedRage, p.MicoRage = 3, 40, 5
+	p.KazeCritReady, p.KazeCombo, p.GadgetArmed = true, 2, true
+	p.GadgetCharges, p.Ammo, p.NextAmmoAt = 0, 0, 123
+	p.FocusStartedAt, p.FocusCharge = 456, 70
+	p.LastShootAt, p.LastPrimaryAt, p.LastSecondaryAt = 100, 200, 300
+	p.LastAbilityTick, p.LastAbilityID, p.LastAbilityOK = 400, "old", true
+	p.ShieldStackUntil, p.PoisonUntil, p.PoisonTickAt, p.PoisonBy = 1, 2, 3, "enemy"
+	p.HeatUntil, p.ShieldUntil, p.StealthUntil, p.StunUntil = 4, 5, 6, 7
+	p.CastUntil, p.ChannelUntil, p.VineUntil, p.VortexUntil = 8, 9, 10, 11
+	p.FlyingUntil, p.FlightSpeedMultiplier = 12, 1.6
+	p.BlindUntil, p.HasteUntil, p.LunarSpeedUntil, p.LunarDamageUntil = 13, 14, 15, 16
+	p.LunarShield, p.SlowUntil, p.SlowMultiplier = true, 17, .4
+	p.KazeComboUntil, p.StoneArmorUntil, p.RevealedUntil = 18, 19, 20
+	p.RegenCarry, p.LastDamageAt, p.LastRegenAt = 21, 22, 23
+	p.RespawnAt, p.RespawnCount = 24, 3
+	p.LastContactAt, p.LastContactBy, p.HitImpulseX, p.HitImpulseY = 25, "enemy", 1, 1
+
+	gs.setPlayersActive(true)
+
+	if p.Lives != 640 || p.MaxLives != 640 || p.BaseMaxLives != 640 || p.HealthBoosts != 0 {
+		t.Fatalf("health state survived match reset: lives=%d max=%d base=%d boosts=%d", p.Lives, p.MaxLives, p.BaseMaxLives, p.HealthBoosts)
+	}
+	if p.Speed != 168 || p.PowerCores != 0 || p.DamageMultiplier != 1 {
+		t.Fatalf("power-up stats survived match reset: speed=%.1f cores=%d damage=%.2f", p.Speed, p.PowerCores, p.DamageMultiplier)
+	}
+	if p.ShieldHP != 0 || p.ShieldStacks != 0 || p.Marks != 0 || p.SuperCharge != 100 || p.Heat != 0 {
+		t.Fatalf("combat stacks survived match reset: shield=%d stacks=%d marks=%d super=%d heat=%d", p.ShieldHP, p.ShieldStacks, p.Marks, p.SuperCharge, p.Heat)
+	}
+	if p.AttackPulse != 0 || p.SuperPulse != 0 || p.GadgetPulse != 0 || p.Souls != 0 || p.Evolution != 0 || p.LumiFlowers != 0 || p.KazeCombo != 0 {
+		t.Fatalf("ability counters survived match reset: attack=%d super=%d gadget=%d souls=%d evolution=%d flowers=%d combo=%d", p.AttackPulse, p.SuperPulse, p.GadgetPulse, p.Souls, p.Evolution, p.LumiFlowers, p.KazeCombo)
+	}
+	if p.GadgetCharges != 3 || p.Ammo != p.MaxAmmo || p.NextAmmoAt != 0 || p.FocusStartedAt != 0 || p.FocusCharge != 0 {
+		t.Fatalf("ability resources survived match reset: gadgets=%d ammo=%d/%d next=%d focus=%d/%d", p.GadgetCharges, p.Ammo, p.MaxAmmo, p.NextAmmoAt, p.FocusStartedAt, p.FocusCharge)
+	}
+	if p.FlyingUntil != 0 || p.FlightSpeedMultiplier != 0 || p.GadgetArmed || p.KazeCritReady || p.LunarShield {
+		t.Fatalf("temporary ability state survived match reset: flight=%d multiplier=%.2f armed=%v crit=%v lunarShield=%v", p.FlyingUntil, p.FlightSpeedMultiplier, p.GadgetArmed, p.KazeCritReady, p.LunarShield)
+	}
+	if p.LastShootAt != 0 || p.LastPrimaryAt != 0 || p.LastSecondaryAt != 0 || p.LastAbilityTick != 0 || p.LastAbilityID != "" || p.LastAbilityOK {
+		t.Fatalf("ability cooldown state survived match reset: shoot=%d primary=%d secondary=%d tick=%d id=%q ok=%v", p.LastShootAt, p.LastPrimaryAt, p.LastSecondaryAt, p.LastAbilityTick, p.LastAbilityID, p.LastAbilityOK)
+	}
+	if p.RegenCarry != 0 || p.LastDamageAt != 0 || p.LastRegenAt != 0 || p.RespawnAt != 0 || p.RespawnCount != 0 || p.LastContactAt != 0 || p.LastContactBy != "" || p.HitImpulseX != 0 || p.HitImpulseY != 0 {
+		t.Fatalf("match history survived reset: regen=%.1f damage=%d regenAt=%d respawn=%d/%d contact=%d/%q impulse=%.1f/%.1f", p.RegenCarry, p.LastDamageAt, p.LastRegenAt, p.RespawnAt, p.RespawnCount, p.LastContactAt, p.LastContactBy, p.HitImpulseX, p.HitImpulseY)
+	}
+}
+
+func TestStartGameClearsMatchAbilityRuntime(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("p1", "Alice", "Katty")
+	gs.State = GameStateLobby
+	gs.Bullets = []*bullet.Bullet{{}}
+	gs.ScheduledShots = []*ScheduledShot{{}}
+	gs.DamageZones = []*DamageZone{{}}
+	gs.PendingMandySupers = []*PendingMandySuper{{}}
+	gs.HeroZones = []*HeroZone{{}}
+	gs.Effects = []*BattleEffect{{}}
+	gs.DelayedEffects = []*DelayedBattleEffect{{}}
+	gs.LightningStrikes = []*LightningStrike{{}}
+	gs.Skyfalls = []*Skyfall{{}}
+	gs.TemporaryWalls = map[*geometry.WallTile]int64{&geometry.WallTile{}: 1}
+	gs.KattyPaintStacks["p1"] = map[string]int{"target": 2}
+	gs.KattyPaintUntil["p1"] = map[string]int64{"target": 1}
+	gs.LightMarkedUntil["target"] = 1
+	gs.AbilityTargets["p1"] = "target"
+	gs.CombatEvents = []CombatEvent{{ID: 9}}
+	gs.NextCombatEventID = 9
+	gs.createTemporaryRock(200, 200, time.Now().Add(time.Minute).UnixMilli())
+
+	gs.startGame()
+
+	if len(gs.Bullets) != 0 || len(gs.ScheduledShots) != 0 || len(gs.DamageZones) != 0 || len(gs.PendingMandySupers) != 0 || len(gs.HeroZones) != 0 || len(gs.Effects) != 0 || len(gs.DelayedEffects) != 0 || len(gs.LightningStrikes) != 0 || len(gs.Skyfalls) != 0 {
+		t.Fatalf("old ability runtime survived match start: bullets=%d scheduled=%d damage=%d pending=%d zones=%d effects=%d delayed=%d lightning=%d skyfalls=%d", len(gs.Bullets), len(gs.ScheduledShots), len(gs.DamageZones), len(gs.PendingMandySupers), len(gs.HeroZones), len(gs.Effects), len(gs.DelayedEffects), len(gs.LightningStrikes), len(gs.Skyfalls))
+	}
+	if len(gs.TemporaryWalls) != 0 || len(gs.KattyPaintStacks) != 0 || len(gs.KattyPaintUntil) != 0 || len(gs.LightMarkedUntil) != 0 || len(gs.AbilityTargets) != 0 || len(gs.CombatEvents) != 0 || gs.NextCombatEventID != 0 {
+		t.Fatalf("old ability maps survived match start: walls=%d paint=%d/%d marks=%d targets=%d events=%d next=%d", len(gs.TemporaryWalls), len(gs.KattyPaintStacks), len(gs.KattyPaintUntil), len(gs.LightMarkedUntil), len(gs.AbilityTargets), len(gs.CombatEvents), gs.NextCombatEventID)
+	}
+	for _, wall := range gs.Map.Collisions {
+		if wall != nil && wall.Type == "temporary-rock" {
+			t.Fatal("temporary ability wall survived match start")
 		}
 	}
 }
@@ -1576,7 +1829,7 @@ func TestBotsAdjustWhenHumansJoinAndLeaveDuringGame(t *testing.T) {
 	gs.startGame()
 
 	gs.PlayerAdd("p2", "Bob", "Brock Zeus")
-	gs.PlayerAdd("p3", "Eve", "Viper")
+	gs.PlayerAdd("p3", "Eve", "Kaze")
 	gs.PlayerAdd("p4", "Max", "Mandy")
 	if bots := countBots(gs); bots != 0 {
 		t.Fatalf("bots after fourth human joined = %d, want 0", bots)
@@ -1609,6 +1862,20 @@ func TestGameStartWaiting(t *testing.T) {
 	}
 	if gs.LobbyEndsAt != 0 || gs.GameEndsAt != 0 {
 		t.Error("Timers should be cleared")
+	}
+}
+
+func TestGameStartFinishedClearsFlightState(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("p1", "Alice", "Katty")
+	p := gs.Players["p1"]
+	p.FlyingUntil = time.Now().UnixMilli() + 1_000
+	p.FlightSpeedMultiplier = 1.6
+
+	gs.startFinished()
+
+	if p.FlyingUntil != 0 || p.FlightSpeedMultiplier != 0 {
+		t.Fatalf("finished state retained flight: until=%v multiplier=%.2f", p.FlyingUntil, p.FlightSpeedMultiplier)
 	}
 }
 
@@ -1812,7 +2079,7 @@ func TestBulletVsPlayer(t *testing.T) {
 func TestPlayerHitDoesNotBuildSuperCharge(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("p1", "Alice", "Brock Zeus")
-	gs.PlayerAdd("p2", "Bob", "Viper")
+	gs.PlayerAdd("p2", "Bob", "Kaze")
 	gs.State = GameStateGame
 
 	attacker, target := gs.Players["p1"], gs.Players["p2"]
@@ -1827,29 +2094,10 @@ func TestPlayerHitDoesNotBuildSuperCharge(t *testing.T) {
 	}
 }
 
-func TestViperSlamAddsSlowAndShieldStack(t *testing.T) {
-	gs := newTestGameState()
-	gs.State = GameStateGame
-	gs.PlayerAdd("viper", "Viper", "Viper")
-	gs.PlayerAdd("target", "Target", "Needle")
-	viper, target := gs.Players["viper"], gs.Players["target"]
-	viper.X, viper.Y = 100, 100
-	target.X, target.Y = 210, 100
-
-	gs.playerShoot("viper", 10_000, 0)
-
-	if viper.ShieldStacks != 1 || viper.ShieldStackUntil != 14_000 {
-		t.Fatalf("Viper shield stacks=%d until=%d, want 1 until 14000", viper.ShieldStacks, viper.ShieldStackUntil)
-	}
-	if target.SlowUntil != 11_200 {
-		t.Fatalf("target slow until=%d, want 11200", target.SlowUntil)
-	}
-}
-
 func TestPoisonMatchesLocalEngineTotalDamage(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
-	gs.PlayerAdd("target", "Target", "Viper")
+	gs.PlayerAdd("target", "Target", "Kaze")
 	target := gs.Players["target"]
 	target.PoisonUntil = time.Now().Add(5 * time.Second).UnixMilli()
 	before := target.Lives
@@ -2021,7 +2269,7 @@ func TestTeamDeathmatchFillsBothTeamsWhenOnePlayerQueues(t *testing.T) {
 	gs.MaxPlayers = 6
 	gs.State = GameStateLobby
 	gs.LobbyEndsAt = time.Now().Add(-time.Second).UnixMilli()
-	gs.PlayerAdd("p1", "Alice", "Viper")
+	gs.PlayerAdd("p1", "Alice", "Kaze")
 
 	gs.Update()
 

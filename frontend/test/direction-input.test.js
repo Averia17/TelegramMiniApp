@@ -5,7 +5,9 @@ import {
   ATTACK_DIRECTION_COUNT,
   normalizeEightWayMove,
   quantizeAngleToSectors,
+  worldAngleToProtocolScreen,
 } from "../src/components/BattleGame/direction.js"
+import {Input} from "../src/components/BattleGame/Input.js"
 
 test("keyboard movement exposes all eight compass directions", () => {
   const directions = [
@@ -31,4 +33,14 @@ test("attack angles resolve to at least 32 stable directions", () => {
 
   assert.equal(angles.size, ATTACK_DIRECTION_COUNT)
   assert.ok(Math.abs(quantizeAngleToSectors(-step * .18, ATTACK_DIRECTION_COUNT)) < 1e-9)
+})
+
+test("3D world aim is converted back to the server's isometric angle contract", () => {
+  const input = Object.create(Input.prototype)
+  input.getAimAngleFromScreen = () => Math.PI / 4
+
+  const resolved = input.resolveAimAngle(0, 0, {}, {x: 0, y: 0})
+
+  assert.ok(Math.abs(resolved - worldAngleToProtocolScreen(Math.PI / 4)) < 1e-9)
+  assert.notEqual(resolved, Math.PI / 4)
 })

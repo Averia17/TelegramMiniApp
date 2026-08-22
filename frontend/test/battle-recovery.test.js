@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import {getBattleRecoveryDecision} from "../src/components/BattleGame/battleRecovery.js"
+import {getBattleRecoveryDecision, getBattleRecoveryTimeoutDecision} from "../src/components/BattleGame/battleRecovery.js"
 
 test("recovery resumes the authoritative active room even with a stale room hint", () => {
   assert.deepEqual(
@@ -30,4 +30,19 @@ test("explicit new battle starts matchmaking only when recovery found nothing", 
     getBattleRecoveryDecision({status: "none", startNewBattle: false}),
     {kind: "menu"},
   )
+})
+
+test("explicit new battle ignores a stale active room and starts matchmaking", () => {
+  assert.deepEqual(
+    getBattleRecoveryDecision({status: "active", roomId: "old-room", startNewBattle: true}),
+    {kind: "new"},
+  )
+})
+
+test("recovery watchdog returns to the menu when the server never answers", () => {
+  assert.deepEqual(getBattleRecoveryTimeoutDecision({startNewBattle: false}), {kind: "menu"})
+})
+
+test("recovery watchdog preserves an explicit new-battle intent", () => {
+  assert.deepEqual(getBattleRecoveryTimeoutDecision({startNewBattle: true}), {kind: "new"})
 })

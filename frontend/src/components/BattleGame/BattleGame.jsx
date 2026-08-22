@@ -2,11 +2,11 @@ import {Profiler, useEffect, useRef, useState, useCallback} from "react"
 import {useNavigate} from "react-router-dom"
 import {GameClient} from "./GameClient"
 import {Renderer} from "./Renderer"
-import {Input} from "./Input"
+import {Input, MOBILE_INPUT_MEDIA_QUERY} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
 import {getHeroSkill} from "./heroSkills.js"
 import {getBattlePlayerCount, getBattleResultView, getPlayerBattleStats, getPresentedBattleResult, getSynchronizedBattleView} from "./battleOutcome"
-import {AbilityButton, ActiveStatusEffects, BattleMatchTimer, BattleMiniMap, BattleResultCard, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, TauntButton, TeamBattleHud, TeamObjectiveHud, TowerThreatNotice, TouchStick} from "./BattleGameUI.jsx"
+import {AbilityButton, ActiveStatusEffects, BattleMatchTimer, BattleMiniMap, BattleResultCard, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, NetworkStatusNotice, TauntButton, TeamBattleHud, TeamObjectiveHud, TowerThreatNotice, TouchStick} from "./BattleGameUI.jsx"
 import {getAttackCooldownVisual} from "./attackCooldownVisual.js"
 import {getActiveStatusEffects} from "./statusEffects.js"
 import {formatBattleMessage} from "./battleMessages.js"
@@ -19,16 +19,17 @@ import {MAX_PARTY_SIZE, WS_URL} from "../../utils/urls.js"
 import {getAccessToken} from "../../utils/auth.js"
 import {BattleLoading} from "../BattleLoading/BattleLoading.jsx"
 import {getBattleLoadingProgress} from "./battleLoadingProgress.js"
+import {getBattleErrorMessage} from "./battleErrors.js"
 import {normalizeTeamBattleResult} from "./teamBattleUi.js"
 import {isTeamBattleMode} from "./battleMode.js"
-import {getBattleRecoveryDecision} from "./battleRecovery.js"
+import {BATTLE_RECOVERY_TIMEOUT_MS, getBattleRecoveryDecision, getBattleRecoveryTimeoutDecision} from "./battleRecovery.js"
+import {clearActiveBattle, saveActiveBattle, saveBattleHistoryRecord} from "../../utils/battleHistory.js"
 import "./BattleGame.css"
 
 
-const saveBattleResult = result => {
+const saveBattleResult = (result, playerId, metadata = {}) => {
   try {
-    const history = JSON.parse(window.localStorage.getItem("battle_history") || "[]")
-    window.localStorage.setItem("battle_history", JSON.stringify([{...result, finishedAt: new Date().toISOString()}, ...history].slice(0, 20)))
+    saveBattleHistoryRecord(result, playerId, metadata)
     const stats = JSON.parse(window.localStorage.getItem("battle_stats") || "{}")
     window.localStorage.setItem("battle_stats", JSON.stringify({battles:(stats.battles||0)+1,wins:(stats.wins||0)+(result.won?1:0),kills:(stats.kills||0)+(result.kills||0),monsters:(stats.monsters||0)+(result.monsters||0),deaths:(stats.deaths||0)+(result.deaths||0),towerDamage:(stats.towerDamage||0)+(result.towerDamage||0)}))
   } catch (error) { console.warn("Could not save battle result", error) }
@@ -38,7 +39,7 @@ const profileBattleUi = (_id, phase, actualDuration) => {
   if (import.meta.env.DEV) recordBattleMetric("ui.commit", actualDuration, {phase})
 }
 
-export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId = "", tauntActive = false, startNewBattle = false}) => {
+export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roomId, heroName, mode = "solo", partyId = "", partyTicket = "", tauntActive = false, startNewBattle = false}) => {
   const navigate = useNavigate()
   const canvasRef = useRef(null)
   const clientRef = useRef(null)
@@ -54,13 +55,17 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
   const pendingDeathInfoRef = useRef(null)
   const deathRevealTimerRef = useRef(null)
   const deathRevealStartedRef = useRef(false)
-  const [mobileMode, setMobileMode] = useState(() => window.matchMedia("(pointer: coarse), (max-width: 700px)").matches)
+  const battleErrorHandledRef = useRef(false)
+  const suppressDisconnectRef = useRef(false)
+  const battleContextRef = useRef({mode, partyId, mapName: "battle-royale", mapId: ""})
+  const [mobileMode, setMobileMode] = useState(() => window.matchMedia(MOBILE_INPUT_MEDIA_QUERY).matches)
   const [touchControls, setTouchControls] = useState({move: null, aim: null})
   const [tauntCooldown, setTauntCooldown] = useState(0)
   const tauntTimerRef = useRef(null)
 
   const [gameState, setGameState] = useState(null)
   const [connected, setConnected] = useState(false)
+  const [networkQuality, setNetworkQuality] = useState(null)
   const [roomInfo, setRoomInfo] = useState(null)
   const [messages, setMessages] = useState([])
   const [islandVoice, setIslandVoice] = useState(null)
@@ -77,6 +82,22 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
     setViewState(v)
   }, [])
 
+  const debugPlayerId = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("debugPlayer") : null
+  const effectivePlayerId = debugPlayerId || playerId
+  const playerName = configuredPlayerName.trim() || "БОЕЦ"
+
+  const reportBattleError = useCallback(source => {
+    if (battleErrorHandledRef.current) return
+    battleErrorHandledRef.current = true
+    suppressDisconnectRef.current = true
+    joinedRef.current = false
+    clientRef.current?.disconnect()
+    navigate("/", {
+      replace: true,
+      state: {battleError: getBattleErrorMessage(source)},
+    })
+  }, [navigate])
+
   const finishBattle = useCallback(result => {
     if (savedResultRef.current) return
     savedResultRef.current = true
@@ -91,7 +112,25 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
       latestStateRef.current,
       clientRef.current?.playerId,
     )
-    saveBattleResult(normalized)
+    const localPlayerId = clientRef.current?.playerId || effectivePlayerId
+    clearActiveBattle(localPlayerId)
+    const players = latestStateRef.current?.players || {}
+    const localPlayer = players[localPlayerId]
+    const partyIdForHistory = localPlayer?.partyId || battleContextRef.current.partyId
+    const partyMembers = partyIdForHistory
+      ? Object.entries(players)
+        .filter(([id, player]) => id !== String(localPlayerId) && (
+          player?.partyId === partyIdForHistory || (localPlayer?.team && player?.team === localPlayer.team)
+        ))
+        .map(([, player]) => ({name: player?.name, hero: player?.hero}))
+        .filter(member => member.name)
+      : []
+    saveBattleResult(normalized, localPlayerId, {
+      mode: normalized.mode || battleContextRef.current.mode,
+      mapName: normalized.mapName || battleContextRef.current.mapName,
+      mapId: normalized.mapId || battleContextRef.current.mapId,
+      partyMembers,
+    })
     setBattleResult(normalized)
     setView(getBattleResultView(normalized, mode))
     try {
@@ -101,7 +140,7 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
       // never strand the player on the arena with zero health.
       console.warn("Could not play battle outcome animation", error)
     }
-  }, [mode, setView])
+  }, [effectivePlayerId, mode, setView])
 
   const revealPresentedDeath = useCallback(result => {
     if (!result || deathRevealStartedRef.current) return
@@ -113,10 +152,6 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
       finishBattle({...result, ...pendingDeathInfoRef.current})
     }, 420)
   }, [finishBattle])
-
-  const debugPlayerId = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("debugPlayer") : null
-  const effectivePlayerId = debugPlayerId || playerId
-  const playerName = effectivePlayerId ? `P${String(effectivePlayerId).slice(0, 6)}` : "Player"
 
   const addMessage = useCallback((msg) => {
     if (msg.type === "island_voice") return
@@ -130,7 +165,7 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
   }, [islandVoice])
 
   useEffect(() => {
-    const query = window.matchMedia("(pointer: coarse), (max-width: 700px)")
+    const query = window.matchMedia(MOBILE_INPUT_MEDIA_QUERY)
     const updateMode = () => setMobileMode(query.matches)
     query.addEventListener?.("change", updateMode)
     window.Telegram?.WebApp?.expand?.()
@@ -142,13 +177,21 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
     if (!canvas) return
 
     const resize = () => {
-      const rect = canvas.parentElement?.getBoundingClientRect()
-      const width = Math.max(1, Math.round(rect?.width || window.innerWidth))
-      const height = Math.max(1, Math.round(rect?.height || window.visualViewport?.height || window.innerHeight))
+      const shell = canvas.parentElement
+      const rect = shell?.getBoundingClientRect()
+      const visualViewport = window.visualViewport
+      const width = Math.max(1, Math.round(rect?.width || visualViewport?.width || window.innerWidth))
+      // The shell height is backed by --battle-viewport-height, so using its
+      // rect as the source after an orientation change would preserve the old
+      // height forever. The visual viewport is the authoritative mobile size.
+      const height = Math.max(1, Math.round(visualViewport?.height || window.innerHeight || rect?.height || 1))
+      shell?.style.setProperty("--battle-viewport-height", `${height}px`)
       rendererRef.current?.resize(width, height)
     }
     resize()
     window.addEventListener("resize", resize)
+    window.addEventListener("orientationchange", resize)
+    window.screen?.orientation?.addEventListener?.("change", resize)
     window.visualViewport?.addEventListener("resize", resize)
 
     let renderer = null
@@ -156,17 +199,29 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
     let client = null
     let input = null
     let disposed = false
+    let connectionTimer = null
+
+    const clearConnectionTimer = () => {
+      if (connectionTimer) window.clearTimeout(connectionTimer)
+      connectionTimer = null
+    }
 
     const startBattle = async () => {
       try {
         await assetRegistry.preloadBattleAssets()
       } catch (error) {
         console.error("Could not preload battle GLBs:", error)
-        if (!disposed) setAssetLoadError(true)
+        if (!disposed) {
+          setAssetLoadError(true)
+          reportBattleError({kind: "asset_load"})
+        }
         return
       }
       if (!assetRegistry.areBattleAssetsReady()) {
-        if (!disposed) setAssetLoadError(true)
+        if (!disposed) {
+          setAssetLoadError(true)
+          reportBattleError({kind: "asset_load"})
+        }
         return
       }
       if (disposed) return
@@ -191,6 +246,7 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
             simulation.setLocalPlayerId(client.playerId)
           }
           simulation.ingest(state, client.clockOffset, receivedAt)
+          setNetworkQuality(client.getNetworkQuality(receivedAt))
           const now = performance.now()
           const shouldUpdateUi = !lastUiUpdateRef.current || now - lastUiUpdateRef.current >= 100
           if (shouldUpdateUi) {
@@ -225,11 +281,24 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
             } else if (decision.kind === "result") {
               finishBattle(decision.result)
             } else if (decision.kind === "menu") {
+              clearActiveBattle(effectivePlayerId)
               navigate("/", {replace: true})
             }
           }
           if (msg.type === "room_joined") {
             setRoomInfo(msg.params)
+            battleContextRef.current = {
+              ...battleContextRef.current,
+              mode: msg.params?.mode || battleContextRef.current.mode,
+              mapName: msg.params?.mapName || battleContextRef.current.mapName,
+              mapId: msg.params?.mapId || battleContextRef.current.mapId,
+            }
+            saveActiveBattle({
+              roomId: msg.params?.roomId,
+              mode: msg.params?.mode || battleContextRef.current.mode,
+              mapName: msg.params?.mapName || battleContextRef.current.mapName,
+              partyId: battleContextRef.current.partyId,
+            }, effectivePlayerId)
             setView("lobby")
             const localPlayerId = client.playerId || msg.params?.playerId
             if (localPlayerId) {
@@ -274,20 +343,29 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
             pendingDeathInfoRef.current = info
             setDeathInfo(info)
           }
-          if (msg.type === "error" && (msg.params?.message === "Room not found" || msg.params?.message === "Room access denied")) {
-            joinedRef.current = false
-            navigate("/", {replace: true})
+          if (msg.type === "error" && viewRef.current !== "game") {
+            reportBattleError({kind: "server", message: msg.params?.message})
           }
         },
         () => {
+          clearConnectionTimer()
           setConnected(true)
         },
-        () => setConnected(false)
+        event => {
+          setConnected(false)
+          setNetworkQuality(client.getNetworkQuality())
+          if (!disposed && !suppressDisconnectRef.current) {
+            reportBattleError({kind: "connection_closed", code: event?.code})
+          }
+        }
       )
       client.setShootPrediction?.(details => simulation.predictLocalShoot(details))
       clientRef.current = client
       if (import.meta.env.DEV) window.__battleClient = client
       client.connect()
+      connectionTimer = window.setTimeout(() => {
+        if (!disposed && !client.connected) reportBattleError({kind: "connection_timeout"})
+      }, 12_000)
 
       input = new Input(canvas, client, setTouchControls, (x, y, ack) => simulation.setInput(x, y, ack))
       inputRef.current = input
@@ -403,8 +481,11 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
     return () => {
       disposed = true
       window.removeEventListener("resize", resize)
+      window.removeEventListener("orientationchange", resize)
+      window.screen?.orientation?.removeEventListener?.("change", resize)
       window.visualViewport?.removeEventListener("resize", resize)
       window.clearTimeout(startupTimer)
+      clearConnectionTimer()
       if (deathRevealTimerRef.current) window.clearTimeout(deathRevealTimerRef.current)
       deathRevealTimerRef.current = null
       if (tauntTimerRef.current) window.clearInterval(tauntTimerRef.current)
@@ -445,27 +526,48 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
   }, [gameState])
 
   useEffect(() => {
-    if (connected && recoveryAction === null && clientRef.current) {
-      clientRef.current.recoverBattle(roomId || "")
+    if (!connected || view !== "game") return undefined
+    const refreshNetworkQuality = () => {
+      const client = clientRef.current
+      if (client) setNetworkQuality(client.getNetworkQuality())
     }
-  }, [connected, recoveryAction, roomId])
+    refreshNetworkQuality()
+    const timer = window.setInterval(refreshNetworkQuality, 250)
+    return () => window.clearInterval(timer)
+  }, [connected, view])
+
+  useEffect(() => {
+    if (!connected || recoveryAction !== null || !clientRef.current) return undefined
+    const client = clientRef.current
+    client.recoverBattle(roomId || "")
+    const timeout = window.setTimeout(() => {
+      const decision = getBattleRecoveryTimeoutDecision({startNewBattle})
+      setRecoveryAction(decision.kind)
+      if (decision.kind === "menu") {
+        reportBattleError({kind: "connection_timeout"})
+      }
+    }, BATTLE_RECOVERY_TIMEOUT_MS)
+    return () => window.clearTimeout(timeout)
+  }, [connected, recoveryAction, roomId, startNewBattle, reportBattleError])
 
   useEffect(() => {
     if (connected && recoveryAction === "new" && !joinedRef.current && clientRef.current) {
       joinedRef.current = true
-      if (mode === "team" && partyId) clientRef.current.joinParty(partyId, MAX_PARTY_SIZE)
+      if (mode === "team" && partyId) clientRef.current.joinParty(partyId, MAX_PARTY_SIZE, partyTicket)
       clientRef.current.findMatch(playerName, heroName, mode === "team"
-        ? {mode: "team deathmatch", mapName: "team-battle", maxPlayers: 6, partyId, partySize: partyId ? MAX_PARTY_SIZE : 1}
+        ? {mode: "team deathmatch", mapName: "team-battle", maxPlayers: 6, partyId, partySize: partyId ? MAX_PARTY_SIZE : 1, partyTicket}
         : {})
     }
-  }, [connected, recoveryAction, playerName, heroName, effectivePlayerId, mode, partyId])
+  }, [connected, recoveryAction, playerName, heroName, effectivePlayerId, mode, partyId, partyTicket])
 
   const handleBackToMenu = () => {
+    suppressDisconnectRef.current = true
     joinedRef.current = false
     setView("connecting")
     setRoomInfo(null)
     setGameState(null)
     if (clientRef.current) {
+      clientRef.current.leaveBattle?.()
       clientRef.current.disconnect()
     }
     navigate("/")
@@ -525,7 +627,7 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
 
   return (
     <Profiler id="battle-ui" onRender={profileBattleUi}>
-      <div className={`battle-game battle-game--phase-${islandPhase} ${mobileMode ? "battle-game--mobile" : "battle-game--desktop"}`}>
+      <div className={`battle-game ${isTeamBattle ? "battle-game--team" : ""} battle-game--phase-${islandPhase} ${mobileMode ? "battle-game--mobile" : "battle-game--desktop"}`}>
         {import.meta.env.DEV && <output data-testid="battle-debug" style={{display:"none"}}>{JSON.stringify({
           connected,
           stateHz: clientRef.current?.stateHz,
@@ -628,11 +730,11 @@ export const BattleGame = ({playerId, roomId, heroName, mode = "solo", partyId =
             <header className="battle-topbar">
               <button className="battle-exit-btn" onClick={handleBackToMenu} aria-label="Выйти">✕</button>
               <div className="battle-topbar__center">
-                <div className="battle-mode-pill"><span>⚡</span> BRAWL STARS</div>
                 <BattleMatchTimer game={gameState?.game}/>
               </div>
               <div className="battle-alive"><i/> {alivePlayerCount} В БОЮ</div>
             </header>
+            <NetworkStatusNotice quality={networkQuality}/>
             {!isTeamBattle && (
               <IslandPhaseHud state={gameState?.game}/>
             )}

@@ -63,6 +63,34 @@ func correctCircleWithRectangle(body *CircleBody, rect *RectangleBody) {
 	}
 }
 
+func correctCircleWithCircle(body, obstacle *CircleBody) {
+	if body == nil || obstacle == nil {
+		return
+	}
+	minDistance := body.Radius + obstacle.Radius
+	dx, dy := body.X-obstacle.X, body.Y-obstacle.Y
+	distance := math.Hypot(dx, dy)
+	if distance >= minDistance {
+		return
+	}
+	if distance > .0001 {
+		push := minDistance - distance
+		body.X += dx / distance * push
+		body.Y += dy / distance * push
+		return
+	}
+	body.X = obstacle.X + minDistance
+}
+
+// CorrectCircleWithBlockingCircles resolves overlap with dynamic circular
+// obstacles such as active crates. These obstacles are kept outside the map
+// spatial hash because they can be created and destroyed during a match.
+func CorrectCircleWithBlockingCircles(body *CircleBody, obstacles []*CircleBody) {
+	for _, obstacle := range obstacles {
+		correctCircleWithCircle(body, obstacle)
+	}
+}
+
 type WallTile struct {
 	MinX           float64
 	MinY           float64
@@ -265,6 +293,13 @@ func CollidesCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) bool 
 // MoveCircleWithBlockingWalls sweeps long moves in small increments so a body
 // cannot finish on the far side of a wall without ever overlapping it.
 func MoveCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash, deltaX, deltaY float64) {
+	MoveCircleWithBlockingWallsAndCircles(body, walls, nil, deltaX, deltaY)
+}
+
+// MoveCircleWithBlockingWallsAndCircles sweeps a body against static walls
+// and dynamic circular obstacles in small increments so neither kind of
+// collider can be crossed by a single movement step.
+func MoveCircleWithBlockingWallsAndCircles(body *CircleBody, walls *SpatialHash, obstacles []*CircleBody, deltaX, deltaY float64) {
 	distance := math.Hypot(deltaX, deltaY)
 	if distance == 0 {
 		return
@@ -277,5 +312,6 @@ func MoveCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash, deltaX, d
 		body.X += stepX
 		body.Y += stepY
 		CorrectCircleWithBlockingWalls(body, walls)
+		CorrectCircleWithBlockingCircles(body, obstacles)
 	}
 }

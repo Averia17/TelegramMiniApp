@@ -59,6 +59,19 @@ func (r *Room) hasActivePlayer(playerID string) bool {
 	return ok && player != nil && !player.IsBot
 }
 
+func (r *Room) hasConnectedPlayer(playerID string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.State == nil || r.State.State == game.GameStateFinished {
+		return false
+	}
+	if _, connected := r.Clients[playerID]; !connected {
+		return false
+	}
+	player, ok := r.State.Players[playerID]
+	return ok && player != nil && !player.IsBot
+}
+
 func (r *Room) HasPlayer(playerID string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -67,4 +80,28 @@ func (r *Room) HasPlayer(playerID string) bool {
 	}
 	player, ok := r.State.Players[playerID]
 	return ok && player != nil && !player.IsBot
+}
+
+func (r *Room) PartyIDForPlayer(playerID string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.State == nil {
+		return ""
+	}
+	player, ok := r.State.Players[playerID]
+	if !ok || player == nil {
+		return ""
+	}
+	return player.PartyID
+}
+
+// JoinSnapshot returns the map metadata needed by the initial room_joined
+// message without exposing GameState to concurrent transport readers.
+func (r *Room) JoinSnapshot() (mapRevision int, mapReady bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.State == nil {
+		return 0, false
+	}
+	return r.State.MapRevision, r.State.Map != nil
 }

@@ -280,7 +280,7 @@ func TestMandySuperChargeDoesNotUseSuccessfulSwings(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("mandy", "Mandy", "Mandy")
-	gs.PlayerAdd("target", "Target", "Viper")
+	gs.PlayerAdd("target", "Target", "Needle")
 	source, target := gs.Players["mandy"], gs.Players["target"]
 	source.X, source.Y, target.X, target.Y = 500, 500, 570, 500
 	source.SuperCharge = 0
@@ -330,8 +330,8 @@ func TestMandySuperWaitsForWindupThenHitsFullMapRectangleAndBreaksWalls(t *testi
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("mandy", "Mandy", "Mandy")
-	gs.PlayerAdd("inside", "Inside", "Viper")
-	gs.PlayerAdd("outside", "Outside", "Viper")
+	gs.PlayerAdd("inside", "Inside", "Needle")
+	gs.PlayerAdd("outside", "Outside", "Needle")
 	source := gs.Players["mandy"]
 	source.X, source.Y, source.Rotation, source.SuperCharge = 300, 300, math.Pi/4, 100
 	gs.Players["inside"].X, gs.Players["inside"].Y = 520, 520

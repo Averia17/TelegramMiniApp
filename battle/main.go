@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -53,7 +54,7 @@ func main() {
 // It is intentionally development-only because pprof exposes runtime details
 // that must not be reachable from a production deployment.
 func startPprofServer() {
-	if os.Getenv("APP_ENV") == "production" {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production") {
 		return
 	}
 

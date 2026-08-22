@@ -50,6 +50,16 @@ func TestHeroConfigsUseCompactCombatValues(t *testing.T) {
 	}
 }
 
+func TestFairyMinaHasReducedPassiveRegenerationRate(t *testing.T) {
+	hero := GetHeroByName("Fairy Mina")
+	if hero == nil {
+		t.Fatal("missing Fairy Mina")
+	}
+	if hero.RegenRate != .008 {
+		t.Fatalf("Fairy Mina regen rate = %.3f, want 0.008", hero.RegenRate)
+	}
+}
+
 func TestCompactSpeedKeepsPreviousRuntimeTempo(t *testing.T) {
 	hero := GetHeroByName("Needle")
 	p := hero.CreatePlayer("p1", "Alice", 100, 100)

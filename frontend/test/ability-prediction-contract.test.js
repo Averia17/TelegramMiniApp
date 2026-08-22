@@ -51,6 +51,34 @@ test("party commands use explicit create, join, and leave messages", () => {
   ])
 })
 
+test("party battle commands carry the server-issued battle ticket", () => {
+  const client = new GameClient("ws://example", "token", () => {})
+  const sent = []
+  const previousWebSocket = globalThis.WebSocket
+  globalThis.WebSocket = {OPEN: 1}
+  client.ws = {readyState: 1, send: payload => sent.push(JSON.parse(payload))}
+
+  client.joinParty("party-a", 3, "signed-ticket")
+  client.findMatch("Player", "Kaze", {mode: "team deathmatch", partyId: "party-a", partySize: 3, partyTicket: "signed-ticket"})
+
+  globalThis.WebSocket = previousWebSocket
+  assert.equal(sent[0].partyTicket, "signed-ticket")
+  assert.equal(sent[1].partyTicket, "signed-ticket")
+})
+
+test("intentional battle exit sends a leave command before disconnect", () => {
+  const client = new GameClient("ws://example", "token", () => {})
+  const sent = []
+  const previousWebSocket = globalThis.WebSocket
+  globalThis.WebSocket = {OPEN: 1}
+  client.ws = {readyState: 1, send: payload => sent.push(JSON.parse(payload))}
+
+  client.leaveBattle()
+
+  globalThis.WebSocket = previousWebSocket
+  assert.deepEqual(sent, [{type: "leave_battle"}])
+})
+
 test("clock sync responses estimate clock skew without treating transit as skew", () => {
   const client = new GameClient("ws://example", "token", () => {})
   const sentAt = Date.now()

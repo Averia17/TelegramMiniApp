@@ -40,7 +40,7 @@ export const Leaderboard = ({playerId}) => {
 const PlayerRow = ({player, rank, me}) => <article className={`bs-rank-row bs-rank-${Math.min(rank,4)}${me ? " is-me" : ""}`}>
   <div className="bs-rank-number">{rank <= 3 ? ["🥇","🥈","🥉"][rank-1] : `#${rank}`}</div>
   <div className="bs-player-icon">{(player.name || "P")[0].toUpperCase()}</div>
-  <div className="bs-player-copy"><b>{player.name || `БОЕЦ ${player.playerId}`}</b><span>{player.games || 0} боёв · {player.wins || 0} побед · {player.kills || 0} устранений</span></div>
+  <div className="bs-player-copy"><b>{player.name || "Игрок"}</b><span>{player.games || 0} боёв · {player.wins || 0} побед · {player.kills || 0} устранений</span></div>
   <strong>{player.score || 0}<small>🏆</small></strong>
 </article>
 

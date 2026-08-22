@@ -40,7 +40,7 @@ export const StoreTab = ({economy, onEconomyChange}) => {
     setNotice("")
     try {
       const {data} = await axios.post(`${API_URL}/economy/me/chests/${product.product_id}/open`)
-      onEconomyChange?.({...economy, gold: data.gold, crystals: data.crystals, energy: data.energy, max_energy: data.max_energy, taunt_active: data.taunt_active ?? economy.taunt_active, taunt_expires_at: data.taunt_expires_at ?? economy.taunt_expires_at})
+      onEconomyChange?.({...economy, gold: data.gold, crystals: data.crystals, energy: data.energy, max_energy: data.max_energy, next_energy_in: data.next_energy_in ?? economy.next_energy_in, next_energy_at: data.next_energy_at ?? economy.next_energy_at, server_time: data.server_time ?? economy.server_time, taunt_active: data.taunt_active ?? economy.taunt_active, taunt_expires_at: data.taunt_expires_at ?? economy.taunt_expires_at})
       setReward({
         amount: data.energy_reward,
         rolled: data.rolled_energy,

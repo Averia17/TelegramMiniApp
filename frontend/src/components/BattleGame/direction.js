@@ -2,6 +2,7 @@ export const MOVE_DIRECTION_COUNT = 8
 export const ATTACK_DIRECTION_COUNT = 32
 
 const DIAGONAL_COMPONENT = Math.SQRT1_2
+const ISOMETRIC_VERTICAL_SCALE = 0.66
 const EIGHT_WAY_DIRECTIONS = [
   {x: 1, y: 0},
   {x: DIAGONAL_COMPONENT, y: DIAGONAL_COMPONENT},
@@ -28,4 +29,18 @@ export function quantizeAngleToSectors(angle, sectors = ATTACK_DIRECTION_COUNT) 
   const step = Math.PI * 2 / sectors
   const normalized = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
   return (Math.round(normalized / step) * step) % (Math.PI * 2)
+}
+
+// The renderer resolves pointer coordinates against the 3D ground plane and
+// therefore returns a world-space angle. The battle protocol still carries the
+// legacy 2D screen-space angle, whose vertical component is compressed by the
+// isometric projection before the server expands it again.
+export function worldAngleToProtocolScreen(angle) {
+  if (!Number.isFinite(angle)) return 0
+  return Math.atan2(Math.sin(angle) * ISOMETRIC_VERTICAL_SCALE, Math.cos(angle))
+}
+
+export function protocolScreenAngleToWorld(angle) {
+  if (!Number.isFinite(angle)) return 0
+  return Math.atan2(Math.sin(angle) / ISOMETRIC_VERTICAL_SCALE, Math.cos(angle))
 }

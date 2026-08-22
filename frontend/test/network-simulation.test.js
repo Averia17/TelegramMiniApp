@@ -241,6 +241,108 @@ test("local prediction sweeps through the same blocking wall geometry as the bac
   assert.equal(next.y, 80)
 })
 
+test("local prediction lets a flying hero pass walls but still clamps to the map", () => {
+  const wall = {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "wall", blocking: true}
+  const map = {width: 500, height: 500, walls: [wall]}
+  const next = movePosition(
+    {x: 50, y: 80},
+    {x: 1, y: 0},
+    {radius: 10, movementSpeed: 320, flying: 1},
+    1,
+    map,
+    createCollisionIndex(map.walls),
+  )
+
+  assert.equal(next.x, 370)
+  assert.equal(next.y, 80)
+})
+
+test("flying presentation correction does not snap the local hero back into a wall", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const wall = {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "wall", blocking: true}
+  const map = {width: 500, height: 500, walls: [wall]}
+  simulation.ingest({
+    type: "state",
+    ts: 1000,
+    map,
+    players: {
+      local: {x: 50, y: 80, radius: 10, movementSpeed: 320, flying: 1, lives: 100, ack: 0, moveX: 1, moveY: 0},
+    },
+    monsters: {},
+    bullets: [],
+  }, 0, 1000)
+  simulation.setLocalPlayerId("local")
+  simulation.setInput(1, 0, 1000)
+  simulation.advance(1)
+
+  const displayed = simulation.getDisplayState(2000).players.local
+  // NetworkSimulation caps one catch-up advance at 250 ms, which is enough
+  // to cross the wall but intentionally not enough to simulate a full second.
+  assert.equal(displayed.x, 130)
+  assert.equal(displayed.y, 80)
+})
+
+test("the first snapshot after flight expiry cannot render the old wall-crossing pose", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 100})
+  const wall = {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "wall", blocking: true}
+  const base = {
+    type: "state",
+    map: {width: 500, height: 500, walls: [wall]},
+    monsters: {},
+    bullets: [],
+  }
+  simulation.ingest({...base, ts: 1000, players: {
+    local: {x: 50, y: 80, radius: 10, movementSpeed: 320, flying: 1, lives: 100, ack: 0, moveX: 1, moveY: 0},
+  }}, 0, 1000)
+  simulation.setLocalPlayerId("local")
+  simulation.setInput(1, 0)
+  simulation.advance(.25)
+
+  simulation.ingest({...base, ts: 1100, players: {
+    local: {x: 90, y: 80, radius: 10, movementSpeed: 100, flying: 0, lives: 100, ack: 0, moveX: 0, moveY: 0},
+  }}, 0, 1100)
+
+  const displayed = simulation.getDisplayState(1100).players.local
+  assert.equal(displayed.x, 90)
+  assert.equal(displayed.y, 80)
+  assert.equal(displayed.flying, 0)
+})
+
+test("local flight prediction still respects the authored water boundary", () => {
+  const water = {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "water", blocking: true}
+  const map = {width: 500, height: 500, walls: [water]}
+  const next = movePosition(
+    {x: 50, y: 80},
+    {x: 1, y: 0},
+    {radius: 10, movementSpeed: 320, flying: 1},
+    1,
+    map,
+    createCollisionIndex(map.walls),
+  )
+
+  assert.equal(next.x, 90)
+  assert.equal(next.y, 80)
+})
+
+test("local prediction cannot enter an active health crate", () => {
+  const crate = {type: "health_crate", active: true, x: 140, y: 80, radius: 22}
+  const map = {width: 500, height: 500, walls: []}
+
+  const next = movePosition(
+    {x: 50, y: 80},
+    {x: 1, y: 0},
+    {radius: 10, movementSpeed: 320},
+    1,
+    map,
+    createCollisionIndex(map.walls),
+    null,
+    [crate],
+  )
+
+  assert.equal(next.x, crate.x - crate.radius - 10)
+  assert.equal(next.y, 80)
+})
+
 test("river cells block prediction while explicit bridge cells remain walkable", () => {
   const river = {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "river", blocking: true}
   const bridge = {minX: 100, minY: 0, maxX: 140, maxY: 40, type: "river_bridge", blocking: false}
@@ -626,6 +728,27 @@ test("projectile lifecycle follows the interpolated snapshot boundary", () => {
   simulation.ingest({...base, ts: 1200, bullets: []}, 0, 1200)
   assert.equal(simulation.getDisplayState(1150).bullets.length, 1)
   assert.equal(simulation.getDisplayState(1200).bullets.length, 0)
+})
+
+test("projectile presentation reuses interpolation indexes between render frames", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    map: {width: 1000, height: 1000, walls: []},
+    players: {},
+    monsters: {},
+  }
+  simulation.ingest({...base, ts: 1000, bullets: [{id: 7, x: 0, y: 0, radius: 5}]}, 0, 1000)
+  simulation.ingest({...base, ts: 1100, bullets: [{id: 7, x: 100, y: 0, radius: 5}]}, 0, 1100)
+
+  simulation.getDisplayState(1050)
+  const scratch = simulation.displayBulletScratch
+  simulation.getDisplayState(1060)
+
+  assert.equal(simulation.displayBulletScratch, scratch)
+  assert.equal(simulation.displayBulletScratch.previous, scratch.previous)
+  assert.equal(simulation.displayBulletScratch.next, scratch.next)
+  assert.equal(simulation.displayBulletScratch.active, scratch.active)
 })
 
 test("entity visibility follows the interpolated snapshot boundary", () => {

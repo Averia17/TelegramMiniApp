@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from services.economy import (
+    _energy_state,
     open_chest,
     purchase_taunt_pack,
     refill_all_wallets,
@@ -73,6 +74,24 @@ class _UnavailableShopCatalog:
 
 
 class EconomyRefillTests(unittest.IsolatedAsyncioTestCase):
+    def test_energy_state_exposes_absolute_next_tick_and_rounded_seconds(self):
+        now = datetime(2026, 7, 29, 12, 0, 0, 250000, tzinfo=timezone.utc)
+        wallet = _Wallet(97, now - timedelta(minutes=1, seconds=30))
+
+        state = _energy_state(wallet, now)
+
+        self.assertEqual(state["next_energy_in"], 210)
+        self.assertEqual(state["next_energy_at"], "2026-07-29T12:03:30.250000+00:00")
+
+    def test_full_energy_has_no_next_tick(self):
+        now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+        wallet = _Wallet(100, now)
+
+        self.assertEqual(
+            _energy_state(wallet, now),
+            {"next_energy_in": 0, "next_energy_at": None},
+        )
+
     async def test_refill_all_wallets_persists_elapsed_energy(self):
         now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
         wallet = _Wallet(97, now - timedelta(minutes=10))

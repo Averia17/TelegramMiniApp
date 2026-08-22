@@ -93,6 +93,7 @@ type CombatEventJSON struct {
 type EffectJSON struct {
 	Id      string  `json:"id"`
 	Kind    string  `json:"kind,omitempty"`
+	Phase   string  `json:"phase,omitempty"`
 	X       float64 `json:"x"`
 	Y       float64 `json:"y"`
 	ToX     float64 `json:"toX,omitempty"`
@@ -142,6 +143,7 @@ type PlayerJSON struct {
 	ShieldHP           int              `json:"shieldHp,omitempty"`
 	ShieldStacks       int              `json:"shieldStacks,omitempty"`
 	Marks              int              `json:"marks,omitempty"`
+	PaintStacks        int              `json:"paintStacks,omitempty"`
 	SuperCharge        int              `json:"superCharge"`
 	Heat               int              `json:"heat,omitempty"`
 	AttackPulse        int              `json:"attackPulse,omitempty"`
@@ -150,6 +152,7 @@ type PlayerJSON struct {
 	FocusCharge        int              `json:"focusCharge,omitempty"`
 	SuppressedRage     int              `json:"suppressedRage,omitempty"`
 	MicoRage           int              `json:"micoRage,omitempty"`
+	LumiFlowers        int              `json:"lumiFlowers,omitempty"`
 	KazeCombo          int              `json:"kazeCombo,omitempty"`
 	GadgetArmed        bool             `json:"gadgetArmed,omitempty"`
 	GadgetCharges      int              `json:"gadgetCharges,omitempty"`

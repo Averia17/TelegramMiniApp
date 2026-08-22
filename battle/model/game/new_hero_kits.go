@@ -15,7 +15,7 @@ type WukongMicoKit struct{}
 type PersephoneLumiKit struct{}
 
 const (
-	KattyPaintBonusMultiplier = .30
+	KattyPaintBonusMultiplier = .45
 	KattySprayRange           = 220.0
 	KattySprayCloudRadius     = 58.0
 	KattySprayCloudDuration   = 1800 * time.Millisecond
@@ -30,6 +30,9 @@ const (
 	KattySuperPuddleTick      = 600 * time.Millisecond
 	KattySuperPuddleTicks     = 10
 	KattyPaintTrailWidth      = 42.0
+	KattyPaintTrailDuration   = 4 * time.Second
+	KattyPaintFlightDuration  = 2200 * time.Millisecond
+	KattyPaintFlightSpeed     = 1.15
 
 	// Active skill windows are deliberately short enough to leave counterplay;
 	// no hero skill may persist longer than this cap.
@@ -39,16 +42,30 @@ const (
 	NeedleMoistureDuration        = 3 * time.Second
 	NeedleMoistureTick            = 500 * time.Millisecond
 	NeedleMoistureHealFraction    = .05
+	MinaHealingAuraHeal           = 10
 	KazeComboWindow               = 2 * time.Second
-	KazeEmpoweredDamageMultiplier = 1.75
+	KazeEmpoweredDamageMultiplier = 1.50
 	MeleeSkillStunDuration        = 1 * time.Second
 	MandyFocusedDamageMultiplier  = 1.5
 	MandyStaffStunDuration        = 250 * time.Millisecond
-	MicoVortexBaseDuration        = 3 * time.Second
-	MicoVortexDurationPerRage     = 400 * time.Millisecond
-	MicoVortexBaseRadius          = 150.0
-	MicoVortexRadiusPerRage       = 18.0
+	MicoVortexBaseDuration        = 2500 * time.Millisecond
+	MicoVortexDurationPerRage     = 250 * time.Millisecond
+	MicoVortexBaseRadius          = 140.0
+	MicoVortexRadiusPerRage       = 10.0
+	MicoVortexBaseImpactDamage    = 70
+	MicoVortexImpactPerRage       = 10
+	MicoVortexBaseTickDamage      = 3
+	MicoVortexTickDamagePerRage   = 1
+	LumiMaxFlowers                = 5
 )
+
+func micoVortexImpactDamage(rage int) int {
+	return MicoVortexBaseImpactDamage + rage*MicoVortexImpactPerRage
+}
+
+func micoVortexTickDamage(rage int) int {
+	return MicoVortexBaseTickDamage + rage*MicoVortexTickDamagePerRage
+}
 
 func cappedSkillDuration(duration time.Duration) int64 {
 	if duration > MaxHeroSkillDuration {
@@ -104,13 +121,10 @@ func (KattyKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float6
 	gs.addEffect("katty_paint_spray", p.X, p.Y, 0, 0, KattyKit{}.AttackRange(), angle, 0, .20, p.Color, p.AttackDmg, 260)
 }
 
-func (KattyKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
-	distance = math.Max(80, math.Min(480, distance))
-	x, y := p.X+math.Cos(angle)*distance, p.Y+math.Sin(angle)*distance
-	if gs.Map != nil {
-		clamped := gs.Map.ClampCircle(&geometry.CircleBody{X: x, Y: y, Radius: 8})
-		x, y = clamped.X, clamped.Y
-	}
+func (KattyKit) Super(gs *GameState, p *player.Player, ts int64, _, _ float64) bool {
+	// Katty's super is a self-centered paint zone. Aim only controls her
+	// normal spray; the super must not reuse the last cursor distance.
+	x, y := p.X, p.Y
 	duration := KattySuperDuration.Milliseconds()
 	gs.HeroZones = append(gs.HeroZones, &HeroZone{
 		Owner: p.PlayerId, Kind: "katty_paint_puddle", X: x, Y: y, Radius: KattySuperRadius,
@@ -122,7 +136,6 @@ func (KattyKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance
 		NextTickAt: ts + 650, Interval: KattySuperPuddleTick.Milliseconds(), ExpiresAt: ts + duration,
 		Color: p.Color,
 	})
-	gs.addEffect("katty_paint_grenade", p.X, p.Y, x, y, 26, angle, distance, 0, p.Color, p.AttackDmg, 500)
 	return true
 }
 
@@ -131,6 +144,25 @@ func (gs *GameState) kattyPaintStacks(owner, target string) int {
 		return 0
 	}
 	return gs.KattyPaintStacks[owner][target]
+}
+
+// KattyPaintStacksFor exposes the strongest active paint setup for a target.
+// The compact snapshot field is deliberately capped below the payoff value: a
+// third layer resolves immediately, so clients only need to show 1/3 or 2/3.
+func (gs *GameState) KattyPaintStacksFor(target string) int {
+	if gs == nil || target == "" {
+		return 0
+	}
+	strongest := 0
+	for _, targets := range gs.KattyPaintStacks {
+		if stacks := targets[target]; stacks > strongest {
+			strongest = stacks
+		}
+	}
+	if strongest > 2 {
+		return 2
+	}
+	return strongest
 }
 
 func (gs *GameState) applyKattyPaint(source, target *player.Player, ts int64, layers int, blind bool) {
@@ -436,11 +468,11 @@ func (WukongMicoKit) Super(gs *GameState, p *player.Player, ts int64, angle, dis
 	rage := p.MicoRage
 	duration := cappedSkillDuration(MicoVortexBaseDuration + time.Duration(rage)*MicoVortexDurationPerRage)
 	radius := MicoVortexBaseRadius + float64(rage)*MicoVortexRadiusPerRage
-	damage := 100 + rage*15
+	damage := micoVortexImpactDamage(rage)
 	p.MicoRage = 0
 	p.VortexUntil = ts + duration
 	p.VortexRadius = radius
-	p.VortexDamage = 4 + rage*2
+	p.VortexDamage = micoVortexTickDamage(rage)
 	gs.radialDamage(p.PlayerId, p.X, p.Y, radius, damage)
 	for _, target := range gs.Players {
 		if target.CanBulletHurt(p.PlayerId, p.Team) && math.Hypot(target.X-p.X, target.Y-p.Y) <= radius+target.Radius {
@@ -458,7 +490,10 @@ func (PersephoneLumiKit) Basic(gs *GameState, p *player.Player, ts int64, angle,
 	gs.hitSector(p, angle, reach, halfArc, p.AttackDmg, false)
 	flowerX := p.X + math.Cos(angle)*reach
 	flowerY := p.Y + math.Sin(angle)*reach
-	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "lumi_flower", X: flowerX, Y: flowerY, Radius: 70, CreatedAt: ts, ExpiresAt: ts + 6000, Triggered: map[string]bool{}})
+	if p.LumiFlowers < LumiMaxFlowers {
+		p.LumiFlowers++
+		gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "lumi_flower", X: flowerX, Y: flowerY, Radius: 70, CreatedAt: ts, ExpiresAt: ts + 6000, Triggered: map[string]bool{}})
+	}
 	gs.addEffect("lumi_scythe_swing", p.X, p.Y, 0, 0, reach, angle, reach, halfArc, p.Color, p.AttackDmg, 320)
 }
 func (PersephoneLumiKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
@@ -505,9 +540,10 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 			}
 			dx, dy := target.X-p.X, target.Y-p.Y
 			if d := math.Hypot(dx, dy); d > 0 && d <= 135 {
-				geometry.MoveCircleWithBlockingWalls(
+				geometry.MoveCircleWithBlockingWallsAndCircles(
 					&target.CircleBody,
 					gs.Walls,
+					gs.activeCrateBodies(),
 					dx/d*105,
 					dy/d*105,
 				)
@@ -525,26 +561,15 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 		gs.addEffect("kaze_veil_step", p.X, p.Y, 0, 0, 74, p.Rotation, 0, 0, "#d7b8ff", 0, 700)
 	case "Katty":
 		originX, originY := p.X, p.Y
-		// Paint Flight is the only Katty movement that phases through walls.
-		// Normal movement still goes through updatePlayerMovement and remains
-		// blocked by the map collision hash.
-		p.X += math.Cos(p.Rotation) * 320
-		p.Y += math.Sin(p.Rotation) * 320
-		if gs.Map != nil {
-			clamped := gs.Map.ClampCircle(&geometry.CircleBody{X: p.X, Y: p.Y, Radius: p.Radius})
-			p.X, p.Y = clamped.X, clamped.Y
-		}
-		for _, target := range gs.Players {
-			if target.CanBulletHurt(p.PlayerId, p.Team) && segmentHitsCircle(originX, originY, p.X, p.Y, target.X, target.Y, target.Radius+18) {
-				gs.applyKattyPaint(p, target, ts, 2, false)
-			}
-		}
-		gs.HeroZones = append(gs.HeroZones, &HeroZone{
+		p.FlyingUntil = ts + cappedSkillDuration(KattyPaintFlightDuration)
+		p.FlightSpeedMultiplier = KattyPaintFlightSpeed
+		trail := &HeroZone{
 			Owner: p.PlayerId, Kind: "katty_paint_trail", X: originX, Y: originY,
-			ToX: p.X, ToY: p.Y, Radius: KattyPaintTrailWidth, Width: KattyPaintTrailWidth, CreatedAt: ts, ExpiresAt: ts + 4000,
+			ToX: originX, ToY: originY, Radius: KattyPaintTrailWidth, Width: KattyPaintTrailWidth, CreatedAt: ts, ExpiresAt: ts + KattyPaintTrailDuration.Milliseconds(),
 			Triggered: map[string]bool{},
-		})
-		gs.addEffect("katty_paint_trail", originX, originY, p.X, p.Y, 34, p.Rotation, 320, 0, p.Color, 0, 4000)
+		}
+		trail.Visual = gs.addEffect("katty_paint_trail", originX, originY, originX, originY, 34, p.Rotation, 0, 0, p.Color, 0, KattyPaintTrailDuration.Milliseconds())
+		gs.HeroZones = append(gs.HeroZones, trail)
 	case "Persephone Lumi":
 		detonated := false
 		affected := make(map[string]*player.Player)
@@ -566,6 +591,7 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 		if !detonated {
 			return false
 		}
+		p.LumiFlowers = 0
 		for _, target := range affected {
 			gs.dealPlayerDamage(p, target, 55)
 			target.SlowUntil = ts + 2000
@@ -590,7 +616,15 @@ func (gs *GameState) updateNewHeroSystems() {
 	now := time.Now().UnixMilli()
 	zones := gs.HeroZones[:0]
 	for _, z := range gs.HeroZones {
-		if z == nil || now >= z.ExpiresAt {
+		if z == nil {
+			continue
+		}
+		if now >= z.ExpiresAt {
+			if z.Kind == "lumi_flower" {
+				if owner := gs.Players[z.Owner]; owner != nil {
+					owner.LumiFlowers = int(math.Max(0, float64(owner.LumiFlowers-1)))
+				}
+			}
 			continue
 		}
 		if z.TriggerAt > now {
@@ -605,6 +639,7 @@ func (gs *GameState) updateNewHeroSystems() {
 					target.SlowMultiplier = 0.55
 					if !z.Triggered[target.PlayerId] {
 						target.StunUntil = now + 1500
+						target.VineUntil = max(target.VineUntil, now+1500)
 						z.Triggered[target.PlayerId] = true
 						gs.addEffect("needle_root_burst", target.X, target.Y, 0, 0, target.Radius+22, 0, 0, 0, "#75d947", 0, 520)
 					}
@@ -632,7 +667,7 @@ func (gs *GameState) updateNewHeroSystems() {
 			}
 			for _, target := range gs.Players {
 				if target.IsAlive() && owner != nil && (target.PlayerId == owner.PlayerId || (owner.Team != "" && target.Team == owner.Team)) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {
-					target.Lives = int(math.Min(float64(target.MaxLives), float64(target.Lives+15)))
+					target.Lives = int(math.Min(float64(target.MaxLives), float64(target.Lives+MinaHealingAuraHeal)))
 				}
 			}
 			z.NextTickAt += 500
@@ -790,9 +825,10 @@ func (gs *GameState) knockbackEnemies(p *player.Player, radius, force float64) {
 		}
 		dx, dy := target.X-p.X, target.Y-p.Y
 		if d := math.Hypot(dx, dy); d > 0 && d <= radius+target.Radius {
-			geometry.MoveCircleWithBlockingWalls(
+			geometry.MoveCircleWithBlockingWallsAndCircles(
 				&target.CircleBody,
 				gs.Walls,
+				gs.activeCrateBodies(),
 				dx/d*force,
 				dy/d*force,
 			)

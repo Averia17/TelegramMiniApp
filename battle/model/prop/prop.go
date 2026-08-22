@@ -9,11 +9,14 @@ const (
 
 type Prop struct {
 	geometry.CircleBody
-	Type     string
-	LootType string
-	Lives    int
-	MaxLives int
-	Active   bool
+	Type                string
+	LootType            string
+	Lives               int
+	MaxLives            int
+	Active              bool
+	VisibilityPlayerID  string
+	VisibilityTeam      string
+	HealthBoostKillerID string
 }
 
 func NewProp(propType string, x, y, radius float64) *Prop {

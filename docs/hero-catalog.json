@@ -10,8 +10,8 @@
     "lastReviewedAt": "2026-08-15"
   },
   "sourceFingerprints": {
-    "battle/model/game/heroes.go": "06B1A42329ED813291121FBC8C5153558FB9BE1462D4910C7CEE69ABB1569611",
-    "battle/model/game/attack_config.go": "7CEA43938A0F4711534A4F3C0AD9AF42E6DECDCAA3EFBF012A8E68C4DB7F86CC",
+    "battle/model/game/heroes.go": "FB5A016311D107CA4CD64063854F84CCEB26DFEB1F87D47D45664122DAF611C7",
+    "battle/model/game/attack_config.go": "52417FC2C892C8DF639AA3EEE7FEECB877454FA3CC2CC2196DB2858772A3053B",
     "tools/blender/hero_animation_scene_manifest.json": "6229C8EE8D96C46B14CC909407C53BF92B2079E011F93945BD564A6BBB75C862"
   },
   "contracts": {
@@ -62,7 +62,7 @@
       "status": "active",
       "identity": {"role": "Fighter", "color": "#F4C542", "radius": 14},
       "description": "Ближний боец, который усиливает удары стойкой и пробивает карту волной разрушения.",
-      "balance": {"maxLives": 720, "speed": 15, "attackDamage": 90, "attackRateMs": 420, "reloadTimeMs": 1650, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "mandy_staff"},
+      "balance": {"maxLives": 720, "speed": 15, "attackDamage": 105, "attackRateMs": 420, "reloadTimeMs": 1650, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "mandy_staff"},
       "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 110, "halfArcDegrees": 60, "modifier": "mandy_focus"},
       "abilities": {
         "basic": {"id": "staff_strike", "name": "Удар посохом", "description": "Ближний удар; неподвижность усиливает удар и оглушает.", "slot": "basic", "prediction": "melee", "mechanics": ["сектор 70", "усиление в фокусе"]},
@@ -80,11 +80,11 @@
       "status": "active",
       "identity": {"role": "Support", "color": "#FF8FE8", "radius": 13},
       "description": "Поддержка с веером звёздных снарядов, щитом и лечащей аурой.",
-      "balance": {"maxLives": 600, "speed": 14, "attackDamage": 40, "attackRateMs": 420, "reloadTimeMs": 1550, "maxAmmo": 3, "bulletSpeed": 30, "bulletSize": 7, "regenRate": 0.011, "attackType": "mina_star_fan"},
+      "balance": {"maxLives": 600, "speed": 14, "attackDamage": 40, "attackRateMs": 420, "reloadTimeMs": 1550, "maxAmmo": 3, "bulletSpeed": 30, "bulletSize": 7, "regenRate": 0.008, "attackType": "mina_star_fan"},
       "basicAttack": {"archetype": "shotgun", "aimShape": "cone", "range": 510, "projectileKind": "mina_star", "projectileCount": 3, "spreadDegrees": 24},
       "abilities": {
         "basic": {"id": "star_fan", "name": "Звёздный веер", "description": "Три прямых звезды ломают ближайшую разрушаемую стену при столкновении; врага метят и повторным попаданием взрывают метку, союзника лечат.", "slot": "basic", "prediction": "projectile", "mechanics": ["3 прямых снаряда", "разброс 24°", "ломает одну ближайшую клетку стены или дерева", "без урона по области", "световая метка и лечение союзников"]},
-        "super": {"id": "star_cocoon", "name": "Звёздный кокон", "description": "Выбирает самого раненого союзника рядом; щит и лечащая аура следуют за ним.", "slot": "primary", "prediction": "server", "mechanics": ["автовыбор раненого союзника в радиусе 600", "щит 400 на 4 секунды", "движущаяся аура радиусом 160"]},
+        "super": {"id": "star_cocoon", "name": "Звёздный кокон", "description": "Выбирает самого раненого союзника рядом; щит и лечащая аура следуют за ним.", "slot": "primary", "prediction": "server", "mechanics": ["автовыбор раненого союзника в радиусе 600", "щит 400 на 4 секунды", "движущаяся аура радиусом 160", "лечение 10 HP каждые 0,5 секунды"]},
         "gadget": {"id": "repelling_wave", "name": "Отталкивающая волна", "description": "Отбрасывает врагов и оглушает уже отмеченные цели.", "slot": "secondary", "prediction": "server", "mechanics": ["радиус 135", "отбрасывание", "оглушение отмеченных целей"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
@@ -116,10 +116,10 @@
       "status": "active",
       "identity": {"role": "Assassin", "color": "#B88CFF", "radius": 12},
       "description": "Быстрый ассасин с двойным ударом, пробивающим рывком и невидимостью.",
-      "balance": {"maxLives": 700, "speed": 16, "attackDamage": 85, "attackRateMs": 220, "reloadTimeMs": 850, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.011, "attackType": "kaze_cross_slash"},
+      "balance": {"maxLives": 700, "speed": 16, "attackDamage": 85, "attackRateMs": 280, "reloadTimeMs": 1050, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.011, "attackType": "kaze_cross_slash"},
       "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 125, "halfArcDegrees": 60, "modifier": "kaze_double"},
       "abilities": {
-        "basic": {"id": "cross_slash", "name": "Косые удары", "description": "Два успешных попадания открывают усиленный третий удар.", "slot": "basic", "prediction": "melee", "mechanics": ["одна зона урона за взмах", "окно комбо 2 секунды", "третий удар наносит 175% урона"]},
+        "basic": {"id": "cross_slash", "name": "Косые удары", "description": "Два успешных попадания открывают усиленный третий удар.", "slot": "basic", "prediction": "melee", "mechanics": ["одна зона урона за взмах", "окно комбо 2 секунды", "третий удар наносит 150% урона"]},
         "super": {"id": "piercing_dash", "name": "Пронизывающий рывок", "description": "Попадание рывком сразу подготавливает усиленный следующий удар Kaze.", "slot": "primary", "prediction": "server", "mechanics": ["дистанция 320", "урон 160", "оглушение 500 мс", "следующий удар усилен без скрытого дебаффа цели"]},
         "gadget": {"id": "vanish", "name": "Исчезновение", "description": "Невидимость на короткое время гарантирует усиленный первый удар.", "slot": "secondary", "prediction": "server", "mechanics": ["невидимость 3 секунды", "усиленный первый удар"]}
       },
@@ -170,12 +170,12 @@
       "status": "active",
       "identity": {"role": "Controller", "color": "#FF5C9A", "radius": 13},
       "description": "Уличная художница, которая контролирует пространство слоями краски.",
-      "balance": {"maxLives": 640, "speed": 14, "attackDamage": 42, "attackRateMs": 520, "reloadTimeMs": 1700, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "katty_paint_spray"},
+      "balance": {"maxLives": 640, "speed": 14, "attackDamage": 52, "attackRateMs": 520, "reloadTimeMs": 1700, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.01, "attackType": "katty_paint_spray"},
       "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 220, "projectileKind": "katty_paint_spray", "splashRadius": 58, "modifier": "katty_paint_cloud"},
       "abilities": {
-        "basic": {"id": "paint_spray", "name": "Краска-пшик", "description": "Короткий направленный пшик наносит 42 урона всем целям в радиусе 58, накладывает слой краски и оставляет облако краски вокруг точки попадания.", "slot": "basic", "prediction": "server", "mechanics": ["один снаряд дальностью 220", "попадание: 42 урона каждому герою, монстру и разрушаемой коробке в радиусе 58", "облако радиусом 58 на 1,8 секунды", "внутри облака 6 урона каждые 400 мс (4 тика)", "враг внутри облака замедлен до 72% скорости; выход из зоны прекращает периодический урон"]},
-        "super": {"id": "paint_grenade", "name": "Баллон-граната", "description": "После приземления взрыв наносит 70 урона, а лужа радиусом 220 наносит по 12 урона каждые 0,6 секунды, ослепляет и замедляет врагов.", "slot": "primary", "prediction": "server", "mechanics": ["приземление через 500 мс", "взрыв: 70 урона героям, монстрам и разрушаемым коробкам", "лужа радиусом 220 на 7,5 секунды", "лужа наносит 12 урона каждые 600 мс (10 тиков)", "каждый герой внутри при приземлении получает третий слой, 30% бонусного урона и ослепление"]},
-        "gadget": {"id": "paint_flight", "name": "Красколёт", "description": "Рывок проходит сквозь стены только во время способности и оставляет замедляющий след.", "slot": "secondary", "prediction": "server", "mechanics": ["фазовый рывок на 320", "след на 4 секунды", "2 слоя за пересечение врага"]}
+        "basic": {"id": "paint_spray", "name": "Краска-пшик", "description": "Короткий направленный пшик наносит 52 урона всем целям в радиусе 58, накладывает слой краски и оставляет облако краски; третье нанесение по цели даёт заметный бонус и оглушение.", "slot": "basic", "prediction": "server", "mechanics": ["один снаряд дальностью 220", "попадание: 52 урона каждому герою, монстру и разрушаемой коробке в радиусе 58", "облако радиусом 58 на 1,8 секунды", "внутри облака 6 урона каждые 400 мс (4 тика)", "третий слой: 45% базового урона и оглушение 0,8 секунды", "враг внутри облака замедлен до 72% скорости; выход из зоны прекращает периодический урон"]},
+        "super": {"id": "paint_grenade", "name": "Красящая лужа", "description": "Katty создаёт под собой лужу радиусом 220: после активации она наносит 70 урона, наносит третий слой краски и замедляет врагов.", "slot": "primary", "prediction": "server", "mechanics": ["центр зоны совпадает с позицией Katty при активации", "активация через 500 мс", "взрыв: 70 урона героям, монстрам и разрушаемым коробкам", "лужа радиусом 220 на 7,5 секунды", "лужа наносит 12 урона каждые 600 мс (10 тиков)", "каждый герой внутри при активации получает третий слой, 30% бонусного урона и ослепление"]},
+        "gadget": {"id": "paint_flight", "name": "Красколёт", "description": "На 2,2 секунды ускоряет Katty и позволяет перелетать стены, оставляя замедляющий след; после окончания герой безопасно приземляется на свободную зону.", "slot": "secondary", "prediction": "server", "mechanics": ["полёт 2,2 секунды", "скорость ×1,15", "blocking-стены и наземные препятствия не мешают во время полёта", "океанская граница карты остаётся непроходимой", "при завершении выполняется поиск ближайшей свободной зоны", "след на 4 секунды", "2 слоя за пересечение врага"]}
       },
       "animations": {"available": [], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "static_import"},
       "assets": {"sourceMaster": "frontend/assets-source/heroes/katty/source/jacky_tricky_geo.fbx", "sceneDirectory": "frontend/assets-source/heroes/katty/source", "runtimeHero": "frontend/public/assets/heroes/output_heroes/katty_base.glb", "sourceUrl": "https://sketchfab.com/3d-models/tricky-janet-86283dbe8ca54428a26b6b9033d624a1", "status": "runtime_ready_static"},

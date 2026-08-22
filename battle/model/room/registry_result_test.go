@@ -13,6 +13,7 @@ func TestBuildPlayerResultCarriesTeamBattleStats(t *testing.T) {
 		Name:               "Alice",
 		HeroName:           "Needle",
 		Kills:              3,
+		Place:              2,
 		Lives:              420,
 		Deaths:             2,
 		PlayerDamage:       600,
@@ -29,5 +30,8 @@ func TestBuildPlayerResultCarriesTeamBattleStats(t *testing.T) {
 	}
 	if result.Deaths != 2 || result.PlayerDamage != 600 || result.TowerDamage != 900 || result.TownHallDamage != 250 || result.TowersDestroyed != 1 {
 		t.Fatalf("team battle stats = %#v, want deaths/damage/destruction copied", result)
+	}
+	if result.Place != 2 {
+		t.Fatalf("place = %v, want 2", result.Place)
 	}
 }

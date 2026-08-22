@@ -82,6 +82,41 @@ func TestTeamBattleObjectiveCollidersDoNotExpandToWholeTileCells(t *testing.T) {
 	}
 }
 
+func TestTeamBattleKeepsDiagonalLaneOpenBetweenTownHallAndTower(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	var hall, tower MapObjective
+	for _, objective := range mapValue.Objectives {
+		if objective.ID == "blue-town-hall" {
+			hall = objective
+		}
+		if objective.ID == "blue-tower-west" {
+			tower = objective
+		}
+	}
+
+	walls := geometry.NewSpatialHash(40)
+	for _, wall := range mapValue.Collisions {
+		if wall.Type == "objective" &&
+			((wall.MinX < hall.X && wall.MaxX > hall.X && wall.MinY < hall.Y && wall.MaxY > hall.Y) ||
+				(wall.MinX < tower.X && wall.MaxX > tower.X && wall.MinY < tower.Y && wall.MaxY > tower.Y)) {
+			walls.Insert(wall)
+		}
+	}
+
+	hallCornerX := hall.X + teamBattleObjectiveCollisionRadius(hall)
+	hallCornerY := hall.Y - teamBattleObjectiveCollisionRadius(hall)
+	towerCornerX := tower.X - teamBattleObjectiveCollisionRadius(tower)
+	towerCornerY := tower.Y + teamBattleObjectiveCollisionRadius(tower)
+	body := &geometry.CircleBody{
+		X:      (hallCornerX + towerCornerX) / 2,
+		Y:      (hallCornerY + towerCornerY) / 2,
+		Radius: 15,
+	}
+	if geometry.CollidesCircleWithBlockingWalls(body, walls) {
+		t.Fatalf("hero cannot occupy the diagonal hall/tower lane: position=(%.1f,%.1f)", body.X, body.Y)
+	}
+}
+
 func TestTeamBattleSpawnsAreOutsideAllObjectiveColliders(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
 	for team, spawners := range mapValue.TeamSpawners {

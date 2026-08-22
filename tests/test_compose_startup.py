@@ -35,8 +35,9 @@ class ComposeStartupTests(unittest.TestCase):
             "account": {"db", "kafka"},
             "shop": {"shop-db", "redis", "kafka"},
             "bot": {"db", "redis"},
-            "battle": {"battle-redis", "kafka"},
+            "battle": {"account", "battle-redis", "kafka"},
             "leaderboard": {"leaderboard-redis", "kafka"},
+            "party": {"account", "kafka"},
         }
         for service, dependencies in expected.items():
             with self.subTest(service=service):
@@ -61,6 +62,35 @@ class ComposeStartupTests(unittest.TestCase):
         for service in ("account", "shop", "battle", "leaderboard", "frontend"):
             with self.subTest(service=service):
                 self.assertEqual(dependencies[service]["condition"], "service_healthy")
+
+    def test_gateway_exposes_nickname_update_to_account_service(self):
+        for filename in ("dev.conf", "prod.conf"):
+            with self.subTest(filename=filename):
+                config = (ROOT / "nginx" / filename).read_text(encoding="utf-8")
+                location = "location = /api/accounts/users/me/nickname"
+                self.assertIn(location, config)
+                route = config[config.index(location) :]
+                self.assertIn("if ($request_method != PATCH)", route)
+                self.assertIn("proxy_pass $account_backend", route)
+
+    def test_party_uses_the_development_reload_loop(self):
+        party = self.services["party"]
+        self.assertEqual(party["build"].get("target"), "development")
+        self.assertEqual(party.get("working_dir"), "/app")
+        self.assertIn(
+            {"type": "bind", "source": str(ROOT / "party"), "target": "/app"},
+            [
+                {
+                    key: value
+                    for key, value in volume.items()
+                    if key in {"type", "source", "target"}
+                }
+                for volume in party.get("volumes", [])
+            ],
+        )
+        dockerfile = (ROOT / "party" / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("AS development", dockerfile)
+        self.assertIn("air", dockerfile)
 
 
 if __name__ == "__main__":

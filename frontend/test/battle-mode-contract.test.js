@@ -10,6 +10,12 @@ import {
 import {getBattleResultView} from "../src/components/BattleGame/battleOutcome.js"
 import {getIncomingTowerThreat, getObjectiveHudModel, getTeamHudModel, getTeamObjectiveGroups, getTeamPerspectiveLabel, normalizeTeamBattleResult} from "../src/components/BattleGame/teamBattleUi.js"
 
+const sourceCache = new Map()
+const readSource = url => {
+  if (!sourceCache.has(url.href)) sourceCache.set(url.href, readFile(url, "utf8"))
+  return sourceCache.get(url.href)
+}
+
 test("battle mode contract keeps solo targets independent of team metadata", () => {
   const mode = createBattleMode(DEATHMATCH_MODE)
   assert.equal(mode.usesTeams, false)
@@ -26,7 +32,7 @@ test("team mode encapsulates friendly-fire rules", () => {
 })
 
 test("team hero presentation clearly separates local, allied, and enemy heroes", async () => {
-  const source = await readFile(new URL("../src/components/BattleGame/rendering/heroes/HeroView.js", import.meta.url), "utf8")
+  const source = await readSource(new URL("../src/components/BattleGame/rendering/heroes/HeroView.js", import.meta.url))
   assert.match(source, /role: "ВРАГ"/)
   assert.match(source, /ring: "#ff334d"/)
   assert.match(source, /role: "СОЮЗНИК"/)
@@ -85,8 +91,12 @@ test("team defeat opens the result popup instead of the hidden solo death view",
   assert.equal(getBattleResultView({won: false, winner: "Blue team"}, TEAM_DEATHMATCH_MODE), "result")
 })
 
+test("solo defeat opens the styled result popup instead of the legacy death view", () => {
+  assert.equal(getBattleResultView({won: false, killerName: "A bat"}, "solo"), "result")
+})
+
 test("battle result card renders the authoritative result reason", async () => {
-  const source = await readFile(new URL("../src/components/BattleGame/BattleGameUI.jsx", import.meta.url), "utf8")
+  const source = await readSource(new URL("../src/components/BattleGame/BattleGameUI.jsx", import.meta.url))
   assert.match(source, /result\.reason/)
   assert.match(source, /ПРИЧИНА РЕЗУЛЬТАТА/)
 })
@@ -117,11 +127,13 @@ test("team objective HUD keeps the local team column on the left", () => {
 })
 
 test("team HUD layers reserve separate vertical slots", async () => {
-  const css = await readFile(new URL("../src/components/BattleGame/BattleGame.css", import.meta.url), "utf8")
+  const css = await readSource(new URL("../src/components/BattleGame/BattleGame.css", import.meta.url))
   assert.match(css, /--team-score-top:\s*calc\(/)
   assert.match(css, /--team-objective-top:\s*calc\(/)
+  assert.match(css, /--team-info-top:\s*calc\(/)
   assert.match(css, /\.team-battle-hud[^}]*top:\s*var\(--team-score-top\)/)
   assert.match(css, /\.team-objective-hud[^}]*top:\s*var\(--team-objective-top\)/)
+  assert.match(css, /\.battle-game--team \.battle-player-card,[\s\S]*?\.battle-game--team \.battle-minimap\s*\{\s*top:\s*var\(--team-info-top\)/)
 })
 
 test("team HUD exposes the nearest enemy tower threat only inside its real range", () => {
@@ -134,28 +146,28 @@ test("team HUD exposes the nearest enemy tower threat only inside its real range
 })
 
 test("team battle UI does not mount the island phase or voice overlays", async () => {
-  const source = await readFile(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url), "utf8")
+  const source = await readSource(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url))
   assert.match(source, /isTeamBattleMode/)
   assert.match(source, /!isTeamBattle && \(\s*<IslandPhaseHud/)
   assert.match(source, /!isTeamBattle && \(\s*<IslandVoiceNotice/)
 })
 
 test("team battle renderer disables island hazards", async () => {
-  const source = await readFile(new URL("../src/components/BattleGame/rendering/map/MapRenderer.js", import.meta.url), "utf8")
+  const source = await readSource(new URL("../src/components/BattleGame/rendering/map/MapRenderer.js", import.meta.url))
   assert.match(source, /isTeamBattleMode/)
   assert.match(source, /teamBattle \? "" : game\?\.phase/)
   assert.match(source, /const stormRadius = teamBattle \? 0 : Number\(game\?\.stormRadius\)/)
 })
 
 test("team death uses a respawn plate instead of the solo defeat popup", async () => {
-  const source = await readFile(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url), "utf8")
+  const source = await readSource(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url))
   assert.match(source, /team-respawn-overlay/)
   assert.match(source, /ВОЗРОЖДЕНИЕ НА БАЗЕ/)
   assert.match(source, /view === "dead" && !isTeamBattle/)
 })
 
 test("room join binds the local player before the first state render", async () => {
-  const source = await readFile(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url), "utf8")
+  const source = await readSource(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url))
   const roomJoinedStart = source.indexOf('if (msg.type === "room_joined")')
   const matchFoundStart = source.indexOf('if (msg.type === "match_found")', roomJoinedStart)
   const roomJoinedBlock = source.slice(roomJoinedStart, matchFoundStart)
@@ -167,13 +179,13 @@ test("room join binds the local player before the first state render", async () 
 })
 
 test("state updates rebind the local player after an early snapshot race", async () => {
-  const battleSource = await readFile(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url), "utf8")
+  const battleSource = await readSource(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url))
   const stateCallbackStart = battleSource.indexOf("(state) => {")
   const messageCallbackStart = battleSource.indexOf("(msg) => {", stateCallbackStart)
   const stateCallback = battleSource.slice(stateCallbackStart, messageCallbackStart)
   assert.match(stateCallback, /if \(client\.playerId\) \{[\s\S]*renderer\.setLocalPlayerId\(client\.playerId\)[\s\S]*simulation\.setLocalPlayerId\(client\.playerId\)/)
 
-  const rendererSource = await readFile(new URL("../src/components/BattleGame/rendering/three/ThreeBattleRenderer.js", import.meta.url), "utf8")
+  const rendererSource = await readSource(new URL("../src/components/BattleGame/rendering/three/ThreeBattleRenderer.js", import.meta.url))
   const localIdStart = rendererSource.indexOf("setLocalPlayerId(id)")
   const stateStart = rendererSource.indexOf("setState(state)", localIdStart)
   const localIdBlock = rendererSource.slice(localIdStart, stateStart)
@@ -182,7 +194,7 @@ test("state updates rebind the local player after an early snapshot race", async
 })
 
 test("team minimap marks both bases and highlights the local base", async () => {
-  const source = await readFile(new URL("../src/components/BattleGame/BattleGameUI.jsx", import.meta.url), "utf8")
+  const source = await readSource(new URL("../src/components/BattleGame/BattleGameUI.jsx", import.meta.url))
   assert.match(source, /const localTeam = state\.players\?\[localId\]\?\.team \\|\\| ""/)
   assert.match(source, /objective\.type === "town_hall"/)
   assert.match(source, /mini-base--own/)

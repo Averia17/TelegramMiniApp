@@ -128,6 +128,34 @@ func TestMicoStaffBuildsRageAndSuperConsumesItForLargerVortex(t *testing.T) {
 	}
 }
 
+func TestMicoFullRageVortexStaysInsideItsCounterplayDamageBudget(t *testing.T) {
+	const rage = 5
+
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mico", "Mico", "Wukong Mico")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	p := gs.Players["mico"]
+	p.MicoRage = rage
+
+	WukongMicoKit{}.Super(gs, p, time.Now().UnixMilli(), 0, 0)
+	durationMs := (MicoVortexBaseDuration + rage*MicoVortexDurationPerRage).Milliseconds()
+	ticks := int(math.Ceil(float64(durationMs) / 250))
+	if ticks < 1 {
+		ticks = 1
+	}
+	budget := p.VortexDamage*ticks + micoVortexImpactDamage(rage)
+	if budget > 240 {
+		t.Fatalf("full-rage vortex damage budget=%d, want <=240 including impact", budget)
+	}
+	if p.VortexRadius > 200 {
+		t.Fatalf("full-rage vortex radius=%.0f, want <=200 for a dodgeable threat", p.VortexRadius)
+	}
+	if durationMs > 4000 {
+		t.Fatalf("full-rage vortex duration=%dms, want <=4000ms for a punish window", durationMs)
+	}
+}
+
 func TestSkillDurationIsCappedAtFifteenSeconds(t *testing.T) {
 	if got := cappedSkillDuration(30 * time.Second); got != MaxHeroSkillDuration.Milliseconds() {
 		t.Fatalf("capped duration=%dms, want %dms", got, MaxHeroSkillDuration.Milliseconds())
@@ -316,7 +344,7 @@ func TestFairyMinaSuperHealsAlliesButNotEnemies(t *testing.T) {
 	now := time.Now().UnixMilli()
 	MinaKit{}.Super(gs, mina, now, 0, 0)
 	gs.updateNewHeroSystems()
-	if ally.Lives <= 500 || enemy.Lives != 1000 {
+	if ally.Lives != 510 || enemy.Lives != 1000 {
 		t.Fatalf("aura ally=%d enemy=%d, want ally healed and enemy unchanged", ally.Lives, enemy.Lives)
 	}
 }

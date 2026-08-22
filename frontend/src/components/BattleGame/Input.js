@@ -1,7 +1,13 @@
-import {normalizeEightWayMove, quantizeAngleToSectors} from "./direction.js"
+import {normalizeEightWayMove, quantizeAngleToSectors, worldAngleToProtocolScreen} from "./direction.js"
 
 const AUTO_AIM_GESTURE_DRAG_LIMIT = 10
 const MIN_ATTACK_INPUT_DEBOUNCE_MS = 90
+export const MOBILE_INPUT_MEDIA_QUERY = "(pointer: coarse), (max-width: 700px)"
+
+export const isMobileInputDevice = () =>
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia(MOBILE_INPUT_MEDIA_QUERY).matches
 
 export const isAutoAimAttackGesture = (dragDistance) =>
   Number(dragDistance) < AUTO_AIM_GESTURE_DRAG_LIMIT
@@ -52,6 +58,7 @@ export class Input {
     this.getState = null
     this.getPlayerScreenPosition = null
     this.events = new AbortController()
+    this.keyboardEnabled = !isMobileInputDevice()
     this.lastMoveX = null
     this.lastMoveY = null
     this.lastMoveSentAt = 0
@@ -78,8 +85,13 @@ export class Input {
 
   resolveAimAngle(screenX, screenY, player, origin) {
     const projected = this.getAimAngleFromScreen?.(screenX, screenY, player)
-    const angle = Number.isFinite(projected) ? projected : Math.atan2(screenY-origin.y, screenX-origin.x)
-    return quantizeAngleToSectors(angle)
+    if (Number.isFinite(projected)) {
+      // CameraRig returns a world-space ray. Convert it to the server protocol
+      // before sending rotate/shoot; otherwise the server applies the
+      // isometric correction a second time and heroes aim too far vertically.
+      return worldAngleToProtocolScreen(quantizeAngleToSectors(projected))
+    }
+    return quantizeAngleToSectors(Math.atan2(screenY-origin.y, screenX-origin.x))
   }
 
   resolveAimDistance(screenX, screenY, origin) {
@@ -118,6 +130,8 @@ export class Input {
   }
 
   setupKeyboard() {
+    if (!this.keyboardEnabled) return
+
     window.addEventListener("keydown", (e) => {
       this.keys[e.code] = true
       if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowLeft","ArrowDown","ArrowRight"].includes(e.code)) this.sendKeyboardMove()

@@ -19,6 +19,7 @@ const GAME_MESSAGES = new Set([
 
 import {recordBattleMetric} from "./rendering/shared/performance.js"
 import {preserveAuthoritativeMapWalls} from "./mapContract.js"
+import {getNetworkQuality} from "./networkQuality.js"
 
 export {preserveAuthoritativeMapWalls}
 
@@ -38,6 +39,8 @@ export class GameClient {
     this.stateHz = 0
     this.lastStateBytes = 0
     this.lastStateReceivedAt = 0
+    this.lastStateReceivedWallClock = 0
+    this.lastStateTimestamp = null
     this.lastClientTs = 0
     this.abilitySequence = 0
     this.shootSequence = 0
@@ -67,14 +70,14 @@ export class GameClient {
       this.onConnect?.()
       this.clockSyncTimer = setInterval(() => this.syncClock(), 2000)
     }
-    socket.onclose = () => {
+    socket.onclose = event => {
       if (this.ws !== socket) return
       this.ws = null
       this.connected = false
       if (this.clockSyncTimer) clearInterval(this.clockSyncTimer)
       this.clockSyncTimer = null
       this.clockSyncRequests.clear()
-      this.onDisconnect?.()
+      this.onDisconnect?.(event)
     }
     socket.onerror = error => {
       if (this.ws === socket) console.error("WebSocket error:", error)
@@ -123,11 +126,17 @@ export class GameClient {
       return
     }
     if (message.type === "state") {
+      const stateTimestamp = Number(message.ts)
+      // A reconnect or transport retry can deliver an older frame after the
+      // current one. Do not wake the renderer for a state it cannot present.
+      if (Number.isFinite(stateTimestamp) && this.lastStateTimestamp != null && stateTimestamp <= this.lastStateTimestamp) return
       const now = performance.now()
       if (this.lastStateReceivedAt > 0) {
         recordBattleMetric("network.snapshot_interval", now - this.lastStateReceivedAt)
       }
       this.lastStateReceivedAt = now
+      this.lastStateReceivedWallClock = Date.now()
+      if (Number.isFinite(stateTimestamp)) this.lastStateTimestamp = stateTimestamp
       if (Number.isFinite(Number(message.ts))) {
         recordBattleMetric(
           "network.snapshot_age",
@@ -191,6 +200,7 @@ export class GameClient {
       ...(profile.maxPlayers ? {maxPlayers: profile.maxPlayers} : {}),
       ...(profile.partyId ? {partyId: profile.partyId} : {}),
       ...(profile.partySize ? {partySize: profile.partySize} : {}),
+      ...(profile.partyTicket ? {partyTicket: profile.partyTicket} : {}),
     }))
   }
 
@@ -204,14 +214,19 @@ export class GameClient {
     this.ws.send(JSON.stringify({type: "party_create", maxSize, ...(partyId ? {partyId} : {})}))
   }
 
-  joinParty(partyId, maxSize = 3) {
+  joinParty(partyId, maxSize = 3, partyTicket = "") {
     if (this.ws?.readyState !== WebSocket.OPEN) return
-    this.ws.send(JSON.stringify({type: "party_join", partyId, maxSize}))
+    this.ws.send(JSON.stringify({type: "party_join", partyId, maxSize, ...(partyTicket ? {partyTicket} : {})}))
   }
 
   leaveParty() {
     if (this.ws?.readyState !== WebSocket.OPEN) return
     this.ws.send(JSON.stringify({type: "party_leave"}))
+  }
+
+  leaveBattle() {
+    if (this.ws?.readyState !== WebSocket.OPEN) return
+    this.ws.send(JSON.stringify({type: "leave_battle"}))
   }
 
   move(x, y) {
@@ -244,6 +259,16 @@ export class GameClient {
 
   setShootPrediction(handler) {
     this.onShootPrediction = typeof handler === "function" ? handler : null
+  }
+
+  getNetworkQuality(now = Date.now()) {
+    return getNetworkQuality({
+      connected: this.connected,
+      lastStateReceivedAt: this.lastStateReceivedWallClock,
+      stateHz: this.stateHz,
+      clockSyncSamples: this.clockSyncSamples,
+      now,
+    })
   }
 
   ability(slot, targetId = undefined) {

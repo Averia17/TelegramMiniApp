@@ -1,11 +1,13 @@
 import assert from "node:assert/strict"
-import test from "node:test"
+import nodeTest from "node:test"
 import * as THREE from "three"
 
 import {canStartAttack, isAutoAimAttackGesture} from "../src/components/BattleGame/Input.js"
 import {getAttackCooldownVisual} from "../src/components/BattleGame/attackCooldownVisual.js"
 import {AimRenderer} from "../src/components/BattleGame/rendering/combat/AimRenderer.js"
 import {blendAngle} from "../src/components/BattleGame/rendering/heroes/turning.js"
+
+const test = (name, fn) => nodeTest(name, {concurrency: true}, fn)
 
 test("a stationary attack release auto-aims even after a long press", () => {
   assert.equal(isAutoAimAttackGesture(0, 650), true)
@@ -46,6 +48,14 @@ test("attack cooldown visual uses the authoritative remaining time", () => {
 test("attack cooldown visual stays ready when the server says it is ready", () => {
   assert.deepEqual(getAttackCooldownVisual({attackCooldown: 0, attackReady: true, attackRateMs: 600}), {
     state: "ready",
+    remaining: 0,
+    progress: 0,
+  })
+})
+
+test("attack cooldown visual reports a blocked attack when it is not cooling down", () => {
+  assert.deepEqual(getAttackCooldownVisual({attackCooldown: 0, attackReady: false, attackRateMs: 600}), {
+    state: "blocked",
     remaining: 0,
     progress: 0,
   })

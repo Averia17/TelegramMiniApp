@@ -26,6 +26,7 @@ const EMPTY_WALLS = []
 const EMPTY_COLLISION_INDEX = {
   walls: EMPTY_WALLS,
   blockingWalls: EMPTY_WALLS,
+  flightBoundaryWalls: EMPTY_WALLS,
   cells: new Map(),
   queryMarks: new Uint32Array(0),
   queryScratchIndices: [],
@@ -93,9 +94,11 @@ export const createCollisionIndex = walls => {
   const source = Array.isArray(walls) ? walls : EMPTY_WALLS
   const cells = new Map()
   const blockingWalls = []
+  const flightBoundaryWalls = []
   source.forEach((wall, index) => {
     if (!isBlockingWall(wall)) return
     blockingWalls.push(wall)
+    if (wall?.type === "water" || wall?.type === "ocean") flightBoundaryWalls.push(wall)
     const minX = cellCoordinate(wall.minX)
     const maxX = cellCoordinate(wall.maxX)
     const minY = cellCoordinate(wall.minY)
@@ -112,6 +115,7 @@ export const createCollisionIndex = walls => {
   return {
     walls: source,
     blockingWalls,
+    flightBoundaryWalls,
     cells,
     queryMarks: new Uint32Array(source.length),
     queryScratchIndices: [],
@@ -180,6 +184,30 @@ const resolveWalls = (position, radius, walls) => {
   return {x, y}
 }
 
+const isBlockingDynamicProp = prop => prop?.active !== false &&
+  (prop?.type === "health_crate" || prop?.type === "lunar_crate")
+
+const resolveDynamicProps = (position, radius, props) => {
+  let {x, y} = position
+  for (const prop of props || []) {
+    if (!isBlockingDynamicProp(prop)) continue
+    const obstacleRadius = Math.max(0, Number(prop.radius) || 0)
+    const minimumDistance = radius + obstacleRadius
+    const dx = x - Number(prop.x || 0)
+    const dy = y - Number(prop.y || 0)
+    const distance = Math.hypot(dx, dy)
+    if (distance >= minimumDistance) continue
+    if (distance > 0.0001) {
+      const push = minimumDistance - distance
+      x += dx / distance * push
+      y += dy / distance * push
+    } else {
+      x += minimumDistance
+    }
+  }
+  return {x, y}
+}
+
 const movementSpeed = player => {
   const authoritativeSpeed = Number(player?.movementSpeed)
   if (Number.isFinite(authoritativeSpeed)) return Math.max(0, authoritativeSpeed)
@@ -191,7 +219,7 @@ const movementSpeed = player => {
   return speed
 }
 
-const constrainPosition = (position, player, map, collisionIndex = null, collisionResult = null) => {
+const constrainPosition = (position, player, map, collisionIndex = null, collisionResult = null, blockingProps = null) => {
   const radius = Number(player.radius) || 14
   const next = {
     x: clamp(Number(position.x) || 0, radius, Math.max(radius, (map.width || radius) - radius)),
@@ -200,10 +228,19 @@ const constrainPosition = (position, player, map, collisionIndex = null, collisi
   const collisionWalls = collisionIndex?.cells
     ? queryCollisionWalls(collisionIndex, next, radius, collisionResult)
     : map.walls
-  return resolveWalls(next, radius, collisionWalls)
+  return resolveDynamicProps(resolveWalls(next, radius, collisionWalls), radius, blockingProps)
 }
 
-export const movePosition = (position, input, player, delta, map, collisionIndex = null, collisionResult = null) => {
+const constrainFlightPosition = (position, player, map, collisionIndex = null) => {
+  const radius = Number(player.radius) || 14
+  const bounded = {
+    x: clamp(Number(position.x) || 0, radius, Math.max(radius, (map.width || radius) - radius)),
+    y: clamp(Number(position.y) || 0, radius, Math.max(radius, (map.height || radius) - radius)),
+  }
+  return resolveWalls(bounded, radius, collisionIndex?.flightBoundaryWalls)
+}
+
+export const movePosition = (position, input, player, delta, map, collisionIndex = null, collisionResult = null, blockingProps = null) => {
   const magnitude = Math.hypot(input.x, input.y)
   if (magnitude <= .001 || delta <= 0) return position
   const distance = movementSpeed(player) * delta
@@ -211,13 +248,16 @@ export const movePosition = (position, input, player, delta, map, collisionIndex
   const maxStep = Math.max(1, radius * .5)
   const steps = Math.max(1, Math.ceil(distance / maxStep))
   const stepDistance = distance / steps
+  const flying = Number(player?.flying) > 0
   let next = {...position}
   for (let step = 0; step < steps; step += 1) {
     next = {
       x: next.x + input.x / magnitude * stepDistance,
       y: next.y + input.y / magnitude * stepDistance,
     }
-    next = constrainPosition(next, player, map, collisionIndex, collisionResult)
+    next = flying
+      ? constrainFlightPosition(next, player, map, collisionIndex)
+      : constrainPosition(next, player, map, collisionIndex, collisionResult, blockingProps)
   }
   return next
 }
@@ -268,16 +308,21 @@ const syncInterpolatedMap = (cache, older = {}, newer = {}, t) => {
   return cache
 }
 
-const syncInterpolatedList = (cache, older = [], newer = [], keyOf, t) => {
+const syncInterpolatedList = (cache, older = [], newer = [], keyOf, t, scratch = null) => {
   const previousList = Array.isArray(older) ? older : []
   const nextList = Array.isArray(newer) ? newer : []
-  const previous = new Map(previousList.map((entity, index) => [String(keyOf(entity, index)), entity]))
-  const next = new Map(nextList.map((entity, index) => [String(keyOf(entity, index)), entity]))
+  const previous = scratch?.previous || new Map()
+  const next = scratch?.next || new Map()
+  previous.clear()
+  next.clear()
+  previousList.forEach((entity, index) => previous.set(String(keyOf(entity, index)), entity))
+  nextList.forEach((entity, index) => next.set(String(keyOf(entity, index)), entity))
   // Membership is part of the same presentation timeline as position. Do not
   // spawn a projectile from a future packet or remove it before its last
   // interpolated frame has been shown.
   const presentationList = t < 1 ? previousList : nextList
-  const active = new Set()
+  const active = scratch?.active || new Set()
+  active.clear()
   const result = presentationList.map((presentationEntity, index) => {
     const key = String(keyOf(presentationEntity, index))
     active.add(key)
@@ -324,6 +369,9 @@ export class NetworkSimulation {
     this.displayPlayers = {}
     this.displayMonsters = {}
     this.displayBullets = new Map()
+    // Projectile lists are rebuilt on every render frame; keep their lookup
+    // indexes stable to avoid GC churn during team firefights.
+    this.displayBulletScratch = {previous: new Map(), next: new Map(), active: new Set()}
     this.renderTime = null
     this.pendingLocalAttack = null
     this.collisionWallsSource = null
@@ -576,6 +624,7 @@ export class NetworkSimulation {
     const before = {...this.predicted}
     const map = this.latestState.map || {}
     const collisionIndex = this.getCollisionIndex(map)
+    const blockingProps = this.latestState?.props
     let replayed = {x: Number(authoritative.x) || 0, y: Number(authoritative.y) || 0}
     let cursor = snapshotLocalTime
     let replayInput = {
@@ -588,11 +637,11 @@ export class NetworkSimulation {
       const start = Number.isFinite(commandTime)
         ? Math.max(cursor, Math.min(commandTime, targetTime))
         : cursor
-      replayed = movePosition(replayed, replayInput, authoritative, (start - cursor) / 1000, map, collisionIndex, this.collisionQueryResult)
+      replayed = movePosition(replayed, replayInput, authoritative, (start - cursor) / 1000, map, collisionIndex, this.collisionQueryResult, blockingProps)
       replayInput = {x: pending.x, y: pending.y}
       cursor = start
     }
-    replayed = movePosition(replayed, replayInput, authoritative, (targetTime - cursor) / 1000, map, collisionIndex, this.collisionQueryResult)
+    replayed = movePosition(replayed, replayInput, authoritative, (targetTime - cursor) / 1000, map, collisionIndex, this.collisionQueryResult, blockingProps)
     this.predicted = replayed
     this.predictionTime = targetTime
 
@@ -657,7 +706,7 @@ export class NetworkSimulation {
     this.predictionTime = (this.predictionTime ?? this.serverTimeToLocal(this.latestState.ts || Date.now())) + delta * 1000
     const map = this.latestState.map || {}
     const before = this.predicted
-    this.predicted = movePosition(this.predicted, this.movementInput, player, delta, map, this.getCollisionIndex(map), this.collisionQueryResult)
+    this.predicted = movePosition(this.predicted, this.movementInput, player, delta, map, this.getCollisionIndex(map), this.collisionQueryResult, this.latestState?.props)
 
     if (this.correctionHoldRemaining > 0) {
       this.correctionHoldRemaining = Math.max(0, this.correctionHoldRemaining - delta)
@@ -726,10 +775,13 @@ export class NetworkSimulation {
     // second vector applied afterwards. During a fast reversal it can briefly
     // point from an older safe pose through a wall while it decays. Constrain
     // the composed render pose and retain only the collision-safe offset.
-    const presentation = constrainPosition({
+    const presentationPosition = {
       x: this.predicted.x + this.correction.x,
       y: this.predicted.y + this.correction.y,
-    }, player, map, this.getCollisionIndex(map), this.collisionQueryResult)
+    }
+    const presentation = Number(player?.flying) > 0
+      ? constrainFlightPosition(presentationPosition, player, map, this.getCollisionIndex(map))
+      : constrainPosition(presentationPosition, player, map, this.getCollisionIndex(map), this.collisionQueryResult, this.latestState?.props)
     this.correction.x = presentation.x - this.predicted.x
     this.correction.y = presentation.y - this.predicted.y
 
@@ -772,8 +824,42 @@ export class NetworkSimulation {
     }
     const players = syncInterpolatedMap(this.displayPlayers, older.players, newer.players, t)
     if (this.playerId && players[this.playerId] && this.predicted) {
-      players[this.playerId].x = this.predicted.x + this.correction.x
-      players[this.playerId].y = this.predicted.y + this.correction.y
+      const localAuthoritative = this.latestState?.players?.[this.playerId] || players[this.playerId]
+      const previousLocalAuthoritative = this.snapshots.length > 1
+        ? this.snapshots[this.snapshots.length - 2]?.players?.[this.playerId]
+        : null
+      const flightJustEnded = Number(previousLocalAuthoritative?.flying) > 0 && Number(localAuthoritative?.flying) <= 0
+      const localPresentation = {
+        x: this.predicted.x + this.correction.x,
+        y: this.predicted.y + this.correction.y,
+      }
+      const collisionIndex = this.getCollisionIndex(this.latestState?.map || {})
+      let constrainedPresentation = Number(localAuthoritative?.flying) > 0
+        ? constrainFlightPosition(localPresentation, localAuthoritative, this.latestState?.map || {}, collisionIndex)
+        : constrainPosition(localPresentation, localAuthoritative, this.latestState?.map || {}, collisionIndex, this.collisionQueryResult, this.latestState?.props)
+      if (flightJustEnded) {
+        // The server has already resolved the landing. Do not let a stale
+        // airborne prediction choose the opposite side of a wall while the
+        // interpolation buffer catches up; use the authoritative landing
+        // point immediately and keep it collision-safe for malformed frames.
+        constrainedPresentation = constrainPosition(
+          {x: Number(localAuthoritative.x) || 0, y: Number(localAuthoritative.y) || 0},
+          localAuthoritative,
+          this.latestState?.map || {},
+          collisionIndex,
+          this.collisionQueryResult,
+          this.latestState?.props,
+        )
+        if (Object.prototype.hasOwnProperty.call(localAuthoritative, "flying")) {
+          players[this.playerId].flying = localAuthoritative.flying
+        } else {
+          delete players[this.playerId].flying
+        }
+      }
+      this.correction.x = constrainedPresentation.x - this.predicted.x
+      this.correction.y = constrainedPresentation.y - this.predicted.y
+      players[this.playerId].x = constrainedPresentation.x
+      players[this.playerId].y = constrainedPresentation.y
       // Position prediction already reacts to the current local command on
       // this frame. Keep the facing vector in the same time domain so
       // HeroView does not keep turning toward an older server snapshot after
@@ -794,6 +880,7 @@ export class NetworkSimulation {
       newer.bullets,
       (bullet, index) => bullet.id ?? `${bullet.playerId || ""}:${bullet.kind || ""}:${index}`,
       t,
+      this.displayBulletScratch,
     )
     const displayState = this.damagePrediction.applyToState(
       {...this.latestState, players, monsters, bullets, networkSmoothed: true},

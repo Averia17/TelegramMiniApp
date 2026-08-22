@@ -1,5 +1,6 @@
 import random
 from datetime import datetime, timedelta, timezone
+from math import ceil
 
 from infrastructure.database.models.wallet import PlayerWallet, ProcessedBattle
 from sqlalchemy import select
@@ -34,15 +35,22 @@ def _refill(wallet, now=None):
         )
     elif wallet.energy >= MAX_ENERGY:
         wallet.energy_updated_at = now
-    return (
-        max(
-            0,
-            ENERGY_REGEN_SECONDS
-            - int((now - wallet.energy_updated_at).total_seconds()),
-        )
-        if wallet.energy < MAX_ENERGY
-        else 0
-    )
+    return _energy_state(wallet, now)["next_energy_in"]
+
+
+def _energy_state(wallet, now):
+    if wallet.energy >= MAX_ENERGY:
+        return {"next_energy_in": 0, "next_energy_at": None}
+
+    updated = wallet.energy_updated_at
+    if updated.tzinfo is None:
+        updated = updated.replace(tzinfo=timezone.utc)
+    next_at = updated + timedelta(seconds=ENERGY_REGEN_SECONDS)
+    seconds = max(0, ceil((next_at - now).total_seconds()))
+    return {
+        "next_energy_in": seconds,
+        "next_energy_at": next_at.isoformat(),
+    }
 
 
 async def refill_all_wallets(session, now=None):
@@ -88,7 +96,7 @@ async def get_wallet(session, user_id, lock=False):
 
 
 async def wallet_view(session, user_id):
-    wallet, next_in = await get_wallet(session, user_id, True)
+    wallet, _ = await get_wallet(session, user_id, True)
     await session.commit()
     now = datetime.now(timezone.utc)
     taunt_expires_at = wallet.taunt_expires_at
@@ -105,7 +113,8 @@ async def wallet_view(session, user_id):
         "taunt_pack_charges": 0,
         "energy": wallet.energy,
         "max_energy": MAX_ENERGY,
-        "next_energy_in": next_in,
+        **_energy_state(wallet, now),
+        "server_time": now.isoformat(),
     }
 
 
@@ -179,6 +188,7 @@ async def open_chest(
     if wallet.energy == MAX_ENERGY:
         wallet.energy_updated_at = datetime.now(timezone.utc)
     await session.commit()
+    now = datetime.now(timezone.utc)
     return {
         "product_id": product_id,
         "energy_reward": wallet.energy - before,
@@ -189,6 +199,8 @@ async def open_chest(
         "taunt_charges": wallet.taunt_charges,
         "energy": wallet.energy,
         "max_energy": MAX_ENERGY,
+        **_energy_state(wallet, now),
+        "server_time": now.isoformat(),
     }
 
 

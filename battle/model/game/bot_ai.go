@@ -109,17 +109,11 @@ func (attackObjectiveBehavior) Decide(ctx *teamBotContext) (teamBotIntent, bool)
 	if ctx.enemyObjective == nil {
 		return teamBotIntent{}, false
 	}
-	if ctx.visibleTarget != nil && ctx.visibleTarget.player != nil {
-		// A nearby enemy is an immediate tactical problem. Humans do not keep
-		// walking toward an objective while an opponent is already in striking
-		// distance, even when an ally is present at the objective.
-		interruptDistance := math.Max(180, botAttackRange(ctx.bot)*1.35) + ctx.visibleTarget.radius()
-		if ctx.visibleTarget.distance <= interruptDistance {
-			return teamBotIntent{}, false
-		}
-	}
-	ally := ctx.gs.allyNearObjective(ctx.bot.Team, ctx.enemyObjective, 360)
-	if ally == nil && ctx.visibleTarget != nil {
+	if ctx.visibleTarget != nil {
+		// Pushing an objective is a fallback, never a higher-priority action
+		// than fighting something the bot can currently see. This applies to
+		// both enemy heroes and neutral monsters, including when an ally has
+		// already reached the objective.
 		return teamBotIntent{}, false
 	}
 	return teamBotIntent{kind: teamIntentAttackBase, target: &botTarget{kind: "objective", id: ctx.enemyObjective.ID, objective: ctx.enemyObjective, x: ctx.enemyObjective.X, y: ctx.enemyObjective.Y, distance: math.Hypot(ctx.enemyObjective.X-ctx.bot.X, ctx.enemyObjective.Y-ctx.bot.Y)}}, true

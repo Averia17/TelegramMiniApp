@@ -57,14 +57,14 @@ func TestFormTeamAssignmentsRejectsIncompleteOrOversizedParties(t *testing.T) {
 }
 
 func TestFormPartialTeamAssignmentsKeepsSoloSearchPlayable(t *testing.T) {
-	assignments, ok := FormPartialTeamAssignments([]MatchUnit{{PartyID: "solo", Members: []MatchMember{{ID: "p1", Hero: "Viper"}}}}, 3)
+	assignments, ok := FormPartialTeamAssignments([]MatchUnit{{PartyID: "solo", Members: []MatchMember{{ID: "p1", Hero: "Kaze"}}}}, 3)
 	if !ok || assignments["p1"] == "" {
 		t.Fatalf("assignments = %#v, ok=%v", assignments, ok)
 	}
 }
 
 func TestFormPartialTeamAssignmentsKeepsThreePlayerPartyTogether(t *testing.T) {
-	assignments, ok := FormPartialTeamAssignments([]MatchUnit{{PartyID: "party", Members: []MatchMember{{ID: "p1", Hero: "Viper"}, {ID: "p2", Hero: "Needle"}, {ID: "p3", Hero: "Mico"}}}}, 3)
+	assignments, ok := FormPartialTeamAssignments([]MatchUnit{{PartyID: "party", Members: []MatchMember{{ID: "p1", Hero: "Kaze"}, {ID: "p2", Hero: "Needle"}, {ID: "p3", Hero: "Mico"}}}}, 3)
 	if !ok || assignments["p1"] != assignments["p2"] || assignments["p2"] != assignments["p3"] {
 		t.Fatalf("assignments = %#v, ok=%v", assignments, ok)
 	}
@@ -72,7 +72,7 @@ func TestFormPartialTeamAssignmentsKeepsThreePlayerPartyTogether(t *testing.T) {
 
 func TestFormPartialTeamAssignmentsBalancesSoloPlayers(t *testing.T) {
 	units := []MatchUnit{
-		{PartyID: "solo-a", Members: []MatchMember{{ID: "a", Hero: "Viper"}}},
+		{PartyID: "solo-a", Members: []MatchMember{{ID: "a", Hero: "Kaze"}}},
 		{PartyID: "solo-b", Members: []MatchMember{{ID: "b", Hero: "Needle"}}},
 	}
 	assignments, ok := FormPartialTeamAssignments(units, 3)
@@ -83,7 +83,7 @@ func TestFormPartialTeamAssignmentsBalancesSoloPlayers(t *testing.T) {
 
 func TestFormPartialTeamAssignmentsKeepsThreePlayersAsBalancedAsPossible(t *testing.T) {
 	units := []MatchUnit{
-		{PartyID: "solo-a", Members: []MatchMember{{ID: "a", Hero: "Viper"}}},
+		{PartyID: "solo-a", Members: []MatchMember{{ID: "a", Hero: "Kaze"}}},
 		{PartyID: "solo-b", Members: []MatchMember{{ID: "b", Hero: "Needle"}}},
 		{PartyID: "solo-c", Members: []MatchMember{{ID: "c", Hero: "Mandy"}}},
 	}

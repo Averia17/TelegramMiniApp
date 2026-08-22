@@ -4,6 +4,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: development
+    working_dir: /app
     expose:
       - "8002"
     environment:
@@ -27,6 +29,8 @@ services:
       retries: 12
       start_period: 15s
     volumes:
+      - .:/app
+      - party-tmp:/app/tmp
       - party-data:/data
     networks:
       - app-net
@@ -35,4 +39,5 @@ networks:
   app-net:
 
 volumes:
+  party-tmp:
   party-data:

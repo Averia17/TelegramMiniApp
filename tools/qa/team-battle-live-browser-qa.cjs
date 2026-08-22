@@ -4,7 +4,7 @@ const {chromium} = require(path.resolve(__dirname, "../../frontend/node_modules/
 const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cjs")
 
 const baseUrl = process.env.TEAM_BATTLE_QA_URL || "http://localhost"
-const devUser = "920000001"
+const devUser = process.env.TEAM_BATTLE_QA_USER || "920000001"
 const output = path.resolve(__dirname, "../../output/playwright/team-battle-live.png")
 
 runWithBrowser(

@@ -3,10 +3,39 @@ package room
 import (
 	"battle/model/game"
 	"battle/model/player"
+	"battle/model/prop"
 	"math"
 )
 
 const lastContactTTL = int64(2_000)
+
+func propsForClient(viewer *player.Player, all []*prop.Prop) []game.PropJSON {
+	visible := make([]game.PropJSON, 0, len(all))
+	for _, candidate := range all {
+		if candidate == nil || !candidate.Active || !propVisibleToClient(viewer, candidate) {
+			continue
+		}
+		visible = append(visible, game.PropJSON{
+			X: candidate.X, Y: candidate.Y, Radius: candidate.Radius,
+			Type: candidate.Type, LootType: candidate.LootType,
+			Lives: candidate.Lives, MaxLives: candidate.MaxLives, Active: true,
+		})
+	}
+	if len(visible) == 0 {
+		return nil
+	}
+	return visible
+}
+
+func propVisibleToClient(viewer *player.Player, candidate *prop.Prop) bool {
+	if viewer == nil {
+		return true
+	}
+	if candidate.VisibilityPlayerID != "" && candidate.VisibilityPlayerID != viewer.PlayerId {
+		return false
+	}
+	return candidate.VisibilityTeam == "" || candidate.VisibilityTeam == viewer.Team
+}
 
 func lastContactForClient(target *player.Player, viewerID string, now int64) *game.LastContactJSON {
 	if target == nil || target.LastContactBy != viewerID || target.LastContactAt <= 0 || now-target.LastContactAt > lastContactTTL {
@@ -80,6 +109,8 @@ func visiblePlayersForClient(state *game.GameState, viewerID string, all map[str
 						// concealed; only the directional contact clue is actionable.
 						snapshot.Lives, snapshot.MaxLives = 0, 0
 						snapshot.Ammo, snapshot.SuperCharge = 0, 0
+						snapshot.PaintStacks = 0
+						snapshot.LumiFlowers = 0
 						snapshot.Hidden, snapshot.LastContact = true, contact
 						visible[visibleID] = snapshot
 					}

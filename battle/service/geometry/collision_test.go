@@ -140,6 +140,17 @@ func TestMoveCircleWithBlockingWallsCannotTunnelThroughWall(t *testing.T) {
 	}
 }
 
+func TestMoveCircleWithBlockingWallsAndCirclesCannotEnterDynamicObstacle(t *testing.T) {
+	body := &CircleBody{X: 50, Y: 80, Radius: 10}
+	crate := &CircleBody{X: 140, Y: 80, Radius: 22}
+
+	MoveCircleWithBlockingWallsAndCircles(body, NewSpatialHash(40), []*CircleBody{crate}, 120, 0)
+
+	if CircleToCircle(body, crate) {
+		t.Fatalf("body entered dynamic obstacle at %.2f,%.2f", body.X, body.Y)
+	}
+}
+
 func TestMoveCircleWithBlockingWallsAllowsBushes(t *testing.T) {
 	sh := NewSpatialHash(40)
 	sh.Insert(&WallTile{MinX: 100, MinY: 0, MaxX: 140, MaxY: 200, Type: "bush"})

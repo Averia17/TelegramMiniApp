@@ -19,6 +19,7 @@ const (
 	regenerationInterval              = 2 * time.Second
 	regenerationPulsePercent          = 0.15
 	regenerationConcealedPulsePercent = 0.25
+	regenerationBaselineRate          = 0.01
 	teamBaseRegenerationPercent       = 0.01
 	teamBaseSemicircleRadius          = 10.5 * TileSize
 	teamBaseSemicircleEntrance        = 4.5 * TileSize
@@ -207,13 +208,13 @@ func (gs *GameState) updateRegenerationAt(now int64) {
 		if !p.IsAlive() || p.IsFullLives() || p.RegenRate <= 0 || now-p.LastDamageAt < regenerationCooldown.Milliseconds() {
 			continue
 		}
+		if !gs.isInConcealment(p) && gs.isPursued(p, now) {
+			continue
+		}
 		if p.LastRegenAt > 0 && now-p.LastRegenAt < regenerationInterval.Milliseconds() {
 			continue
 		}
-		pulsePercent := regenerationPulsePercent
-		if gs.isInConcealment(p) && gs.isConcealed(p) {
-			pulsePercent = regenerationConcealedPulsePercent
-		}
+		pulsePercent := heroRegenerationPulsePercent(p, gs.isInConcealment(p) && gs.isConcealed(p))
 		p.RegenCarry += float64(p.MaxLives) * pulsePercent
 		heal := int(p.RegenCarry)
 		if heal > 0 {
@@ -224,6 +225,17 @@ func (gs *GameState) updateRegenerationAt(now int64) {
 		}
 		p.LastRegenAt = now
 	}
+}
+
+func heroRegenerationPulsePercent(p *player.Player, concealed bool) float64 {
+	if p == nil || p.RegenRate <= 0 {
+		return 0
+	}
+	pulsePercent := regenerationPulsePercent
+	if concealed {
+		pulsePercent = regenerationConcealedPulsePercent
+	}
+	return pulsePercent * p.RegenRate / regenerationBaselineRate
 }
 
 func (gs *GameState) updateBaseRegenerationAt(p *player.Player, now int64) {
@@ -308,6 +320,22 @@ func (gs *GameState) isInConcealment(source *player.Player) bool {
 	}
 	_, inConcealment := gs.bushGroupAt(source.X, source.Y)
 	return inConcealment
+}
+
+func (gs *GameState) isPursued(source *player.Player, now int64) bool {
+	if source == nil || !source.IsAlive() {
+		return false
+	}
+	for _, hunter := range gs.Players {
+		if hunter == nil || hunter == source || !hunter.IsAlive() ||
+			(source.Team != "" && source.Team == hunter.Team) {
+			continue
+		}
+		if gs.botCanSee(hunter, source, now) {
+			return true
+		}
+	}
+	return false
 }
 
 func sameWallSource(current, indexed []*geometry.WallTile) bool {
@@ -595,6 +623,7 @@ func (gs *GameState) updateStatuses() {
 			if killer := gs.Players[p.PoisonBy]; killer != nil {
 				killerName = killer.Name
 				killer.Kills++
+				gs.dropHeroHealthBoost(p, killer)
 			}
 			gs.Broadcast("killed", map[string]interface{}{"killerName": killerName, "killedName": p.Name})
 			if gs.OnPlayerKilled != nil {
@@ -660,6 +689,20 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 	dealt := livesBefore - target.Lives + shieldBefore - target.ShieldHP
 	if livesBefore > 0 && target.Lives <= 0 {
 		target.Deaths++
+		if gs.Mode != ModeTeamDeathmatch && target.Place == 0 {
+			if place := gs.countActivePlayers() + 1; place > 1 {
+				target.Place = place
+			}
+		}
+		if target.FlyingUntil != 0 {
+			// A lethal hit can interrupt flight between movement ticks. Resolve
+			// the corpse immediately so the snapshot never places it inside a
+			// wall after the aerial state is cleared.
+			gs.resolveFlightLanding(target, gs.activeCrateBodies())
+		}
+		// A dead hero cannot retain traversal state into a later respawn.
+		target.FlyingUntil = 0
+		target.FlightSpeedMultiplier = 0
 	}
 	if target.Lives <= 0 && gs.Mode == ModeTeamDeathmatch && target.RespawnAt == 0 {
 		target.RespawnAt = now + gs.teamRespawnDelayAt(now).Milliseconds()
@@ -696,6 +739,7 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		if source != nil {
 			killerName = source.Name
 			source.Kills++
+			gs.dropHeroHealthBoost(target, source)
 			if !gs.IslandVoiceKillClaimed[source.PlayerId] {
 				gs.IslandVoiceKillClaimed[source.PlayerId] = true
 				gs.emitIslandVoice(source.PlayerId, IslandVoiceTriggerKill, time.Now().UnixMilli())
@@ -711,6 +755,21 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		gs.finishBattleIfDecided()
 	}
 	return dealt
+}
+
+func (gs *GameState) dropHeroHealthBoost(target, killer *player.Player) {
+	if target == nil || killer == nil || killer.PlayerId == "" {
+		return
+	}
+	reward := prop.NewProp("health_boost", target.X, target.Y, 14)
+	reward.LootType = "hero"
+	reward.HealthBoostKillerID = killer.PlayerId
+	if gs.Mode == ModeTeamDeathmatch && killer.Team != "" {
+		reward.VisibilityTeam = killer.Team
+	} else {
+		reward.VisibilityPlayerID = killer.PlayerId
+	}
+	gs.Props = append(gs.Props, reward)
 }
 
 // canDamagePlayer is the final server-side friendly-fire gate. Individual
@@ -782,7 +841,7 @@ func (gs *GameState) updateDelayedEffects() {
 
 func (gs *GameState) addEffect(kind string, x, y, toX, toY, radius, angle, reach, arc float64, color string, damage int, duration int64) *BattleEffect {
 	now := time.Now().UnixMilli()
-	effect := &BattleEffect{Kind: kind, X: x, Y: y, ToX: toX, ToY: toY, Radius: radius, Angle: angle, Range: reach, Arc: arc, Color: color, Damage: damage, CreatedAt: now, ExpiresAt: now + duration}
+	effect := &BattleEffect{Kind: kind, Phase: combatEffectPhase(kind), X: x, Y: y, ToX: toX, ToY: toY, Radius: radius, Angle: angle, Range: reach, Arc: arc, Color: color, Damage: damage, CreatedAt: now, ExpiresAt: now + duration}
 	gs.Effects = append(gs.Effects, effect)
 	return effect
 }
@@ -824,14 +883,6 @@ func (gs *GameState) updateActiveAbilities() {
 			gs.pullTargets(source, source.X, source.Y, 260, 16)
 			gs.radialDamage(source.PlayerId, source.X, source.Y, 245, 18)
 		}
-		if source.FlyingUntil > now && (source.FlyingUntil-now)%250 < 20 {
-			gs.addEffect("acid", source.X, source.Y, 0, 0, 110, 0, 0, 0, "#5f2a72", 0, 2200)
-			for _, target := range gs.Players {
-				if target != source && target.IsAlive() && math.Hypot(target.X-source.X, target.Y-source.Y) < 110 {
-					target.BlindUntil = now + 1200
-				}
-			}
-		}
 	}
 }
 
@@ -860,8 +911,7 @@ func (gs *GameState) pullTargets(source *player.Player, x, y, radius, distance f
 		dx, dy := x-target.X, y-target.Y
 		d := math.Hypot(dx, dy)
 		if d > 0 && d <= radius {
-			target.X += dx / d * math.Min(distance, d)
-			target.Y += dy / d * math.Min(distance, d)
+			gs.movePlayerByCollision(target, dx/d*math.Min(distance, d), dy/d*math.Min(distance, d))
 		}
 	}
 }
@@ -970,9 +1020,10 @@ func (gs *GameState) updateBullets() {
 				b.HitRadius = 0
 			}
 			if b.Knockback > 0 {
-				geometry.MoveCircleWithBlockingWalls(
+				geometry.MoveCircleWithBlockingWallsAndCircles(
 					&p.CircleBody,
 					gs.Walls,
+					gs.activeCrateBodies(),
 					math.Cos(b.Rotation)*b.Knockback,
 					math.Sin(b.Rotation)*b.Knockback,
 				)
@@ -1202,7 +1253,9 @@ func (gs *GameState) startLobby() {
 	gs.LobbyEndsAt = time.Now().Add(LobbyDuration).UnixMilli()
 	gs.GameEndsAt = 0
 	gs.State = GameStateLobby
+	gs.resetMatchMap()
 	gs.propsClear()
+	gs.resetMatchAbilityRuntime()
 	// Lobby is a live warm-up arena: connected players can move, rotate and
 	// inspect the map while waiting. Combat actions remain gated by StateGame.
 	gs.setPlayersActive(true)
@@ -1213,6 +1266,10 @@ func (gs *GameState) startFinished() {
 	gs.GameEndsAt = 0
 	gs.State = GameStateFinished
 	for _, p := range gs.Players {
+		if p.FlyingUntil != 0 {
+			gs.resolveFlightLanding(p, gs.activeCrateBodies())
+		}
+		p.FlyingUntil, p.FlightSpeedMultiplier = 0, 0
 		p.MoveX, p.MoveY, p.Aiming = 0, 0, false
 	}
 }
@@ -1232,6 +1289,11 @@ func (gs *GameState) startGame() {
 	gs.BeaconHoldStartedAt = make(map[string]int64)
 	gs.SuddenDeathStartedAt, gs.SuddenDeathNextTickAt, gs.SuddenDeathDamage = 0, 0, 0
 	gs.State = GameStateGame
+	gs.resetMatchMap()
+	gs.resetMatchAbilityRuntime()
+	gs.propsClear()
+	gs.monstersClear()
+	gs.initializeTeamObjectives()
 	gs.fillMissingBots()
 
 	gs.matchRules().AssignTeams(gs)
@@ -1288,6 +1350,7 @@ func (gs *GameState) onGameEnd(event *ServerEvent) {
 				}
 			}
 		}
+		gs.finalizeBattlePlaces(winner)
 		gs.OnGameEnd(gs.Players, winner, duration)
 	}
 	if event != nil {
@@ -1296,6 +1359,17 @@ func (gs *GameState) onGameEnd(event *ServerEvent) {
 	gs.propsClear()
 	gs.monstersClear()
 	gs.Broadcast("stop", map[string]interface{}{})
+}
+
+func (gs *GameState) finalizeBattlePlaces(winner string) {
+	if gs == nil || gs.Mode == ModeTeamDeathmatch || winner == "" {
+		return
+	}
+	for _, candidate := range gs.Players {
+		if candidate != nil && candidate.Place == 0 && candidate.IsAlive() && candidate.Name == winner {
+			candidate.Place = 1
+		}
+	}
 }
 
 func (gs *GameState) PlayerAdd(id, name string, heroName string) {
@@ -1365,6 +1439,13 @@ func EffectiveMovementSpeed(p *player.Player, now int64) float64 {
 		return 0
 	}
 	speed := p.Speed
+	if isPlayerFlying(p, now) {
+		multiplier := p.FlightSpeedMultiplier
+		if multiplier <= 0 {
+			multiplier = 1
+		}
+		speed *= multiplier
+	}
 	if p.HasteUntil > now {
 		speed *= 1.22
 	}
@@ -1389,7 +1470,9 @@ func (gs *GameState) updatePlayerMovement(elapsed ...time.Duration) {
 		// suspended process resumes, but normal missed ticks must be paid back.
 		step = math.Min(elapsed[0].Seconds(), 100*time.Millisecond.Seconds())
 	}
+	blockingCrates := gs.activeCrateBodies()
 	for _, p := range gs.Players {
+		gs.expirePlayerFlight(p, now, blockingCrates)
 		if !p.IsAlive() || p.StunUntil > now || p.ChannelUntil > now || (p.MoveX == 0 && p.MoveY == 0) {
 			continue
 		}
@@ -1400,17 +1483,37 @@ func (gs *GameState) updatePlayerMovement(elapsed ...time.Duration) {
 			}
 		}
 		magnitude := math.Hypot(p.MoveX, p.MoveY)
-		geometry.MoveCircleWithBlockingWalls(
-			&p.CircleBody,
-			gs.Walls,
-			p.MoveX/magnitude*speed,
-			p.MoveY/magnitude*speed,
-		)
+		fromX, fromY := p.X, p.Y
+		deltaX, deltaY := p.MoveX/magnitude*speed, p.MoveY/magnitude*speed
+		if isPlayerFlying(p, now) {
+			// Flight changes only traversal. The ocean/map boundary remains
+			// authoritative, while walls and ground props stay below the hero.
+			moveCircleDuringFlight(&p.CircleBody, gs.Walls, deltaX, deltaY)
+		} else {
+			geometry.MoveCircleWithBlockingWallsAndCircles(&p.CircleBody, gs.Walls, blockingCrates, deltaX, deltaY)
+		}
 
 		clamped := gs.Map.ClampCircle(&p.CircleBody)
 		p.X, p.Y = clamped.X, clamped.Y
+		if isPlayerFlying(p, now) {
+			gs.updateKattyFlightTrail(p, fromX, fromY, p.X, p.Y, now)
+		}
 		gs.collectPickups(p)
 	}
+}
+
+func (gs *GameState) activeCrateBodies() []*geometry.CircleBody {
+	if gs == nil || len(gs.Props) == 0 {
+		return nil
+	}
+	crates := make([]*geometry.CircleBody, 0, len(gs.Props))
+	for _, pr := range gs.Props {
+		if pr == nil || !pr.Active || !isBreakableCrate(pr) {
+			continue
+		}
+		crates = append(crates, &pr.CircleBody)
+	}
+	return crates
 }
 
 func worldAngleFromScreen(angle float64) float64 {
@@ -1453,7 +1556,7 @@ func (gs *GameState) collectPickups(p *player.Player) {
 	}
 	now := time.Now().UnixMilli()
 	for _, pr := range gs.Props {
-		if !pr.Active {
+		if !pr.Active || !canCollectPickup(p, pr) {
 			continue
 		}
 		if geometry.CircleToCircle(&p.CircleBody, &pr.CircleBody) {
@@ -1474,12 +1577,11 @@ func (gs *GameState) collectPickups(p *player.Player) {
 				// Never let a pickup reduce an assassin's native movement speed.
 				p.Speed = math.Max(p.Speed, math.Min(p.Speed*1.012, 14.25))
 			case "health_boost":
-				bonus := p.ApplyHealthBoost(HealthBoostFraction)
-				if bonus <= 0 {
+				if !gs.collectHealthBoost(p, pr) {
 					continue
 				}
 				pr.Active = false
-				gs.addEffect("health_boost", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#4dff70", bonus, 700)
+				gs.addEffect("health_boost", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#4dff70", 0, 700)
 			case "lunar_speed", "lunar_damage", "lunar_shield", "lunar_cooldown":
 				pr.Active = false
 				switch pr.Type {
@@ -1501,6 +1603,39 @@ func (gs *GameState) collectPickups(p *player.Player) {
 			}
 		}
 	}
+}
+
+func canCollectPickup(p *player.Player, pr *prop.Prop) bool {
+	if p == nil || pr == nil {
+		return false
+	}
+	if pr.VisibilityPlayerID != "" && pr.VisibilityPlayerID != p.PlayerId {
+		return false
+	}
+	return pr.VisibilityTeam == "" || pr.VisibilityTeam == p.Team
+}
+
+func (gs *GameState) collectHealthBoost(collector *player.Player, reward *prop.Prop) bool {
+	if reward == nil || reward.HealthBoostKillerID == "" {
+		return collector.ApplyHealthBoost(HealthBoostFraction) > 0
+	}
+
+	killer := gs.Players[reward.HealthBoostKillerID]
+	if gs.Mode != ModeTeamDeathmatch || reward.VisibilityTeam == "" {
+		return killer != nil && killer.PlayerId == collector.PlayerId && killer.ApplyHealthBoost(HealthBoostFraction) > 0
+	}
+
+	for _, teammate := range gs.Players {
+		if teammate == nil || teammate.Team != reward.VisibilityTeam {
+			continue
+		}
+		fraction := TeamHealthBoostFraction
+		if teammate.PlayerId == reward.HealthBoostKillerID {
+			fraction = HealthBoostFraction
+		}
+		teammate.ApplyHealthBoost(fraction)
+	}
+	return true
 }
 
 func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ...string) {
@@ -1587,16 +1722,6 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 	angle := p.Rotation
 	gs.addEffect("burst", p.X, p.Y, 0, 0, 95, angle, 0, 0, p.Color, 0, 420)
 	switch p.HeroName {
-	case "Viper":
-		if primary {
-			gs.dashAttack(p, angle, 180, 0, 0)
-			gs.radialDamage(p.PlayerId, p.X, p.Y, 210, 120)
-			gs.addEffect("collapse", p.X, p.Y, 0, 0, 210, angle, 0, 0, "#ff7138", 0, 650)
-			gs.DelayedEffects = append(gs.DelayedEffects, &DelayedBattleEffect{Owner: p.PlayerId, X: p.X, Y: p.Y, TriggerAt: ts + 1500})
-		} else {
-			p.ShieldUntil = ts + 2200
-			gs.addEffect("guard", p.X, p.Y, 0, 0, 72, angle, 0, 0, "#ffb15c", 0, 700)
-		}
 	case "Needle":
 		if primary {
 			p.VineUntil = ts + 4000
@@ -1630,8 +1755,6 @@ func AbilityCooldownMs(heroName, slot string) int64 {
 		return 13000
 	case "Katty":
 		return 12000
-	case "Viper":
-		return 5800
 	}
 	return 12000
 }
@@ -1982,8 +2105,7 @@ func (gs *GameState) hitSectorWithDamage(source *player.Player, angle, reach, ha
 		gs.dealPlayerDamage(source, target, damage)
 		hits++
 		if pull {
-			target.X -= math.Cos(angle) * 16
-			target.Y -= math.Sin(angle) * 16
+			gs.movePlayerByCollision(target, -math.Cos(angle)*16, -math.Sin(angle)*16)
 		}
 	}
 	for id, target := range gs.Monsters {
@@ -2025,6 +2147,25 @@ func (gs *GameState) hitSectorWithDamage(source *player.Player, angle, reach, ha
 
 func isBreakableCrate(crate *prop.Prop) bool {
 	return crate != nil && (crate.Type == "lunar_crate" || crate.Type == "health_crate")
+}
+
+// movePlayerByCollision applies displacement caused by a control ability using
+// the same live collision graph as ordinary movement. Flying heroes retain
+// their traversal exception, while grounded heroes cannot be pulled or pushed
+// through a wall or an active crate.
+func (gs *GameState) movePlayerByCollision(p *player.Player, deltaX, deltaY float64) {
+	if gs == nil || p == nil || (deltaX == 0 && deltaY == 0) {
+		return
+	}
+	if isPlayerFlying(p, time.Now().UnixMilli()) {
+		moveCircleDuringFlight(&p.CircleBody, gs.Walls, deltaX, deltaY)
+	} else {
+		geometry.MoveCircleWithBlockingWallsAndCircles(&p.CircleBody, gs.Walls, gs.activeCrateBodies(), deltaX, deltaY)
+	}
+	if gs.Map != nil {
+		clamped := gs.Map.ClampCircle(&p.CircleBody)
+		p.X, p.Y = clamped.X, clamped.Y
+	}
 }
 
 func (gs *GameState) damageLunarCrate(source *player.Player, crate *prop.Prop, damage int) bool {
@@ -2269,14 +2410,16 @@ func (gs *GameState) updateTemporaryWalls() {
 	for _, wall := range kept {
 		gs.Walls.Insert(wall)
 	}
+	gs.WallsSource = kept
 }
 
 func (gs *GameState) dashAttack(p *player.Player, angle, distance, radius float64, damage int) {
 	steps := 5
 	for step := 0; step < steps; step++ {
-		geometry.MoveCircleWithBlockingWalls(
+		geometry.MoveCircleWithBlockingWallsAndCircles(
 			&p.CircleBody,
 			gs.Walls,
+			gs.activeCrateBodies(),
 			math.Cos(angle)*distance/float64(steps),
 			math.Sin(angle)*distance/float64(steps),
 		)
@@ -2285,9 +2428,10 @@ func (gs *GameState) dashAttack(p *player.Player, angle, distance, radius float6
 }
 
 func (gs *GameState) vaultMove(p *player.Player, angle, distance float64) {
-	geometry.MoveCircleWithBlockingWalls(
+	geometry.MoveCircleWithBlockingWallsAndCircles(
 		&p.CircleBody,
 		gs.Walls,
+		gs.activeCrateBodies(),
 		math.Cos(angle)*distance,
 		math.Sin(angle)*distance,
 	)
@@ -2324,25 +2468,126 @@ func (gs *GameState) closestWallPoint(p *player.Player, angle, maxDistance float
 func (gs *GameState) setPlayersActive(active bool) {
 	for _, p := range gs.Players {
 		if active {
-			p.Lives = p.MaxLives
-			p.Kills = 0
-			p.Deaths = 0
-			p.PlayerDamage = 0
-			p.TowerDamage = 0
-			p.TownHallDamage = 0
-			p.TowersDestroyed = 0
-			p.TownHallsDestroyed = 0
-			p.SuperCharge = 100
-			p.LastPrimaryAt, p.LastSecondaryAt = 0, 0
-			p.FocusStartedAt, p.FocusCharge = 0, 0
-			p.GadgetArmed, p.GadgetCharges = false, 3
-			p.Ammo = p.MaxAmmo
-			p.NextAmmoAt = 0
-			p.RespawnAt = 0
+			gs.resetPlayerMatchState(p)
 		} else {
+			p.Lives = 0
+			gs.resetPlayerMatchState(p)
 			p.Lives = 0
 		}
 	}
+}
+
+// resetPlayerMatchState is the single boundary between two fresh battles.
+// Player identity and lobby/team selection survive, while every combat stat,
+// ability resource, timer, stack and match history is rebuilt from the hero
+// catalog so a previous battle cannot leak power into the next one.
+func (gs *GameState) resetPlayerMatchState(p *player.Player) {
+	if p == nil {
+		return
+	}
+	catalog := gs.heroCatalog
+	if catalog == nil {
+		catalog = DefaultHeroCatalog()
+	}
+	if hero, ok := catalog.Find(p.HeroName); ok {
+		p.Radius = hero.Radius
+		p.MaxLives = hero.MaxLives
+		p.BaseMaxLives = hero.MaxLives
+		p.Speed = float64(hero.Speed) * RuntimeMovementSpeedScale
+		p.AttackDmg = hero.AttackDamage
+		p.AttackRate = int64(float64(hero.AttackRate)*AttackRateScale + .5)
+		p.ReloadTime = int64(float64(hero.ReloadTime)*ReloadTimeScale + .5)
+		p.MaxAmmo = hero.MaxAmmo
+		p.BulletSpd = float64(hero.BulletSpeed) * RuntimeProjectileSpeedScale
+		p.BulletSz = hero.BulletSize
+		p.AttackType = hero.AttackType
+		p.RegenRate = hero.RegenRate
+	} else if p.BaseMaxLives > 0 {
+		p.MaxLives = p.BaseMaxLives
+	}
+
+	p.Lives = p.MaxLives
+	p.HealthBoosts = 0
+	p.Kills, p.Place, p.Deaths = 0, 0, 0
+	p.PlayerDamage, p.TowerDamage = 0, 0
+	p.TownHallDamage, p.TowersDestroyed, p.TownHallsDestroyed = 0, 0, 0
+	p.Rotation, p.Ack = 0, 0
+	p.LastShootAt, p.MoveX, p.MoveY = 0, 0, 0
+	p.ShieldHP, p.ShieldStacks, p.ShieldStackUntil = 0, 0, 0
+	p.PoisonUntil, p.PoisonTickAt, p.PoisonBy = 0, 0, ""
+	p.Marks, p.SuperCharge, p.Heat, p.HeatUntil = 0, 100, 0, 0
+	p.AttackPulse, p.SuperPulse, p.GadgetPulse = 0, 0, 0
+	p.Aiming, p.AimDistance = false, 0
+	p.ShieldUntil, p.InvulnerableUntil, p.StealthUntil = 0, 0, 0
+	p.StunUntil, p.CastUntil, p.ChannelUntil = 0, 0, 0
+	p.VineUntil, p.VortexUntil, p.VortexTickAt = 0, 0, 0
+	p.FlyingUntil, p.FlightSpeedMultiplier, p.BlindUntil = 0, 0, 0
+	p.Dodges, p.Souls, p.Deflect, p.Evolution = 0, 0, 0, 0
+	p.LastAbilityTick, p.LastAbilityID, p.LastAbilityOK = 0, "", false
+	p.PowerCores, p.DamageMultiplier = 0, 1
+	p.LastPrimaryAt, p.LastSecondaryAt = 0, 0
+	p.HasteUntil, p.LunarSpeedUntil, p.LunarDamageUntil = 0, 0, 0
+	p.LunarShield, p.SlowUntil, p.SlowMultiplier = false, 0, 1
+	p.FocusStartedAt, p.FocusCharge = 0, 0
+	p.SuppressedRage, p.MicoRage, p.LumiFlowers = 0, 0, 0
+	p.VortexRadius, p.VortexDamage = 0, 0
+	p.StoneArmorUntil, p.GadgetArmed = 0, false
+	p.KazeCritReady, p.KazeCombo, p.KazeComboUntil = false, 0, 0
+	p.GadgetCharges, p.Ammo, p.NextAmmoAt = 3, p.MaxAmmo, 0
+	p.RegenCarry, p.LastDamageAt, p.RespawnAt = 0, 0, 0
+	p.RespawnCount, p.LastRegenAt = 0, 0
+	p.RevealedUntil, p.LastContactAt, p.LastContactBy = 0, 0, ""
+	p.LastContactX, p.LastContactY, p.LastContactDirX, p.LastContactDirY = 0, 0, 0, 0
+	p.HitImpulseX, p.HitImpulseY = 0, 0
+}
+
+func (gs *GameState) resetMatchAbilityRuntime() {
+	gs.Bullets = make([]*bullet.Bullet, 0)
+	gs.Actions = make([]Action, 0)
+	gs.Effects = make([]*BattleEffect, 0)
+	gs.DelayedEffects = make([]*DelayedBattleEffect, 0)
+	gs.ScheduledShots = make([]*ScheduledShot, 0)
+	gs.DamageZones = make([]*DamageZone, 0)
+	gs.PendingMandySupers = make([]*PendingMandySuper, 0)
+	gs.HeroZones = make([]*HeroZone, 0)
+	gs.KattyPaintStacks = make(map[string]map[string]int)
+	gs.KattyPaintUntil = make(map[string]map[string]int64)
+	gs.LightMarkedUntil = make(map[string]int64)
+	gs.AbilityTargets = make(map[string]string)
+	gs.LightningStrikes = make([]*LightningStrike, 0)
+	gs.Skyfalls = make([]*Skyfall, 0)
+	gs.TemporaryWalls = make(map[*geometry.WallTile]int64)
+	gs.CombatEvents = make([]CombatEvent, 0)
+	gs.NextCombatEventID = 0
+	gs.BotMemory = make(map[string]*BotPerception)
+	gs.activeCommandID, gs.activeSourceID = "", ""
+	gs.activeProjectileID, gs.commandHasProjectile = 0, false
+	gs.activeAutoAim, gs.hasAutoAimTarget = false, false
+	gs.autoAimTargetX, gs.autoAimTargetY, gs.autoAimTargetID = 0, 0, ""
+}
+
+// resetMatchMap restores the authored collision graph before a new battle.
+// Abilities can destroy walls or add temporary rocks, so clearing only the
+// ability lists would still leak mutated map geometry into the next match.
+func (gs *GameState) resetMatchMap() {
+	if gs == nil || gs.mapProvider == nil {
+		return
+	}
+	m, err := gs.mapProvider.LoadMap(gs.MapName)
+	if err != nil || m == nil {
+		return
+	}
+	gs.Map = m
+	gs.Walls = geometry.NewSpatialHash(float64(TileSize))
+	for _, wall := range m.Collisions {
+		gs.Walls.Insert(wall)
+	}
+	gs.WallsSource = m.Collisions
+	gs.MapRevision++
+	gs.botWallCacheRevision = -1
+	gs.botWallCache = nil
+	gs.botTerrainCacheRevision = -1
+	gs.botTerrainCache = nil
 }
 
 func (gs *GameState) setPlayersPositionRandomly() {

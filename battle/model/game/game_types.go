@@ -29,6 +29,7 @@ const (
 	MonstersCount     = 8
 
 	HealthBoostFraction                 = .05
+	TeamHealthBoostFraction             = .02
 	MonsterHealthBoostDropChancePercent = 20
 
 	PlayerSize = 32.0
@@ -208,6 +209,7 @@ type DelayedBattleEffect struct {
 
 type BattleEffect struct {
 	Kind                                      string
+	Phase                                     CombatEffectPhase
 	X, Y, ToX, ToY, Radius, Angle, Range, Arc float64
 	Color                                     string
 	Damage                                    int

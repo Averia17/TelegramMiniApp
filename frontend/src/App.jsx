@@ -16,6 +16,7 @@ const BattlePage = ({id}) => {
   const navigate = useNavigate()
   const hero = location.state?.heroName || loadBattleHero(id)
   const battleIntentId = location.state?.battleIntentId || ""
+  const query = new URLSearchParams(location.search)
   const [startNewBattle] = useState(() => {
     if (!location.state?.startNewBattle || !battleIntentId) return false
     try {
@@ -24,8 +25,10 @@ const BattlePage = ({id}) => {
       return true
     }
   })
-  const mode = new URLSearchParams(location.search).get("mode") === "team" ? "team" : "solo"
-  const partyId = new URLSearchParams(location.search).get("party") || ""
+  const mode = query.get("mode") === "team" ? "team" : "solo"
+  const partyId = query.get("party") || ""
+  const partyTicket = location.state?.battleTicket || ""
+  const playerName = location.state?.playerName || ""
   const [tauntActive, setTauntActive] = useState(Boolean(location.state?.tauntActive))
   useEffect(() => {
     if (!startNewBattle || !battleIntentId) return
@@ -50,7 +53,7 @@ const BattlePage = ({id}) => {
   }, [])
   return (
     <Suspense fallback={<BattleLoading progress={32} status="Загружаем арену..." />}>
-      <BattleGame playerId={id} roomId={roomId} heroName={hero} mode={mode} partyId={partyId} tauntActive={tauntActive} startNewBattle={startNewBattle}/>
+      <BattleGame playerId={id} playerName={playerName} roomId={roomId} heroName={hero} mode={mode} partyId={partyId} partyTicket={partyTicket} tauntActive={tauntActive} startNewBattle={startNewBattle}/>
     </Suspense>
   )
 }

@@ -19,6 +19,14 @@ test("shows crowd-control effects with their remaining duration", () => {
   assert.equal(effects[1].remaining, 2.5)
 })
 
+test("labels team spawn protection clearly and keeps its countdown", () => {
+  const effects = getActiveStatusEffects({lives: 3, invulnerable: 2.4})
+
+  assert.deepEqual(effects.map(effect => [effect.id, effect.label, effect.remaining]), [
+    ["invulnerable", "ЗАЩИТА РЕСПАВНА", 2.4],
+  ])
+})
+
 test("does not show expired or inactive effects", () => {
   const effects = getActiveStatusEffects({stun: 0, poisoned: false, lunarShield: false}, {inBush: false})
 
@@ -47,6 +55,12 @@ test("shows Wukong rage and Kaze combo progress", () => {
     ["micoRage", "ЯРОСТЬ 4/5"],
     ["kazeCombo", "КОМБО 2/2"],
   ])
+})
+
+test("shows Lumi flower setup before the burst payoff", () => {
+  const effects = getActiveStatusEffects({lumiFlowers: 3})
+
+  assert.deepEqual(effects.map(effect => [effect.id, effect.label]), [["lumiFlowers", "ЦВЕТЫ 3/5"]])
 })
 
 test("does not expose the removed global Kaze vulnerability", () => {

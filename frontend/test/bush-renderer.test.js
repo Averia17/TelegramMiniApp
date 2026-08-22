@@ -1,4 +1,4 @@
-import test from "node:test"
+import nodeTest from "node:test"
 import assert from "node:assert/strict"
 import * as THREE from "three"
 import {WORLD_SCALE} from "../src/components/BattleGame/rendering/shared/coordinates.js"
@@ -15,6 +15,8 @@ import {
   splitBushWallComponents,
 } from "../src/components/BattleGame/rendering/map/BushRenderer.js"
 import {MapRenderer} from "../src/components/BattleGame/rendering/map/MapRenderer.js"
+
+const test = (name, fn) => nodeTest(name, {concurrency: true}, fn)
 
 test("bush fallback uses fixed-size tiles with a scalloped crown", () => {
   const field = createBushField([
@@ -257,5 +259,4 @@ test("separate bush clearings keep independent local transparency", () => {
 
 test("bush visibility accepts empty focus without mutating the scene", () => {
   assert.equal(getBushVisibilityOpacity(null, [{minX: 0, minY: 0, maxX: 40, maxY: 40}]), 1)
-  assert.equal(new THREE.Color(0x4aaa57).getHex(), 0x4aaa57)
 })

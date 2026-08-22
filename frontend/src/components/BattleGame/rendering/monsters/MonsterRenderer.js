@@ -3,8 +3,10 @@ import {WORLD_SCALE, worldToScene} from "../shared/coordinates.js"
 import {disposeObjectTree} from "../shared/disposal.js"
 import {endBattlePerformance, startBattlePerformance} from "../shared/performance.js"
 import {createContactShadow} from "../shared/materials.js"
+import {createHealthBadge, updateHealthBadge} from "../heroes/healthBadge.js"
 
 const BAT_HEIGHT = 22
+const HEALTH_BADGE_PARENT_SCALE = 2.2
 export const getHealthBarFraction = (current, maximum) => (
   Math.max(0, Math.min(1, (Number(current) || 0) / Math.max(1, Number(maximum) || 1)))
 )
@@ -29,65 +31,17 @@ const createWingGeometry = side => {
 
 const createHealthBar = () => {
   const group = new THREE.Group()
-  group.scale.set(2.2, 2.2, 1)
-  const background = new THREE.Sprite(new THREE.SpriteMaterial({
-    color: 0x4a1116,
-    depthTest: false,
-    depthWrite: false,
-  }))
-  background.scale.set(.92, .13, 1)
-  const fill = new THREE.Sprite(new THREE.SpriteMaterial({
-    color: 0xe53935,
-    depthTest: false,
-    depthWrite: false,
-  }))
-  fill.center.set(0, .5)
-  fill.scale.set(.8, .072, 1)
-  fill.position.set(-.4, -.036, .01)
-  fill.userData.fullWidth = .8
-  if (typeof document === "undefined") {
-    group.add(background, fill)
-    group.position.set(0, 1.16, 0)
-    group.renderOrder = 18
-    return {group, fill, label: null}
-  }
-  const canvas = document.createElement("canvas")
-  canvas.width = 256
-  canvas.height = 48
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
-  const label = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: texture,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-  }))
-  label.scale.set(1.18, .25, 1)
-  label.position.set(0, .14, .02)
-  label.userData = {canvas, texture, signature: ""}
-  group.add(background, fill, label)
+  group.scale.set(HEALTH_BADGE_PARENT_SCALE, HEALTH_BADGE_PARENT_SCALE, 1)
+  const label = createHealthBadge({
+    scale: [1.18, .25, 1],
+    positionY: .14,
+    showName: false,
+    parentScale: HEALTH_BADGE_PARENT_SCALE,
+  })
+  group.add(label)
   group.position.set(0, 1.16, 0)
   group.renderOrder = 18
-  return {group, fill, label}
-}
-
-const updateHealthLabel = (label, state) => {
-  if (!label) return
-  const text = formatHealthLabel(state.lives, state.maxLives)
-  if (label.userData.signature === text) return
-  label.userData.signature = text
-  const {canvas, texture} = label.userData
-  const context = canvas.getContext("2d")
-  context.clearRect(0, 0, canvas.width, canvas.height)
-  context.textAlign = "center"
-  context.textBaseline = "middle"
-  context.font = "900 31px Arial"
-  context.lineWidth = 8
-  context.strokeStyle = "#241329"
-  context.strokeText(text, canvas.width / 2, canvas.height / 2)
-  context.fillStyle = "#fff"
-  context.fillText(text, canvas.width / 2, canvas.height / 2)
-  texture.needsUpdate = true
+  return {group, fill: null, label}
 }
 
 const createBat = state => {
@@ -141,7 +95,7 @@ const createBat = state => {
   const shadow = createContactShadow(.72)
   shadow.position.y = -BAT_HEIGHT * WORLD_SCALE + .02
   const health = createHealthBar()
-  updateHealthLabel(health.label, state)
+  updateHealthBadge(health.label, state, {healthColor: "#ff4657"})
   group.add(shadow, leftWing, rightWing, body, head, leftEar, rightEar, health.group)
 
   const visualScale = Math.max(.82, Number(state.radius) * WORLD_SCALE / 1.45)
@@ -153,7 +107,7 @@ const createBat = state => {
     rightWing,
     body,
     healthBar: health.group,
-    healthFill: health.fill,
+    healthFill: null,
     healthLabel: health.label,
     healthFraction: getHealthBarFraction(state.lives, state.maxLives),
     targetX: state.x,
@@ -186,8 +140,7 @@ export class MonsterRenderer {
       this.updateView(view, state)
       const health = getHealthBarFraction(state.lives, state.maxLives)
       view.healthFraction = health
-      view.healthFill.scale.x = view.healthFill.userData.fullWidth * health
-      updateHealthLabel(view.healthLabel, state)
+      updateHealthBadge(view.healthLabel, state, {healthColor: "#ff4657"})
     })
     this.views.forEach((view, id) => {
       if (active.has(id)) return

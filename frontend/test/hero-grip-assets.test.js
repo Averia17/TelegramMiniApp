@@ -9,10 +9,15 @@ import {HERO_ASSETS} from "../src/components/BattleGame/rendering/assets/assetMa
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
+const glbCache = new Map()
 const readGlbJson = async url => {
-  const buffer = await readFile(path.join(frontendRoot, "public", url.replace(/^\//, "")))
-  const jsonLength = buffer.readUInt32LE(12)
-  return JSON.parse(buffer.toString("utf8", 20, 20 + jsonLength))
+  if (!glbCache.has(url)) {
+    glbCache.set(url, readFile(path.join(frontendRoot, "public", url.replace(/^\//, ""))).then(buffer => {
+      const jsonLength = buffer.readUInt32LE(12)
+      return JSON.parse(buffer.toString("utf8", 20, 20 + jsonLength))
+    }))
+  }
+  return glbCache.get(url)
 }
 
 const localMatrix = node => {

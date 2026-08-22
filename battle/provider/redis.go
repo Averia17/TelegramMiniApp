@@ -34,6 +34,7 @@ const (
 	roomPlayersKey      = "battle:room_players:"
 	resultPrefix        = "battle:result:"
 	playerResultsPrefix = "battle:player_results:"
+	resultRetention     = 90 * 24 * time.Hour
 )
 
 type RedisProvider struct {
@@ -163,15 +164,67 @@ func (p *RedisProvider) SaveBattleResult(result *BattleResult) error {
 	if err != nil {
 		return err
 	}
-	const resultTTL = 24 * time.Hour
 	pipe := p.client.Pipeline()
-	pipe.Set(ctx, resultPrefix+result.RoomId, data, resultTTL)
+	pipe.Set(ctx, resultPrefix+result.RoomId, data, resultRetention)
 	for _, player := range result.Players {
 		pipe.ZAdd(ctx, playerResultsPrefix+player.PlayerId, redis.Z{Score: float64(result.EndedAt), Member: result.RoomId})
-		pipe.Expire(ctx, playerResultsPrefix+player.PlayerId, resultTTL)
+		pipe.Expire(ctx, playerResultsPrefix+player.PlayerId, resultRetention)
 	}
 	_, err = pipe.Exec(ctx)
 	return err
+}
+
+func (p *RedisProvider) ListBattleResults(playerId string, beforeEndedAt int64, beforeRoomId string, limit int) ([]*BattleResult, error) {
+	if !p.connected {
+		return nil, fmt.Errorf("redis not available")
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	// Fetch a small look-ahead window so the API can distinguish an exact page
+	// from a page that has more records. The cursor filter below also handles
+	// the rare case where two matches share the same millisecond timestamp.
+	fetchLimit := int64(limit * 4)
+	if fetchLimit < int64(limit+1) {
+		fetchLimit = int64(limit + 1)
+	}
+	maxScore := "+inf"
+	if beforeEndedAt > 0 {
+		maxScore = fmt.Sprintf("%d", beforeEndedAt)
+	}
+	entries, err := p.client.ZRevRangeByScoreWithScores(ctx, playerResultsPrefix+playerId, &redis.ZRangeBy{
+		Max:    maxScore,
+		Min:    "-inf",
+		Offset: 0,
+		Count:  fetchLimit,
+	}).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	page := make([]*BattleResult, 0, limit)
+	for _, entry := range entries {
+		roomId, ok := entry.Member.(string)
+		if !ok || (beforeEndedAt > 0 && (int64(entry.Score) > beforeEndedAt || (int64(entry.Score) == beforeEndedAt && roomId >= beforeRoomId))) {
+			continue
+		}
+		data, err := p.client.Get(ctx, resultPrefix+roomId).Bytes()
+		if err == redis.Nil {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		var result BattleResult
+		if err := json.Unmarshal(data, &result); err != nil {
+			return nil, err
+		}
+		page = append(page, &result)
+		if len(page) == limit {
+			break
+		}
+	}
+	return page, nil
 }
 
 func (p *RedisProvider) GetLatestBattleResult(playerId string) (*BattleResult, error) {

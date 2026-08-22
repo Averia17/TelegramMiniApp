@@ -7,8 +7,8 @@ export const BattleLoading = ({progress = 28, status = "Подключаемся
     <div className="battle-loading-screen" data-testid="battle-loading" role="status" aria-live="polite">
       <div className="battle-loading__noise"/>
       <div className="battle-loading__card">
-        <div className="battle-loading__logo"><span>STAR</span>BRAWL</div>
-        <div className="battle-loading__eyebrow">BATTLE ARENA</div>
+        <div className="battle-loading__radar" aria-hidden="true"><span/><i/><b>◈</b></div>
+        <div className="battle-loading__eyebrow">ПОИСК СОПЕРНИКА</div>
         <h1>ВХОД В БОЙ</h1>
         <div className="battle-loading__stages" aria-hidden="true">
           <span className={safeProgress >= 34 ? "is-done" : "is-active"}>СВЯЗЬ</span>

@@ -27,6 +27,7 @@ class UserRepo(BaseRepo):
                 user_id=user_id,
                 username=username,
                 full_name=full_name,
+                nickname=str(user_id),
             )
             .on_conflict_do_update(
                 index_elements=[User.user_id],

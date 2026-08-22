@@ -57,9 +57,9 @@ func (r *Room) registerClient(client *Client, emptySince *time.Time) {
 			r.State.PlacePlayerAtTeamSpawn(client.Id)
 		}
 	}
-	if Store != nil && previous == nil {
+	if store := currentStore(); store != nil && previous == nil {
 		playerRecord := &provider.PlayerRecord{PlayerId: client.Id, RoomId: r.Id, Name: client.Name}
-		if err := Store.AddPlayerToRoom(r.Id, playerRecord); err != nil {
+		if err := store.AddPlayerToRoom(r.Id, playerRecord); err != nil {
 			log.Printf("Store add player error: %v", err)
 		}
 	}
@@ -76,14 +76,47 @@ func (r *Room) unregisterClient(client *Client, emptySince *time.Time) {
 		delete(r.Clients, client.Id)
 		r.Disconnected[client.Id] = time.Now()
 		close(client.Send)
-		if Store != nil {
-			if err := Store.RemovePlayerFromRoom(r.Id, client.Id); err != nil {
+		if store := currentStore(); store != nil {
+			if err := store.RemovePlayerFromRoom(r.Id, client.Id); err != nil {
 				log.Printf("Store remove player error: %v", err)
 			}
 		}
 	}
 	if len(r.Clients) == 0 && len(r.Disconnected) == 0 {
 		*emptySince = time.Now()
+	}
+}
+
+// LeaveForReconnect immediately removes a deliberately closed transport from
+// active-room checks while preserving the player state for an explicit manual
+// recovery or a short network interruption.
+func (r *Room) LeaveForReconnect(client *Client) {
+	if r == nil || client == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if current, ok := r.Clients[client.Id]; !ok || current != client {
+		return
+	}
+	r.dropPlayerActions(client.Id)
+	if r.State != nil {
+		if player := r.State.Players[client.Id]; player != nil {
+			player.MoveX, player.MoveY, player.Aiming = 0, 0, false
+		}
+	}
+	delete(r.Clients, client.Id)
+	if r.Disconnected == nil {
+		r.Disconnected = make(map[string]time.Time)
+	}
+	r.Disconnected[client.Id] = time.Now()
+	if client.Send != nil {
+		close(client.Send)
+	}
+	if store := currentStore(); store != nil {
+		if err := store.RemovePlayerFromRoom(r.Id, client.Id); err != nil {
+			log.Printf("Store remove leaving player error: %v", err)
+		}
 	}
 }
 

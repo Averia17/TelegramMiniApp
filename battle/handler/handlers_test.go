@@ -15,6 +15,7 @@ import (
 	mroom "battle/model/room"
 	"battle/observability"
 	"battle/provider"
+	sroom "battle/service/room"
 	"github.com/gorilla/websocket"
 )
 
@@ -30,6 +31,103 @@ func TestNextClientMessagePrioritizesFreshState(t *testing.T) {
 	if !ok || string(message) != "state" {
 		t.Fatalf("next client message = %q, %v; want state, true", message, ok)
 	}
+}
+
+func TestHandleFindMatchRejectsPartyWithConnectedBattleMember(t *testing.T) {
+	teamParties = sroom.NewPartyRegistry()
+	mroom.ResetRooms()
+	defer mroom.ResetRooms()
+
+	profile := mroom.NormalizeMatchProfile("team deathmatch", "team-battle", 6)
+	activeRoom := mroom.GetOrCreateRoomFor("active-party-battle", "active-party-battle", profile)
+	activeClient := &mroom.Client{Id: "player-1", Name: "Still fighting", HeroName: "Needle", Send: make(chan []byte, 8), State: make(chan []byte, 1)}
+	activeRoom.Register <- activeClient
+	deadline := time.Now().Add(time.Second)
+	for mroom.FindConnectedRoomForPlayer("player-1") != activeRoom {
+		if time.Now().After(deadline) {
+			t.Fatal("active client was not registered in time")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if _, err := teamParties.Join("party-active", "player-1", 3); err != nil {
+		t.Fatal(err)
+	}
+
+	searching := &mroom.Client{Id: "player-2", Send: make(chan []byte, 1)}
+	ticket := signedBattleTicket(t, battleTicketClaims{PartyID: "party-active", PlayerID: "player-2", Nonce: "battle-1", MaxSize: 3, Exp: time.Now().Add(time.Minute).Unix()})
+	request, _ := json.Marshal(map[string]any{
+		"type": "find_match", "playerName": "New battle", "heroName": "Kaze", "mode": "team deathmatch",
+		"roomMap": "team-battle", "maxPlayers": 6, "partyId": "party-active", "partySize": 3, "partyTicket": ticket,
+	})
+	HandleFindMatch(searching, request)
+
+	select {
+	case message := <-searching.Send:
+		if !strings.Contains(string(message), "Party member is already in battle") {
+			t.Fatalf("error message = %s, want active party member conflict", message)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("matchmaking should reject a party with a connected battle member")
+	}
+}
+
+func TestHandleFindMatchRejectsPartyIDWithoutBattleTicket(t *testing.T) {
+	teamParties = sroom.NewPartyRegistry()
+	searching := &mroom.Client{Id: "attacker", Send: make(chan []byte, 2)}
+
+	HandleFindMatch(searching, []byte(`{"type":"find_match","playerName":"Attacker","heroName":"Kaze","mode":"team deathmatch","roomMap":"team-battle","maxPlayers":6,"partyId":"party-owned-by-someone-else","partySize":3}`))
+
+	if _, ok := teamParties.Snapshot("party-owned-by-someone-else"); ok {
+		t.Fatal("raw party id was accepted into battle party registry")
+	}
+	select {
+	case message := <-searching.Send:
+		if !strings.Contains(string(message), "battle ticket") {
+			t.Fatalf("error message = %s, want battle ticket error", message)
+		}
+	default:
+		t.Fatal("missing party ticket error")
+	}
+}
+
+func TestHandleLeaveBattleRemovesOnlyBattleSessionMembership(t *testing.T) {
+	teamParties = sroom.NewPartyRegistry()
+	if _, err := teamParties.Join("party-leave", "player-1", 3); err != nil {
+		t.Fatal(err)
+	}
+
+	client := &mroom.Client{Id: "player-1", PendingRoomID: "old-room", PartyID: "party-leave", PartySize: 3}
+	HandleLeaveBattle(client)
+
+	if _, ok := teamParties.Snapshot("party-leave"); ok {
+		t.Fatal("intentional leave kept the player in the battle party session")
+	}
+	if client.PendingRoomID != "" || client.PartyID != "" || client.PartySize != 0 {
+		t.Fatalf("client battle session fields = %+v, want cleared", client)
+	}
+}
+
+func TestHandleJoinByIdRestoresPartySessionForManualRecovery(t *testing.T) {
+	teamParties = sroom.NewPartyRegistry()
+	mroom.ResetRooms()
+	defer mroom.ResetRooms()
+
+	profile := mroom.NormalizeMatchProfile("team deathmatch", "team-battle", 6)
+	activeRoom := mroom.GetOrCreateRoomFor("recover-party-battle", "recover-party-battle", profile)
+	activeRoom.State.PlayerAdd("player-1", "Returning player", "Needle")
+	activeRoom.State.Players["player-1"].PartyID = "party-recover"
+
+	client := &mroom.Client{Id: "player-1", Send: make(chan []byte, 8)}
+	HandleJoinById(client, []byte(`{"type":"join_by_id","roomId":"recover-party-battle","playerName":"Returning player","heroName":"Needle"}`))
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if snapshot, ok := teamParties.Snapshot("party-recover"); ok && len(snapshot.MemberIDs) == 1 && snapshot.MemberIDs[0] == "player-1" {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("manual recovery did not restore the player's party battle session")
 }
 
 func TestNextClientMessagePrioritizesRoomHandshake(t *testing.T) {
@@ -237,6 +335,26 @@ func TestWebSocketUpgrade(t *testing.T) {
 
 	if !found {
 		t.Error("did not receive room_joined message")
+	}
+}
+
+func TestWebSocketUpgradeNegotiatesPerMessageCompression(t *testing.T) {
+	h := NewHandler()
+	mux := http.NewServeMux()
+	h.SetupRoutes(mux)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
+	dialer := websocket.Dialer{EnableCompression: true}
+	conn, response, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("compressed WebSocket dial error: %v", err)
+	}
+	defer conn.Close()
+
+	if !strings.Contains(response.Header.Get("Sec-WebSocket-Extensions"), "permessage-deflate") {
+		t.Fatalf("compression extension = %q, want permessage-deflate", response.Header.Get("Sec-WebSocket-Extensions"))
 	}
 }
 

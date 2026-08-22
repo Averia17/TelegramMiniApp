@@ -11,6 +11,7 @@ const VIEWPORTS = [
   {name: "phone-320", width: 320, height: 568},
   {name: "phone-375", width: 375, height: 667},
   {name: "phone-430", width: 430, height: 932},
+  {name: "desktop-1440", width: 1440, height: 900, isMobile: false, hasTouch: false},
 ]
 
 const inspectPage = page => page.evaluate(() => {
@@ -26,7 +27,19 @@ const inspectPage = page => page.evaluate(() => {
   return {
     viewport: {width: innerWidth, height: innerHeight},
     documentWidth: document.documentElement.scrollWidth,
+    documentHeight: document.documentElement.scrollHeight,
     rootWidth: document.getElementById("root")?.scrollWidth,
+    rootHeight: document.getElementById("root")?.scrollHeight,
+    lobby: (() => {
+      const element = document.querySelector(".lp--play")
+      if (!element) return null
+      return {scrollHeight: element.scrollHeight, clientHeight: element.clientHeight}
+    })(),
+    lobbyContent: (() => {
+      const element = document.querySelector(".lp-content--play")
+      if (!element) return null
+      return {scrollHeight: element.scrollHeight, clientHeight: element.clientHeight, overflowY: getComputedStyle(element).overflowY}
+    })(),
     interactive,
     topbar: rect(document.querySelector(".lp-topbar, .battle-topbar")),
     dock: rect(document.querySelector(".lp-battle-dock")),
@@ -51,13 +64,37 @@ const assertInsideViewport = (report, label) => {
   }
 }
 
+const assertLobbyDoesNotScroll = (report, label) => {
+  assert.ok(report.documentHeight <= report.viewport.height + 1, `${label}: document overflows vertically`)
+  assert.ok(report.rootHeight <= report.viewport.height + 1, `${label}: root overflows vertically`)
+  assert.ok(report.lobby?.scrollHeight <= report.lobby?.clientHeight + 1, `${label}: lobby is vertically scrollable ${JSON.stringify(report.lobby)}`)
+  assert.equal(report.lobbyContent?.overflowY, "hidden", `${label}: lobby content exposes vertical scrolling`)
+}
+
+const mockApi = async (page, devUser) => page.route("**/api/**", async route => {
+  const pathname = new URL(route.request().url()).pathname
+  if (pathname.endsWith("/auth/telegram")) {
+    return route.fulfill({json: {access_token: "qa", user_id: Number(devUser)}})
+  }
+  if (pathname.endsWith("/economy/me") || pathname.endsWith("/economy/me/battle")) {
+    return route.fulfill({json: {energy: 100, max_energy: 100, gold: 0, crystals: 0, taunt_charges: 0, next_energy_in: 0}})
+  }
+  if (pathname.endsWith("/heroes")) {
+    return route.fulfill({json: [{name: "Katty", displayName: "Katty", rarity: "LEGENDARY", color: "#d449b5", role: "Controller", maxLives: 640, speed: 14, attackDamage: 52, title: "STREET PAINT ARTIST", attackDescription: "Проверка", superDescription: "Проверка", passiveDescription: "Проверка", attack: {archetype: "ranged"}}]})
+  }
+  if (pathname.endsWith("/party/mine") || pathname.endsWith("/party/invites/pending")) {
+    return route.fulfill({json: pathname.endsWith("/party/invites/pending") ? [] : {}})
+  }
+  return route.fulfill({json: {}})
+})
+
 runWithBrowser(
   () => launchHeadlessChromium(chromium, {headless: true}),
   async browser => {
     fs.mkdirSync(OUTPUT, {recursive: true})
     const results = []
     for (const viewport of VIEWPORTS) {
-      const context = await browser.newContext({viewport, deviceScaleFactor: 1, isMobile: true, hasTouch: true})
+      const context = await browser.newContext({viewport, deviceScaleFactor: 1, isMobile: viewport.isMobile ?? true, hasTouch: viewport.hasTouch ?? true})
       const page = await context.newPage()
       const consoleErrors = []
       const pageErrors = []
@@ -65,11 +102,14 @@ runWithBrowser(
       page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
       const devUser = String(950000000 + viewport.width * 1000 + viewport.height)
 
+      await mockApi(page, devUser)
+
       await page.goto(`${BASE_URL}/?devUser=${devUser}`, {waitUntil: "domcontentloaded", timeout: 30000})
       await page.locator(".lp").waitFor({timeout: 30000})
       await page.locator(".hero-roster-button").waitFor({timeout: 30000})
       const lobby = await inspectPage(page)
       assertInsideViewport(lobby, `${viewport.name} lobby`)
+      assertLobbyDoesNotScroll(lobby, `${viewport.name} lobby`)
       await page.screenshot({path: path.join(OUTPUT, `${viewport.name}-lobby.png`)})
 
       await page.locator(".hero-roster-button").click()
@@ -102,27 +142,30 @@ runWithBrowser(
       await context.close()
     }
 
-    const viewport = {name: "battle-375", width: 375, height: 667}
-    const context = await browser.newContext({viewport, deviceScaleFactor: 1, isMobile: true, hasTouch: true})
-    const page = await context.newPage()
-    const consoleErrors = []
-    const pageErrors = []
-    page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()) })
-    page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
-    await page.goto(`${BASE_URL}/?devUser=959375667`, {waitUntil: "domcontentloaded", timeout: 30000})
-    await page.locator(".lp-play-btn").waitFor({timeout: 30000})
-    await page.locator(".lp-play-btn").click()
-    await page.locator(".battle-game").waitFor({timeout: 30000})
-    await page.locator(".battle-topbar").waitFor({timeout: 45000})
-    const battle = await inspectPage(page)
-    assertInsideViewport(battle, "battle-375")
-    for (const item of [battle.topbar, battle.phase, battle.player, battle.minimap, battle.abilities].filter(Boolean)) {
-      assert.ok(item.left >= -1 && item.right <= viewport.width + 1, "battle HUD element is outside viewport")
-      assert.ok(item.top >= -1 && item.bottom <= viewport.height + 1, "battle HUD element is outside viewport height")
+    if (process.env.MOBILE_QA_INCLUDE_BATTLE !== "false") {
+      const viewport = {name: "battle-375", width: 375, height: 667}
+      const context = await browser.newContext({viewport, deviceScaleFactor: 1, isMobile: true, hasTouch: true})
+      const page = await context.newPage()
+      const consoleErrors = []
+      const pageErrors = []
+      page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()) })
+      page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
+      await mockApi(page, "959375667")
+      await page.goto(`${BASE_URL}/?devUser=959375667`, {waitUntil: "domcontentloaded", timeout: 30000})
+      await page.locator(".lp-play-btn").waitFor({timeout: 30000})
+      await page.locator(".lp-play-btn").click()
+      await page.locator(".battle-game").waitFor({timeout: 30000})
+      await page.locator(".battle-topbar").waitFor({timeout: 45000})
+      const battle = await inspectPage(page)
+      assertInsideViewport(battle, "battle-375")
+      for (const item of [battle.topbar, battle.phase, battle.player, battle.minimap, battle.abilities].filter(Boolean)) {
+        assert.ok(item.left >= -1 && item.right <= viewport.width + 1, "battle HUD element is outside viewport")
+        assert.ok(item.top >= -1 && item.bottom <= viewport.height + 1, "battle HUD element is outside viewport height")
+      }
+      await page.screenshot({path: path.join(OUTPUT, "battle-375-game.png")})
+      results.push({viewport, battle, consoleErrors, pageErrors})
+      await context.close()
     }
-    await page.screenshot({path: path.join(OUTPUT, "battle-375-game.png")})
-    results.push({viewport, battle, consoleErrors, pageErrors})
-    await context.close()
 
     const unexpectedErrors = results.flatMap(result => [...result.consoleErrors, ...result.pageErrors])
     assert.deepEqual(unexpectedErrors, [], `browser errors: ${unexpectedErrors.join("\n")}`)

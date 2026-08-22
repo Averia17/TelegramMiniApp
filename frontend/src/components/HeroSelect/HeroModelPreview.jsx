@@ -129,7 +129,7 @@ export const HeroModelPreview = ({hero, stage = false}) => {
           scene.remove(model)
           disposeObjectTree(model)
           model = instance.root
-          model.scale.multiplyScalar(stage ? 1.16 : 1.02)
+          model.scale.multiplyScalar(stage ? 1.28 : 1.02)
           model.position.x += instance.asset.previewOffsetX || 0
           scene.add(model)
           animation = new GLBHeroController(model, instance.animations, instance.asset.clips, {

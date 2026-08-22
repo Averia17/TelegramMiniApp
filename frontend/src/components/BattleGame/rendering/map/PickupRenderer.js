@@ -2,6 +2,7 @@ import * as THREE from "three"
 import {worldToScene, WORLD_SCALE} from "../shared/coordinates.js"
 import {disposeObjectTree} from "../shared/disposal.js"
 import {createColoredBox, createContactShadow, flatMaterial} from "../shared/materials.js"
+import {battleCanvasFont, getBattleHealthFontSize} from "../../battleTypography.js"
 
 const pickupKey = pickup =>
   `${pickup.type}:${Math.round(Number(pickup.x) || 0)}:${Math.round(Number(pickup.y) || 0)}`
@@ -11,6 +12,8 @@ const lunarColor = lootType => {
   if (lootType === "damage") return 0xff4e57
   return 0xffd34e
 }
+
+const PROP_HEALTH_FONT_SIZE = getBattleHealthFontSize({canvasHeight: 36, spriteHeight: .25, parentScale: 1.15})
 
 export const getPropHealthFraction = (current, maximum) => (
   Math.max(0, Math.min(1, (Number(current) || 0) / Math.max(1, Number(maximum) || 1)))
@@ -101,8 +104,8 @@ const createPropHealthBar = pickup => {
     group.add(label)
     group.userData.healthLabel = label
   }
-  group.position.y = 44 * WORLD_SCALE
-  group.scale.setScalar(1.75)
+  group.position.y = 32 * WORLD_SCALE
+  group.scale.setScalar(1.15)
   group.renderOrder = 18
   group.userData.healthFill = fill
   group.userData.healthFraction = getPropHealthFraction(pickup.lives, pickup.maxLives)
@@ -122,8 +125,8 @@ const updatePropHealthLabel = (healthBar, pickup) => {
   context.clearRect(0, 0, canvas.width, canvas.height)
   context.textAlign = "center"
   context.textBaseline = "middle"
-  context.font = "900 23px Arial"
-  context.lineWidth = 7
+  context.font = battleCanvasFont(900, PROP_HEALTH_FONT_SIZE)
+  context.lineWidth = Math.max(5, Math.round(PROP_HEALTH_FONT_SIZE * .25))
   context.strokeStyle = "#241329"
   context.strokeText(text, canvas.width / 2, canvas.height / 2)
   context.fillStyle = "#fff"
@@ -134,119 +137,176 @@ const updatePropHealthLabel = (healthBar, pickup) => {
 export const createHealthCrate = pickup => {
   const group = new THREE.Group()
   group.userData.type = "health_crate"
+  group.userData.visualStyle = "reinforced_field_cache"
   group.userData.spin = false
 
   const body = createColoredBox(
-    31 * WORLD_SCALE,
-    31 * WORLD_SCALE,
-    31 * WORLD_SCALE,
-    0x98502a,
+    22 * WORLD_SCALE,
+    21 * WORLD_SCALE,
+    22 * WORLD_SCALE,
+    0x6d4930,
   )
-  body.position.y = 16 * WORLD_SCALE
+  body.position.y = 12.5 * WORLD_SCALE
   body.userData.role = "health-crate-body"
 
   const base = new THREE.Mesh(
-    new THREE.BoxGeometry(33 * WORLD_SCALE, 2 * WORLD_SCALE, 33 * WORLD_SCALE),
-    flatMaterial(0x5e301f),
+    new THREE.BoxGeometry(25 * WORLD_SCALE, 2 * WORLD_SCALE, 25 * WORLD_SCALE),
+    flatMaterial(0x463326),
   )
-  base.position.y = 2 * WORLD_SCALE
+  base.position.y = 1.5 * WORLD_SCALE
   base.userData.role = "health-crate-base"
 
-  const edge = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(32 * WORLD_SCALE, 32 * WORLD_SCALE, 32 * WORLD_SCALE)),
-    new THREE.LineBasicMaterial({color: 0xd17a3b, transparent: true, opacity: .7}),
+  const lid = createColoredBox(
+    26 * WORLD_SCALE,
+    2.4 * WORLD_SCALE,
+    26 * WORLD_SCALE,
+    0x5d4935,
   )
-  edge.position.y = body.position.y
+  lid.position.y = 24.2 * WORLD_SCALE
+  lid.userData.role = "health-crate-lid"
+
+  const edge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(26 * WORLD_SCALE, 2.4 * WORLD_SCALE, 26 * WORLD_SCALE)),
+    new THREE.LineBasicMaterial({color: 0x9a7a4f, transparent: true, opacity: .58}),
+  )
+  edge.position.y = lid.position.y
   edge.userData.role = "health-crate-edge"
 
-  const frontPanel = new THREE.Mesh(
-    new THREE.BoxGeometry(27 * WORLD_SCALE, 27 * WORLD_SCALE, 1.3 * WORLD_SCALE),
-    flatMaterial(0x824323),
-  )
-  frontPanel.position.set(0, 16 * WORLD_SCALE, 16.2 * WORLD_SCALE)
-  frontPanel.userData.role = "health-crate-front-panel"
-
-  const frontPlanks = [-9, 0, 9].map(x => {
-    const rail = new THREE.Mesh(
-      new THREE.BoxGeometry(1.8 * WORLD_SCALE, 27 * WORLD_SCALE, 1.8 * WORLD_SCALE),
-      flatMaterial(0x54291b),
-    )
-    rail.position.set(x * WORLD_SCALE, 16 * WORLD_SCALE, 17.2 * WORLD_SCALE)
-    rail.userData.role = "health-crate-plank"
-    return rail
-  })
-
-  const frontRails = [7, 24].map(y => {
+  const frontPlanks = [-7, 7].map(x => {
     const plank = new THREE.Mesh(
-      new THREE.BoxGeometry(27 * WORLD_SCALE, 1.8 * WORLD_SCALE, 1.8 * WORLD_SCALE),
-      flatMaterial(0x6d351f),
+      new THREE.BoxGeometry(1.8 * WORLD_SCALE, 17.5 * WORLD_SCALE, 1.4 * WORLD_SCALE),
+      flatMaterial(0x473326),
     )
-    plank.position.set(0, y * WORLD_SCALE, 17.2 * WORLD_SCALE)
+    plank.position.set(x * WORLD_SCALE, 12.5 * WORLD_SCALE, 11.3 * WORLD_SCALE)
     plank.userData.role = "health-crate-plank"
     return plank
   })
 
-  const corners = [-1, 1].flatMap(x => [5, 27].map(y => {
-    const corner = new THREE.Mesh(
-      new THREE.BoxGeometry(4 * WORLD_SCALE, 4 * WORLD_SCALE, 2.4 * WORLD_SCALE),
-      flatMaterial(0xc47a3a),
+  const sidePlanks = [-1, 1].flatMap(x => [-7, 7].map(z => {
+    const plank = new THREE.Mesh(
+      new THREE.BoxGeometry(1.4 * WORLD_SCALE, 17.5 * WORLD_SCALE, 1.8 * WORLD_SCALE),
+      flatMaterial(0x473326),
     )
-    corner.position.set(x * 12.5 * WORLD_SCALE, y * WORLD_SCALE, 18 * WORLD_SCALE)
+    plank.position.set(x * 11.3 * WORLD_SCALE, 12.5 * WORLD_SCALE, z * WORLD_SCALE)
+    plank.userData.role = "health-crate-side-plank"
+    return plank
+  }))
+
+  const posts = [-1, 1].flatMap(x => [-1, 1].map(z => {
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4 * WORLD_SCALE, 20.5 * WORLD_SCALE, 2.4 * WORLD_SCALE),
+      flatMaterial(0x9a7a4f),
+    )
+    post.position.set(x * 10.3 * WORLD_SCALE, 12.5 * WORLD_SCALE, z * 10.3 * WORLD_SCALE)
+    post.userData.role = "health-crate-post"
+    return post
+  }))
+
+  const metalMaterial = flatMaterial(0x8d6946)
+  const bands = [
+    ...[4.1, 20.9].map(y => {
+      const band = new THREE.Mesh(
+        new THREE.BoxGeometry(20 * WORLD_SCALE, .9 * WORLD_SCALE, .9 * WORLD_SCALE),
+        metalMaterial,
+      )
+      band.position.set(0, y * WORLD_SCALE, 11.75 * WORLD_SCALE)
+      band.userData.role = "health-crate-band"
+      return band
+    }),
+    ...[-1, 1].map(x => {
+      const band = new THREE.Mesh(
+        new THREE.BoxGeometry(.9 * WORLD_SCALE, .9 * WORLD_SCALE, 20 * WORLD_SCALE),
+        metalMaterial,
+      )
+      band.position.set(x * 11.75 * WORLD_SCALE, 20.9 * WORLD_SCALE, 0)
+      band.userData.role = "health-crate-band"
+      return band
+    }),
+  ]
+
+  const bolts = [
+    ...[4.1, 20.9].flatMap(y => [-8.8, 8.8].map(x => {
+      const bolt = new THREE.Mesh(
+        new THREE.CylinderGeometry(.85 * WORLD_SCALE, .85 * WORLD_SCALE, .55 * WORLD_SCALE, 8),
+        flatMaterial(0xc09559),
+      )
+      bolt.rotation.x = Math.PI / 2
+      bolt.position.set(x * WORLD_SCALE, y * WORLD_SCALE, 12.15 * WORLD_SCALE)
+      bolt.userData.role = "health-crate-bolt"
+      return bolt
+    })),
+    ...[4.1, 20.9].flatMap(y => [-8.8, 8.8].map(z => {
+      const bolt = new THREE.Mesh(
+        new THREE.CylinderGeometry(.85 * WORLD_SCALE, .85 * WORLD_SCALE, .55 * WORLD_SCALE, 8),
+        flatMaterial(0xc09559),
+      )
+      bolt.rotation.z = Math.PI / 2
+      bolt.position.set(12.15 * WORLD_SCALE, y * WORLD_SCALE, z * WORLD_SCALE)
+      bolt.userData.role = "health-crate-bolt"
+      return bolt
+    })),
+  ]
+
+  const latch = new THREE.Mesh(
+    new THREE.BoxGeometry(4.6 * WORLD_SCALE, 2.8 * WORLD_SCALE, 1.2 * WORLD_SCALE),
+    flatMaterial(0xb4874d),
+  )
+  latch.position.set(0, 22.1 * WORLD_SCALE, 12.15 * WORLD_SCALE)
+  latch.userData.role = "health-crate-latch"
+
+  const lidPlanks = [-1, 1].map(x => {
+    const plank = new THREE.Mesh(
+      new THREE.BoxGeometry(2 * WORLD_SCALE, .45 * WORLD_SCALE, 22.5 * WORLD_SCALE),
+      flatMaterial(0x473326),
+    )
+    plank.position.set(x * 8 * WORLD_SCALE, 25.65 * WORLD_SCALE, 0)
+    plank.userData.role = "health-crate-plank"
+    return plank
+  })
+
+  const corners = [-1, 1].flatMap(x => [-1, 1].map(z => {
+    const corner = new THREE.Mesh(
+      new THREE.BoxGeometry(2.5 * WORLD_SCALE, 2.5 * WORLD_SCALE, 2.5 * WORLD_SCALE),
+      flatMaterial(0x9a7a4f),
+    )
+    corner.position.set(x * 9.5 * WORLD_SCALE, 3 * WORLD_SCALE, z * 9.5 * WORLD_SCALE)
     corner.userData.role = "health-crate-corner"
     return corner
   }))
 
-  const createCrack = points => {
-    const crack = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(
-        points.map(([x, y]) => new THREE.Vector3(x * WORLD_SCALE, y * WORLD_SCALE, 18.25 * WORLD_SCALE)),
-      ),
-      new THREE.LineBasicMaterial({color: 0x351d17, transparent: true, opacity: .95}),
-    )
-    crack.userData.role = "health-crate-crack"
-    return crack
-  }
-  const cracks = [
-    createCrack([[-7, 22], [-3, 18], [-1, 19], [2, 14]]),
-    createCrack([[2, 14], [5, 12], [4, 8], [8, 5]]),
-    createCrack([[-1, 19], [1, 22], [5, 24]]),
-  ]
-
-  const gemGlow = new THREE.Mesh(
-    new THREE.CircleGeometry(8 * WORLD_SCALE, 24),
-    flatMaterial(0x4dff72, {
-      transparent: true,
-      opacity: .18,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
+  const markMaterial = flatMaterial(0x6aa955)
+  const mark = new THREE.Group()
+  mark.userData.role = "health-crate-mark"
+  const markStem = new THREE.Mesh(
+    new THREE.BoxGeometry(2.1 * WORLD_SCALE, .4 * WORLD_SCALE, 7 * WORLD_SCALE),
+    markMaterial,
   )
-  gemGlow.position.set(0, 16 * WORLD_SCALE, 17.35 * WORLD_SCALE)
-  gemGlow.userData.role = "health-crate-gem-glow"
-
-  const gem = new THREE.Mesh(
-    new THREE.OctahedronGeometry(5 * WORLD_SCALE, 0),
-    flatMaterial(0x82ff91),
+  const markBar = new THREE.Mesh(
+    new THREE.BoxGeometry(7 * WORLD_SCALE, .4 * WORLD_SCALE, 2.1 * WORLD_SCALE),
+    markMaterial,
   )
-  gem.scale.y = .78
-  gem.position.set(0, 16 * WORLD_SCALE, 18.35 * WORLD_SCALE)
-  gem.userData.role = "health-crate-energy-gem"
+  markStem.position.y = 26.7 * WORLD_SCALE
+  markBar.position.y = 26.7 * WORLD_SCALE
+  mark.add(markStem, markBar)
 
   const healthBar = createPropHealthBar(pickup)
   group.userData.healthBar = healthBar
   group.userData.healthFill = healthBar.userData.healthFill
   group.add(
-    createContactShadow(18 * WORLD_SCALE),
+    createContactShadow(15 * WORLD_SCALE),
     base,
     body,
+    lid,
     edge,
-    frontPanel,
     ...frontPlanks,
-    ...frontRails,
+    ...sidePlanks,
+    ...posts,
+    ...bands,
+    ...bolts,
+    latch,
+    ...lidPlanks,
     ...corners,
-    ...cracks,
-    gemGlow,
-    gem,
+    mark,
     healthBar,
   )
   return group

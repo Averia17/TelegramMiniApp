@@ -7,6 +7,8 @@ import (
 	"battle/service/geometry"
 )
 
+const battleRoyaleBeaconCollisionRadius = 140.0
+
 // GenerateBattleRoyale builds the natural island arena for «Остров Первого Испытания».
 // The broad terrain is generated from low-frequency noise so every match keeps
 // the same readable landing zones without looking like a four-way mirror.
@@ -259,6 +261,15 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 		}
 	}
 	gm.Collisions = grouped
+	// The beacon is rendered as a landmark rather than as a regular map prop,
+	// so its platform needs an explicit authoritative collision volume.
+	gm.Collisions = append(gm.Collisions, &geometry.WallTile{
+		MinX: float64(center)*tile - battleRoyaleBeaconCollisionRadius,
+		MinY: float64(center)*tile - battleRoyaleBeaconCollisionRadius,
+		MaxX: float64(center)*tile + battleRoyaleBeaconCollisionRadius,
+		MaxY: float64(center)*tile + battleRoyaleBeaconCollisionRadius,
+		Type: "beacon",
+	})
 	assignBushGroups(gm.Collisions, tile)
 	return gm
 }

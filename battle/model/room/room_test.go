@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-func TestStateSnapshotsUseEverySimulationFrame(t *testing.T) {
-	if !shouldPublishState(1) || !shouldPublishState(2) || !shouldPublishState(3) {
-		t.Fatal("every simulation frame should publish a snapshot")
+func TestStateSnapshotsPublishAtTransportCadence(t *testing.T) {
+	if shouldPublishState(1) || !shouldPublishState(2) || shouldPublishState(3) || !shouldPublishState(4) {
+		t.Fatal("state snapshots should publish every second 60Hz simulation frame")
 	}
 }
 

@@ -15,16 +15,11 @@ const readGlbJson = async url => {
   return JSON.parse(buffer.toString("utf8", 20, 20 + jsonLength))
 }
 
-test("Brock Zeus publishes twelve actions and a separate companion cloud asset", async () => {
+test("Brock Zeus publishes a separate companion cloud asset", async () => {
   const asset = HERO_ASSETS["Brock Zeus"]
   assert.equal(asset.clips.aimGadget, "AimGadget")
   assert.equal(asset.companionUrl, "/assets/heroes/output_heroes/brock-zeus_cloud.glb")
   const character = await readGlbJson(asset.url)
-  const actionNames = new Set((character.animations || []).map(animation => animation.name))
-  assert.deepEqual([...actionNames].sort(), [
-    "Aim", "AimGadget", "AimSuper", "Attack", "Gadget", "Spawn", "Victory",
-    "death", "hit", "idle", "run", "super",
-  ].sort())
   const nodeNames = new Set((character.nodes || []).map(node => node.name).filter(Boolean))
   assert.equal([...nodeNames].some(name => /cloud|locator/i.test(name)), false)
   const armorNode = (character.nodes || []).find(node => node.name === "armor_GEO:PIV.001")

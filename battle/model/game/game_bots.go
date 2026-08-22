@@ -666,7 +666,7 @@ func botIsMelee(bot *player.Player) bool {
 		return false
 	}
 	switch bot.HeroName {
-	case "Mandy", "Kaze", "Wukong Mico", "Viper":
+	case "Mandy", "Kaze", "Wukong Mico":
 		return true
 	}
 	switch bot.AttackType {
@@ -874,6 +874,14 @@ func (gs *GameState) botEngageTarget(id string, bot *player.Player, target *botT
 		}
 		memory.IntentMoveX, memory.IntentMoveY = moveIntentX, moveIntentY
 		intentX, intentY := bot.X+moveIntentX*220, bot.Y+moveIntentY*220
+		if target.kind == "objective" {
+			// A short combat steering target is useful for strafing around a
+			// player, but it turns every piece of cover into a local dead end
+			// during a base push. Give the pathfinder the real objective so it
+			// can commit to a bridge/long route instead of pressing into the
+			// nearest obstacle forever.
+			intentX, intentY = target.x, target.y
+		}
 		moveX, moveY := gs.botTravelDirection(id, &bot.CircleBody, intentX, intentY, now)
 		gs.playerMove(id, now, moveX, moveY)
 	}

@@ -8,4 +8,5 @@ type Store interface {
 	RemovePlayerFromRoom(roomId, playerId string) error
 	SaveBattleResult(result *BattleResult) error
 	GetLatestBattleResult(playerId string) (*BattleResult, error)
+	ListBattleResults(playerId string, beforeEndedAt int64, beforeRoomId string, limit int) ([]*BattleResult, error)
 }

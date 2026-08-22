@@ -52,7 +52,9 @@
 
 .hero-quick-stats { z-index: 3; display: flex; gap: 6px; margin: 12px 0 7px; }
 .hero-quick-stat { display: grid; grid-template-columns: 20px 28px; grid-template-rows: 18px 10px; align-items: center; min-width: 76px; padding: 6px 8px; border: 2px solid rgba(255,255,255,.58); border-radius: 9px; color: #fff; background: rgba(31,55,139,.62); box-shadow: 0 4px rgba(19,34,91,.72); }
-.hero-quick-stat span { grid-row: 1 / 3; color: #ffe143; font-size: 16px; }.hero-quick-stat strong { font: 950 16px/1 system-ui; }.hero-quick-stat small { font: 800 6px/1 system-ui; opacity: .7; }
+.hero-quick-stat-icon { display: grid; place-items: center; width: 20px; height: 20px; grid-row: 1 / 3; color: #ffe143; font: 900 16px/1 Arial, sans-serif; }
+.hero-quick-stat-icon--speed { color: #72eaff; font-size: 18px; transform: translateX(1px); }
+.hero-quick-stat strong { font: 950 16px/1 system-ui; }.hero-quick-stat small { font: 800 6px/1 system-ui; opacity: .7; }
 .hero-lobby-actions{position:relative;z-index:8;display:flex;align-items:stretch;gap:8px}.hero-roster-button { z-index: 4; display: flex; align-items: center; gap: 8px; padding: 9px 14px; border: 3px solid rgba(255,255,255,.8); border-radius: 10px; background: linear-gradient(#5f8cea,#3157bc); color: #fff; box-shadow: 0 5px #203b8f; font: 950 12px/1 system-ui; text-shadow: 0 2px #213b8e; cursor: pointer; }
 .hero-roster-button:active { transform: translateY(3px); box-shadow: 0 2px #203b8f; }.hero-roster-button b { padding: 3px 6px; border-radius: 8px; background: #1b367f; color: #ffe143; }
 .hero-roster-grid { display: grid; grid-template-columns: repeat(2,5px); gap: 2px; }.hero-roster-grid i { width: 5px; height: 5px; background: #fff; border-radius: 1px; }
@@ -124,3 +126,33 @@
 @media (max-width:430px) { .hero-card .hero-portrait:has(.hero-model-canvas) { transform:translateX(-50%) scale(.58); }.hero-card-footer strong { font-size: 11px; } }
 @media (min-width:431px) and (max-width:619px) { .hero-card .hero-portrait:has(.hero-model-canvas) { transform:translateX(-50%) scale(.88); } }
 @media (min-width:620px) { .hero-card .hero-portrait:has(.hero-model-canvas) { transform:translateX(-50%) scale(.74); } }
+
+/* Party lobby: turn the hero stage into a compact squad lineup while keeping
+   the selected hero's details below as the primary focus. */
+.hero-showcase--party { width:min(100%,980px); height:clamp(330px,53vh,520px); }
+.hero-party-lineup { --party-side-inset:clamp(28px,4.5vw,64px); position:relative; z-index:3; display:grid; align-items:end; width:min(100%,920px); height:100%; padding:30px 10px 15px; box-sizing:border-box; }
+.hero-party-lineup--2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.hero-party-lineup--3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.hero-party-member { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; min-width:0; height:100%; }
+.hero-party-member:nth-child(1) { transform:translateX(var(--party-side-inset)) translateY(18px); }
+.hero-party-member:nth-child(3) { transform:translateX(calc(var(--party-side-inset) * -1)) translateY(18px); }
+.hero-party-lineup--2 { --party-side-inset:clamp(20px,3vw,40px); grid-template-columns:repeat(2,300px); justify-content:center; }
+.hero-party-lineup--2 .hero-party-member:nth-child(2) { transform:translateX(calc(var(--party-side-inset) * -1)); }
+.hero-party-member.is-local { z-index:2; }
+.hero-party-name { position:relative; z-index:5; width:min(100%,180px); margin-bottom:-5px; overflow:hidden; padding:0 6px; border:0; border-radius:0; color:rgba(255,255,255,.9); background:transparent; box-shadow:none; font:900 clamp(9px,.75vw,12px)/1 system-ui,sans-serif; letter-spacing:.25px; text-align:center; text-overflow:ellipsis; text-shadow:0 2px 5px #172963; white-space:nowrap; }
+.hero-party-member.is-local .hero-party-name { color:#ffe143; background:transparent; }
+.hero-party-member .hero-portrait--party:has(.hero-model-canvas) { width:clamp(190px,20.8vw,300px); height:clamp(230px,23.7vw,340px); transform:scale(1.06); transform-origin:50% 100%; animation:hero-party-float 2.6s ease-in-out infinite; }
+@keyframes hero-party-float { 50% { transform:translateY(-5px) scale(1.06); } }
+.hero-showcase--party .hero-stage-shadow { display:none; }
+
+@media (max-width:560px) {
+  .hero-party-lineup { padding-inline:0; }
+  .hero-showcase--party { height:clamp(300px,48dvh,420px); }
+  .hero-party-name { width:min(100%,126px); padding-inline:3px; font-size:9px; }
+  .hero-party-member .hero-portrait--party:has(.hero-model-canvas) { transform:scale(.98); }
+  @keyframes hero-party-float { 50% { transform:translateY(-3px) scale(.98); } }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .hero-party-member .hero-portrait--party:has(.hero-model-canvas) { animation:none; }
+}

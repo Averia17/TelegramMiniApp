@@ -44,10 +44,9 @@ export const getSynchronizedBattleView = (authoritativeState, currentView) => {
   return null
 }
 
-export const getBattleResultView = (result, mode) => {
-  const teamBattle = Boolean(result?.teamBattle) || mode === "team" || isTeamBattleMode(mode)
-  if (teamBattle || result?.recovered || result?.won || result?.draw) return "result"
-  return result?.timedOut ? "timeout" : "dead"
+export const getBattleResultView = result => {
+  if (result?.timedOut) return "timeout"
+  return "result"
 }
 
 export const getStateBattleResult = (state, playerId, currentView) => {
