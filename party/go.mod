@@ -1,8 +1,8 @@
 module party
 
-go 1.24
+go 1.26.0
 
-toolchain go1.24.0
+toolchain go1.26.6
 
 require (
 	github.com/gorilla/websocket v1.5.3
@@ -10,6 +10,7 @@ require (
 )
 
 require (
-	github.com/klauspost/compress v1.15.9 // indirect
-	github.com/pierrec/lz4/v4 v4.1.15 // indirect
+	github.com/klauspost/compress v1.19.2 // indirect
+	github.com/pierrec/lz4/v4 v4.1.29 // indirect
+	golang.org/x/net v0.58.0 // indirect
 )

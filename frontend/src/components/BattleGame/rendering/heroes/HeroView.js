@@ -85,16 +85,23 @@ const setOpacity = (materials, opacity) => {
 }
 
 const installFlightDepthReset = model => {
-  let firstMesh = null
-  model.traverse(child => {
-    if (!firstMesh && child.isMesh) firstMesh = child
-  })
-  if (!firstMesh) return
-  const previousOnBeforeRender = firstMesh.onBeforeRender
-  firstMesh.onBeforeRender = function(...args) {
-    if (model.userData.flightDepthActive) args[0].clearDepth()
-    previousOnBeforeRender?.apply(this, args)
+  const flightDepthResetter = new THREE.Mesh(
+    new THREE.CircleGeometry(.01, 3),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  )
+  flightDepthResetter.name = "flight-depth-resetter"
+  flightDepthResetter.renderOrder = -1
+  flightDepthResetter.frustumCulled = false
+  flightDepthResetter.onBeforeRender = renderer => {
+    if (model.userData.flightDepthActive) renderer.clearDepth()
   }
+  model.add(flightDepthResetter)
 }
 
 const createDeathBurst = heroName => {

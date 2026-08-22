@@ -4,6 +4,7 @@ import (
 	"battle/provider"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -186,7 +187,16 @@ func TestIntegration_ShootingProducesBullets(t *testing.T) {
 func TestIntegration_GameSpawnsMonsters(t *testing.T) {
 	ts, _ := setupTest(t)
 
-	c1, _, _ := joinTwo(t, ts, "room-monsters", "arena")
+	roomName := fmt.Sprintf("room-monsters-%d", atomic.AddInt64(&testRoomSequence, 1))
+	c1, c2, _ := joinTwo(t, ts, roomName, "arena")
+	go func() {
+		_ = c2.SetReadDeadline(time.Time{})
+		for {
+			if _, _, err := c2.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
 
 	waitState(t, c1, 20*time.Second, func(msg map[string]interface{}) bool {
 		game, _ := msg["game"].(map[string]interface{})

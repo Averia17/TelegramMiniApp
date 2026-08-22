@@ -4,9 +4,9 @@ import "testing"
 
 func TestBasicAttackEmitsAuthoritativeCommandAndHitEvents(t *testing.T) {
 	gs := newTestGameState()
-	gs.State = GameStateGame
 	gs.PlayerAdd("attacker", "Attacker", "Mandy")
 	gs.PlayerAdd("target", "Target", "Mandy")
+	gs.State = GameStateGame
 	gs.Players["attacker"].X, gs.Players["attacker"].Y = 100, 100
 	gs.Players["target"].X, gs.Players["target"].Y = 130, 100
 

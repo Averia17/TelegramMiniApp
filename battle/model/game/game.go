@@ -2820,7 +2820,14 @@ func (gs *GameState) monstersAdd(count int) {
 		}
 		m := monster.NewMonster(x, y, PlayerSize/2, gs.Map.WidthInPixels, gs.Map.HeightInPixels, lives)
 		m.Tier, m.MaxLives = tier, lives
-		gs.Monsters[fmt.Sprintf("%d", geometry.GetRandomInt(0, 1000))] = m
+		monsterID := ""
+		for monsterID == "" {
+			candidate := fmt.Sprintf("%d", geometry.GetRandomInt(0, 1000))
+			if _, exists := gs.Monsters[candidate]; !exists {
+				monsterID = candidate
+			}
+		}
+		gs.Monsters[monsterID] = m
 	}
 }
 

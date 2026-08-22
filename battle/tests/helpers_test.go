@@ -22,6 +22,7 @@ import (
 const testAuthSecret = "test-auth-secret-with-at-least-32-characters"
 
 var testUserSequence int64 = 9_000_000_000
+var testRoomSequence int64
 
 func testAccessToken(userID int64) string {
 	payload, _ := json.Marshal(map[string]int64{"sub": userID, "exp": time.Now().Add(time.Minute).Unix()})

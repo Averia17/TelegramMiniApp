@@ -237,6 +237,8 @@ func nextClientMessage(c *mroom.Client) ([]byte, bool) {
 	default:
 	}
 	select {
+	case message, ok := <-c.Handshake:
+		return message, ok
 	case message, ok := <-c.State:
 		return message, ok
 	case message, ok := <-c.Send:
