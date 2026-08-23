@@ -4,9 +4,9 @@ import "testing"
 
 func TestRangedHeroesTradeSafetyForLowerBaseDamage(t *testing.T) {
 	wantDamage := map[string]int{
-		"Needle":     65,
-		"Fairy Mina": 40,
-		"Brock Zeus": 80,
+		"Needle":     60,
+		"Fairy Mina": 55,
+		"Brock Zeus": 85,
 	}
 
 	for name, want := range wantDamage {
@@ -30,13 +30,13 @@ func TestHeroConfigsUseCompactCombatValues(t *testing.T) {
 		speed       int
 		bulletSpeed int
 	}{
-		"Needle":          {620, 65, 12, 23},
-		"Mandy":           {720, 105, 15, 0},
-		"Fairy Mina":      {600, 40, 14, 30},
-		"Brock Zeus":      {620, 80, 12, 36},
-		"Kaze":            {700, 85, 16, 0},
-		"Wukong Mico":     {900, 100, 15, 0},
-		"Persephone Lumi": {700, 90, 15, 0},
+		"Needle":          {600, 60, 13, 23},
+		"Mandy":           {700, 100, 15, 0},
+		"Fairy Mina":      {650, 55, 14, 30},
+		"Brock Zeus":      {600, 85, 12, 36},
+		"Kaze":            {650, 85, 16, 0},
+		"Wukong Mico":     {900, 100, 14, 0},
+		"Persephone Lumi": {680, 60, 15, 28},
 	}
 
 	for name, expected := range want {

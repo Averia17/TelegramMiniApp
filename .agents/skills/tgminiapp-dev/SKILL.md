@@ -114,6 +114,8 @@ cd frontend && npm test
 3. **Catalog validation**: `tools/validate_hero_catalog.py` — Data consistency across Go/JSON
 4. **Blender validation**: `tools/blender/validate_*.py` — Animation scene correctness
 
+Run tests and validation for large tasks, substantial changes, or when explicitly requested. Do not run the full test suite after every small code change; batch related edits and validate at an appropriate checkpoint.
+
 ## Tech Constraints
 
 - **Telegram Mini App**: Must work within Telegram's WebView (mobile + desktop)

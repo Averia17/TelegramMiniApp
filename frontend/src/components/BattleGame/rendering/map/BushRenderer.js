@@ -8,6 +8,11 @@ export const BUSH_NEAR_OPACITY = 0.58
 export const BUSH_CLUSTER_NEAR_RADIUS = 8
 export const BUSH_CLUSTER_FADE_RADIUS = 26
 export const BUSH_TILE_SIZE = 40
+// Concealment changes over a broad world-space fade range. Recomputing every
+// instanced opacity attribute for sub-pixel focus movement only creates buffer
+// uploads without a visible change, so keep one shared epsilon for the field
+// and map-level caches.
+export const BUSH_VISIBILITY_FOCUS_EPSILON = 1.5
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 
@@ -70,12 +75,21 @@ export const setBushVisibilityOpacity = (object, visibilityOpacity, focus = null
   if (!object?.traverse) return
   const visibility = clamp(Number(visibilityOpacity), BUSH_NEAR_OPACITY, 1)
   const tiles = Array.isArray(object.userData.bushTiles) ? object.userData.bushTiles : []
-  const opacityMeshes = []
-  object.traverse(node => {
-    if (node.userData?.bushOpacityAttribute) opacityMeshes.push(node)
-  })
+  const opacityMeshes = object.userData.bushOpacityMeshes || []
+  if (!opacityMeshes.length) {
+    object.traverse(node => {
+      if (node.userData?.bushOpacityAttribute) opacityMeshes.push(node)
+    })
+    object.userData.bushOpacityMeshes = opacityMeshes
+  }
+  const hasFocus = Number.isFinite(Number(focus?.x)) && Number.isFinite(Number(focus?.y))
+  const previousFocus = object.userData.bushVisibilityFocus
+  if (previousFocus && hasFocus && Math.hypot(
+    Number(focus.x) - previousFocus.x,
+    Number(focus.y) - previousFocus.y,
+  ) < BUSH_VISIBILITY_FOCUS_EPSILON) return
+  if (previousFocus && !hasFocus && previousFocus.x === null && visibility === object.userData.currentBushOpacity) return
   if (tiles.length && opacityMeshes.length) {
-    const hasFocus = Number.isFinite(Number(focus?.x)) && Number.isFinite(Number(focus?.y))
     const tileOpacities = tiles.map(tile => hasFocus
       ? getBushTileVisibilityOpacity(focus, tile)
       : visibility)
@@ -84,17 +98,22 @@ export const setBushVisibilityOpacity = (object, visibilityOpacity, focus = null
       const attribute = mesh.userData.bushOpacityAttribute
       const tileIndices = mesh.userData.bushTileIndices || []
       const visibilityPositions = mesh.userData.bushVisibilityPositions
+      let changed = false
       for (let index = 0; index < attribute.count; index += 1) {
         const tileIndex = tileIndices[index] ?? index
         const opacity = hasFocus && Array.isArray(visibilityPositions) && visibilityPositions[index]
           ? getBushClusterVisibilityOpacity(focus, visibilityPositions[index])
           : tileOpacities[tileIndex] ?? visibility
-        attribute.setX(index, opacity)
+        if (attribute.getX(index) !== opacity) {
+          attribute.setX(index, opacity)
+          changed = true
+        }
         currentOpacity = Math.min(currentOpacity, opacity)
       }
-      attribute.needsUpdate = true
+      if (changed) attribute.needsUpdate = true
     })
     object.userData.currentBushOpacity = currentOpacity
+    object.userData.bushVisibilityFocus = hasFocus ? {x: Number(focus.x), y: Number(focus.y)} : {x: null, y: null}
     return
   }
   if (!Array.isArray(object.userData.bushMaterials)) {
@@ -117,6 +136,7 @@ export const setBushVisibilityOpacity = (object, visibilityOpacity, focus = null
     material.depthWrite = opacity >= .999 ? material.userData.bushBaseDepthWrite : false
   })
   object.userData.currentBushOpacity = visibility
+  object.userData.bushVisibilityFocus = hasFocus ? {x: Number(focus.x), y: Number(focus.y)} : {x: null, y: null}
 }
 
 const withWhiteVertexColors = geometry => {
@@ -496,5 +516,6 @@ export const createBushField = (walls, kind = "bush") => {
   field.userData.role = "concealment-bush"
   field.userData.bushWalls = walls
   field.userData.bushTiles = visualWalls
+  field.userData.bushOpacityMeshes = [bed, base, crown, foreground]
   return field
 }

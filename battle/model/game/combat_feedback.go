@@ -10,8 +10,10 @@ const (
 )
 
 var telegraphEffectKinds = map[string]struct{}{
-	"zeus_strike_warning": {},
-	"tower_telegraph":     {},
+	"zeus_strike_warning":   {},
+	"tower_telegraph":       {},
+	"needle_root_telegraph": {},
+	"mandy_super_charge":    {},
 }
 
 var activeEffectKinds = map[string]struct{}{
@@ -21,7 +23,10 @@ var activeEffectKinds = map[string]struct{}{
 	"lumi_roots":              {},
 	"lumi_flower":             {},
 	"needle_root_cast":        {},
+	"needle_root_active":      {},
 	"needle_moisture_reserve": {},
+	"needle_spore_cloud":      {},
+	"needle_spores":           {},
 	"katty_paint_cloud":       {},
 	"katty_paint_puddle":      {},
 	"katty_paint_trail":       {},
@@ -32,19 +37,41 @@ var activeEffectKinds = map[string]struct{}{
 	"mico_ruyi_bind":          {},
 	"mico_suppressed_rage":    {},
 	"mandy_stance":            {},
+	"zeus_fire_ground":        {},
+	"vortex":                  {},
+	"vine":                    {},
+	"spin":                    {},
+	"mandy_super_wave":        {},
 }
 
 var impactEffectKinds = map[string]struct{}{
-	"mina_mark_burst":    {},
-	"mina_mark_break":    {},
-	"needle_root_burst":  {},
-	"katty_paint_impact": {},
-	"katty_paint_stick":  {},
-	"lumi_seedburst":     {},
-	"wall_break":         {},
-	"objective_hit":      {},
-	"tower_shot_blocked": {},
-	"collapse":           {},
+	"mina_mark_burst":       {},
+	"mina_mark_break":       {},
+	"needle_root_burst":     {},
+	"needle_root_pull":      {},
+	"needle_anti_heal":      {},
+	"needle_spore_stun":     {},
+	"katty_paint_impact":    {},
+	"katty_paint_stick":     {},
+	"lumi_root_impact":      {},
+	"lumi_seedburst":        {},
+	"lightning":             {},
+	"zeus_lightning_strike": {},
+	"zeus_lightning_blast":  {},
+	"mico_skyfall":          {},
+	"mico_armor_burst":      {},
+	"burst":                 {},
+	"evade":                 {},
+	"damage":                {},
+	"crate_hit":             {},
+	"crate_break":           {},
+	"rock":                  {},
+	"mina_air_wave":         {},
+	"wall_break":            {},
+	"objective_hit":         {},
+	"tower_shot_blocked":    {},
+	"collapse":              {},
+	"kaze_cross_slash":      {},
 }
 
 func combatEffectPhase(kind string) CombatEffectPhase {

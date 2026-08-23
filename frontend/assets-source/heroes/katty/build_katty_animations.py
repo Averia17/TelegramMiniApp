@@ -17,6 +17,7 @@ SOURCE_GLB = ROOT / "frontend/public/assets/heroes/output_heroes/katty_base.glb"
 SOURCE_BLEND = ROOT / "frontend/assets-source/heroes/katty/katty.blend"
 OUTPUT_GLB = ROOT / "frontend/public/assets/heroes/output_heroes/katty_base.glb"
 FPS = 30
+ATTACHMENT_REVISION = 4
 
 
 def clear_and_import() -> bpy.types.Object:
@@ -45,20 +46,71 @@ def clear_and_import() -> bpy.types.Object:
 
 
 ARM = clear_and_import()
-BONES = ARM.pose.bones
 SCENE = bpy.context.scene
+ARM["katty_bottle_grip_revision"] = ATTACHMENT_REVISION
 
-# The source spray can is skinned to bottle_s, but that bone is parented to the
-# chest on the character's left.  Build a stable right-wrist-relative offset.
+
+def rebind_bottle_to_wrist() -> None:
+    """Move the can into the right palm and make its bone a wrist child."""
+    if ARM.get("katty_bottle_rig_revision") == ATTACHMENT_REVISION:
+        return
+    bottle_mesh = bpy.data.objects.get("botte_GEO")
+    if bottle_mesh is None:
+        raise RuntimeError("Katty: botte_GEO mesh is missing")
+
+    # The imported mesh is a dedicated can mesh. Move it from its old chest
+    # socket to the character's right palm while keeping its local shape.
+    mesh_vertices = [
+        bottle_mesh.matrix_world @ vertex.co for vertex in bottle_mesh.data.vertices
+    ]
+    mesh_min = Vector(
+        (min(vertex[index] for vertex in mesh_vertices) for index in range(3))
+    )
+    mesh_max = Vector(
+        (max(vertex[index] for vertex in mesh_vertices) for index in range(3))
+    )
+    mesh_center = (mesh_min + mesh_max) / 2.0
+    wrist = ARM.data.bones["R_wrist_s"]
+    desired_center = wrist.head_local + Vector((0.0, -0.35, 0.75))
+    delta = desired_center - mesh_center
+    bottle_mesh.location += delta
+
+    bpy.context.view_layer.objects.active = ARM
+    ARM.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    edit_bones = ARM.data.edit_bones
+    bottle = edit_bones["bottle_s"]
+    valve = edit_bones["bottle_valve_01_s"]
+    moved_bottle_matrix = bottle.matrix.copy()
+    moved_valve_matrix = valve.matrix.copy()
+    bottle.head = bottle.head + delta
+    bottle.tail = bottle.tail + delta
+    valve.head = valve.head + delta
+    valve.tail = valve.tail + delta
+    moved_bottle_matrix.translation += delta
+    moved_valve_matrix.translation += delta
+    bottle.parent = edit_bones["R_wrist_s"]
+    bottle.use_connect = False
+    bottle.matrix = moved_bottle_matrix
+    valve.parent = bottle
+    valve.use_connect = False
+    valve.matrix = moved_valve_matrix
+    bpy.ops.object.mode_set(mode="OBJECT")
+    ARM["katty_bottle_rig_revision"] = ATTACHMENT_REVISION
+    print(
+        f"KATTY_BOTTLE_RIG_REBOUND delta={tuple(round(float(value), 4) for value in delta)}"
+    )
+
+
+rebind_bottle_to_wrist()
+BONES = ARM.pose.bones
+
+# The can now inherits the hand's motion from the rig hierarchy. Keep a
+# constant rest-space relation so the fingers can close around it without a
+# second, competing parent transform.
 _wrist_rest = ARM.data.bones["R_wrist_s"].matrix_local.copy()
 _bottle_rest = ARM.data.bones["bottle_s"].matrix_local.copy()
-_desired_bottle = _bottle_rest.copy()
-# Place the can's body inside the palm, not merely near the wrist.  The donor
-# rig stores bottle_s on the chest, so this offset is the actual authored grip.
-_desired_bottle.translation = ARM.data.bones["R_wrist_s"].tail_local + Vector(
-    (-0.50, -0.70, -1.12)
-)
-BOTTLE_FROM_WRIST = _wrist_rest.inverted() @ _desired_bottle
+BOTTLE_FROM_WRIST = _wrist_rest.inverted() @ _bottle_rest
 BOTTLE_SCALE = 0.95
 
 RIGHT_GRIP = {
@@ -153,21 +205,27 @@ def loose_bottle(
     return matrix
 
 
-def solve_right_arm(target_location: tuple[float, float, float]) -> None:
-    """Solve then bake a three-bone IK pose; no constraint is left in export."""
+def solve_arm(
+    side: str,
+    target_location: tuple[float, float, float],
+    pole_location: tuple[float, float, float],
+) -> None:
+    """Solve and bake one three-bone arm; no IK constraint remains in export."""
+    if side not in {"L", "R"}:
+        raise ValueError(f"unsupported arm side: {side}")
     target = bpy.data.objects.new("__KattyIKTarget", None)
     pole = bpy.data.objects.new("__KattyIKPole", None)
     bpy.context.collection.objects.link(target)
     bpy.context.collection.objects.link(pole)
     target.location = target_location
-    pole.location = (-4.0, -3.0, 7.5)
-    wrist = BONES["R_wrist_s"]
+    pole.location = pole_location
+    wrist = BONES[f"{side}_wrist_s"]
     constraint = wrist.constraints.new("IK")
     constraint.target = target
     constraint.pole_target = pole
     constraint.chain_count = 3
     bpy.context.view_layer.update()
-    names = ("R_shoulder_s", "R_elbow_s", "R_wrist_s")
+    names = (f"{side}_shoulder_s", f"{side}_elbow_s", f"{side}_wrist_s")
     solved = {name: BONES[name].matrix.copy() for name in names}
     wrist.constraints.remove(constraint)
     bpy.data.objects.remove(target, do_unlink=True)
@@ -175,6 +233,14 @@ def solve_right_arm(target_location: tuple[float, float, float]) -> None:
     for name in names:
         BONES[name].matrix = solved[name]
     bpy.context.view_layer.update()
+
+
+def solve_right_arm(target_location: tuple[float, float, float]) -> None:
+    solve_arm("R", target_location, (-4.0, -3.0, 7.5))
+
+
+def solve_left_arm(target_location: tuple[float, float, float]) -> None:
+    solve_arm("L", target_location, (4.0, -3.0, 7.5))
 
 
 def get_fcurves(action: bpy.types.Action):
@@ -196,6 +262,7 @@ def author_action(
     linear: bool = False,
     bottle_release: dict[int, Matrix] | None = None,
     right_arm_targets: dict[int, tuple[float, float, float]] | None = None,
+    left_arm_targets: dict[int, tuple[float, float, float]] | None = None,
 ) -> bpy.types.Action:
     action = bpy.data.actions.new(name=name)
     action.use_fake_user = True
@@ -213,6 +280,10 @@ def author_action(
         if frame in (right_arm_targets or {}):
             solve_right_arm(right_arm_targets[frame])
             for bone_name in ("R_shoulder_s", "R_elbow_s", "R_wrist_s"):
+                key_bone(BONES[bone_name], frame)
+        if frame in (left_arm_targets or {}):
+            solve_left_arm(left_arm_targets[frame])
+            for bone_name in ("L_shoulder_s", "L_elbow_s", "L_wrist_s"):
                 key_bone(BONES[bone_name], frame)
         bind_bottle_to_hand(frame, (bottle_release or {}).get(frame))
     for curve in get_fcurves(action):
@@ -278,6 +349,15 @@ def locomotion_actions() -> None:
                 "spine_mid_s": {"rot": (1, 0, 2)},
                 "head_s": {"rot": (0, 0, -6)},
             },
+        },
+        left_arm_targets={
+            1: (-2.45, -1.02, 8.90),
+            30: (-2.35, -0.68, 9.05),
+            40: (-2.28, -0.76, 9.00),
+            60: (-1.40, -1.10, 9.15),
+            70: (-1.38, -1.08, 9.10),
+            82: (-1.36, -1.10, 9.12),
+            120: (-1.36, -1.10, 9.12),
         },
     )
 

@@ -5,7 +5,7 @@ import {Renderer} from "./Renderer"
 import {Input, MOBILE_INPUT_MEDIA_QUERY} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
 import {getHeroSkill} from "./heroSkills.js"
-import {getBattlePlayerCount, getBattleResultView, getPlayerBattleStats, getPresentedBattleResult, getSynchronizedBattleView} from "./battleOutcome"
+import {getBattlePlayerCount, getBattleResultView, getPlayerBattleStats, getPresentedBattleResult, getSynchronizedBattleView, isLocalBattleWinner, isLocalPlayerKilled} from "./battleOutcome"
 import {AbilityButton, ActiveStatusEffects, BattleMatchTimer, BattleMiniMap, BattleResultCard, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, NetworkStatusNotice, TauntButton, TeamBattleHud, TeamObjectiveHud, TowerThreatNotice, TouchStick} from "./BattleGameUI.jsx"
 import {getAttackCooldownVisual} from "./attackCooldownVisual.js"
 import {getActiveStatusEffects} from "./statusEffects.js"
@@ -15,7 +15,8 @@ import {releaseAllPreviewContexts} from "./rendering/shared/previewContextRegist
 import {getBattlePerformanceSnapshot, recordBattleMetric} from "./rendering/shared/performance.js"
 import {isInsideConcealment} from "./rendering/shared/concealment.js"
 import {assetRegistry} from "./rendering/assets/AssetRegistry.js"
-import {MAX_PARTY_SIZE, WS_URL} from "../../utils/urls.js"
+import {API_URL, MAX_PARTY_SIZE, WS_URL} from "../../utils/urls.js"
+import axios from "axios"
 import {getAccessToken} from "../../utils/auth.js"
 import {BattleLoading} from "../BattleLoading/BattleLoading.jsx"
 import {getBattleLoadingProgress} from "./battleLoadingProgress.js"
@@ -24,6 +25,7 @@ import {normalizeTeamBattleResult} from "./teamBattleUi.js"
 import {isTeamBattleMode} from "./battleMode.js"
 import {BATTLE_RECOVERY_TIMEOUT_MS, getBattleRecoveryDecision, getBattleRecoveryTimeoutDecision} from "./battleRecovery.js"
 import {clearActiveBattle, saveActiveBattle, saveBattleHistoryRecord} from "../../utils/battleHistory.js"
+import {shouldSpendBattleEnergy} from "./battleEnergy.js"
 import "./BattleGame.css"
 
 
@@ -56,6 +58,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
   const deathRevealTimerRef = useRef(null)
   const deathRevealStartedRef = useRef(false)
   const battleErrorHandledRef = useRef(false)
+  const battleEnergySpentRef = useRef(false)
   const suppressDisconnectRef = useRef(false)
   const battleContextRef = useRef({mode, partyId, mapName: "battle-royale", mapId: ""})
   const [mobileMode, setMobileMode] = useState(() => window.matchMedia(MOBILE_INPUT_MEDIA_QUERY).matches)
@@ -316,13 +319,19 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
           }
           if (msg.type === "start") {
             setView("game")
+            if (shouldSpendBattleEnergy(msg.type, {alreadySpent: battleEnergySpentRef.current, startNewBattle})) {
+              battleEnergySpentRef.current = true
+              axios.post(`${API_URL}/economy/me/battle`).catch(error => {
+                console.warn("Could not charge battle energy after battle start", error)
+              })
+            }
           }
           if (msg.type === "stop") {
             finishBattle({won:false,reason:"Бой завершён сервером"})
           }
           if (msg.type === "timeout") {
             finishBattle({
-              won: msg.params?.name === playerName,
+              won: isLocalBattleWinner(msg.params, clientRef.current?.playerId, playerName),
               draw: Boolean(msg.params?.draw),
               timedOut: true,
               winner: msg.params?.name,
@@ -331,14 +340,18 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
             })
           }
           if (msg.type === "won") {
-            finishBattle({won:msg.params?.name === playerName,draw:Boolean(msg.params?.draw),winner:msg.params?.name,reason:msg.params?.reason,duration:Math.round((msg.params?.duration || 0) / 1000)})
+            finishBattle({
+              won: isLocalBattleWinner(msg.params, clientRef.current?.playerId, playerName),
+              draw: Boolean(msg.params?.draw), winner: msg.params?.name, reason: msg.params?.reason,
+              duration: Math.round((msg.params?.duration || 0) / 1000),
+            })
           }
           if (msg.type === "you_died") {
             const info = {killerName: msg.params?.killerName || "Unknown"}
             pendingDeathInfoRef.current = info
             setDeathInfo(info)
           }
-          if (msg.type === "killed" && msg.params?.killedName === playerName) {
+          if (msg.type === "killed" && isLocalPlayerKilled(msg.params, clientRef.current?.playerId, playerName)) {
             const info = {killerName: msg.params?.killerName || "Unknown"}
             pendingDeathInfoRef.current = info
             setDeathInfo(info)
@@ -560,15 +573,17 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
     }
   }, [connected, recoveryAction, playerName, heroName, effectivePlayerId, mode, partyId, partyTicket])
 
-  const handleBackToMenu = () => {
+  const handleBackToMenu = async () => {
+    if (suppressDisconnectRef.current) return
     suppressDisconnectRef.current = true
     joinedRef.current = false
     setView("connecting")
     setRoomInfo(null)
     setGameState(null)
-    if (clientRef.current) {
-      clientRef.current.leaveBattle?.()
-      clientRef.current.disconnect()
+    const client = clientRef.current
+    if (client) {
+      await client.leaveBattle?.()
+      client.disconnect()
     }
     navigate("/")
   }

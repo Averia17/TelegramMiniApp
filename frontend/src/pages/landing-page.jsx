@@ -94,13 +94,11 @@ const LandingPage = ({id}) => {
     setPlayError("")
     setBattleStarting(true)
     try {
-      const {data} = await axios.post(`${API_URL}/economy/me/battle`)
-      setEconomy(syncEconomy(data))
       const battleIntentId = intentId || `${Date.now()}-${Math.random().toString(36).slice(2)}`
       const battleModeForStart = nextPartyId ? "team" : battleMode
       navigate(getBattleRoute(battleModeForStart, nextPartyId), {state: {
         heroName: selectedHero,
-        tauntActive: Boolean(data.taunt_active),
+        tauntActive: Boolean(economy.taunt_active),
         playerName: nickname,
         startNewBattle: true,
         battleIntentId: `${nextPartyId || battleModeForStart}:${battleIntentId}`,
@@ -112,7 +110,7 @@ const LandingPage = ({id}) => {
       setPlayError(error.response?.data?.detail || "Не удалось начать бой")
       return false
     }
-  }, [battleMode, navigate, nickname, selectedHero])
+  }, [battleMode, economy.taunt_active, navigate, nickname, selectedHero])
   const handlePartyReady = useCallback((state, {force = false} = {}) => {
     const nextParty = state?.partyId ? state : null
     if (nextParty?.partyId && disbandedPartyIdsRef.current.has(nextParty.partyId)) return

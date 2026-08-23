@@ -23,11 +23,10 @@ test("Brock Zeus publishes a separate companion cloud asset", async () => {
   const nodeNames = new Set((character.nodes || []).map(node => node.name).filter(Boolean))
   assert.equal([...nodeNames].some(name => /cloud|locator/i.test(name)), false)
   const armorNode = (character.nodes || []).find(node => node.name === "armor_GEO:PIV.001")
-  const rightArmRepairNode = (character.nodes || []).find(node => node.name === "BrockZeus_RightArm_Repair")
   assert.equal(
-    rightArmRepairNode?.extras?.right_arm_visual_repair_version,
-    1,
-    "Brock Zeus must publish the mirrored right-arm hand repair as a separate skinned mesh",
+    [...nodeNames].some(name => name === "BrockZeus_RightArm_Repair"),
+    false,
+    "Brock Zeus must not publish the duplicate right-arm repair mesh",
   )
   assert.equal(
     armorNode?.extras?.left_wrist_rest_repair_version,

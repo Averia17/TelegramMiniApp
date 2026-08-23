@@ -2,9 +2,15 @@ package room
 
 import (
 	"battle/model/game"
+	"errors"
 	"github.com/gorilla/websocket"
 	"sync"
 	"time"
+)
+
+var (
+	ErrRoomFull     = errors.New("room is full")
+	ErrRoomFinished = errors.New("room has finished")
 )
 
 type Client struct {
@@ -18,19 +24,55 @@ type Client struct {
 	// Handshake carries the room binding message separately from the latest-only
 	// state queue. The writer must deliver it before any snapshot so the client
 	// can identify its local player before rendering the first frame.
-	Handshake     chan []byte
-	State         chan []byte
-	MapRevision   int
-	MapSyncFrames int
-	Authenticated bool
-	MessageWindow time.Time
-	MessageCount  int
-	LastTauntAt   int64
-	Profile       MatchProfile
-	PartyID       string
-	PartySize     int
-	AssignedTeam  string
-	PendingRoomID string
+	Handshake      chan []byte
+	State          chan []byte
+	MapRevision    int
+	MapSyncFrames  int
+	Authenticated  bool
+	MessageWindow  time.Time
+	MessageCount   int
+	LastTauntAt    int64
+	Profile        MatchProfile
+	PartyID        string
+	PartySize      int
+	AssignedTeam   string
+	PendingRoomID  string
+	RegisterResult chan error
+	sendMu         sync.RWMutex
+	sendClosed     bool
+}
+
+// TrySend is the single non-blocking write path for server-owned client
+// queues. Room teardown can close Send while handlers and matchmaking are
+// still finishing a request; the read lock makes close/send atomic and avoids
+// a transport race turning into a process-wide panic.
+func (c *Client) TrySend(data []byte) (sent bool) {
+	if c == nil {
+		return false
+	}
+	c.sendMu.RLock()
+	defer c.sendMu.RUnlock()
+	if c.Send == nil || c.sendClosed {
+		return false
+	}
+	select {
+	case c.Send <- data:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Client) CloseSend() {
+	if c == nil {
+		return
+	}
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	if c.Send != nil && !c.sendClosed {
+		close(c.Send)
+		c.sendClosed = true
+	}
 }
 
 type Room struct {
@@ -80,6 +122,15 @@ func (r *Room) HasPlayer(playerID string) bool {
 	}
 	player, ok := r.State.Players[playerID]
 	return ok && player != nil && !player.IsBot
+}
+
+func (r *Room) MonsterCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.State == nil {
+		return 0
+	}
+	return len(r.State.Monsters)
 }
 
 func (r *Room) PartyIDForPlayer(playerID string) string {

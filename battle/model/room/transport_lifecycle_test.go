@@ -32,6 +32,23 @@ func TestTransportLifecycleKeepsNewestReconnectOwner(t *testing.T) {
 	}
 }
 
+func TestTransportLifecycleRejectsNewPlayersWhenRoomIsFull(t *testing.T) {
+	r := newLifecycleRoom()
+	r.State.MaxPlayers = 1
+	emptySince := time.Time{}
+	first := &Client{Id: "p1", Name: "first", HeroName: "Needle", Send: make(chan []byte, 1)}
+	second := &Client{Id: "p2", Name: "second", HeroName: "Mandy", Send: make(chan []byte, 1)}
+	r.registerClient(first, &emptySince)
+	r.registerClient(second, &emptySince)
+
+	if _, ok := r.Clients[second.Id]; ok {
+		t.Fatal("full room accepted a new player")
+	}
+	if _, ok := r.State.Players[second.Id]; ok {
+		t.Fatal("full room added an authoritative player")
+	}
+}
+
 func TestTransportLifecycleStopsDisconnectedPlayerMovement(t *testing.T) {
 	r := newLifecycleRoom()
 	emptySince := time.Time{}

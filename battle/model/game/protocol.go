@@ -173,6 +173,8 @@ type PlayerJSON struct {
 	Blind              float64          `json:"blind,omitempty"`
 	Stun               float64          `json:"stun,omitempty"`
 	Slow               float64          `json:"slow,omitempty"`
+	AntiHeal           float64          `json:"antiHeal,omitempty"`
+	SporeStacks        int              `json:"sporeStacks,omitempty"`
 	Channel            float64          `json:"channel,omitempty"`
 	Vine               float64          `json:"vine,omitempty"`
 	Vortex             float64          `json:"vortex,omitempty"`

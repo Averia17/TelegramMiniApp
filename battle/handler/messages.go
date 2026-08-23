@@ -109,9 +109,16 @@ func clientReadPump(c *mroom.Client) {
 	defer func() {
 		observability.Default.AddGauge("battle_websocket_active", "Currently open battle WebSocket connections", -1, nil)
 		observability.Default.IncCounter("battle_websocket_disconnects_total", "Battle WebSocket connections closed", nil)
+		sroom.RemoveFromMatchQueue(c.Id)
 		teamParties.Leave(c.Id)
 		if c.Room != nil {
-			c.Room.Unregister <- c
+			room := c.Room
+			select {
+			case room.Unregister <- c:
+			case <-time.After(time.Second):
+				// A room may already have stopped after its last client left. Do
+				// not let websocket cleanup leak the read-pump goroutine forever.
+			}
 		}
 		c.Conn.Close()
 	}()
@@ -146,6 +153,10 @@ func clientReadPump(c *mroom.Client) {
 
 		switch msg.Type {
 		case "auth":
+			if c.Authenticated {
+				sendError(c, "Authentication already completed")
+				continue
+			}
 			var request struct {
 				Token string `json:"token"`
 			}
@@ -208,7 +219,7 @@ func clientReadPump(c *mroom.Client) {
 			HandleCancelMatch(c)
 		case "leave_battle":
 			HandleLeaveBattle(c)
-			return
+			continue
 		case "list_rooms":
 			HandleListRooms(c)
 		default:
@@ -279,6 +290,10 @@ func HandleJoin(c *mroom.Client, data []byte) {
 		sendError(c, "Invalid join request")
 		return
 	}
+	if mroom.FindRoomForPlayer(c.Id, "") != nil || c.Room != nil {
+		sendError(c, "Already in battle")
+		return
+	}
 
 	if req.RoomName == "" {
 		req.RoomName = "room_" + shortID(c.Id)
@@ -295,7 +310,6 @@ func HandleJoin(c *mroom.Client, data []byte) {
 	}
 
 	r := mroom.GetOrCreateRoomFor(req.RoomName, req.RoomName, profile)
-	c.Room = r
 	c.Profile = profile
 	c.Name = req.PlayerName
 	c.HeroName = req.HeroName
@@ -303,7 +317,11 @@ func HandleJoin(c *mroom.Client, data []byte) {
 	c.PartyID = ""
 	c.PartySize = 0
 
-	r.Register <- c
+	if err := registerClient(c, r); err != nil {
+		sendError(c, roomAdmissionError(err))
+		return
+	}
+	c.Room = r
 
 	sendRoomJoined(c, r)
 }
@@ -342,6 +360,10 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 		sendError(c, "Room access denied")
 		return
 	}
+	if existing := mroom.FindRoomForPlayer(c.Id, ""); existing != nil && existing != r {
+		sendError(c, "Already in battle")
+		return
+	}
 	c.PendingRoomID = ""
 
 	c.Name = req.PlayerName
@@ -365,9 +387,11 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 		}
 		c.PartySize = snapshot.MaxSize
 	}
+	if err := registerClient(c, r); err != nil {
+		sendError(c, roomAdmissionError(err))
+		return
+	}
 	c.Room = r
-
-	r.Register <- c
 
 	sendRoomJoined(c, r)
 }
@@ -386,7 +410,7 @@ func HandleRecoverBattle(c *mroom.Client, data []byte) {
 			"roomId":   r.Id,
 			"playerId": c.Id,
 		}))
-		c.Send <- data
+		c.TrySend(data)
 		return
 	}
 
@@ -426,7 +450,7 @@ func HandleRecoverBattle(c *mroom.Client, data []byte) {
 					"townHallsDestroyed": playerResult.TownHallsDestroyed,
 				},
 			}))
-			c.Send <- data
+			c.TrySend(data)
 			return
 		}
 	}
@@ -435,7 +459,7 @@ func HandleRecoverBattle(c *mroom.Client, data []byte) {
 		"status":   "none",
 		"playerId": c.Id,
 	}))
-	c.Send <- messageData
+	c.TrySend(messageData)
 }
 
 func HandleFindMatch(c *mroom.Client, data []byte) {
@@ -452,6 +476,10 @@ func HandleFindMatch(c *mroom.Client, data []byte) {
 	}
 	if err := json.Unmarshal(data, &req); err != nil {
 		sendError(c, "Invalid match request")
+		return
+	}
+	if mroom.FindConnectedRoomForPlayer(c.Id) != nil || c.Room != nil {
+		sendError(c, "Already in battle")
 		return
 	}
 
@@ -510,7 +538,7 @@ func connectedPartyBattleMember(partyID string) string {
 		return ""
 	}
 	for _, memberID := range snapshot.MemberIDs {
-		if mroom.FindConnectedRoomForPlayer(memberID) != nil {
+		if mroom.FindRoomForPlayer(memberID, "") != nil {
 			return memberID
 		}
 	}
@@ -551,6 +579,8 @@ func HandleLeaveBattle(c *mroom.Client) {
 	c.PendingRoomID = ""
 	c.PartyID = ""
 	c.PartySize = 0
+	data, _ := json.Marshal(game.NewServerMessage("battle_left", map[string]string{"status": "left"}))
+	c.TrySend(data)
 }
 
 var teamParties = sroom.NewPartyRegistry()
@@ -599,7 +629,7 @@ func sendPartyState(c *mroom.Client, snapshot sroom.PartySnapshot) {
 		PartyID: snapshot.ID, OwnerID: snapshot.OwnerID, MemberIDs: snapshot.MemberIDs,
 		Count: snapshot.Count, MaxSize: snapshot.MaxSize,
 	}))
-	c.Send <- data
+	c.TrySend(data)
 }
 
 func partyErrorMessage(err error) string {
@@ -645,7 +675,7 @@ func HandleListRooms(c *mroom.Client) {
 
 	msg := game.NewServerMessage("room_list", items)
 	msgData, _ := json.Marshal(msg)
-	c.Send <- msgData
+	c.TrySend(msgData)
 }
 
 func sendRoomJoined(c *mroom.Client, r *mroom.Room) {
@@ -671,11 +701,30 @@ func sendRoomJoined(c *mroom.Client, r *mroom.Room) {
 		return
 	}
 	// Keep lightweight/unit-test clients and older in-process callers working.
-	c.Send <- msgData
+	c.TrySend(msgData)
+}
+
+func registerClient(c *mroom.Client, r *mroom.Room) error {
+	result := make(chan error, 1)
+	c.RegisterResult = result
+	r.Register <- c
+	err := <-result
+	c.RegisterResult = nil
+	return err
+}
+
+func roomAdmissionError(err error) string {
+	if err == mroom.ErrRoomFull {
+		return "Room is full"
+	}
+	if err == mroom.ErrRoomFinished {
+		return "Battle has already finished"
+	}
+	return "Could not join room"
 }
 
 func sendError(c *mroom.Client, msg string) {
 	params := game.ErrorParams{Message: msg}
 	data, _ := json.Marshal(game.NewServerMessage("error", params))
-	c.Send <- data
+	c.TrySend(data)
 }

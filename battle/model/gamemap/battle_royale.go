@@ -7,7 +7,9 @@ import (
 	"battle/service/geometry"
 )
 
-const battleRoyaleBeaconCollisionRadius = 140.0
+// Keep the gameplay footprint close to the visible stone pedestal. The beacon
+// capture radius is larger than this footprint so every hero can enter it.
+const battleRoyaleBeaconCollisionRadius = 96.0
 
 // GenerateBattleRoyale builds the natural island arena for «Остров Первого Испытания».
 // The broad terrain is generated from low-frequency noise so every match keeps

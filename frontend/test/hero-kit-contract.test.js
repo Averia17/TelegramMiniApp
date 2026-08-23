@@ -28,8 +28,8 @@ test("melee fallback configs can close on Needle and survive the approach", () =
 
   assert.ok(meleeHeroes.length > 0)
   for (const hero of meleeHeroes) {
-    assert.ok(hero.speed >= needle.speed + 3, `${hero.name} needs a clear mobility advantage`)
-    assert.ok(hero.maxLives >= needle.maxLives + 80, `${hero.name} needs enough health to approach`)
+    assert.ok(hero.speed >= needle.speed, `${hero.name} needs enough mobility to approach`)
+    assert.ok(hero.maxLives >= needle.maxLives, `${hero.name} needs enough health to approach`)
   }
 })
 

@@ -116,7 +116,7 @@ func TestTapAutoAimUsesMandyFocusedAttackReach(t *testing.T) {
 	}
 }
 
-func TestTapAutoAimHitsNearbyEnemiesAroundTheSelectedTarget(t *testing.T) {
+func TestTapAutoAimSelectsOneLumiFlowerProjectileTarget(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.Map.Collisions = nil
@@ -127,17 +127,20 @@ func TestTapAutoAimHitsNearbyEnemiesAroundTheSelectedTarget(t *testing.T) {
 	source := gs.Players["lumi"]
 	source.X, source.Y = 400, 400
 	gs.Players["near"].X, gs.Players["near"].Y = 500, 400
-	// This target is close to the selected target, so the melee cone can hit it
-	// with the same forgiving auto-aim assist radius.
-	gs.Players["nearby"].X, gs.Players["nearby"].Y = 500, 420
+	// Lumi's projectile resolves against the selected target only; it no longer
+	// gets a hidden melee-area splash from auto-aim.
+	gs.Players["nearby"].X, gs.Players["nearby"].Y = 500, 480
 	gs.PlayerPushAction(Action{PlayerId: "lumi", Type: "shoot", Ts: 1_000, Value: &ShootValue{Angle: math.Pi, AutoAim: true}})
 
 	gs.updatePlayers()
+	for step := 0; step < 240; step++ {
+		gs.updateBullets()
+	}
 	if got := gs.Players["near"].MaxLives - gs.Players["near"].Lives; got != source.AttackDmg {
 		t.Fatalf("selected target damage = %d, want one attack damage %d", got, source.AttackDmg)
 	}
-	if got := gs.Players["nearby"].MaxLives - gs.Players["nearby"].Lives; got != source.AttackDmg {
-		t.Fatalf("nearby target damage = %d, want one auto-aim area hit %d", got, source.AttackDmg)
+	if got := gs.Players["nearby"].MaxLives - gs.Players["nearby"].Lives; got != 0 {
+		t.Fatalf("nearby target took %d projectile splash damage, want 0", got)
 	}
 }
 
@@ -155,6 +158,9 @@ func TestManualAimDoesNotGainTheAutoAimArea(t *testing.T) {
 	gs.Players["nearby"].X, gs.Players["nearby"].Y = 500, 540
 
 	gs.playerShoot("lumi", 1_000, 0)
+	for step := 0; step < 240; step++ {
+		gs.updateBullets()
+	}
 	if got := gs.Players["near"].MaxLives - gs.Players["near"].Lives; got != source.AttackDmg {
 		t.Fatalf("manually aimed target damage = %d, want %d", got, source.AttackDmg)
 	}
@@ -342,8 +348,8 @@ func TestMandySuperWaitsForWindupThenHitsFullMapRectangleAndBreaksWalls(t *testi
 	now := time.Now().UnixMilli()
 
 	gs.playerAbility("mandy", now, "primary")
-	if len(gs.PendingMandySupers) != 1 || source.CastUntil != now+1200 {
-		t.Fatalf("pending supers=%d castUntil=%d, want one cast ending at %d", len(gs.PendingMandySupers), source.CastUntil, now+1200)
+	if len(gs.PendingMandySupers) != 1 || source.CastUntil != now+800 {
+		t.Fatalf("pending supers=%d castUntil=%d, want one cast ending at %d", len(gs.PendingMandySupers), source.CastUntil, now+800)
 	}
 	if gs.Players["inside"].Lives != gs.Players["inside"].MaxLives {
 		t.Fatal("Mandy Super dealt damage before its wind-up finished")

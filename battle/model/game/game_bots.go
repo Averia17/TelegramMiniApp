@@ -1018,24 +1018,11 @@ func (gs *GameState) botMinaSuperTarget(bot *player.Player, now int64) *player.P
 	if gs == nil || bot == nil || bot.HeroName != "Fairy Mina" {
 		return nil
 	}
-	best := bot
-	bestHealthRatio := float64(bot.Lives) / math.Max(1, float64(bot.MaxLives))
-	for _, candidate := range gs.Players {
-		if candidate == nil || candidate.PlayerId == bot.PlayerId || !candidate.IsAlive() || candidate.Team != bot.Team {
-			continue
-		}
-		if math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y) > 600 || !gs.botCanSee(bot, candidate, now) {
-			continue
-		}
-		healthRatio := float64(candidate.Lives) / math.Max(1, float64(candidate.MaxLives))
-		if healthRatio < bestHealthRatio || healthRatio == bestHealthRatio && candidate.PlayerId < best.PlayerId {
-			best, bestHealthRatio = candidate, healthRatio
-		}
-	}
-	if best == bot || bestHealthRatio > .72 {
+	_ = now
+	if float64(bot.Lives)/math.Max(1, float64(bot.MaxLives)) > .72 {
 		return nil
 	}
-	return best
+	return bot
 }
 
 func botPrimaryUseful(bot *player.Player, target *botTarget) bool {

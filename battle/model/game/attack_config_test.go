@@ -77,10 +77,9 @@ func TestBasicMeleeAttacksNeverMoveTheAttacker(t *testing.T) {
 
 func TestEveryMeleeHeroHasItsOwnForwardAttackArea(t *testing.T) {
 	expected := map[string]AttackConfig{
-		"Mandy":           {Range: 110, HalfArcDegrees: 60},
-		"Kaze":            {Range: 125, HalfArcDegrees: 60},
-		"Wukong Mico":     {Range: 140, HalfArcDegrees: 60},
-		"Persephone Lumi": {Range: 120, HalfArcDegrees: 60},
+		"Mandy":       {Range: 110, HalfArcDegrees: 60},
+		"Kaze":        {Range: 125, HalfArcDegrees: 60},
+		"Wukong Mico": {Range: 140, HalfArcDegrees: 60},
 	}
 	for heroName, want := range expected {
 		config := heroAttackConfigs[heroName]

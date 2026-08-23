@@ -85,7 +85,10 @@ func (r *Room) Run() {
 	for {
 		select {
 		case client := <-r.Register:
-			r.registerClient(client, &emptySince)
+			err := r.registerClient(client, &emptySince)
+			if client != nil && client.RegisterResult != nil {
+				client.RegisterResult <- err
+			}
 
 		case client := <-r.Unregister:
 			r.unregisterClient(client, &emptySince)
@@ -181,16 +184,23 @@ func (r *Room) BroadcastMsg(msgType string, params interface{}) {
 }
 
 func (r *Room) SendToPlayer(playerId string, msgType string, params interface{}) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	r.sendToPlayerUnlocked(playerId, msgType, params)
+}
+
+// sendToPlayerUnlocked is used by GameState callbacks while Room.stepSimulation
+// already owns r.mu. Keeping the callback on this path avoids a self-deadlock
+// when combat emits a targeted event during the authoritative tick.
+func (r *Room) sendToPlayerUnlocked(playerId string, msgType string, params interface{}) {
 	msg := game.NewServerMessage(msgType, params)
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return
 	}
-	if client, ok := r.Clients[playerId]; ok {
-		select {
-		case client.Send <- data:
-		default:
-		}
+	client, ok := r.Clients[playerId]
+	if ok {
+		client.TrySend(data)
 	}
 }
 
@@ -227,10 +237,7 @@ func (r *Room) HandleMessage(client *Client, data []byte) {
 		if err != nil || r.Clients[client.Id] != client {
 			return
 		}
-		select {
-		case client.Send <- response:
-		default:
-		}
+		client.TrySend(response)
 	case "move":
 		var v game.MoveValue
 		if err := json.Unmarshal(msg.Value, &v); err == nil {

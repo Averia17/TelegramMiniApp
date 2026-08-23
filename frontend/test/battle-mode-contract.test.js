@@ -7,7 +7,7 @@ import {
   DEATHMATCH_MODE,
   TEAM_DEATHMATCH_MODE,
 } from "../src/components/BattleGame/battleMode.js"
-import {getBattleResultView} from "../src/components/BattleGame/battleOutcome.js"
+import {getBattleResultView, isLocalBattleWinner, isLocalPlayerKilled} from "../src/components/BattleGame/battleOutcome.js"
 import {getIncomingTowerThreat, getObjectiveHudModel, getTeamHudModel, getTeamObjectiveGroups, getTeamPerspectiveLabel, normalizeTeamBattleResult} from "../src/components/BattleGame/teamBattleUi.js"
 
 const sourceCache = new Map()
@@ -85,6 +85,13 @@ test("team result keeps an authoritative draw and its reason", () => {
   assert.equal(result.draw, true)
   assert.equal(result.won, false)
   assert.equal(result.reason, "Ничья: у ратуш одинаковое здоровье.")
+})
+
+test("battle outcomes use player ids when display names collide", () => {
+  assert.equal(isLocalBattleWinner({winnerId: "winner-2", name: "same"}, "winner-2", "same"), true)
+  assert.equal(isLocalBattleWinner({winnerId: "winner-2", name: "same"}, "winner-1", "same"), false)
+  assert.equal(isLocalPlayerKilled({killedId: "player-2", killedName: "same"}, "player-1", "same"), false)
+  assert.equal(isLocalPlayerKilled({killedName: "same"}, "player-1", "same"), true)
 })
 
 test("team defeat opens the result popup instead of the hidden solo death view", () => {

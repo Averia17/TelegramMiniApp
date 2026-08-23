@@ -46,6 +46,27 @@ func TestSimulationStepSeparatesStateAdvanceFromTransport(t *testing.T) {
 	}
 }
 
+func TestSimulationTargetedEventsDoNotReenterRoomLock(t *testing.T) {
+	r := &Room{Clients: make(map[string]*Client)}
+	client := &Client{Id: "p1", Send: make(chan []byte, 1)}
+	r.Clients[client.Id] = client
+
+	// GameState callbacks run while the simulation owns r.mu. The unlocked
+	// callback path must still be able to enqueue a targeted event.
+	r.mu.Lock()
+	r.sendToPlayerUnlocked(client.Id, "voice", map[string]string{"text": "ok"})
+	r.mu.Unlock()
+
+	select {
+	case message := <-client.Send:
+		if len(message) == 0 {
+			t.Fatal("targeted event was empty")
+		}
+	default:
+		t.Fatal("targeted event was not queued while simulation lock was held")
+	}
+}
+
 func TestAttackCooldownSecondsTracksServerAttackCadence(t *testing.T) {
 	p := &player.Player{LastShootAt: 1_000, AttackRate: 800}
 

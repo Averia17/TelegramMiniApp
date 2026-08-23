@@ -48,7 +48,7 @@ const distanceBetween = (a, b) => Math.hypot(Number(a?.x || 0) - Number(b?.x || 
 
 const meleeAutoAimReach = source => {
   const base = Math.max(1, Number(source?.attackRange) || 430)
-  return source?.hero === "Mandy" && Number(source?.focusCharge) >= 100 ? base * 1.35 : base
+  return source?.hero === "Mandy" && Number(source?.focusCharge) >= 100 ? base * 1.2 : base
 }
 
 const nearestMeleeAutoAimTarget = (source, players = {}, monsters = {}, battleMode = createBattleMode()) => {
@@ -71,6 +71,7 @@ const attackDamage = player => {
   let damage = Number(player?.attackDamage) || 0
   damage *= Math.max(1, Number(player?.damageMultiplier) || 1)
   if (player?.hero === "Mandy" && Number(player?.focusCharge) >= 100) damage *= 1.5
+  if (player?.hero === "Kaze" && Number(player?.stealth) > 0) damage *= 2
   return damage > 0 ? Math.max(1, Math.round(damage)) : 0
 }
 

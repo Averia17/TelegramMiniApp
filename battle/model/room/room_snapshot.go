@@ -6,6 +6,7 @@ import (
 	"battle/observability"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"time"
 )
@@ -111,6 +112,8 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			Blind:              secondsRemaining(p.BlindUntil, now),
 			Stun:               secondsRemaining(p.StunUntil, now),
 			Slow:               secondsRemaining(p.SlowUntil, now),
+			AntiHeal:           secondsRemaining(p.AntiHealUntil, now),
+			SporeStacks:        p.SporeStacks,
 			Channel:            secondsRemaining(presentedChannelUntil, now),
 			Vine:               secondsRemaining(p.VineUntil, now),
 			Vortex:             secondsRemaining(p.VortexUntil, now),
@@ -261,6 +264,7 @@ func (r *Room) queueStateUpdates(updates []preparedStateUpdate) (queuedUpdates, 
 		data, err := json.Marshal(update.state)
 		if err != nil {
 			observability.Default.IncCounter("battle_state_marshal_errors_total", "State snapshots that failed JSON serialization", nil)
+			log.Printf("battle state marshal error room=%s player=%s: %v", r.Id, update.client.Id, err)
 			continue
 		}
 		stateBytes += len(data)

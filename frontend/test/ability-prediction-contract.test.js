@@ -79,6 +79,26 @@ test("intentional battle exit sends a leave command before disconnect", () => {
   assert.deepEqual(sent, [{type: "leave_battle"}])
 })
 
+test("intentional battle exit resolves only after the server confirms cleanup", async () => {
+  const client = new GameClient("ws://example", "token", () => {})
+  const sent = []
+  const previousWebSocket = globalThis.WebSocket
+  globalThis.WebSocket = {OPEN: 1}
+  client.ws = {readyState: 1, send: payload => sent.push(JSON.parse(payload))}
+
+  const leave = client.leaveBattle()
+  let resolved = false
+  leave.then(() => { resolved = true })
+  await Promise.resolve()
+  assert.equal(resolved, false)
+
+  client.handleMessage({type: "battle_left"})
+  assert.equal(await leave, true)
+  assert.deepEqual(sent, [{type: "leave_battle"}])
+
+  globalThis.WebSocket = previousWebSocket
+})
+
 test("clock sync responses estimate clock skew without treating transit as skew", () => {
   const client = new GameClient("ws://example", "token", () => {})
   const sentAt = Date.now()

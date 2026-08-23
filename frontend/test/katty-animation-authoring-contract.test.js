@@ -40,3 +40,23 @@ test("Katty's death animation has an authored recoil pop before the bottle toss 
   assert.match(source, /31:\s*\{\*\*fallen,\s*\*\*RIGHT_OPEN\}/)
   assert.match(source, /"death_style"\]\s*=\s*"spray-can-bailout"/)
 })
+
+test("Katty's regenerated asset keeps the camera-facing heading and revised bottle grip", async () => {
+  const source = await readFile(buildScript, "utf8")
+  const manifest = await readFile(
+    path.join(
+      frontendRoot,
+      "src",
+      "components",
+      "BattleGame",
+      "rendering",
+      "assets",
+      "assetManifest.js",
+    ),
+    "utf8",
+  )
+
+  assert.match(source, /ATTACHMENT_REVISION\s*=\s*3/)
+  assert.match(source, /Vector\(\s*\(0\.78,\s*-1\.88,\s*-2\.15\)\s*\)/)
+  assert.match(manifest, /Katty:[\s\S]*?hero\("Katty",\s*\.92,\s*0,\s*"katty"\)/)
+})

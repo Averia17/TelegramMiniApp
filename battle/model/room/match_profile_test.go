@@ -40,3 +40,15 @@ func TestFindLobbyRoomForDoesNotCrossProfiles(t *testing.T) {
 		t.Fatal("team queue should reuse its own room")
 	}
 }
+
+func TestFindLobbyRoomForCountsDisconnectedPlayersAgainstCapacity(t *testing.T) {
+	ResetRooms()
+	defer ResetRooms()
+	profile := NormalizeMatchProfile("deathmatch", "small", 1)
+	room := GetOrCreateRoomFor("full-lobby", "full-lobby", profile)
+	room.State.PlayerAdd("disconnected-player", "Disconnected", "Needle")
+
+	if FindLobbyRoomFor(profile) != nil {
+		t.Fatal("lobby with a retained disconnected player was offered to another match")
+	}
+}

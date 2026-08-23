@@ -73,3 +73,12 @@ test("shows Mina light mark as a pending detonation", () => {
   assert.deepEqual(effects.map(effect => effect.id), ["minaMark"])
   assert.equal(effects[0].remaining, null)
 })
+
+test("shows Needle anti-heal and spore stack counter", () => {
+  const effects = getActiveStatusEffects({antiHeal: 1.4, sporeStacks: 2})
+
+  assert.deepEqual(effects.map(effect => [effect.id, effect.label, effect.remaining]), [
+    ["antiHeal", "АНТИХИЛ", 1.4],
+    ["sporeStacks", "СПОРЫ 2/3", null],
+  ])
+})

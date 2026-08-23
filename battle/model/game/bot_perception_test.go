@@ -546,17 +546,17 @@ func TestBotDoesNotSpendSuperOnObjective(t *testing.T) {
 	}
 }
 
-func TestFairyMinaBotFindsWoundedAllyForSuper(t *testing.T) {
+func TestFairyMinaBotUsesSelfSuperWhenWounded(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("mina", "Mina", "Fairy Mina")
 	gs.PlayerAdd("ally", "Ally", "Kaze")
 	mina, ally := gs.Players["mina"], gs.Players["ally"]
-	mina.X, mina.Y, mina.Lives = 100, 100, mina.MaxLives
+	mina.X, mina.Y, mina.Lives = 100, 100, mina.MaxLives/2
 	ally.X, ally.Y, ally.Lives = 250, 100, ally.MaxLives/2
 
 	target := gs.botMinaSuperTarget(mina, 10_000)
-	if target != ally {
-		t.Fatalf("Mina selected %v as super target, want wounded ally", target)
+	if target != mina {
+		t.Fatalf("Mina selected %v as super target, want herself", target)
 	}
 }
 
@@ -566,14 +566,14 @@ func TestFairyMinaUsesReadySuperForAllyWithoutEnemyTarget(t *testing.T) {
 	gs.PlayerAdd("mina", "Mina", "Fairy Mina")
 	gs.PlayerAdd("ally", "Ally", "Kaze")
 	mina, ally := gs.Players["mina"], gs.Players["ally"]
-	mina.X, mina.Y, mina.SuperCharge = 100, 100, 100
+	mina.X, mina.Y, mina.Lives, mina.SuperCharge = 100, 100, mina.MaxLives/2, 100
 	ally.X, ally.Y, ally.Lives = 250, 100, ally.MaxLives/2
 
 	if !gs.botTryAbility(mina.PlayerId, mina, nil, 10_000) {
 		t.Fatal("Mina did not use a ready support super without an enemy target")
 	}
-	if ally.ShieldHP <= 0 || ally.ShieldUntil <= 10_000 {
-		t.Fatalf("Mina support super did not shield ally: shield=%d until=%d", ally.ShieldHP, ally.ShieldUntil)
+	if mina.ShieldHP != MinaSuperShield || mina.ShieldUntil <= 10_000 || ally.ShieldHP != 0 {
+		t.Fatalf("Mina self super shield=%d until=%d allyShield=%d", mina.ShieldHP, mina.ShieldUntil, ally.ShieldHP)
 	}
 }
 

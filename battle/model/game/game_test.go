@@ -106,6 +106,28 @@ func TestTeamBattleNeverDealsFriendlyFireThroughDamageGateway(t *testing.T) {
 	}
 }
 
+func TestRoutineDamageFeedbackUsesShortContactWindow(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("attacker", "Attacker", "Mandy")
+	gs.PlayerAdd("target", "Target", "Needle")
+	attacker, target := gs.Players["attacker"], gs.Players["target"]
+
+	if dealt := gs.dealPlayerDamage(attacker, target, 20); dealt != 20 {
+		t.Fatalf("damage = %d, want 20", dealt)
+	}
+
+	for _, effect := range gs.Effects {
+		if effect.Kind == "damage" {
+			if effect.ExpiresAt-effect.CreatedAt != 260 {
+				t.Fatalf("damage feedback lifetime = %dms, want 260ms", effect.ExpiresAt-effect.CreatedAt)
+			}
+			return
+		}
+	}
+	t.Fatal("damage feedback effect was not emitted")
+}
+
 func TestBattleDurationIncludesFinalPhase(t *testing.T) {
 	want := OpeningCombatDuration + ChallengeDuration + CollapseDuration + FinalPhaseDuration
 	if GameDuration != want {
@@ -311,6 +333,21 @@ func TestSoloLethalDamageRecordsPlacementOrder(t *testing.T) {
 
 	if gs.Players["winner"].Place != 1 || gs.Players["second"].Place != 2 || gs.Players["third"].Place != 3 {
 		t.Fatalf("placements = winner:%d second:%d third:%d, want 1/2/3", gs.Players["winner"].Place, gs.Players["second"].Place, gs.Players["third"].Place)
+	}
+}
+
+func TestSoloWinnerPlacementUsesPlayerIDWhenNamesCollide(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.Players = map[string]*player.Player{
+		"winner": {PlayerId: "winner", Name: "Same name", Lives: 10, MaxLives: 10},
+		"other":  {PlayerId: "other", Name: "Same name", Lives: 10, MaxLives: 10},
+	}
+	gs.WinnerPlayerID = "winner"
+
+	gs.finalizeBattlePlaces("Same name")
+	if gs.Players["winner"].Place != 1 || gs.Players["other"].Place == 1 {
+		t.Fatalf("duplicate-name placements = winner:%d other:%d, want only winner id placed first", gs.Players["winner"].Place, gs.Players["other"].Place)
 	}
 }
 
@@ -685,7 +722,7 @@ func TestUpdateRegenerationAppliesBatchedFifteenPercentPulse(t *testing.T) {
 
 	gs.updateRegenerationAt(now)
 
-	want := int(math.Round(float64(p.MaxLives) * regenerationPulsePercent * p.RegenRate / .01))
+	want := 98 // Needle's 600 HP pulse is intentionally floored by the carry model.
 	if got := p.Lives - start; got != want {
 		t.Fatalf("regenerated %d HP in one pulse, want %d", got, want)
 	}
@@ -694,10 +731,18 @@ func TestUpdateRegenerationAppliesBatchedFifteenPercentPulse(t *testing.T) {
 func TestUpdateRegenerationUsesHeroSpecificRate(t *testing.T) {
 	gs := newTestGameState()
 	gs.MaxPlayers = 2
-	gs.State = GameStateGame
+	// Add exactly the two test subjects; adding during Game fills empty slots
+	// with bots, whose random positions can legitimately suppress regeneration.
+	gs.State = GameStateLobby
 	gs.PlayerAdd("mina", "Mina", "Fairy Mina")
 	gs.PlayerAdd("needle", "Needle", "Needle")
+	gs.State = GameStateGame
 	mina, needle := gs.Players["mina"], gs.Players["needle"]
+	// Keep the comparison independent from the random map spawners. A nearby
+	// opponent is allowed to suppress passive regeneration, which would make
+	// this hero-rate assertion flaky.
+	mina.X, mina.Y = 200, 200
+	needle.X, needle.Y = 1800, 1800
 	mina.Lives, needle.Lives = mina.MaxLives/2, needle.MaxLives/2
 	now := int64(10_000_000)
 	mina.LastDamageAt, needle.LastDamageAt = now-4_000, now-4_000
@@ -706,8 +751,8 @@ func TestUpdateRegenerationUsesHeroSpecificRate(t *testing.T) {
 
 	minaHealed := mina.Lives - mina.MaxLives/2
 	needleHealed := needle.Lives - needle.MaxLives/2
-	if minaHealed != 71 || needleHealed != 102 {
-		t.Fatalf("passive regeneration Mina=%d HP, Needle=%d HP; want 71 and 102", minaHealed, needleHealed)
+	if minaHealed != 77 || needleHealed != 98 {
+		t.Fatalf("passive regeneration Mina=%d HP, Needle=%d HP; want 77 and 98", minaHealed, needleHealed)
 	}
 }
 
@@ -747,7 +792,7 @@ func TestUpdateRegenerationStillWorksWhenPursuedIntoBush(t *testing.T) {
 
 	gs.updateRegenerationAt(now)
 
-	want := int(math.Round(float64(p.MaxLives) * heroRegenerationPulsePercent(p, false)))
+	want := int(float64(p.MaxLives) * heroRegenerationPulsePercent(p, false))
 	if got := p.Lives - p.MaxLives/2; got != want {
 		t.Fatalf("regenerated %d HP in bush while pursued, want %d", got, want)
 	}
@@ -860,7 +905,7 @@ func TestUpdateRegenerationKeepsTwentyFivePercentPulseInConcealment(t *testing.T
 	start := p.Lives
 	gs.updateRegenerationAt(now)
 
-	want := int(math.Round(float64(p.MaxLives) * heroRegenerationPulsePercent(p, true)))
+	want := int(float64(p.MaxLives) * heroRegenerationPulsePercent(p, true))
 	if got := p.Lives - start; got != want {
 		t.Fatalf("regenerated %d HP in concealment, want %d", got, want)
 	}
@@ -1280,9 +1325,9 @@ func TestHeroCombatProfiles(t *testing.T) {
 		damage int
 		rate   int64
 	}{
-		"Needle":     {12, 65, 420},
-		"Brock Zeus": {12, 80, 520},
-		"Katty":      {14, 52, 520},
+		"Needle":     {13, 60, 420},
+		"Brock Zeus": {12, 85, 520},
+		"Katty":      {14, 55, 520},
 	}
 	for name, expected := range want {
 		hero := GetHeroByName(name)

@@ -22,7 +22,7 @@ func TestHeroKitContractIsIncludedInHeroesPayloadModel(t *testing.T) {
 
 func TestActiveHeroDescriptionsMatchTheirCurrentMechanics(t *testing.T) {
 	checks := map[string]string{
-		"Needle":      "Спора летит по прямой, ломает ближайшую разрушаемую стену и при попадании или в конце полёта раскрывается шестью фиксированными радиальными шипами.",
+		"Needle":      "Спора летит по прямой, снижает лечение цели на 50% на 2 секунды и раскрывается шестью фиксированными шипами.",
 		"Kaze":        "Два попадания открывают усиленный третий удар.",
 		"Wukong Mico": "Попадания накапливают до 5 зарядов Ярости.",
 	}
@@ -33,7 +33,7 @@ func TestActiveHeroDescriptionsMatchTheirCurrentMechanics(t *testing.T) {
 		}
 	}
 	needle := GetHeroByName("Needle")
-	if needle == nil || needle.Kit.Super.Description != "Корень оглушает врагов и оставляет замедляющую зону." {
-		t.Fatalf("Needle super description=%q, want an actual stun + slow zone", needle.Kit.Super.Description)
+	if needle == nil || needle.Kit.Super.Description != "После 300 мс замаха корень наносит 40 урона, притягивает врагов к центру и оставляет на 3 секунды зону с уроном 15 каждые 0,5 секунды и замедлением 60%." {
+		t.Fatalf("Needle super description=%q, want the new pull + damage zone", needle.Kit.Super.Description)
 	}
 }

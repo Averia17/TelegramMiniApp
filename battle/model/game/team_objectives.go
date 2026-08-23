@@ -241,13 +241,33 @@ func (gs *GameState) teamHallDestroyed(team string) bool {
 }
 
 func (gs *GameState) objectiveWinner() string {
+	blueDestroyed := false
+	redDestroyed := false
 	for _, objective := range gs.Objectives {
-		if objective.Type == "town_hall" && objective.Lives <= 0 {
-			if objective.Team == "Blue" {
-				return "Red"
-			}
-			return "Blue"
+		if objective == nil || objective.Type != "town_hall" || objective.Lives > 0 {
+			continue
+		}
+		switch objective.Team {
+		case "Blue":
+			blueDestroyed = true
+		case "Red":
+			redDestroyed = true
 		}
 	}
-	return ""
+	if blueDestroyed == redDestroyed {
+		return ""
+	}
+	if blueDestroyed {
+		return "Red"
+	}
+	return "Blue"
+}
+
+func (gs *GameState) objectiveBattleDecided() bool {
+	for _, objective := range gs.Objectives {
+		if objective != nil && objective.Type == "town_hall" && objective.Lives <= 0 {
+			return true
+		}
+	}
+	return false
 }

@@ -50,6 +50,8 @@ export class GameClient {
     this.clockSyncRequests = new Map()
     this.clockSyncSamples = []
     this.clockSyncTimer = null
+    this.leaveBattleResolver = null
+    this.leaveBattleTimer = null
   }
 
   connect() {
@@ -57,6 +59,10 @@ export class GameClient {
     if (this.clockSyncTimer) clearInterval(this.clockSyncTimer)
     this.clockSyncTimer = null
     this.clockSyncRequests.clear()
+    if (this.leaveBattleTimer) clearTimeout(this.leaveBattleTimer)
+    this.leaveBattleTimer = null
+    this.leaveBattleResolver?.(false)
+    this.leaveBattleResolver = null
     this.connected = false
     this.ws = null
     previousSocket?.close()
@@ -168,6 +174,14 @@ export class GameClient {
       this.onMessage?.(message)
       return
     }
+    if (message.type === "battle_left") {
+      if (this.leaveBattleTimer) clearTimeout(this.leaveBattleTimer)
+      this.leaveBattleTimer = null
+      const resolve = this.leaveBattleResolver
+      this.leaveBattleResolver = null
+      resolve?.(true)
+      return
+    }
     if (GAME_MESSAGES.has(message.type)) this.onMessage?.(message)
   }
 
@@ -225,8 +239,32 @@ export class GameClient {
   }
 
   leaveBattle() {
-    if (this.ws?.readyState !== WebSocket.OPEN) return
-    this.ws.send(JSON.stringify({type: "leave_battle"}))
+    if (this.ws?.readyState !== WebSocket.OPEN) return Promise.resolve(false)
+    if (this.leaveBattleResolver) return new Promise(resolve => {
+      const previousResolve = this.leaveBattleResolver
+      this.leaveBattleResolver = result => {
+        previousResolve(result)
+        resolve(result)
+      }
+    })
+    const socket = this.ws
+    return new Promise(resolve => {
+      this.leaveBattleResolver = resolve
+      this.leaveBattleTimer = setTimeout(() => {
+        if (this.leaveBattleResolver !== resolve) return
+        this.leaveBattleResolver = null
+        this.leaveBattleTimer = null
+        resolve(false)
+      }, 1000)
+      try {
+        socket.send(JSON.stringify({type: "leave_battle"}))
+      } catch {
+        if (this.leaveBattleTimer) clearTimeout(this.leaveBattleTimer)
+        this.leaveBattleTimer = null
+        this.leaveBattleResolver = null
+        resolve(false)
+      }
+    })
   }
 
   move(x, y) {
@@ -286,6 +324,10 @@ export class GameClient {
     if (this.clockSyncTimer) clearInterval(this.clockSyncTimer)
     this.clockSyncTimer = null
     this.clockSyncRequests.clear()
+    if (this.leaveBattleTimer) clearTimeout(this.leaveBattleTimer)
+    this.leaveBattleTimer = null
+    this.leaveBattleResolver?.(false)
+    this.leaveBattleResolver = null
     const socket = this.ws
     this.ws = null
     this.connected = false

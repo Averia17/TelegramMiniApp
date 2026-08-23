@@ -27,6 +27,14 @@ test("forced harness skills pulse after the controller baseline is initialized",
   assert.match(harness, /player\.gadgetPulse\+\+/)
 })
 
+test("GLB hero harness starts away from the center beacon and closer by default", async () => {
+  const harness = await readFile(new URL("./glb-hero-harness.html", import.meta.url), "utf8")
+  assert.match(harness, /x:map\.width\*\.5,y:map\.height\*\.75/)
+  assert.match(harness, /rotation:Math\.PI\/2/)
+  assert.match(harness, /let zoom=1\.6/)
+  assert.match(harness, /resize\(\);applyZoom\(\)/)
+})
+
 test("network respawn snaps the hero to its authoritative base position", async () => {
   const heroView = await readFile(new URL("../src/components/BattleGame/rendering/heroes/HeroView.js", import.meta.url), "utf8")
   assert.match(heroView, /if \(this\.lastLives <= 0 && state\.lives > 0\) \{[\s\S]*?this\.x = state\.x[\s\S]*?this\.y = state\.y/)

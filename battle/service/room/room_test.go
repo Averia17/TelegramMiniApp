@@ -73,6 +73,46 @@ func TestMatchQueueRemove(t *testing.T) {
 	}
 }
 
+func TestMatchQueueDoesNotQueueTheSamePlayerTwice(t *testing.T) {
+	matchQueue.mu.Lock()
+	matchQueue.queue = nil
+	matchQueue.queuedAt = make(map[string]time.Time)
+	matchQueue.mu.Unlock()
+
+	client := newTestClient("duplicate-queue")
+	client.Profile = room.NormalizeMatchProfile("team deathmatch", "team-battle", 6)
+	client.PartySize = 1
+	AddToMatchQueue(client)
+	AddToMatchQueue(client)
+
+	matchQueue.mu.Lock()
+	queueLen := len(matchQueue.queue)
+	matchQueue.mu.Unlock()
+	if queueLen != 1 {
+		t.Fatalf("duplicate queue entries = %d, want 1", queueLen)
+	}
+	RemoveFromMatchQueue(client.Id)
+}
+
+func TestMatchQueueRemoveClearsAllDuplicateEntries(t *testing.T) {
+	matchQueue.mu.Lock()
+	matchQueue.queue = nil
+	matchQueue.queuedAt = make(map[string]time.Time)
+	client := newTestClient("remove-duplicates")
+	matchQueue.queue = []*room.Client{client, client}
+	matchQueue.queuedAt[client.Id] = time.Now()
+	matchQueue.mu.Unlock()
+
+	RemoveFromMatchQueue(client.Id)
+
+	matchQueue.mu.Lock()
+	queueLen := len(matchQueue.queue)
+	matchQueue.mu.Unlock()
+	if queueLen != 0 {
+		t.Fatalf("queue entries after remove = %d, want 0", queueLen)
+	}
+}
+
 func TestMatchQueueSinglePlayer(t *testing.T) {
 	matchQueue.mu.Lock()
 	matchQueue.queue = nil

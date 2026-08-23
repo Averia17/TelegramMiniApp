@@ -18,6 +18,26 @@ const createMeleeRangeEdgeGeometry = halfArcDegrees => {
   return new THREE.RingGeometry(0.91, 1, 48, 1, start, length)
 }
 
+const GROUND_Y_AXIS = new THREE.Vector3(0, 1, 0)
+const GROUND_PITCH = new THREE.Quaternion().setFromAxisAngle(
+  new THREE.Vector3(1, 0, 0),
+  -Math.PI / 2,
+)
+
+// THREE.Euler's default XYZ order turns a ground plane vertical when a mesh
+// that is already pitched by -PI/2 also receives a Y rotation. Compose the
+// yaw and ground pitch as quaternions instead: yaw * pitch.
+const setGroundYaw = (object, angle) => {
+  object.quaternion.setFromAxisAngle(GROUND_Y_AXIS, -angle)
+  object.quaternion.multiply(GROUND_PITCH)
+}
+
+const getVisualAimPoint = (player, angle, range, height) => worldToScene(
+  player.x + Math.cos(angle) * range,
+  player.y + Math.sin(angle) * range / CAMERA_GROUND_PROJECTION,
+  height,
+)
+
 export class AimRenderer {
   constructor(root) {
     this.root = root
@@ -34,14 +54,14 @@ export class AimRenderer {
       createMeleeAreaGeometry(45),
       flatMaterial(0xffd84d, {transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false, depthTest: false}),
     )
-    this.meleeArea.rotation.x = -Math.PI / 2
+    setGroundYaw(this.meleeArea, 0)
     this.meleeArea.renderOrder = 2
     this.meleeArea.userData.halfArcDegrees = 45
     this.meleeRangeEdge = new THREE.Mesh(
       createMeleeRangeEdgeGeometry(45),
       flatMaterial(0xffffff, {transparent: true, opacity: 0.78, side: THREE.DoubleSide, depthWrite: false, depthTest: false}),
     )
-    this.meleeRangeEdge.rotation.x = -Math.PI / 2
+    setGroundYaw(this.meleeRangeEdge, 0)
     this.meleeRangeEdge.renderOrder = 3
     this.meleeRangeEdge.userData.halfArcDegrees = 45
     this.meleeProjection = new THREE.Group()
@@ -74,19 +94,11 @@ export class AimRenderer {
         : configuredRange || 430
     const angle = Number(player.rotation) || 0
 
-    const points = [0, 1].map(progress => worldToScene(
-      player.x + Math.cos(angle) * range * progress,
-      player.y + Math.sin(angle) * range * progress,
-      3,
-    ))
+    const points = [0, 1].map(progress => getVisualAimPoint(player, angle, range * progress, 3))
     this.line.geometry.dispose()
     this.line.geometry = new THREE.BufferGeometry().setFromPoints(points)
-    this.target.position.copy(worldToScene(
-      player.x + Math.cos(angle) * range,
-      player.y + Math.sin(angle) * range,
-      1,
-    ))
-    this.target.scale.setScalar(10 * WORLD_SCALE)
+    this.target.position.copy(getVisualAimPoint(player, angle, range, 1))
+    this.target.scale.set(10 * WORLD_SCALE, 10 * WORLD_SCALE / CAMERA_GROUND_PROJECTION, 10 * WORLD_SCALE)
     this.line.material.color.set(player.color || 0xffffff)
     this.target.material.color.set(player.color || 0xffffff)
     this.line.visible = !melee && !superAiming
@@ -107,14 +119,14 @@ export class AimRenderer {
       }
       this.meleeProjection.position.copy(worldToScene(player.x, player.y, 0))
       this.meleeArea.position.set(0, 3 * WORLD_SCALE, 0)
-      this.meleeArea.rotation.y = -angle
+      setGroundYaw(this.meleeArea, angle)
       // Use one scalar so changing aim direction only rotates the sector and
       // never changes its gameplay radius or its visual width.
       this.meleeArea.scale.setScalar(range * WORLD_SCALE)
       this.meleeArea.material.color.set(player.color || 0xffd84d)
       this.meleeArea.material.opacity = mandy && player.focusCharge >= 100 ? 0.25 : 0.16
       this.meleeRangeEdge.position.set(0, 3.2 * WORLD_SCALE, 0)
-      this.meleeRangeEdge.rotation.y = -angle
+      setGroundYaw(this.meleeRangeEdge, angle)
       this.meleeRangeEdge.scale.setScalar(range * WORLD_SCALE)
       this.meleeRangeEdge.material.color.set(player.color || 0xffd84d).lerp(new THREE.Color(0xffffff), 0.32)
       this.meleeRangeEdge.material.opacity = mandy && player.focusCharge >= 100 ? 0.95 : 0.78
@@ -126,7 +138,7 @@ export class AimRenderer {
         player.y + Math.sin(angle) * range / 2,
         1.2,
       ))
-      this.superLane.rotation.y = -angle
+      setGroundYaw(this.superLane, angle)
       this.superLane.scale.set(range * WORLD_SCALE, 100 * WORLD_SCALE, 1)
     }
 

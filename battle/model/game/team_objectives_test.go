@@ -69,6 +69,26 @@ func TestTeamObjectiveHealthUsesReducedBalanceValues(t *testing.T) {
 	}
 }
 
+func TestTeamObjectiveWinnerIsDrawWhenBothTownHallsFallTogether(t *testing.T) {
+	state := &GameState{
+		Mode:  ModeTeamDeathmatch,
+		State: GameStateGame,
+		Objectives: map[string]*ObjectiveState{
+			"blue-hall": {ID: "blue-hall", Type: "town_hall", Team: "Blue", Lives: 0},
+			"red-hall":  {ID: "red-hall", Type: "town_hall", Team: "Red", Lives: 0},
+		},
+		Players: map[string]*player.Player{
+			"blue": {PlayerId: "blue", Lives: 1, Team: "Blue"},
+			"red":  {PlayerId: "red", Lives: 1, Team: "Red"},
+		},
+	}
+
+	winner, decided := (TeamDeathmatchRules{}).EvaluateWinner(state, time.Now().UnixMilli())
+	if !decided || winner != "" {
+		t.Fatalf("simultaneous town-hall destruction = winner %q, decided %v; want a decided draw", winner, decided)
+	}
+}
+
 func TestTeamLethalDamageSchedulesRespawnUsingMatchProgress(t *testing.T) {
 	state := newTeamObjectiveState()
 	state.MatchStartedAt = time.Now().Add(-TeamBattleDuration / 2).UnixMilli()

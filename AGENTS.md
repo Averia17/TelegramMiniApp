@@ -5,6 +5,10 @@
 - Do not modify files, run project commands, or make other implementation changes while waiting for those answers.
 - If the task is clear enough to proceed safely, make reasonable assumptions, state them briefly, and continue without unnecessary questions.
 
+# Testing guidance
+
+- Run tests for large tasks, substantial changes, or when explicitly requested; do not run the test suite after every small code change.
+
 # Browser process hygiene
 
 - Keep browser automation limited to the shortest flow needed for verification.

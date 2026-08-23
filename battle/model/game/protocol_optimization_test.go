@@ -45,8 +45,8 @@ func TestAbilityCooldownMsKeepsHeroValues(t *testing.T) {
 
 func TestGetAttackConfigUsesCatalogValues(t *testing.T) {
 	config := GetAttackConfig("Brock Zeus")
-	if config.Archetype != AttackProjectile || config.Range != 760 || config.SplashRadius != 72 {
-		t.Fatalf("Brock Zeus attack config = %#v, want projectile/760/72", config)
+	if config.Archetype != AttackProjectile || config.Range != 760 || config.SplashRadius != 80 {
+		t.Fatalf("Brock Zeus attack config = %#v, want projectile/760/80", config)
 	}
 	if unknown := GetAttackConfig("Unknown"); unknown != (AttackConfig{}) {
 		t.Fatalf("unknown attack config = %#v, want zero value", unknown)

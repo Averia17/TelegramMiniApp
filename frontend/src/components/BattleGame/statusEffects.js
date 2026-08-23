@@ -12,6 +12,7 @@ const TIMED_EFFECTS = [
   {id: "vortex", property: "vortex", label: "ВОРОНКА", icon: "↻", tone: "negative"},
   {id: "flying", property: "flying", label: "В ПОЛЁТЕ", icon: "↑", tone: "positive"},
   {id: "slow", property: "slow", label: "ЗАМЕДЛЕНИЕ", icon: "❄", tone: "negative"},
+  {id: "antiHeal", property: "antiHeal", label: "АНТИХИЛ", icon: "✦", tone: "negative"},
 ]
 const MIN_VISIBLE_TIMED_EFFECT_SECONDS = 0.05
 
@@ -57,6 +58,11 @@ export const getActiveStatusEffects = (player = {}, {inBush = false} = {}) => {
   const minaMarks = Math.max(0, Math.min(1, Number(player.marks) || 0))
   if (minaMarks > 0) {
     addEffect(effects, {id: "minaMark", label: "МЕТКА MINA", icon: "✦", tone: "negative"})
+  }
+
+  const sporeStacks = Math.max(0, Math.min(2, Number(player.sporeStacks) || 0))
+  if (sporeStacks > 0) {
+    addEffect(effects, {id: "sporeStacks", label: `СПОРЫ ${sporeStacks}/3`, icon: "✺", tone: "negative"})
   }
 
   const paintStacks = Math.max(0, Math.min(2, Number(player.paintStacks) || 0))

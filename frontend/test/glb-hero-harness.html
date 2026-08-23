@@ -32,7 +32,7 @@
 
     await assetRegistry.preloadHeroes([hero])
     const map=await loadCanonicalBattleMap()
-    const player={hero,name:hero,x:map.width/2,y:map.height/2,rotation:0,lives:720,maxLives:720,speed:0,moveX:0,moveY:0,aiming:false,attackPulse:0,superPulse:0,gadgetPulse:0}
+    const player={hero,name:hero,x:map.width*.5,y:map.height*.75,rotation:Math.PI/2,lives:720,maxLives:720,speed:0,moveX:0,moveY:0,aiming:false,attackPulse:0,superPulse:0,gadgetPulse:0}
     const battleState={map,game:{islandName:"Остров Первого Испытания",phase:"landing",stormRadius:0},players:{qa:player},monsters:{},props:[],bullets:[],effects:[]}
     const battleRenderer=new ThreeBattleRenderer(canvas);battleRenderer.setLocalPlayerId("qa");battleRenderer.setState(battleState)
     // Runtime clip contract: aimGadget:"AimGadget" is resolved by GLBHeroController inside HeroView.
@@ -41,8 +41,8 @@
     document.querySelectorAll("[data-skill]").forEach(button=>button.addEventListener("click",()=>{pulse(button.dataset.skill);button.classList.add("active")}))
     document.querySelectorAll("[data-animation]").forEach(button=>button.addEventListener("click",()=>{const animation=button.dataset.animation,view=getView();if(animation==="run")player.moveY=1;else player.moveY=0;if(animation.startsWith("aim"))player.aiming=true;else player.aiming=false;if(animation==="victory"||animation==="defeat")view.setResult(animation);if(animation==="hit")player.lives=Math.max(1,player.lives-1);battleRenderer.setState(battleState);setLabel(`animation / ${animation}`);button.classList.add("active")}))
     document.querySelector("#toggle").addEventListener("click",event=>{const hidden=panel.classList.toggle("hidden");event.currentTarget.textContent=hidden?"Показать панель":"Скрыть панель"})
-    let zoom=1;const applyZoom=()=>{battleRenderer.cameraRig.preferredVertical=31/zoom;document.querySelector("#zoom-value").textContent=`${Math.round(zoom*100)}%`};document.querySelector("#zoom-out").addEventListener("click",()=>{zoom=Math.max(.65,zoom-.1);applyZoom()});document.querySelector("#zoom-in").addEventListener("click",()=>{zoom=Math.min(1.8,zoom+.1);applyZoom()});canvas.addEventListener("wheel",event=>{event.preventDefault();if(!event.deltaY)return;zoom=Math.max(.65,Math.min(1.8,zoom*Math.pow(1.08,event.deltaY>0?-1:1)));applyZoom()},{passive:false})
-    const resize=()=>battleRenderer.resize(innerWidth,innerHeight);addEventListener("resize",resize);resize();status.classList.add("ready");setLabel("idle")
+    let zoom=1.6;const applyZoom=()=>{battleRenderer.cameraRig.preferredVertical=31/zoom;document.querySelector("#zoom-value").textContent=`${Math.round(zoom*100)}%`};document.querySelector("#zoom-out").addEventListener("click",()=>{zoom=Math.max(.65,zoom-.1);applyZoom()});document.querySelector("#zoom-in").addEventListener("click",()=>{zoom=Math.min(1.8,zoom+.1);applyZoom()});canvas.addEventListener("wheel",event=>{event.preventDefault();if(!event.deltaY)return;zoom=Math.max(.65,Math.min(1.8,zoom*Math.pow(1.08,event.deltaY>0?-1:1)));applyZoom()},{passive:false})
+    const resize=()=>battleRenderer.resize(innerWidth,innerHeight);addEventListener("resize",resize);resize();applyZoom();status.classList.add("ready");setLabel("idle")
     battleRenderer.renderer.setAnimationLoop(()=>battleRenderer.render());addEventListener("pagehide",()=>battleRenderer.destroy(),{once:true})
     window.qa={battleRenderer,battleState,player,getView};window.render_game_to_text=()=>JSON.stringify({renderer:"ThreeBattleRenderer",map:{id:map.id,name:map.name,seed:map.seed,revision:map.revision,walls:map.walls.length,water:map.walls.filter(wall=>wall.type==="water").length},hero,requestedHero,state:readout.textContent,animation:getView()?.animation?.state||null,skillPulses:{attack:player.attackPulse,super:player.superPulse,gadget:player.gadgetPulse},clips:getView()?.animation?.actions? [...getView().animation.actions.keys()]:[]})
   </script>

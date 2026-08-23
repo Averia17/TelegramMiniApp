@@ -200,6 +200,7 @@ export class HeroView {
     this.group = new THREE.Group()
     this.shadow = createContactShadow(1.05)
     this.model = readyInstance ? readyInstance.root : new THREE.Group()
+    this.orientationOffset = readyInstance?.asset?.rotationOffset || 0
     this.modelMaterials = collectMaterials(this.model)
     this.hitMaterials = collectHitMaterials(this.modelMaterials)
     this.modelOpacity = 1
@@ -254,6 +255,7 @@ export class HeroView {
   installGlbInstance(instance, heroName) {
     const previous = this.model
     this.model = instance.root
+    this.orientationOffset = instance.asset?.rotationOffset || 0
     this.modelMaterials = collectMaterials(this.model)
     this.hitMaterials = collectHitMaterials(this.modelMaterials)
     this.modelOpacity = 1
@@ -450,11 +452,11 @@ export class HeroView {
       if (ring?.material) ring.material.opacity = 0.4 + remainingMix * 0.32 + pulse * 0.12
       if (innerRing?.material) innerRing.material.opacity = 0.25 + remainingMix * 0.26 + pulse * 0.1
     }
-    this.model.rotation.y = visualAngle
+    this.model.rotation.y = visualAngle + this.orientationOffset
     this.model.userData.animate?.(time, moving ? 1 : 0.08, this.recoil)
     if (this.animation) {
       const configuredSpeed = heroSpeed(this.state.hero || this.state.name)
-      this.model.rotation.y = visualAngle
+      this.model.rotation.y = visualAngle + this.orientationOffset
       // The server's configured hero speed is authoritative for the gait. The
       // interpolated positional delta is noisy and must not erase per-hero
       // differences (Kaze should visibly cycle faster than Needle).

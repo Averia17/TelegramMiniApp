@@ -53,7 +53,7 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 		Mode:         profile.Mode,
 		Dependencies: dependencies,
 		Broadcast:    r.BroadcastMsg,
-		SendToPlayer: r.SendToPlayer,
+		SendToPlayer: r.sendToPlayerUnlocked,
 	})
 	gs.OnGameEnd = func(players map[string]*player.Player, winner string, duration int64) {
 		result := &provider.BattleResult{
@@ -70,7 +70,7 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 			if p.IsBot {
 				continue
 			}
-			result.Players = append(result.Players, buildPlayerResult(p, winner))
+			result.Players = append(result.Players, buildPlayerResult(p, winner, gs.WinnerPlayerID))
 		}
 		if store := currentStore(); store != nil {
 			if err := store.SaveBattleResult(result); err != nil {
@@ -82,7 +82,7 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 		}
 	}
 	gs.OnPlayerKilled = func(playerId, killerName string) {
-		r.SendToPlayer(playerId, "you_died", map[string]interface{}{
+		r.sendToPlayerUnlocked(playerId, "you_died", map[string]interface{}{
 			"killerName": killerName,
 		})
 	}
@@ -95,7 +95,13 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 	return r
 }
 
-func buildPlayerResult(p *player.Player, winner string) provider.PlayerResult {
+func buildPlayerResult(p *player.Player, winner string, winnerID ...string) provider.PlayerResult {
+	won := p.Name == winner ||
+		(winner == "Red team" && p.Team == "Red") ||
+		(winner == "Blue team" && p.Team == "Blue")
+	if len(winnerID) > 0 && winnerID[0] != "" {
+		won = p.PlayerId == winnerID[0]
+	}
 	return provider.PlayerResult{
 		PlayerId:           p.PlayerId,
 		PartyID:            p.PartyID,
@@ -111,9 +117,7 @@ func buildPlayerResult(p *player.Player, winner string) provider.PlayerResult {
 		TowersDestroyed:    p.TowersDestroyed,
 		TownHallsDestroyed: p.TownHallsDestroyed,
 		Place:              p.Place,
-		Won: p.Name == winner ||
-			(winner == "Red team" && p.Team == "Red") ||
-			(winner == "Blue team" && p.Team == "Blue"),
+		Won:                won,
 	}
 }
 
@@ -182,7 +186,7 @@ func FindLobbyRoomFor(profile MatchProfile) *Room {
 	defer roomsMu.RUnlock()
 	for _, r := range rooms {
 		r.mu.RLock()
-		if (r.State.State == "waiting" || r.State.State == "lobby") && len(r.Clients) < r.MaxPlayers &&
+		if r.State != nil && (r.State.State == "waiting" || r.State.State == "lobby") && len(r.State.Players) < r.MaxPlayers &&
 			profile.Compatible(MatchProfile{Mode: game.GameMode(r.Mode), MapName: r.MapName, MaxPlayers: r.MaxPlayers}) {
 			r.mu.RUnlock()
 			return r

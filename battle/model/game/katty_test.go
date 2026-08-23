@@ -15,8 +15,8 @@ func TestKattyIsRegisteredWithBalancedCompactStats(t *testing.T) {
 	if hero == nil {
 		t.Fatal("Katty is not registered")
 	}
-	if hero.MaxLives != 640 || hero.Speed != 14 || hero.AttackDamage != 52 {
-		t.Fatalf("Katty stats = health=%d speed=%d damage=%d, want 640/14/52", hero.MaxLives, hero.Speed, hero.AttackDamage)
+	if hero.MaxLives != 640 || hero.Speed != 14 || hero.AttackDamage != 55 {
+		t.Fatalf("Katty stats = health=%d speed=%d damage=%d, want 640/14/55", hero.MaxLives, hero.Speed, hero.AttackDamage)
 	}
 	if hero.Attack.Range != KattySprayRange || hero.Attack.Archetype != AttackProjectile || hero.Attack.AimShape != "line" || hero.Attack.ProjectileKind != "katty_paint_spray" {
 		t.Fatalf("Katty attack config = %#v, want a short paint spray projectile", hero.Attack)

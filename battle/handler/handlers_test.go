@@ -71,6 +71,102 @@ func TestHandleFindMatchRejectsPartyWithConnectedBattleMember(t *testing.T) {
 	}
 }
 
+func TestHandleFindMatchRejectsPartyWithDisconnectedBattleMember(t *testing.T) {
+	teamParties = sroom.NewPartyRegistry()
+	mroom.ResetRooms()
+	defer mroom.ResetRooms()
+
+	profile := mroom.NormalizeMatchProfile("team deathmatch", "team-battle", 6)
+	activeRoom := mroom.GetOrCreateRoomFor("disconnected-party-battle", "disconnected-party-battle", profile)
+	activeClient := &mroom.Client{Id: "player-1", Name: "Disconnected fighter", HeroName: "Needle", Send: make(chan []byte, 8), State: make(chan []byte, 1)}
+	activeRoom.Register <- activeClient
+	deadline := time.Now().Add(time.Second)
+	for !activeRoom.HasPlayer("player-1") {
+		if time.Now().After(deadline) {
+			t.Fatal("active client was not registered in time")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	activeRoom.LeaveForReconnect(activeClient)
+	if _, err := teamParties.Join("party-disconnected", "player-1", 3); err != nil {
+		t.Fatal(err)
+	}
+
+	searching := &mroom.Client{Id: "player-2", Send: make(chan []byte, 1)}
+	ticket := signedBattleTicket(t, battleTicketClaims{PartyID: "party-disconnected", PlayerID: "player-2", Nonce: "battle-1", MaxSize: 3, Exp: time.Now().Add(time.Minute).Unix()})
+	request, _ := json.Marshal(map[string]any{
+		"type": "find_match", "playerName": "New battle", "heroName": "Kaze", "mode": "team deathmatch",
+		"roomMap": "team-battle", "maxPlayers": 6, "partyId": "party-disconnected", "partySize": 3, "partyTicket": ticket,
+	})
+	HandleFindMatch(searching, request)
+
+	select {
+	case message := <-searching.Send:
+		if !strings.Contains(string(message), "Party member is already in battle") {
+			t.Fatalf("error message = %s, want disconnected active member conflict", message)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("matchmaking should reject a party with a disconnected active battle member")
+	}
+}
+
+func TestHandleFindMatchAllowsDisconnectedPlayerToStartANewBattle(t *testing.T) {
+	teamParties = sroom.NewPartyRegistry()
+	mroom.ResetRooms()
+	defer mroom.ResetRooms()
+
+	activeRoom := mroom.GetOrCreateRoom("disconnected-player-battle", "disconnected-player-battle", "small", "deathmatch", 4)
+	activeClient := &mroom.Client{Id: "player-1", Name: "Disconnected fighter", HeroName: "Needle", Send: make(chan []byte, 8), State: make(chan []byte, 1)}
+	activeRoom.Register <- activeClient
+	deadline := time.Now().Add(time.Second)
+	for !activeRoom.HasPlayer("player-1") {
+		if time.Now().After(deadline) {
+			t.Fatal("active client was not registered in time")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	activeRoom.LeaveForReconnect(activeClient)
+
+	searching := &mroom.Client{Id: "player-1", Send: make(chan []byte, 1)}
+	HandleFindMatch(searching, []byte(`{"type":"find_match","playerName":"New battle"}`))
+	sroom.RemoveFromMatchQueue(searching.Id)
+
+	select {
+	case message := <-searching.Send:
+		if strings.Contains(string(message), "Already in battle") {
+			t.Fatalf("new matchmaking request was rejected: %s", message)
+		}
+	default:
+	}
+}
+
+func TestHandleJoinDoesNotMoveOneConnectionIntoTwoRooms(t *testing.T) {
+	mroom.ResetRooms()
+	defer mroom.ResetRooms()
+
+	client := &mroom.Client{Id: "single-room-player", Authenticated: true, Send: make(chan []byte, 8)}
+	HandleJoin(client, []byte(`{"type":"join","roomName":"first-room","roomMap":"small","mode":"deathmatch"}`))
+	first := mroom.FindRoom("first-room")
+	if first == nil || !first.HasPlayer(client.Id) {
+		t.Fatal("first room join did not register the player")
+	}
+
+	HandleJoin(client, []byte(`{"type":"join","roomName":"second-room","roomMap":"small","mode":"deathmatch"}`))
+	if second := mroom.FindRoom("second-room"); second != nil && second.HasPlayer(client.Id) {
+		t.Fatal("one connection was registered in two rooms")
+	}
+	foundError := false
+	for len(client.Send) > 0 {
+		message := <-client.Send
+		if strings.Contains(string(message), "Already in battle") {
+			foundError = true
+		}
+	}
+	if !foundError {
+		t.Fatal("second room join did not report the active battle")
+	}
+}
+
 func TestHandleFindMatchRejectsPartyIDWithoutBattleTicket(t *testing.T) {
 	teamParties = sroom.NewPartyRegistry()
 	searching := &mroom.Client{Id: "attacker", Send: make(chan []byte, 2)}
@@ -96,7 +192,7 @@ func TestHandleLeaveBattleRemovesOnlyBattleSessionMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &mroom.Client{Id: "player-1", PendingRoomID: "old-room", PartyID: "party-leave", PartySize: 3}
+	client := &mroom.Client{Id: "player-1", PendingRoomID: "old-room", PartyID: "party-leave", PartySize: 3, Send: make(chan []byte, 1)}
 	HandleLeaveBattle(client)
 
 	if _, ok := teamParties.Snapshot("party-leave"); ok {
@@ -104,6 +200,14 @@ func TestHandleLeaveBattleRemovesOnlyBattleSessionMembership(t *testing.T) {
 	}
 	if client.PendingRoomID != "" || client.PartyID != "" || client.PartySize != 0 {
 		t.Fatalf("client battle session fields = %+v, want cleared", client)
+	}
+	select {
+	case message := <-client.Send:
+		if !strings.Contains(string(message), "battle_left") {
+			t.Fatalf("leave acknowledgement = %s, want battle_left", message)
+		}
+	default:
+		t.Fatal("intentional leave did not acknowledge battle cleanup")
 	}
 }
 
@@ -172,13 +276,7 @@ func (assertWriteError) Error() string { return "write failed" }
 
 func dialAuthenticated(t *testing.T, wsURL string, userID int64) *websocket.Conn {
 	t.Helper()
-	const secret = "test-auth-secret-with-at-least-32-characters"
-	t.Setenv("APP_AUTH_SECRET", secret)
-	payload, _ := json.Marshal(map[string]int64{"sub": userID, "exp": time.Now().Add(time.Minute).Unix()})
-	encoded := base64.RawURLEncoding.EncodeToString(payload)
-	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write([]byte(encoded))
-	token := encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	token := signedAccessToken(t, userID)
 
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
@@ -189,6 +287,17 @@ func dialAuthenticated(t *testing.T, wsURL string, userID int64) *websocket.Conn
 		t.Fatalf("WebSocket auth error: %v", err)
 	}
 	return conn
+}
+
+func signedAccessToken(t *testing.T, userID int64) string {
+	t.Helper()
+	const secret = "test-auth-secret-with-at-least-32-characters"
+	t.Setenv("APP_AUTH_SECRET", secret)
+	payload, _ := json.Marshal(map[string]int64{"sub": userID, "exp": time.Now().Add(time.Minute).Unix()})
+	encoded := base64.RawURLEncoding.EncodeToString(payload)
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(encoded))
+	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func TestHandleHealth(t *testing.T) {
@@ -335,6 +444,32 @@ func TestWebSocketUpgrade(t *testing.T) {
 
 	if !found {
 		t.Error("did not receive room_joined message")
+	}
+}
+
+func TestWebSocketRejectsRepeatedAuthentication(t *testing.T) {
+	h := NewHandler()
+	mux := http.NewServeMux()
+	h.SetupRoutes(mux)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
+	conn := dialAuthenticated(t, wsURL, 1011)
+	defer conn.Close()
+
+	if err := conn.WriteJSON(map[string]string{"type": "auth", "token": signedAccessToken(t, 1012)}); err != nil {
+		t.Fatalf("repeated auth write error: %v", err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("repeated auth read error: %v", err)
+		}
+		if strings.Contains(string(message), "Authentication already completed") {
+			return
+		}
 	}
 }
 

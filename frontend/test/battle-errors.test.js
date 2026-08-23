@@ -17,6 +17,10 @@ test("translates known server errors into actionable Russian warnings", () => {
     getBattleErrorMessage({kind: "server", message: "Party member is already in battle"}),
     "Кто-то из пати ещё находится в бою. Дождитесь выхода участника.",
   )
+  assert.equal(
+    getBattleErrorMessage({kind: "server", message: "Already in battle"}),
+    "Ты уже находишься в бою. Выйди из текущего боя и попробуй снова.",
+  )
 })
 
 test("reports connection failures instead of leaving the player on the loading screen", () => {

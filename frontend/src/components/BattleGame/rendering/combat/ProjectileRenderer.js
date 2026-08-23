@@ -13,6 +13,90 @@ const standardMaterial = (color, options = {}) => new THREE.MeshStandardMaterial
   ...options,
 })
 
+const projectileAccent = kind => {
+  const value = String(kind || "").toLowerCase()
+  if (value.includes("mina")) return 0xffb8f4
+  if (value.includes("zeus")) return 0x9ff5ff
+  if (value.includes("lumi")) return 0xf2d2ff
+  if (value.includes("katty")) return 0xffb3d4
+  if (value.includes("spore")) return 0xdfff74
+  return 0xffffff
+}
+
+const addProjectileSignature = (group, projectile = {}, held = false) => {
+  if (!group?.add || group.userData.projectileSignature) return group
+  group.userData.projectileSignature = true
+  const accent = new THREE.Color(projectileAccent(projectile.kind))
+  const opacity = held ? .22 : .64
+  const halo = new THREE.Mesh(
+    new THREE.TorusGeometry(.43, .028, 7, 28),
+    new THREE.MeshBasicMaterial({
+      color: accent,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  )
+  halo.rotation.x = Math.PI / 2
+  halo.userData.role = "projectile-halo"
+  group.add(halo)
+
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(.095, 10, 8),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: held ? .24 : .86,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  )
+  core.position.y = .06
+  core.userData.role = "projectile-core"
+  group.add(core)
+
+  const trail = new THREE.Mesh(
+    new THREE.ConeGeometry(.055, .30, 6, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: accent,
+      transparent: true,
+      opacity: held ? .12 : .34,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    }),
+  )
+  trail.rotation.z = -Math.PI / 2
+  trail.position.x = -.20
+  trail.userData.role = "projectile-trail"
+  group.add(trail)
+
+  for (let index = 0; index < 3; index++) {
+    const mote = new THREE.Mesh(
+      new THREE.SphereGeometry(.028 + index * .008, 6, 5),
+      new THREE.MeshBasicMaterial({
+        color: accent,
+        transparent: true,
+        opacity: held ? .16 : .48,
+        depthWrite: false,
+        depthTest: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    )
+    const angle = index / 3 * Math.PI * 2
+    mote.position.set(Math.cos(angle) * .34, .05 + index * .025, Math.sin(angle) * .34)
+    mote.userData.role = "projectile-mote"
+    mote.userData.phase = angle
+    mote.userData.baseY = mote.position.y
+    group.add(mote)
+  }
+  return group
+}
+
 export const createNeedleSporeVisual = (projectile = {}, {held = false} = {}) => {
   const group = new THREE.Group()
   group.name = "NeedleSporeProjectile"
@@ -77,7 +161,7 @@ export const createNeedleSporeVisual = (projectile = {}, {held = false} = {}) =>
     group.add(aura)
 
   }
-  return group
+  return addProjectileSignature(group, projectile, held)
 }
 
 export const createProjectileVisual = projectile => {
@@ -108,7 +192,7 @@ export const createProjectileVisual = projectile => {
     trail.position.x = -.42
     trail.userData.role = "tower-shot-trail"
     shot.add(trail)
-    return shot
+    return addProjectileSignature(shot, projectile)
   }
   if (kind.includes("mina_star")) {
     const orb = new THREE.Group()
@@ -123,7 +207,7 @@ export const createProjectileVisual = projectile => {
     ring.rotation.x=Math.PI/2
     orb.add(core,ring)
     orb.userData.vfxType = "fairy-orb"
-    return orb
+    return addProjectileSignature(orb, projectile)
   }
   if (kind.includes("katty_paint_spray")) {
     const spray = new THREE.Group()
@@ -148,7 +232,7 @@ export const createProjectileVisual = projectile => {
     mist.rotation.x = Math.PI / 2
     mist.userData.role = "spray-mist"
     spray.add(mist)
-    return spray
+    return addProjectileSignature(spray, projectile)
   }
   if (kind.includes("zeus_lightning")) {
     const bolt = new THREE.Group()
@@ -159,15 +243,29 @@ export const createProjectileVisual = projectile => {
       segment.rotation.z=(i%2?-.28:.28)
       bolt.add(segment)
     }
-    return bolt
+    return addProjectileSignature(bolt, projectile)
   }
   if (kind.includes("lumi")) {
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(.3,12,8), standardMaterial(0xe14fae,{emissive:0x7b164f,emissiveIntensity:1.35}))
+    const orb = new THREE.Group()
     orb.userData.vfxType = "lumi-orb"
-    return orb
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(.26, 1), standardMaterial(0xffd7f5,{emissive:0x9e297d,emissiveIntensity:1.7}))
+    orb.add(core)
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(.34,.028,8,28), new THREE.MeshBasicMaterial({color:0xff8fd5,transparent:true,opacity:.8,depthWrite:false}))
+    ring.rotation.x = Math.PI / 2
+    ring.userData.role = "lumi-orb-ring"
+    orb.add(ring)
+    for (let index = 0; index < 4; index += 1) {
+      const petal = new THREE.Mesh(new THREE.SphereGeometry(.12,8,6), standardMaterial(index % 2 ? 0xd954a8 : 0xff9bda, {emissive:0x7b164f, emissiveIntensity:.8}))
+      const angle = index * Math.PI / 2
+      petal.position.set(Math.cos(angle) * .28, 0, Math.sin(angle) * .28)
+      petal.scale.set(1.2, .45, .65)
+      petal.userData.role = "lumi-orb-petal"
+      orb.add(petal)
+    }
+    return addProjectileSignature(orb, projectile)
   }
   const geometry = new THREE.SphereGeometry(clamp((projectile.radius || 5) * WORLD_SCALE, 0.12, 0.42), 8, 6)
-  return new THREE.Mesh(geometry, flatMaterial(projectile.color || 0xffdf66))
+  return addProjectileSignature(new THREE.Mesh(geometry, flatMaterial(projectile.color || 0xffdf66)), projectile)
 }
 
 const createSporeBurst = position => {
@@ -263,6 +361,26 @@ export class ProjectileRenderer {
     this.meshes.forEach(mesh => {
       mesh.rotation.y += delta * 7
       mesh.rotation.z += delta * 4
+      mesh.traverse(child => {
+        const role = child.userData?.role
+        if (role === "projectile-halo") {
+          child.rotation.z += delta * 6
+          child.scale.setScalar(.94 + Math.sin(time * 14) * .08)
+        }
+        if (role === "projectile-core") {
+          child.scale.setScalar(.88 + Math.sin(time * 18) * .14)
+        }
+        if (role === "projectile-trail") {
+          child.scale.x = .88 + Math.sin(time * 16) * .18
+          child.material.opacity = .24 + Math.sin(time * 13) * .08
+        }
+        if (role === "projectile-mote") {
+          const angle = (child.userData.phase || 0) + time * 5.5
+          child.position.x = Math.cos(angle) * .34
+          child.position.z = Math.sin(angle) * .34
+          child.position.y = child.userData.baseY + Math.sin(time * 12 + angle) * .035
+        }
+      })
       if (mesh.userData.vfxType !== "needle-spore") return
       const pulse = 1 + Math.sin(time * 16) * 0.07
       mesh.scale.setScalar(pulse)

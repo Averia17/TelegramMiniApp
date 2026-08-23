@@ -134,8 +134,7 @@ func (gs *GameState) updateKattyFlightTrail(p *player.Player, fromX, fromY, toX,
 				continue
 			}
 			if segmentHitsCircle(fromX, fromY, toX, toY, target.X, target.Y, target.Radius+18) {
-				gs.applyKattyPaint(p, target, now, 2, false)
-				zone.Triggered[target.PlayerId] = true
+				gs.triggerKattyPaintTrail(p, zone, target, now)
 			}
 		}
 		return

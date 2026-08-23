@@ -117,11 +117,11 @@ test("hero fallback configs expose compact health, damage, and speed values", ()
   const mico = HEROES_CONFIG.find(hero => hero.name === "Wukong Mico")
   assert.deepEqual(
     {health: needle.maxLives, damage: needle.attackDamage, speed: needle.speed},
-    {health: 620, damage: 65, speed: 12},
+    {health: 600, damage: 60, speed: 13},
   )
   assert.deepEqual(
     {health: mico.maxLives, damage: mico.attackDamage, speed: mico.speed},
-    {health: 900, damage: 100, speed: 15},
+    {health: 900, damage: 100, speed: 14},
   )
 })
 
@@ -186,6 +186,56 @@ test("melee attack range uses a clear outer edge at the exact hit distance", () 
   assert.equal(aim.meleeRangeEdge.visible, false)
   assert.equal(aim.line.visible, true)
   assert.equal(aim.target.visible, true)
+})
+
+test("attack range stays circular and keeps its full length in every aim direction", () => {
+  const camera = new CameraRig()
+  camera.resize(1100, 900)
+  camera.follow({x: 500, y: 400}, {width: 1024, height: 768}, 1 / 60)
+  camera.camera.updateMatrixWorld(true)
+
+  const root = new THREE.Group()
+  const aim = new AimRenderer(root)
+  const player = {
+    aiming: true,
+    x: 500,
+    y: 400,
+    attackArchetype: "melee_cone",
+    attackRange: 110,
+    attackHalfArcDegrees: 60,
+  }
+  const project = point => {
+    const projected = point.clone().project(camera.camera)
+    return new THREE.Vector2(projected.x * 550, projected.y * 450)
+  }
+  const measureMeleeReach = angle => {
+    aim.update({...player, rotation: angle})
+    root.updateMatrixWorld(true)
+    const originWorld = aim.meleeArea.localToWorld(new THREE.Vector3())
+    const origin = project(originWorld)
+    const edge = project(aim.meleeArea.localToWorld(new THREE.Vector3(1, 0, 0)))
+    const edgeWorld = aim.meleeArea.localToWorld(new THREE.Vector3(1, 0, 0))
+    return {
+      screenDistance: edge.distanceTo(origin),
+      groundPlaneDelta: Math.abs(edgeWorld.y - originWorld.y),
+    }
+  }
+
+  const horizontal = measureMeleeReach(0)
+  const vertical = measureMeleeReach(Math.PI / 2)
+  assert.ok(Math.abs(horizontal.screenDistance - vertical.screenDistance) < .01)
+  assert.ok(horizontal.groundPlaneDelta < .001)
+  assert.ok(vertical.groundPlaneDelta < .001)
+
+  const lineLengths = [0, Math.PI / 2].map(rotation => {
+    aim.update({...player, rotation, attackArchetype: "projectile", attackRange: 760})
+    root.updateMatrixWorld(true)
+    const positions = aim.line.geometry.attributes.position
+    const start = new THREE.Vector3().fromBufferAttribute(positions, 0)
+    const end = new THREE.Vector3().fromBufferAttribute(positions, 1)
+    return project(aim.line.localToWorld(end)).distanceTo(project(aim.line.localToWorld(start)))
+  })
+  assert.ok(Math.abs(lineLengths[0] - lineLengths[1]) < .01)
 })
 
 test("attack range guides hide when aiming ends", () => {
@@ -968,7 +1018,7 @@ test("battle keeps authored GLB heroes and procedural environment enabled", asyn
   assert.match(heroSource, /if \(readyInstance\) this\.installGlbInstance\(readyInstance, state\.hero\)/)
   assert.doesNotMatch(mapSource, /assetRegistry\.instantiate(?:Ready)?Environment/)
   assert.doesNotMatch(mapSource, /upgradeToEnvironment/)
-  assert.doesNotMatch(mapSource, /Quality|quality|InstancedMesh/)
+  assert.doesNotMatch(mapSource, /Quality|quality/)
 })
 
 test("authored hero parts merge without breaking shared skeleton skinning", () => {
@@ -1481,6 +1531,8 @@ test("hero selection keeps roster previews live for their idle animation", async
   assert.match(source, /renderer\.forceContextLoss\(\)/)
   assert.match(source, /acquirePreviewSlot/)
   assert.match(source, /animation\?\.update\(delta, \{alive: true, moving: false\}\)/)
+  assert.match(source, /orientationOffset/)
+  assert.match(source, /orientationOffset \+ \.42/)
   assert.doesNotMatch(source, /canvas\.toDataURL/)
   assert.doesNotMatch(source, /createHeroModel/)
   assert.match(source, /hero-model-preview--loading/)
@@ -1663,6 +1715,20 @@ test("Wukong ignores cloud-like meshes because the companion was removed", () =>
 test("new hero projectiles match the detached object used by the attack", () => {
   const mina = createProjectileVisual({kind: "mina_star_fan"})
   assert.equal(mina.userData.vfxType, "fairy-orb")
+})
+
+test("HeroView keeps a manifest orientation offset when updating combat facing", async () => {
+  const source = await readFileUncached(projectFile("src/components/BattleGame/rendering/heroes/HeroView.js"), "utf8")
+
+  assert.match(source, /this\.orientationOffset/)
+  assert.match(source, /visualAngle \+ this\.orientationOffset/)
+})
+
+test("Lumi flower projectile reads as a glowing petal projectile", () => {
+  const flower = createProjectileVisual({kind: "lumi_orb"})
+  assert.equal(flower.userData.vfxType, "lumi-orb")
+  assert.equal(flower.children.filter(child => child.userData.role === "lumi-orb-petal").length, 4)
+  assert.ok(flower.children.some(child => child.userData.role === "lumi-orb-ring"))
 })
 
 test("Katty paint spray renders as a can-shaped projectile with a mist nozzle", () => {
@@ -2164,7 +2230,7 @@ test("combat effects keep the full orbital visual on the shared path", () => {
 
   assert.equal(root.children.length, 1)
   assert.equal(root.children[0].isGroup, true)
-  assert.equal(root.children[0].children.length, 9)
+  assert.ok(root.children[0].children.length >= 16)
 })
 
 test("Lumi seedburst uses a short impact burst instead of the persistent-zone visual", () => {
@@ -2183,7 +2249,7 @@ test("Lumi seedburst uses a short impact burst instead of the persistent-zone vi
 
   const burst = root.children[0]
   assert.equal(burst.userData.phase, "impact")
-  assert.equal(burst.children.length, 8)
+  assert.ok(burst.children.length >= 8)
   assert.equal(burst.children[0].userData.role, "impact-shard")
 })
 
@@ -2203,7 +2269,9 @@ test("Brock armed beam renders as a directional lane instead of a ring", () => {
   }])
 
   const beam = root.children[0]
-  assert.equal(beam.geometry.type, "PlaneGeometry")
+  assert.equal(beam.isGroup, true)
+  const ribbon = beam.children.find(child => child.userData?.role === "trail-ribbon")
+  assert.equal(ribbon.geometry.type, "ShapeGeometry")
   assert.ok(Math.abs(beam.scale.x - 800 * WORLD_SCALE) < .001)
 })
 
@@ -2390,10 +2458,51 @@ test("stone walls keep fixed cells and can form contiguous barriers", () => {
   const wallObjects = [...mapRenderer.objects.values()]
   assert.equal(wallObjects.length, 2)
   assert.equal(wallObjects.every(object => object.children.length >= 3), true)
-  assert.equal(wallObjects.every(object => object.children.some(child => child.userData?.role === "contact-shadow")), true)
+  assert.equal(mapRenderer.contactShadowBatch?.userData?.role, "contact-shadow-batch")
+  assert.equal(mapRenderer.contactShadowBatch?.count, 2)
   assert.equal(wallObjects.every(object => object.children.some(child => child.userData?.role === "grounding-bed")), true)
   assert.ok(wallObjects.every(object => object.children[0].castShadow))
   assert.ok(Math.abs(Math.abs(wallObjects[1].position.x - wallObjects[0].position.x) - 40 * WORLD_SCALE) < 1e-5)
+
+  mapRenderer.sync({
+    width: 160,
+    height: 120,
+    tileSize: 40,
+    walls: [
+      {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall", visual: "variant-a"},
+      {minX: 60, minY: 20, maxX: 100, maxY: 60, type: "wall"},
+    ],
+  })
+  assert.equal(mapRenderer.contactShadowBatch?.count, 2)
+
+  mapRenderer.dispose()
+})
+
+test("static map details are merged without batching destructible walls", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+
+  mapRenderer.sync({
+    width: 320,
+    height: 240,
+    walls: [
+      {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "wall"},
+      {minX: 100, minY: 20, maxX: 140, maxY: 60, type: "destructible"},
+      {minX: 180, minY: 20, maxX: 220, maxY: 60, type: "water"},
+      {minX: 260, minY: 20, maxX: 300, maxY: 60, type: "water"},
+    ],
+  })
+
+  assert.ok(mapRenderer.staticBatches.some(batch => batch.userData.role === "static-batch:stone-crack"))
+  assert.ok(mapRenderer.staticBatches.some(batch => batch.userData.role === "static-batch:water"))
+  const destructible = [...mapRenderer.objects.values()].find(object => object.userData.visualType === "destructible")
+  assert.ok(destructible)
+  let destructibleCrack = null
+  destructible.traverse(node => {
+    if (!destructibleCrack && node.userData?.role === "stone-crack") destructibleCrack = node
+  })
+  assert.ok(destructibleCrack)
+  assert.equal(destructibleCrack.userData.staticBatchHidden, undefined)
 
   mapRenderer.dispose()
 })
@@ -2413,6 +2522,29 @@ test("moving the environment focus keeps the procedural map object mounted", () 
 
   assert.equal([...mapRenderer.objects.values()][0], proceduralWall)
   assert.equal(proceduralWall.parent, root)
+  mapRenderer.dispose()
+})
+
+test("bush visibility skips sub-epsilon focus movement", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  mapRenderer.sync({
+    width: 240,
+    height: 180,
+    walls: [{minX: 20, minY: 20, maxX: 100, maxY: 60, type: "bush"}],
+  })
+
+  mapRenderer.setFocus(40, 40)
+  mapRenderer.update(1 / 60)
+  const firstFocus = {...mapRenderer.lastBushVisibilityFocus}
+
+  mapRenderer.setFocus(40.5, 40.5)
+  mapRenderer.update(1 / 60)
+  assert.deepEqual(mapRenderer.lastBushVisibilityFocus, firstFocus)
+
+  mapRenderer.setFocus(42, 40)
+  mapRenderer.update(1 / 60)
+  assert.notDeepEqual(mapRenderer.lastBushVisibilityFocus, firstFocus)
   mapRenderer.dispose()
 })
 

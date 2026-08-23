@@ -88,6 +88,39 @@ func TestGenerateBattleRoyalePublishesBlockingBeaconCollider(t *testing.T) {
 	}
 }
 
+func TestGenerateBattleRoyaleLeavesBeaconCaptureRadiusAccessible(t *testing.T) {
+	gameMap := GenerateBattleRoyale(CanonicalBattleRoyaleSeed)
+	const center = 1200.0
+	const beaconCaptureRadius = 135.0
+	const largestHeroRadius = 15.0
+
+	var beacon *geometry.WallTile
+	for _, wall := range gameMap.Collisions {
+		if wall.Type == "beacon" {
+			beacon = wall
+			break
+		}
+	}
+	if beacon == nil {
+		t.Fatal("battle royale map has no beacon collider")
+	}
+
+	// This is the closest point on the capture circle along the positive X
+	// axis. A max-size hero must be able to occupy it without being stopped by
+	// the landmark's decorative platform footprint.
+	body := &geometry.CircleBody{
+		X:      center + beaconCaptureRadius - largestHeroRadius,
+		Y:      center,
+		Radius: largestHeroRadius,
+	}
+	if geometry.CircleToRectangle(body, &geometry.RectangleBody{
+		X: beacon.MinX, Y: beacon.MinY, Width: beacon.MaxX - beacon.MinX, Height: beacon.MaxY - beacon.MinY,
+	}) {
+		t.Fatalf("beacon collider blocks capture radius at (%.0f,%.0f): collider=(%.0f,%.0f)-(%.0f,%.0f)",
+			body.X, body.Y, beacon.MinX, beacon.MinY, beacon.MaxX, beacon.MaxY)
+	}
+}
+
 func TestGenerateBattleRoyaleUsesPropSizedColliders(t *testing.T) {
 	gameMap := GenerateBattleRoyale(42)
 	insets := make(map[string][2]float64)

@@ -17,7 +17,7 @@ type PersephoneLumiKit struct{}
 const (
 	KattyPaintBonusMultiplier = .45
 	KattySprayRange           = 220.0
-	KattySprayCloudRadius     = 58.0
+	KattySprayCloudRadius     = 65.0
 	KattySprayCloudDuration   = 1800 * time.Millisecond
 	KattySprayCloudTick       = 400 * time.Millisecond
 	KattySprayCloudDamage     = 6
@@ -25,6 +25,8 @@ const (
 	KattySprayCloudSlow       = .72
 	KattySuperRadius          = 220.0
 	KattySuperDuration        = 7500 * time.Millisecond
+	KattySuperPullDuration    = 500 * time.Millisecond
+	KattySuperPullDistance    = 18.0
 	KattySuperImpactDamage    = 70
 	KattySuperPuddleDamage    = 12
 	KattySuperPuddleTick      = 600 * time.Millisecond
@@ -42,21 +44,58 @@ const (
 	NeedleMoistureDuration        = 3 * time.Second
 	NeedleMoistureTick            = 500 * time.Millisecond
 	NeedleMoistureHealFraction    = .05
-	MinaHealingAuraHeal           = 10
+	NeedleRootTelegraph           = 300 * time.Millisecond
+	NeedleRootDuration            = 3 * time.Second
+	NeedleRootRadius              = 120.0
+	NeedleRootAimHalfAngle        = 25 * math.Pi / 180
+	NeedleRootInitialDamage       = 40
+	NeedleRootTickDamage          = 15
+	NeedleRootTick                = 500 * time.Millisecond
+	NeedleSporeDashDistance       = 72.0
+	NeedleSporeCloudRadius        = 90.0
+	NeedleSporeCloudDuration      = 2 * time.Second
+	NeedleSporeCloudTick          = 500 * time.Millisecond
+	NeedleSporeStunDuration       = 1 * time.Second
+	MinaSuperShield               = 500
+	MinaHealingAuraRadius         = 180.0
+	MinaHealingAuraHeal           = 15
+	MinaHealingAuraDamage         = 10
+	MinaMarkBurstDamage           = 80
+	MinaMarkBurstRadius           = 100.0
+	MinaStarSelfHeal              = 5
+	ZeusBasicSplashRadius         = 80.0
+	ZeusSuperFirstDamage          = 80
+	ZeusSuperFinalDamage          = 120
+	ZeusSuperFirstRadius          = 70.0
+	ZeusSuperFinalRadius          = 110.0
+	ZeusSuperSlowMultiplier       = .60
+	ZeusFireTrailDamage           = 5
+	ZeusFireTrailRadius           = 28.0
 	KazeComboWindow               = 2 * time.Second
 	KazeEmpoweredDamageMultiplier = 1.50
 	MeleeSkillStunDuration        = 1 * time.Second
 	MandyFocusedDamageMultiplier  = 1.5
-	MandyStaffStunDuration        = 250 * time.Millisecond
-	MicoVortexBaseDuration        = 2500 * time.Millisecond
-	MicoVortexDurationPerRage     = 250 * time.Millisecond
-	MicoVortexBaseRadius          = 140.0
-	MicoVortexRadiusPerRage       = 10.0
-	MicoVortexBaseImpactDamage    = 70
-	MicoVortexImpactPerRage       = 10
-	MicoVortexBaseTickDamage      = 3
+	MandyStaffStunDuration        = 300 * time.Millisecond
+	MandyFocusedStunDuration      = 800 * time.Millisecond
+	MandySuperStunDuration        = 1200 * time.Millisecond
+	MicoVortexBaseDuration        = 2 * time.Second
+	MicoVortexDurationPerRage     = 200 * time.Millisecond
+	MicoVortexTickInterval        = 400 * time.Millisecond
+	MicoVortexBaseRadius          = 120.0
+	MicoVortexRadiusPerRage       = 8.0
+	MicoVortexBaseImpactDamage    = 35
+	MicoVortexImpactPerRage       = 8
+	MicoVortexBaseTickDamage      = 2
 	MicoVortexTickDamagePerRage   = 1
+	MicoVortexPullFraction        = .20
+	MicoVortexStunDuration        = 600 * time.Millisecond
 	LumiMaxFlowers                = 5
+	LumiFlowerDuration            = 6 * time.Second
+	LumiFlowerRadius              = 70.0
+	LumiFlowerDamage              = 15
+	LumiFlowerTick                = 500 * time.Millisecond
+	LumiRootImpactDamage          = 60
+	LumiRootStunDuration          = 1 * time.Second
 )
 
 func micoVortexImpactDamage(rage int) int {
@@ -109,7 +148,7 @@ func (KazeKit) AimShape() string               { return "cone" }
 func (KazeKit) AttackRange() float64           { return heroAttackConfigs["Kaze"].Range }
 func (WukongMicoKit) AimShape() string         { return "cone" }
 func (WukongMicoKit) AttackRange() float64     { return heroAttackConfigs["Wukong Mico"].Range }
-func (PersephoneLumiKit) AimShape() string     { return "cone" }
+func (PersephoneLumiKit) AimShape() string     { return "line" }
 func (PersephoneLumiKit) AttackRange() float64 { return heroAttackConfigs["Persephone Lumi"].Range }
 func (KattyKit) AimShape() string              { return "line" }
 func (KattyKit) AttackRange() float64          { return KattySprayRange }
@@ -136,7 +175,28 @@ func (KattyKit) Super(gs *GameState, p *player.Player, ts int64, _, _ float64) b
 		NextTickAt: ts + 650, Interval: KattySuperPuddleTick.Milliseconds(), ExpiresAt: ts + duration,
 		Color: p.Color,
 	})
+	for _, target := range gs.Players {
+		if !target.CanBulletHurt(p.PlayerId, p.Team) || math.Hypot(target.X-x, target.Y-y) > KattySuperRadius+target.Radius {
+			continue
+		}
+		dx, dy := x-target.X, y-target.Y
+		if d := math.Hypot(dx, dy); d > 0 {
+			gs.movePlayerByCollision(target, dx/d*math.Min(d, KattySuperPullDistance), dy/d*math.Min(d, KattySuperPullDistance))
+		}
+	}
 	return true
+}
+
+func (gs *GameState) triggerKattyPaintTrail(owner *player.Player, zone *HeroZone, target *player.Player, now int64) {
+	if gs == nil || owner == nil || zone == nil || target == nil || zone.Triggered[target.PlayerId] {
+		return
+	}
+	zone.Triggered[target.PlayerId] = true
+	if target.PlayerId != owner.PlayerId && target.CanBulletHurt(owner.PlayerId, owner.Team) {
+		gs.dealPlayerDamage(owner, target, 40)
+		gs.applyKattyPaint(owner, target, now, 2, false)
+	}
+	gs.addEffect("katty_paint_impact", target.X, target.Y, 0, 0, 58, 0, 0, 0, owner.Color, 40, 420)
 }
 
 func (gs *GameState) kattyPaintStacks(owner, target string) int {
@@ -328,25 +388,11 @@ func (MinaKit) Basic(gs *GameState, p *player.Player, _ int64, angle, _ float64)
 }
 func (MinaKit) Super(gs *GameState, p *player.Player, ts int64, _, _ float64) bool {
 	target := p
-	if id := gs.AbilityTargets[p.PlayerId]; id != "" && gs.Players[id] != nil && gs.Players[id].Team == p.Team {
-		target = gs.Players[id]
-	} else {
-		bestHealthRatio := float64(p.Lives) / math.Max(1, float64(p.MaxLives))
-		for _, candidate := range gs.Players {
-			if candidate == nil || !candidate.IsAlive() || candidate.Team != p.Team || math.Hypot(candidate.X-p.X, candidate.Y-p.Y) > 600 {
-				continue
-			}
-			healthRatio := float64(candidate.Lives) / math.Max(1, float64(candidate.MaxLives))
-			if healthRatio < bestHealthRatio {
-				target, bestHealthRatio = candidate, healthRatio
-			}
-		}
-	}
-	target.ShieldHP = 400
+	target.ShieldHP = MinaSuperShield
 	duration := cappedSkillDuration(4 * time.Second)
 	target.ShieldUntil = ts + duration
-	visual := gs.addEffect("mina_healing_aura", target.X, target.Y, 0, 0, 160, 0, 0, 0, "#ff9bea", 0, duration)
-	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Target: target.PlayerId, Kind: "mina_heal", X: target.X, Y: target.Y, Radius: 160, CreatedAt: ts, ExpiresAt: ts + duration, NextTickAt: ts, Triggered: map[string]bool{}, Visual: visual})
+	visual := gs.addEffect("mina_healing_aura", target.X, target.Y, 0, 0, MinaHealingAuraRadius, 0, 0, 0, "#ff9bea", MinaHealingAuraDamage, duration)
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Target: target.PlayerId, Kind: "mina_heal", X: target.X, Y: target.Y, Radius: MinaHealingAuraRadius, CreatedAt: ts, ExpiresAt: ts + duration, NextTickAt: ts, Triggered: map[string]bool{}, Visual: visual})
 	return true
 }
 
@@ -375,27 +421,30 @@ func (BrockZeusKit) Basic(gs *GameState, p *player.Player, _ int64, angle, _ flo
 		}
 		gs.destroyWallsInSector(p.X, p.Y, angle, 800, .08)
 		gs.addEffect("zeus_beam_hole", p.X, p.Y, p.X+math.Cos(angle)*800, p.Y+math.Sin(angle)*800, 20, angle, 800, 0, p.Color, p.AttackDmg, 600)
+		now := time.Now().UnixMilli()
+		gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "zeus_fire_trail", X: p.X, Y: p.Y, ToX: p.X + math.Cos(angle)*800, ToY: p.Y + math.Sin(angle)*800, Radius: ZeusFireTrailRadius, Width: ZeusFireTrailRadius, CreatedAt: now, NextTickAt: now, ExpiresAt: now + 3000, Triggered: map[string]bool{}})
+		gs.addEffect("zeus_fire_ground", p.X+math.Cos(angle)*400, p.Y+math.Sin(angle)*400, p.X+math.Cos(angle)*800, p.Y+math.Sin(angle)*800, ZeusFireTrailRadius, angle, 800, 0, "#66cfff", ZeusFireTrailDamage, 3000)
 		p.GadgetArmed = false
 		return
 	}
 	shot := gs.spawnAttackBullet(p, angle, "zeus_lightning", p.AttackDmg, p.BulletSpd, p.BulletSz, 760, 0, false, false)
-	shot.Splash = 72
+	shot.Splash = ZeusBasicSplashRadius
 }
 func (BrockZeusKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
 	distance = math.Max(80, math.Min(620, distance))
 	cx, cy := p.X+math.Cos(angle)*distance, p.Y+math.Sin(angle)*distance
-	p.ChannelUntil = ts + 1000
+	p.ChannelUntil = ts + 700
 	for i := 0; i < 3; i++ {
 		a := float64(i) * math.Pi * 2 / 3
-		strike := &LightningStrike{Owner: p.PlayerId, X: cx + math.Cos(a)*75, Y: cy + math.Sin(a)*75, TriggerAt: ts + 1000 + int64(i)*400, Impact: i}
+		strike := &LightningStrike{Owner: p.PlayerId, X: cx + math.Cos(a)*75, Y: cy + math.Sin(a)*75, TriggerAt: ts + 700 + int64(i)*400, Impact: i}
 		gs.LightningStrikes = append(gs.LightningStrikes, strike)
-		warningRadius := 62.0
+		warningRadius := ZeusSuperFirstRadius
 		if i == 2 {
-			warningRadius = 90
+			warningRadius = ZeusSuperFinalRadius
 		}
 		gs.addEffect("zeus_strike_warning", strike.X, strike.Y, 0, 0, warningRadius, 0, 0, 0, "#b9efff", 0, strike.TriggerAt-ts)
 	}
-	gs.addEffect("zeus_storm_target", cx, cy, 0, 0, 150, 0, 0, 0, "#75d8ff", 0, 2100)
+	gs.addEffect("zeus_storm_target", cx, cy, 0, 0, 150, 0, 0, 0, "#75d8ff", 0, 1900)
 	return true
 }
 
@@ -404,11 +453,23 @@ func (KazeKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64
 	if ts > p.KazeComboUntil {
 		p.KazeCombo = 0
 	}
-	empowered := p.KazeCritReady || p.KazeCombo >= 2
+	stealthCrit := p.KazeStealthCritReady
+	empowered := stealthCrit || p.KazeCritReady || p.KazeCombo >= 2
 	damage := p.AttackDmg
 	if empowered {
-		damage = int(math.Round(float64(p.AttackDmg) * KazeEmpoweredDamageMultiplier))
+		multiplier := KazeEmpoweredDamageMultiplier
+		if stealthCrit {
+			multiplier = 2.0
+		}
+		for _, target := range gs.Players {
+			if target.CanBulletHurt(p.PlayerId, p.Team) && target.Lives <= int(float64(target.MaxLives)*.30) && gs.autoAimHitsTarget(p, target.X, target.Y, meleeTargetRadius(p, target), angle, config.Range, config.HalfArcDegrees*math.Pi/180) {
+				multiplier *= 1.20
+				break
+			}
+		}
+		damage = int(math.Round(float64(p.AttackDmg) * multiplier))
 		p.KazeCritReady = false
+		p.KazeStealthCritReady = false
 	}
 	hits := gs.hitSector(p, angle, config.Range, config.HalfArcDegrees*math.Pi/180, damage, false)
 	if empowered {
@@ -423,13 +484,21 @@ func (KazeKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ float64
 	startX, startY := p.X, p.Y
 	gs.vaultMove(p, angle, 320)
 	hit := false
+	killed := false
 	for _, target := range gs.Players {
 		if target.CanBulletHurt(p.PlayerId, p.Team) && segmentHitsCircle(startX, startY, p.X, p.Y, target.X, target.Y, target.Radius+18) {
 			hit = true
 			gs.dealPlayerDamage(p, target, 160)
+			if !target.IsAlive() {
+				killed = true
+			}
 			target.StunUntil = max(target.StunUntil, ts+MeleeSkillStunDuration.Milliseconds())
 			p.KazeCombo, p.KazeComboUntil = 2, ts+KazeComboWindow.Milliseconds()
 		}
+	}
+	p.HasteUntil = ts + 2000
+	if killed {
+		p.KazeSuperReset = true
 	}
 	if hit {
 		gs.addEffect("kaze_followup_ready", p.X, p.Y, 0, 0, 74, 0, 0, 0, "#d7b8ff", 0, KazeComboWindow.Milliseconds())
@@ -476,7 +545,12 @@ func (WukongMicoKit) Super(gs *GameState, p *player.Player, ts int64, angle, dis
 	gs.radialDamage(p.PlayerId, p.X, p.Y, radius, damage)
 	for _, target := range gs.Players {
 		if target.CanBulletHurt(p.PlayerId, p.Team) && math.Hypot(target.X-p.X, target.Y-p.Y) <= radius+target.Radius {
-			target.StunUntil = max(target.StunUntil, ts+MeleeSkillStunDuration.Milliseconds())
+			dx, dy := p.X-target.X, p.Y-target.Y
+			if d := math.Hypot(dx, dy); d > 0 {
+				pullDistance := math.Min(d, d*MicoVortexPullFraction)
+				gs.movePlayerByCollision(target, dx/d*pullDistance, dy/d*pullDistance)
+			}
+			target.StunUntil = max(target.StunUntil, ts+MicoVortexStunDuration.Milliseconds())
 		}
 	}
 	gs.addEffect("mico_staff_spin", p.X, p.Y, 0, 0, radius, angle, radius, math.Pi, p.Color, damage, duration)
@@ -485,16 +559,7 @@ func (WukongMicoKit) Super(gs *GameState, p *player.Player, ts int64, angle, dis
 
 func (PersephoneLumiKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64) {
 	config := heroAttackConfigs["Persephone Lumi"]
-	reach := config.Range
-	halfArc := config.HalfArcDegrees * math.Pi / 180
-	gs.hitSector(p, angle, reach, halfArc, p.AttackDmg, false)
-	flowerX := p.X + math.Cos(angle)*reach
-	flowerY := p.Y + math.Sin(angle)*reach
-	if p.LumiFlowers < LumiMaxFlowers {
-		p.LumiFlowers++
-		gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "lumi_flower", X: flowerX, Y: flowerY, Radius: 70, CreatedAt: ts, ExpiresAt: ts + 6000, Triggered: map[string]bool{}})
-	}
-	gs.addEffect("lumi_scythe_swing", p.X, p.Y, 0, 0, reach, angle, reach, halfArc, p.Color, p.AttackDmg, 320)
+	gs.spawnAttackBullet(p, angle, config.ProjectileKind, p.AttackDmg, p.BulletSpd, p.BulletSz, config.Range, 0, false, false)
 }
 func (PersephoneLumiKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
 	distance = math.Max(80, math.Min(520, distance))
@@ -512,11 +577,52 @@ func (NeedleKit) Basic(gs *GameState, p *player.Player, _ int64, angle, _ float6
 func (NeedleKit) AimShape() string     { return "line" }
 func (NeedleKit) AttackRange() float64 { return 620 }
 
+func needleRootTarget(gs *GameState, source *player.Player, angle, fallbackDistance float64) (float64, float64) {
+	maxDistance := 600.0
+	bestDistance := math.Inf(1)
+	var best *player.Player
+	if gs != nil && source != nil {
+		for _, candidate := range gs.Players {
+			if candidate == nil || !candidate.CanBulletHurt(source.PlayerId, source.Team) {
+				continue
+			}
+			dx, dy := candidate.X-source.X, candidate.Y-source.Y
+			distance := math.Hypot(dx, dy)
+			if distance > maxDistance+candidate.Radius || distance <= 0 {
+				continue
+			}
+			targetAngle := math.Atan2(dy, dx)
+			delta := math.Atan2(math.Sin(targetAngle-angle), math.Cos(targetAngle-angle))
+			angularRadius := math.Asin(math.Min(1, candidate.Radius/math.Max(1, distance)))
+			if math.Abs(delta) > NeedleRootAimHalfAngle+angularRadius || distance >= bestDistance {
+				continue
+			}
+			best, bestDistance = candidate, distance
+		}
+	}
+	if best != nil {
+		return best.X, best.Y
+	}
+	fallbackDistance = math.Max(80, math.Min(maxDistance, fallbackDistance))
+	return source.X + math.Cos(angle)*fallbackDistance, source.Y + math.Sin(angle)*fallbackDistance
+}
+
 func (NeedleKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
-	distance = math.Max(80, math.Min(600, distance))
-	x, y := p.X+math.Cos(angle)*distance, p.Y+math.Sin(angle)*distance
-	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "needle_roots", X: x, Y: y, Radius: 120, CreatedAt: ts, TriggerAt: ts + 800, ExpiresAt: ts + 4800, NextTickAt: ts + 800, Triggered: map[string]bool{}})
-	gs.addEffect("needle_root_cast", x, y, 0, 0, 120, 0, 0, 0, "#75d947", 0, 4800)
+	x, y := needleRootTarget(gs, p, angle, distance)
+	impactAt := ts + NeedleRootTelegraph.Milliseconds()
+	expiresAt := impactAt + NeedleRootDuration.Milliseconds()
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{
+		Owner: p.PlayerId, Kind: "needle_roots", X: x, Y: y, Radius: NeedleRootRadius,
+		CreatedAt: ts, TriggerAt: impactAt, ExpiresAt: expiresAt, NextTickAt: impactAt,
+		Triggered: map[string]bool{},
+	})
+	gs.DamageZones = append(gs.DamageZones, &DamageZone{
+		Owner: p.PlayerId, Kind: "needle_root", X: x, Y: y, Radius: NeedleRootRadius,
+		Damage: NeedleRootTickDamage, TicksLeft: int(NeedleRootDuration / NeedleRootTick),
+		NextTickAt: impactAt + NeedleRootTick.Milliseconds(), Interval: NeedleRootTick.Milliseconds(), ExpiresAt: expiresAt,
+		Color: p.Color,
+	})
+	gs.addEffect("needle_root_telegraph", x, y, 0, 0, NeedleRootRadius, 0, 0, 0, "#b7ff75", 0, NeedleRootTelegraph.Milliseconds())
 	return true
 }
 
@@ -526,27 +632,31 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 	}
 	switch p.HeroName {
 	case "Needle":
-		duration := cappedSkillDuration(NeedleMoistureDuration)
+		startX, startY := p.X, p.Y
+		gs.vaultMove(p, p.Rotation, NeedleSporeDashDistance)
+		gs.addEffect("needle_spore_dash", startX, startY, p.X, p.Y, 18, p.Rotation, NeedleSporeDashDistance, 0, p.Color, 0, 280)
 		gs.HeroZones = append(gs.HeroZones, &HeroZone{
-			Owner: p.PlayerId, Kind: "needle_moisture_reserve", X: p.X, Y: p.Y, Radius: 42,
-			CreatedAt: ts, NextTickAt: ts + NeedleMoistureTick.Milliseconds(), ExpiresAt: ts + duration + 1,
+			Owner: p.PlayerId, Kind: "needle_spore_cloud", X: startX, Y: startY, Radius: NeedleSporeCloudRadius,
+			CreatedAt: ts, NextTickAt: ts, ExpiresAt: ts + NeedleSporeCloudDuration.Milliseconds(),
 			Triggered: map[string]bool{},
 		})
-		gs.addEffect("needle_moisture_reserve", p.X, p.Y, 0, 0, 42, p.Rotation, 0, 0, "#75d947", 0, duration)
+		gs.addEffect("needle_spore_cloud", startX, startY, 0, 0, NeedleSporeCloudRadius, 0, 0, 0, "#75d947", 0, NeedleSporeCloudDuration.Milliseconds())
 	case "Fairy Mina":
+		const radius, knockback = 150.0, 105.0
 		for _, target := range gs.Players {
 			if !target.CanBulletHurt(p.PlayerId, p.Team) {
 				continue
 			}
 			dx, dy := target.X-p.X, target.Y-p.Y
-			if d := math.Hypot(dx, dy); d > 0 && d <= 135 {
+			if d := math.Hypot(dx, dy); d > 0 && d <= radius {
 				geometry.MoveCircleWithBlockingWallsAndCircles(
 					&target.CircleBody,
 					gs.Walls,
 					gs.activeCrateBodies(),
-					dx/d*105,
-					dy/d*105,
+					dx/d*knockback,
+					dy/d*knockback,
 				)
+				gs.dealPlayerDamage(p, target, 30)
 				if gs.LightMarkedUntil[target.PlayerId] > ts {
 					target.StunUntil = ts + 1000
 					gs.LightMarkedUntil[target.PlayerId] = 0
@@ -555,9 +665,12 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 				}
 			}
 		}
-		gs.addEffect("mina_air_wave", p.X, p.Y, 0, 0, 135, 0, 0, 0, p.Color, 0, 450)
+		p.SlowUntil, p.StunUntil, p.PoisonUntil, p.BlindUntil = 0, 0, 0, 0
+		p.AntiHealUntil, p.AntiHealMultiplier = 0, 1
+		gs.addEffect("mina_air_wave", p.X, p.Y, 0, 0, radius, 0, 0, 0, p.Color, 30, 450)
 	case "Kaze":
 		p.StealthUntil = ts + cappedSkillDuration(3*time.Second)
+		p.KazeStealthCritReady = true
 		gs.addEffect("kaze_veil_step", p.X, p.Y, 0, 0, 74, p.Rotation, 0, 0, "#d7b8ff", 0, 700)
 	case "Katty":
 		originX, originY := p.X, p.Y
@@ -572,6 +685,7 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 		gs.HeroZones = append(gs.HeroZones, trail)
 	case "Persephone Lumi":
 		detonated := false
+		destroyedCount := 0
 		affected := make(map[string]*player.Player)
 		keptZones := gs.HeroZones[:0]
 		for _, zone := range gs.HeroZones {
@@ -580,6 +694,7 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 				continue
 			}
 			detonated = true
+			destroyedCount++
 			for _, target := range gs.Players {
 				if target.CanBulletHurt(p.PlayerId, p.Team) && math.Hypot(target.X-zone.X, target.Y-zone.Y) <= zone.Radius+target.Radius {
 					affected[target.PlayerId] = target
@@ -592,6 +707,7 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 			return false
 		}
 		p.LumiFlowers = 0
+		gs.healPlayerAt(p, int(math.Min(float64(50), float64(destroyedCount*10))), ts)
 		for _, target := range affected {
 			gs.dealPlayerDamage(p, target, 55)
 			target.SlowUntil = ts + 2000
@@ -632,16 +748,27 @@ func (gs *GameState) updateNewHeroSystems() {
 			continue
 		}
 		if z.Kind == "needle_roots" {
-			for _, target := range gs.Players {
-				owner := gs.Players[z.Owner]
-				if owner != nil && target.CanBulletHurt(owner.PlayerId, owner.Team) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {
-					target.SlowUntil = now + 450
-					target.SlowMultiplier = 0.55
-					if !z.Triggered[target.PlayerId] {
-						target.StunUntil = now + 1500
-						target.VineUntil = max(target.VineUntil, now+1500)
-						z.Triggered[target.PlayerId] = true
-						gs.addEffect("needle_root_burst", target.X, target.Y, 0, 0, target.Radius+22, 0, 0, 0, "#75d947", 0, 520)
+			owner := gs.Players[z.Owner]
+			if owner != nil && !z.ImpactDone {
+				for _, target := range gs.Players {
+					if !target.CanBulletHurt(owner.PlayerId, owner.Team) || math.Hypot(target.X-z.X, target.Y-z.Y) > z.Radius+target.Radius {
+						continue
+					}
+					dx, dy := z.X-target.X, z.Y-target.Y
+					if distance := math.Hypot(dx, dy); distance > 0 {
+						gs.movePlayerByCollision(target, dx, dy)
+					}
+					gs.dealPlayerDamage(owner, target, NeedleRootInitialDamage)
+					gs.addEffect("needle_root_pull", target.X, target.Y, z.X, z.Y, target.Radius+24, 0, 0, 0, "#b7ff75", NeedleRootInitialDamage, 420)
+				}
+				z.ImpactDone = true
+				gs.addEffect("needle_root_active", z.X, z.Y, 0, 0, z.Radius, 0, 0, 0, "#75d947", NeedleRootTickDamage, NeedleRootDuration.Milliseconds())
+			}
+			if owner != nil && z.ImpactDone {
+				for _, target := range gs.Players {
+					if target.CanBulletHurt(owner.PlayerId, owner.Team) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {
+						target.SlowUntil = now + 550
+						target.SlowMultiplier = .40
 					}
 				}
 			}
@@ -653,37 +780,87 @@ func (gs *GameState) updateNewHeroSystems() {
 			}
 			if now >= z.NextTickAt {
 				heal := int(math.Ceil(float64(owner.MaxLives) * NeedleMoistureHealFraction))
-				owner.Lives = int(math.Min(float64(owner.MaxLives), float64(owner.Lives+heal)))
+				gs.healPlayerAt(owner, heal, now)
 				z.NextTickAt += NeedleMoistureTick.Milliseconds()
 			}
 		}
+		if z.Kind == "needle_spore_cloud" {
+			owner := gs.Players[z.Owner]
+			if owner == nil || !owner.IsAlive() {
+				continue
+			}
+			if now < z.NextTickAt {
+				zones = append(zones, z)
+				continue
+			}
+			for _, target := range gs.Players {
+				if !target.CanBulletHurt(owner.PlayerId, owner.Team) || math.Hypot(target.X-z.X, target.Y-z.Y) > z.Radius+target.Radius {
+					continue
+				}
+				target.SlowUntil = now + 550
+				target.SlowMultiplier = .60
+				if target.SporeStackUntil <= now {
+					target.SporeStacks = 0
+				}
+				target.SporeStackUntil = now + 2000
+				target.SporeStacks++
+				if target.SporeStacks >= 3 {
+					target.SporeStacks = 0
+					target.StunUntil = max(target.StunUntil, now+NeedleSporeStunDuration.Milliseconds())
+					gs.addEffect("needle_spore_stun", target.X, target.Y, 0, 0, target.Radius+18, 0, 0, 0, "#b7ff75", 0, 500)
+				}
+			}
+			z.NextTickAt += NeedleSporeCloudTick.Milliseconds()
+		}
+		if z.Kind == "zeus_fire_trail" && now >= z.NextTickAt {
+			owner := gs.Players[z.Owner]
+			if owner != nil {
+				for _, target := range gs.Players {
+					if target.CanBulletHurt(owner.PlayerId, owner.Team) && segmentHitsCircle(z.X, z.Y, z.ToX, z.ToY, target.X, target.Y, z.Radius+target.Radius) {
+						gs.dealPlayerDamage(owner, target, ZeusFireTrailDamage)
+					}
+				}
+				for id, target := range gs.Monsters {
+					if target != nil && target.IsAlive() && segmentHitsCircle(z.X, z.Y, z.ToX, z.ToY, target.X, target.Y, z.Radius+target.Radius) {
+						gs.damageMonster(id, target, ZeusFireTrailDamage)
+					}
+				}
+			}
+			z.NextTickAt += 500
+		}
 		if z.Kind == "mina_heal" && now >= z.NextTickAt {
 			owner := gs.Players[z.Owner]
-			if anchor := gs.Players[z.Target]; anchor != nil && anchor.IsAlive() {
-				z.X, z.Y = anchor.X, anchor.Y
+			if owner != nil && owner.IsAlive() {
+				z.X, z.Y = owner.X, owner.Y
 				if z.Visual != nil {
 					z.Visual.X, z.Visual.Y = z.X, z.Y
 				}
-			}
-			for _, target := range gs.Players {
-				if target.IsAlive() && owner != nil && (target.PlayerId == owner.PlayerId || (owner.Team != "" && target.Team == owner.Team)) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {
-					target.Lives = int(math.Min(float64(target.MaxLives), float64(target.Lives+MinaHealingAuraHeal)))
+				gs.healPlayerAt(owner, MinaHealingAuraHeal, now)
+				for _, target := range gs.Players {
+					if target.CanBulletHurt(owner.PlayerId, owner.Team) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {
+						gs.dealPlayerDamage(owner, target, MinaHealingAuraDamage)
+					}
 				}
 			}
 			z.NextTickAt += 500
 		}
 		if z.Kind == "lumi_roots" {
 			owner := gs.Players[z.Owner]
+			if owner != nil && !z.ImpactDone {
+				for _, target := range gs.Players {
+					if !target.CanBulletHurt(owner.PlayerId, owner.Team) || math.Hypot(target.X-z.X, target.Y-z.Y) > z.Radius+target.Radius {
+						continue
+					}
+					gs.dealPlayerDamage(owner, target, LumiRootImpactDamage)
+					target.StunUntil = max(target.StunUntil, now+LumiRootStunDuration.Milliseconds())
+					gs.addEffect("lumi_root_impact", target.X, target.Y, 0, 0, target.Radius+20, 0, 0, 0, owner.Color, LumiRootImpactDamage, 500)
+				}
+				z.ImpactDone = true
+			}
 			for _, target := range gs.Players {
 				if owner != nil && target.CanBulletHurt(owner.PlayerId, owner.Team) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {
-					// The garden is a control zone: the first entry roots, while
-					// staying inside keeps a readable slow refreshed every tick.
 					target.SlowUntil = now + 350
 					target.SlowMultiplier = .60
-					if !z.Triggered[target.PlayerId] {
-						target.StunUntil = now + 2000
-						z.Triggered[target.PlayerId] = true
-					}
 				}
 			}
 		}
@@ -734,9 +911,11 @@ func (gs *GameState) updateNewHeroSystems() {
 				}
 				if target.PlayerId == owner.PlayerId {
 					owner.HasteUntil = now + 250
+					gs.triggerKattyPaintTrail(owner, z, owner, now)
 					continue
 				}
 				if target.CanBulletHurt(owner.PlayerId, owner.Team) {
+					gs.triggerKattyPaintTrail(owner, z, target, now)
 					target.SlowUntil = now + 250
 					target.SlowMultiplier = .75
 				}
@@ -755,12 +934,13 @@ func (gs *GameState) updateNewHeroSystems() {
 		}
 	}
 	for _, p := range gs.Players {
-		if p != nil && p.StoneArmorUntil > 0 && p.StoneArmorUntil <= now {
+		if p != nil && (p.MicoArmorDetonation || (p.StoneArmorUntil > 0 && p.StoneArmorUntil <= now)) {
 			if p.SuppressedRage > 0 {
-				p.MicoRage = int(math.Min(5, float64(p.MicoRage+int(math.Ceil(float64(p.SuppressedRage)/60)))))
-				gs.addEffect("mico_suppressed_rage", p.X, p.Y, 0, 0, 72, 0, 0, 0, p.Color, 0, 650)
+				p.MicoRage = int(math.Min(5, float64(p.MicoRage+4)))
+				gs.radialDamage(p.PlayerId, p.X, p.Y, 140, 80)
+				gs.addEffect("mico_armor_burst", p.X, p.Y, 0, 0, 140, 0, 0, 0, p.Color, 80, 650)
 			}
-			p.SuppressedRage, p.StoneArmorUntil = 0, 0
+			p.SuppressedRage, p.StoneArmorUntil, p.MicoArmorDetonation = 0, 0, false
 		}
 	}
 	gs.HeroZones = zones
@@ -770,12 +950,18 @@ func (gs *GameState) updateNewHeroSystems() {
 			strikes = append(strikes, s)
 			continue
 		}
-		radius, damage := 62.0, 60
+		radius, damage := ZeusSuperFirstRadius, ZeusSuperFirstDamage
 		if s.Impact == 2 {
-			radius, damage = 90, 80
-			gs.destroyWallsInRadius(s.X, s.Y, radius)
+			radius, damage = ZeusSuperFinalRadius, ZeusSuperFinalDamage
 		}
+		gs.destroyWallsInRadius(s.X, s.Y, radius)
 		gs.radialDamage(s.Owner, s.X, s.Y, radius, damage)
+		for _, target := range gs.Players {
+			if source := gs.Players[s.Owner]; source != nil && target.CanBulletHurt(source.PlayerId, source.Team) && math.Hypot(target.X-s.X, target.Y-s.Y) <= radius+target.Radius {
+				target.SlowUntil = now + 1000
+				target.SlowMultiplier = ZeusSuperSlowMultiplier
+			}
+		}
 		gs.addEffect("zeus_lightning_strike", s.X, s.Y, 0, 0, radius, 0, 0, 0, "#b9efff", damage, 450)
 	}
 	gs.LightningStrikes = strikes
@@ -802,8 +988,15 @@ func (gs *GameState) finishNewHeroProjectile(b *bullet.Bullet) {
 	if b.Kind == "lumi_orb" {
 		now := time.Now().UnixMilli()
 		b.Kind = "lumi_spent"
-		gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: b.PlayerId, Kind: "lumi_flower", X: b.X, Y: b.Y, Radius: 70, CreatedAt: now, ExpiresAt: now + 6000, Triggered: map[string]bool{}})
-		gs.addEffect("lumi_flower", b.X, b.Y, 0, 0, 70, 0, 0, 0, b.Color, 0, 6000)
+		owner := gs.Players[b.PlayerId]
+		if owner == nil || owner.LumiFlowers >= LumiMaxFlowers {
+			return
+		}
+		owner.LumiFlowers++
+		expiresAt := now + LumiFlowerDuration.Milliseconds()
+		gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: b.PlayerId, Kind: "lumi_flower", X: b.X, Y: b.Y, Radius: LumiFlowerRadius, CreatedAt: now, ExpiresAt: expiresAt, Triggered: map[string]bool{}})
+		gs.DamageZones = append(gs.DamageZones, &DamageZone{Owner: b.PlayerId, Kind: "lumi_flower", X: b.X, Y: b.Y, Radius: LumiFlowerRadius, Damage: LumiFlowerDamage, TicksLeft: int(LumiFlowerDuration / LumiFlowerTick), NextTickAt: now + LumiFlowerTick.Milliseconds(), Interval: LumiFlowerTick.Milliseconds(), ExpiresAt: expiresAt, Color: b.Color})
+		gs.addEffect("lumi_flower", b.X, b.Y, 0, 0, LumiFlowerRadius, 0, 0, 0, b.Color, LumiFlowerDamage, LumiFlowerDuration.Milliseconds())
 		return
 	}
 	if b.Kind != "zeus_lightning" && b.Kind != "zeus_lightning_fire" {

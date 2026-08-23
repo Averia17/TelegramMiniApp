@@ -1,6 +1,7 @@
 package integration
 
 import (
+	mroom "battle/model/room"
 	"battle/provider"
 	"fmt"
 	"strings"
@@ -188,7 +189,7 @@ func TestIntegration_GameSpawnsMonsters(t *testing.T) {
 	ts, _ := setupTest(t)
 
 	roomName := fmt.Sprintf("room-monsters-%d", atomic.AddInt64(&testRoomSequence, 1))
-	c1, c2, _ := joinTwo(t, ts, roomName, "arena")
+	c1, c2, roomId := joinTwo(t, ts, roomName, "arena")
 	go func() {
 		_ = c2.SetReadDeadline(time.Time{})
 		for {
@@ -198,10 +199,10 @@ func TestIntegration_GameSpawnsMonsters(t *testing.T) {
 		}
 	}()
 
-	waitState(t, c1, 20*time.Second, func(msg map[string]interface{}) bool {
-		game, _ := msg["game"].(map[string]interface{})
-		monsters, _ := msg["monsters"].(map[string]interface{})
-		return game != nil && game["state"] == "game" && len(monsters) > 0
+	waitForGame(t, c1)
+	pollUntil(t, 5*time.Second, "authoritative monsters spawned", func() bool {
+		room := mroom.FindRoom(roomId)
+		return room != nil && room.MonsterCount() > 0
 	})
 }
 
@@ -251,7 +252,7 @@ func TestIntegration_PlayerDiesWhenHealthZero(t *testing.T) {
 func TestIntegration_ConcurrentJoins(t *testing.T) {
 	ts, store := setupTest(t)
 
-	const n = 5
+	const n = 4 // wsJoin advertises maxPlayers=4; capacity is authoritative.
 	done := make(chan string, n)
 
 	for i := 0; i < n; i++ {

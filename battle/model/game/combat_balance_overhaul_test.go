@@ -91,8 +91,8 @@ func TestNeedleRootPublishesAReadableBindWindow(t *testing.T) {
 	gs.HeroZones[0].TriggerAt = time.Now().UnixMilli() - 1
 	gs.updateNewHeroSystems()
 
-	if target.VineUntil <= time.Now().UnixMilli() {
-		t.Fatalf("needle root vineUntil=%d, want a visible bind window", target.VineUntil)
+	if target.SlowUntil <= time.Now().UnixMilli() || target.SlowMultiplier >= .5 {
+		t.Fatalf("needle root slow until=%d multiplier=%.2f, want a visible slow window", target.SlowUntil, target.SlowMultiplier)
 	}
 }
 
@@ -105,6 +105,10 @@ func TestLumiFlowersTrackSetupAndAreConsumedByGadget(t *testing.T) {
 
 	PersephoneLumiKit{}.Basic(gs, lumi, now, 0, 0)
 	PersephoneLumiKit{}.Basic(gs, lumi, now+1, 0, 0)
+	for _, shot := range gs.Bullets {
+		shot.X, shot.Y = lumi.X+520, lumi.Y
+		gs.finishNewHeroProjectile(shot)
+	}
 	if lumi.LumiFlowers != 2 {
 		t.Fatalf("Lumi flowers=%d after two basics, want 2", lumi.LumiFlowers)
 	}
@@ -117,16 +121,30 @@ func TestLumiFlowersTrackSetupAndAreConsumedByGadget(t *testing.T) {
 }
 
 func TestCombatEffectPhaseContract(t *testing.T) {
-	if got := combatEffectPhase("lumi_roots"); got != EffectPhaseActive {
-		t.Fatalf("lumi roots phase=%q, want %q", got, EffectPhaseActive)
+	cases := map[string]CombatEffectPhase{
+		"lumi_roots":            EffectPhaseActive,
+		"lumi_seedburst":        EffectPhaseImpact,
+		"zeus_strike_warning":   EffectPhaseTelegraph,
+		"katty_paint_spray":     EffectPhaseCast,
+		"needle_spores":         EffectPhaseActive,
+		"mandy_super_wave":      EffectPhaseActive,
+		"lightning":             EffectPhaseImpact,
+		"zeus_lightning_strike": EffectPhaseImpact,
+		"zeus_lightning_blast":  EffectPhaseImpact,
+		"mico_skyfall":          EffectPhaseImpact,
+		"burst":                 EffectPhaseImpact,
+		"evade":                 EffectPhaseImpact,
+		"damage":                EffectPhaseImpact,
+		"crate_hit":             EffectPhaseImpact,
+		"crate_break":           EffectPhaseImpact,
+		"rock":                  EffectPhaseImpact,
+		"mina_air_wave":         EffectPhaseImpact,
+		"wall_break":            EffectPhaseImpact,
+		"kaze_cross_slash":      EffectPhaseImpact,
 	}
-	if got := combatEffectPhase("lumi_seedburst"); got != EffectPhaseImpact {
-		t.Fatalf("lumi seedburst phase=%q, want %q", got, EffectPhaseImpact)
-	}
-	if got := combatEffectPhase("zeus_strike_warning"); got != EffectPhaseTelegraph {
-		t.Fatalf("zeus warning phase=%q, want %q", got, EffectPhaseTelegraph)
-	}
-	if got := combatEffectPhase("katty_paint_spray"); got != EffectPhaseCast {
-		t.Fatalf("katty spray phase=%q, want %q", got, EffectPhaseCast)
+	for kind, want := range cases {
+		if got := combatEffectPhase(kind); got != want {
+			t.Errorf("%s phase=%q, want %q", kind, got, want)
+		}
 	}
 }

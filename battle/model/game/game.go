@@ -218,9 +218,7 @@ func (gs *GameState) updateRegenerationAt(now int64) {
 		p.RegenCarry += float64(p.MaxLives) * pulsePercent
 		heal := int(p.RegenCarry)
 		if heal > 0 {
-			missing := p.MaxLives - p.Lives
-			applied := int(math.Min(float64(missing), float64(heal)))
-			p.Lives += applied
+			applied := gs.healPlayerAt(p, heal, now)
 			p.RegenCarry -= float64(applied)
 		}
 		p.LastRegenAt = now
@@ -253,12 +251,36 @@ func (gs *GameState) updateBaseRegenerationAt(p *player.Player, now int64) {
 	p.RegenCarry += float64(p.MaxLives) * teamBaseRegenerationPercent * float64(elapsed) / float64(time.Second/time.Millisecond)
 	heal := int(p.RegenCarry)
 	if heal > 0 {
-		missing := p.MaxLives - p.Lives
-		applied := int(math.Min(float64(missing), float64(heal)))
-		p.Lives += applied
+		applied := gs.healPlayerAt(p, heal, now)
 		p.RegenCarry -= float64(applied)
 	}
 	p.LastRegenAt = now
+}
+
+// healPlayerAt is the authoritative healing gate. Abilities and pickups should
+// call it instead of writing Lives directly, so anti-heal remains consistent
+// across passive regeneration, zones, projectiles and gadgets.
+func (gs *GameState) healPlayerAt(target *player.Player, amount int, now int64) int {
+	if target == nil || amount <= 0 || !target.IsAlive() || target.Lives >= target.MaxLives {
+		return 0
+	}
+	multiplier := 1.0
+	if target.AntiHealUntil > now {
+		multiplier = target.AntiHealMultiplier
+		if multiplier <= 0 || multiplier > 1 {
+			multiplier = .5
+		}
+	}
+	adjusted := int(math.Floor(float64(amount) * multiplier))
+	if adjusted == 0 {
+		adjusted = 1
+	}
+	missing := target.MaxLives - target.Lives
+	if adjusted > missing {
+		adjusted = missing
+	}
+	target.Lives += adjusted
+	return adjusted
 }
 
 func (gs *GameState) isInOwnBaseSemicircle(source *player.Player) bool {
@@ -380,10 +402,11 @@ func (gs *GameState) updateGame() {
 		}
 		if gs.GameEndsAt < time.Now().UnixMilli() {
 			winner := gs.getTimeoutWinner()
+			gs.setWinnerPlayerID(winner)
 			gs.EndReason = resultReason(gs.matchRules(), gs, winner, true)
 			gs.onGameEnd(&ServerEvent{
 				Type:   "timeout",
-				Params: map[string]interface{}{"name": winner, "reason": gs.EndReason, "draw": winner == ""},
+				Params: map[string]interface{}{"name": winner, "winnerId": gs.WinnerPlayerID, "reason": gs.EndReason, "draw": winner == ""},
 			})
 			gs.startFinished()
 			return
@@ -481,6 +504,7 @@ func (gs *GameState) updateMonsters() {
 				gs.Broadcast("killed", map[string]interface{}{
 					"killerName": "A bat",
 					"killedName": target.Name,
+					"killedId":   target.PlayerId,
 				})
 				if gs.OnPlayerKilled != nil {
 					gs.OnPlayerKilled(target.PlayerId, "A bat")
@@ -594,6 +618,7 @@ func (gs *GameState) monsterCanSeePlayer(m *monster.Monster, target *player.Play
 func (gs *GameState) updateStatuses() {
 	now := time.Now().UnixMilli()
 	for _, p := range gs.Players {
+		expirePlayerShieldAt(p, now)
 		p.SuperCharge = SuperChargePercent(p, now)
 		gs.reloadAmmo(p, now)
 		if p.ShieldStackUntil > 0 && p.ShieldStackUntil <= now {
@@ -625,7 +650,7 @@ func (gs *GameState) updateStatuses() {
 				killer.Kills++
 				gs.dropHeroHealthBoost(p, killer)
 			}
-			gs.Broadcast("killed", map[string]interface{}{"killerName": killerName, "killedName": p.Name})
+			gs.Broadcast("killed", map[string]interface{}{"killerName": killerName, "killedName": p.Name, "killedId": p.PlayerId})
 			if gs.OnPlayerKilled != nil {
 				gs.OnPlayerKilled(p.PlayerId, killerName)
 			}
@@ -660,11 +685,20 @@ func (gs *GameState) applyDamage(target *player.Player, amount int) bool {
 	return gs.applyDamageAmount(target, amount) > 0
 }
 
+func expirePlayerShieldAt(target *player.Player, now int64) {
+	if target == nil || target.ShieldUntil <= 0 || target.ShieldUntil > now {
+		return
+	}
+	target.ShieldUntil = 0
+	target.ShieldHP = 0
+}
+
 func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 	if gs.State != GameStateGame || target == nil || !target.IsAlive() {
 		return 0
 	}
 	now := time.Now().UnixMilli()
+	expirePlayerShieldAt(target, now)
 	target.InterruptRegenerationAt(now)
 	if target.InvulnerableUntil > now {
 		return 0
@@ -674,10 +708,14 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 		gs.addEffect("evade", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ffffff", 0, 450)
 		return 0
 	}
-	if target.ShieldUntil > now {
-		if target.StoneArmorUntil > now {
-			target.SuppressedRage = int(math.Min(240, float64(target.SuppressedRage+amount)))
+	if target.StoneArmorUntil > now {
+		target.SuppressedRage = int(math.Min(240, float64(target.SuppressedRage+amount)))
+		amount = int(math.Round(float64(amount) * .4))
+		if target.SuppressedRage >= 240 {
+			target.MicoArmorDetonation = true
+			target.StoneArmorUntil = now
 		}
+	} else if target.ShieldUntil > now {
 		amount = int(math.Round(float64(amount) * .6))
 	}
 	if target.ShieldStacks > 0 {
@@ -708,7 +746,7 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 		target.RespawnAt = now + gs.teamRespawnDelayAt(now).Milliseconds()
 	}
 	target.RevealedUntil = now + 2000
-	gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ff6b9f", dealt, 520)
+	gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ff6b9f", dealt, 260)
 	return dealt
 }
 
@@ -748,6 +786,7 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		gs.Broadcast("killed", map[string]interface{}{
 			"killerName": killerName,
 			"killedName": target.Name,
+			"killedId":   target.PlayerId,
 		})
 		if gs.OnPlayerKilled != nil {
 			gs.OnPlayerKilled(target.PlayerId, killerName)
@@ -865,7 +904,7 @@ func (gs *GameState) updateActiveAbilities() {
 		}
 		source.LastAbilityTick = now
 		if source.VortexUntil > now && now >= source.VortexTickAt {
-			source.VortexTickAt = now + 250
+			source.VortexTickAt = now + MicoVortexTickInterval.Milliseconds()
 			radius := source.VortexRadius
 			if radius <= 0 {
 				radius = MicoVortexBaseRadius
@@ -876,7 +915,7 @@ func (gs *GameState) updateActiveAbilities() {
 			}
 			gs.addEffect("vortex", source.X, source.Y, 0, 0, radius, 0, 0, 0, source.Color, damage, 100)
 			gs.radialDamage(source.PlayerId, source.X, source.Y, radius, damage)
-			source.Lives = int(math.Min(float64(source.MaxLives), float64(source.Lives+1)))
+			gs.healPlayerAt(source, 1, now)
 		}
 		if source.VineUntil > now && (source.VineUntil-now)%500 < 20 {
 			gs.addEffect("vine", source.X, source.Y, 0, 0, 245, 0, 0, 0, source.Color, 0, 480)
@@ -974,7 +1013,7 @@ func (gs *GameState) updateBullets() {
 
 		for _, p := range gs.Players {
 			if b.Kind == "mina_star" && p.IsAlive() && (p.PlayerId == b.PlayerId || (b.Team != "" && p.Team == b.Team)) && segmentHitsCircle(previousX, previousY, b.X, b.Y, p.X, p.Y, p.Radius+b.Radius) {
-				p.Lives = int(math.Min(float64(p.MaxLives), float64(p.Lives+2)))
+				gs.healPlayerAt(p, 2, time.Now().UnixMilli())
 				b.Active = false
 				continue
 			}
@@ -1040,22 +1079,33 @@ func (gs *GameState) updateBullets() {
 			}
 			if b.Kind == "mina_star" {
 				now := time.Now().UnixMilli()
+				if attacker != nil {
+					gs.healPlayerAt(attacker, MinaStarSelfHeal, now)
+				}
 				if gs.LightMarkedUntil[p.PlayerId] > now {
-					bonus := int(math.Round(float64(b.Damage) * .45))
-					gs.dealPlayerDamage(attacker, p, bonus)
-					gs.LightMarkedUntil[p.PlayerId] = 0
-					p.Marks = 0
-					gs.addEffect("mina_mark_burst", p.X, p.Y, 0, 0, p.Radius+22, 0, 0, 0, "#ffb5f2", bonus, 420)
+					p.Marks++
+					if p.Marks >= 3 {
+						gs.radialDamageExcept(b.PlayerId, p.X, p.Y, MinaMarkBurstRadius, MinaMarkBurstDamage, "")
+						gs.LightMarkedUntil[p.PlayerId] = 0
+						p.Marks = 0
+						p.SlowUntil = now + 1000
+						p.SlowMultiplier = .60
+						gs.addEffect("mina_mark_burst", p.X, p.Y, 0, 0, MinaMarkBurstRadius, 0, 0, 0, "#ffb5f2", MinaMarkBurstDamage, 420)
+					}
 				} else {
 					p.Marks = 1
 					gs.LightMarkedUntil[p.PlayerId] = now + 4000
 				}
 			}
 			if b.Kind == "spore" {
-				slowUntil := time.Now().UnixMilli() + cappedSkillDuration(NeedleSporeSlowDuration)
+				now := time.Now().UnixMilli()
+				slowUntil := now + cappedSkillDuration(NeedleSporeSlowDuration)
 				p.SlowUntil = slowUntil
 				p.SlowMultiplier = .60
+				p.AntiHealUntil = now + 2*time.Second.Milliseconds()
+				p.AntiHealMultiplier = .50
 				gs.addEffect("needle_spores", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#75d947", 0, cappedSkillDuration(NeedleSporeSlowDuration))
+				gs.addEffect("needle_anti_heal", p.X, p.Y, 0, 0, p.Radius+10, 0, 0, 0, "#b7ff75", 0, 420)
 			}
 			if b.Kind == "katty_paint" {
 				now := time.Now().UnixMilli()
@@ -1233,6 +1283,7 @@ func (gs *GameState) startWaiting() {
 	gs.GameEndsAt = 0
 	gs.MatchStartedAt = 0
 	gs.EndReason = ""
+	gs.WinnerPlayerID = ""
 	gs.IslandPhase = ""
 	gs.PhaseStartedAt = 0
 	gs.PhaseEndsAt = 0
@@ -1252,6 +1303,7 @@ func (gs *GameState) startLobby() {
 	gs.removeBots()
 	gs.LobbyEndsAt = time.Now().Add(LobbyDuration).UnixMilli()
 	gs.GameEndsAt = 0
+	gs.WinnerPlayerID = ""
 	gs.State = GameStateLobby
 	gs.resetMatchMap()
 	gs.propsClear()
@@ -1278,6 +1330,7 @@ func (gs *GameState) startGame() {
 	gs.LobbyEndsAt = 0
 	gs.GameEndsAt = time.Now().Add(gs.matchDuration()).UnixMilli()
 	gs.MatchStartedAt = time.Now().UnixMilli()
+	gs.WinnerPlayerID = ""
 	gs.IslandPhase = ""
 	gs.PhaseStartedAt = 0
 	gs.PhaseEndsAt = 0
@@ -1366,8 +1419,28 @@ func (gs *GameState) finalizeBattlePlaces(winner string) {
 		return
 	}
 	for _, candidate := range gs.Players {
-		if candidate != nil && candidate.Place == 0 && candidate.IsAlive() && candidate.Name == winner {
+		isWinner := candidate != nil && candidate.IsAlive() && candidate.Name == winner
+		if gs.WinnerPlayerID != "" {
+			isWinner = candidate != nil && candidate.PlayerId == gs.WinnerPlayerID
+		}
+		if isWinner && candidate.Place == 0 {
 			candidate.Place = 1
+		}
+	}
+}
+
+func (gs *GameState) setWinnerPlayerID(winner string) {
+	if gs == nil {
+		return
+	}
+	gs.WinnerPlayerID = ""
+	if gs.Mode == ModeTeamDeathmatch || winner == "" {
+		return
+	}
+	for _, candidate := range gs.Players {
+		if candidate != nil && candidate.IsAlive() && candidate.Name == winner {
+			gs.WinnerPlayerID = candidate.PlayerId
+			return
 		}
 	}
 }
@@ -1565,14 +1638,14 @@ func (gs *GameState) collectPickups(p *player.Player) {
 				if !p.IsFullLives() {
 					pr.Active = false
 					heal := int(math.Min(80, float64(p.MaxLives-p.Lives)))
-					p.Lives += heal
+					gs.healPlayerAt(p, heal, now)
 					gs.addEffect("heal", p.X, p.Y, 0, 0, 0, 0, 0, 0, "#65ff9c", heal, 520)
 				}
 			case "power":
 				pr.Active = false
 				p.PowerCores++
 				p.MaxLives += 35
-				p.Lives = int(math.Min(float64(p.MaxLives), float64(p.Lives+90)))
+				gs.healPlayerAt(p, 90, now)
 				p.DamageMultiplier = math.Min(1.35, 1+float64(p.PowerCores)*.07)
 				// Never let a pickup reduce an assassin's native movement speed.
 				p.Speed = math.Max(p.Speed, math.Min(p.Speed*1.012, 14.25))
@@ -1700,7 +1773,12 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 			if !kit.Super(gs, p, ts, p.Rotation, aimDistance) {
 				return
 			}
-			p.LastPrimaryAt = ts
+			if p.HeroName == "Kaze" && p.KazeSuperReset {
+				p.LastPrimaryAt = 0
+				p.KazeSuperReset = false
+			} else {
+				p.LastPrimaryAt = ts
+			}
 			p.SuperCharge = 0
 			if p.HeroName != "Mandy" {
 				p.SuperPulse++
@@ -1819,6 +1897,7 @@ func (gs *GameState) playerShootWithMode(id string, ts int64, screenAngle float6
 	p.AttackPulse++
 	if p.HeroName == "Kaze" && p.StealthUntil > ts {
 		p.KazeCritReady = true
+		p.KazeStealthCritReady = true
 	}
 	p.StealthUntil = 0
 	revealDuration := int64(2_000)
@@ -2117,7 +2196,7 @@ func (gs *GameState) hitSectorWithDamage(source *player.Player, angle, reach, ha
 		}
 		gs.damageMonster(id, target, damage)
 		hits++
-		gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ffe55c", damage, 520)
+		gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ffe55c", damage, 260)
 	}
 	for _, crate := range gs.Props {
 		if crate == nil || !crate.Active || !isBreakableCrate(crate) {
@@ -2528,11 +2607,14 @@ func (gs *GameState) resetPlayerMatchState(p *player.Player) {
 	p.LastPrimaryAt, p.LastSecondaryAt = 0, 0
 	p.HasteUntil, p.LunarSpeedUntil, p.LunarDamageUntil = 0, 0, 0
 	p.LunarShield, p.SlowUntil, p.SlowMultiplier = false, 0, 1
+	p.AntiHealUntil, p.AntiHealMultiplier = 0, 1
+	p.SporeStacks, p.SporeStackUntil = 0, 0
 	p.FocusStartedAt, p.FocusCharge = 0, 0
 	p.SuppressedRage, p.MicoRage, p.LumiFlowers = 0, 0, 0
 	p.VortexRadius, p.VortexDamage = 0, 0
 	p.StoneArmorUntil, p.GadgetArmed = 0, false
-	p.KazeCritReady, p.KazeCombo, p.KazeComboUntil = false, 0, 0
+	p.MandySuperShieldUntil, p.MicoArmorDetonation = 0, false
+	p.KazeCritReady, p.KazeStealthCritReady, p.KazeSuperReset, p.KazeCombo, p.KazeComboUntil = false, false, false, 0, 0
 	p.GadgetCharges, p.Ammo, p.NextAmmoAt = 3, p.MaxAmmo, 0
 	p.RegenCarry, p.LastDamageAt, p.RespawnAt = 0, 0, 0
 	p.RespawnCount, p.LastRegenAt = 0, 0
@@ -2736,10 +2818,11 @@ func (gs *GameState) finishBattleIfDecided() bool {
 		return true
 	}
 
+	gs.setWinnerPlayerID(winner)
 	gs.EndReason = resultReason(gs.matchRules(), gs, winner, false)
 	gs.onGameEnd(&ServerEvent{
 		Type:   "won",
-		Params: map[string]interface{}{"name": winner, "reason": gs.EndReason, "draw": false},
+		Params: map[string]interface{}{"name": winner, "winnerId": gs.WinnerPlayerID, "reason": gs.EndReason, "draw": false},
 	})
 	gs.startFinished()
 	return true

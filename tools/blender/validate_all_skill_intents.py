@@ -32,7 +32,14 @@ INTENTS = {
         "gadget": "cable_prime",
     },
 }
-EXPECTED_REVISIONS = {("kaze", "gadget"): 3}
+EXPECTED_REVISIONS = {
+    ("kaze", "gadget"): 3,
+    ("wukong-mico", "gadget"): 3,
+    ("needle", "gadget"): 3,
+    ("fairy-mina", "super"): 3,
+    ("persephone-lumi", "gadget"): 3,
+    ("brock-zeus", "gadget"): 3,
+}
 INTENT_FRAMES = {("brock-zeus", "super"): 42}
 
 

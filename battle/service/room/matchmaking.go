@@ -50,10 +50,24 @@ type MatchQueue struct {
 }
 
 func (mq *MatchQueue) Add(client *room.Client) {
+	if client == nil || client.Id == "" {
+		return
+	}
 	mq.mu.Lock()
 	if mq.queuedAt == nil {
 		mq.queuedAt = make(map[string]time.Time)
 	}
+	// A repeated find_match command is a requeue, not a second participant.
+	// Keeping duplicate pointers here can create multiple rooms for one user
+	// and makes cancellation remove only one of the stale entries.
+	filtered := mq.queue[:0]
+	for _, queued := range mq.queue {
+		if queued == nil || queued.Id == client.Id {
+			continue
+		}
+		filtered = append(filtered, queued)
+	}
+	mq.queue = filtered
 	mq.queuedAt[client.Id] = time.Now()
 	mq.queue = append(mq.queue, client)
 	mq.tryMatch()
@@ -66,13 +80,15 @@ func (mq *MatchQueue) Add(client *room.Client) {
 func (mq *MatchQueue) Remove(clientId string) {
 	mq.mu.Lock()
 	defer mq.mu.Unlock()
-	for i, c := range mq.queue {
-		if c.Id == clientId {
-			mq.queue = append(mq.queue[:i], mq.queue[i+1:]...)
-			delete(mq.queuedAt, clientId)
-			return
+	filtered := mq.queue[:0]
+	for _, c := range mq.queue {
+		if c == nil || c.Id == clientId {
+			continue
 		}
+		filtered = append(filtered, c)
 	}
+	mq.queue = filtered
+	delete(mq.queuedAt, clientId)
 }
 
 func (mq *MatchQueue) tryMatch() {
@@ -111,7 +127,7 @@ func (mq *MatchQueue) matchSolo(p *room.Client) {
 	if existing != nil {
 		p.PendingRoomID = existing.Id
 		data, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: existing.Id}))
-		p.Send <- data
+		p.TrySend(data)
 		return
 	}
 
@@ -120,7 +136,7 @@ func (mq *MatchQueue) matchSolo(p *room.Client) {
 
 	p.PendingRoomID = r.Id
 	data, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: r.Id}))
-	p.Send <- data
+	p.TrySend(data)
 }
 
 func (mq *MatchQueue) firstTeamQueueIndex() int {
@@ -229,7 +245,7 @@ func (mq *MatchQueue) launchTeamMatch(profile room.MatchProfile, chosenIndexes [
 		client.AssignedTeam = assignments[client.Id]
 		client.PendingRoomID = r.Id
 		data, _ := json.Marshal(game.NewServerMessage("match_found", game.MatchFoundParams{RoomId: r.Id}))
-		client.Send <- data
+		client.TrySend(data)
 	}
 	remove := make(map[int]bool)
 	for _, index := range chosenIndexes {

@@ -87,6 +87,10 @@ type Player struct {
 	LunarShield           bool
 	SlowUntil             int64
 	SlowMultiplier        float64
+	AntiHealUntil         int64
+	AntiHealMultiplier    float64
+	SporeStacks           int
+	SporeStackUntil       int64
 	FocusStartedAt        int64
 	FocusCharge           int
 	SuppressedRage        int
@@ -95,8 +99,12 @@ type Player struct {
 	VortexRadius          float64
 	VortexDamage          int
 	StoneArmorUntil       int64
+	MandySuperShieldUntil int64
+	MicoArmorDetonation   bool
 	GadgetArmed           bool
 	KazeCritReady         bool
+	KazeStealthCritReady  bool
+	KazeSuperReset        bool
 	KazeCombo             int
 	KazeComboUntil        int64
 	GadgetCharges         int

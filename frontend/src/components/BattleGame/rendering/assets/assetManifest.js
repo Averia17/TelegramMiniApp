@@ -40,6 +40,8 @@ export const HERO_ASSETS = Object.freeze({
   "Wukong Mico": hero("Wukong Mico", 0.92, 0, "wukong-mico"),
   "Persephone Lumi": hero("Persephone Lumi", 0.92, 0, "persephone-lumi"),
   Katty: Object.freeze({
+    // The regenerated GLB is authored camera-facing, so no legacy 180°
+    // correction is needed in battle or in the lobby preview.
     ...hero("Katty", .92, 0, "katty"),
     clips,
     sourceUrl: "https://sketchfab.com/3d-models/tricky-janet-86283dbe8ca54428a26b6b9033d624a1",

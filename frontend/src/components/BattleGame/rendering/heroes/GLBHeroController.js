@@ -183,6 +183,8 @@ export class GLBHeroController {
     this.actions = new Map()
     this.state = null
     this.overlay = null
+    this.overlayBlendOutScheduled = false
+    this.spawnBlendOutScheduled = false
     this.locomotionSuppressed = false
     this.lastAttackPulse = options.attackPulse
     this.lastSuperPulse = options.superPulse
@@ -430,6 +432,7 @@ export class GLBHeroController {
         }
       }
       if (finished === "spawn") {
+        this.spawnBlendOutScheduled = false
         event.action.stop().setEffectiveWeight(0)
         this.state = null
         this.restoreLocomotion()
@@ -557,6 +560,7 @@ export class GLBHeroController {
     next.enabled = true
     next.reset().setEffectiveWeight(1).fadeIn(fadeSeconds).play()
     this.overlay = name
+    this.overlayBlendOutScheduled = false
     this.transitionCloud(name, fadeSeconds)
     if (name === "attack" && this.heldProjectile) this.heldProjectile.visible = true
     return true
@@ -567,6 +571,7 @@ export class GLBHeroController {
     const previous = this.actions.get(this.overlay)
     if (previous) previous.stop().setEffectiveWeight(0)
     this.overlay = null
+    this.overlayBlendOutScheduled = false
     if (previousName && this.cloudActions.size) {
       this.transitionCloud(this.state === "run" ? "run" : "idle", OVERLAY_FADE)
     }
@@ -582,15 +587,20 @@ export class GLBHeroController {
     }
   }
 
-  restoreLocomotion() {
+  restoreLocomotion(fadeSeconds = LOCOMOTION_FADE) {
     if (!this.locomotionSuppressed) return
     this.locomotionSuppressed = false
     const name = this.state === "run" ? "run" : "idle"
     const action = this.actions.get(name)
     if (!action) return
     action.enabled = true
-    action.reset().setEffectiveWeight(1).play()
-    this.transitionCloud(name, LOCOMOTION_FADE)
+    // Locomotion keeps advancing while its weight is faded out during a
+    // full-body overlay. Resetting it here snaps the character back to the
+    // first idle/run frame exactly when a skill ends, which reads as a broken
+    // frame switch instead of a continuous transition.
+    if (!action.isRunning()) action.play()
+    action.fadeIn(Math.max(.001, fadeSeconds))
+    this.transitionCloud(name, fadeSeconds)
   }
 
   playOutcome(name, fadeSeconds = LOCOMOTION_FADE) {
@@ -617,6 +627,7 @@ export class GLBHeroController {
   playSpawn() {
     this.clearOverlay()
     this.suppressLocomotion(0)
+    this.spawnBlendOutScheduled = false
     this.root.visible = true
     this.spawnElapsed = 0
     this.mandySpawnStaffElapsed = 0
@@ -911,6 +922,39 @@ export class GLBHeroController {
         const baseScale = this.heldProjectileBaseScale || 1
         this.heldProjectile.scale.setScalar(baseScale)
         this.heldProjectile.rotation.set(0.18, 0.35, -0.12)
+      }
+    }
+
+    // Schedule the return to locomotion before a one-shot reaches its last
+    // sample. The mixer dispatches `finished` after evaluating that sample;
+    // waiting for the event leaves one rendered tick where the finished
+    // overlay has already been stopped while idle/run is still faded to zero.
+    // That empty blend is perceived as a hard frame switch by every hero.
+    const overlayAction = this.overlay ? this.actions.get(this.overlay) : null
+    if (
+      overlayAction &&
+      FULL_BODY_OVERLAYS.has(this.overlay) &&
+      overlayAction.isRunning() &&
+      !this.overlayBlendOutScheduled
+    ) {
+      const remaining = overlayAction.getClip().duration - overlayAction.time
+      if (remaining <= OVERLAY_FADE) {
+        this.overlayBlendOutScheduled = true
+        overlayAction.fadeOut(Math.max(.001, remaining))
+        this.restoreLocomotion(Math.max(.001, remaining))
+      }
+    }
+    const spawnAction = this.state === "spawn" ? this.actions.get("spawn") : null
+    if (
+      spawnAction &&
+      spawnAction.isRunning() &&
+      !this.spawnBlendOutScheduled
+    ) {
+      const remaining = spawnAction.getClip().duration - spawnAction.time
+      if (remaining <= LOCOMOTION_FADE) {
+        this.spawnBlendOutScheduled = true
+        spawnAction.fadeOut(Math.max(.001, remaining))
+        this.restoreLocomotion(Math.max(.001, remaining))
       }
     }
     if (this.rig.upperRoot && this.proceduralAimFallback) {

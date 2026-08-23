@@ -68,8 +68,11 @@ func (TeamDeathmatchRules) Mode() GameMode               { return ModeTeamDeathm
 func (TeamDeathmatchRules) AssignTeams(state *GameState) { state.setPlayersTeamsRandomly() }
 
 func (TeamDeathmatchRules) EvaluateWinner(state *GameState, _ int64) (string, bool) {
-	if winner := state.objectiveWinner(); winner != "" {
-		return winner + " team", true
+	if state.objectiveBattleDecided() {
+		if winner := state.objectiveWinner(); winner != "" {
+			return winner + " team", true
+		}
+		return "", true
 	}
 	if len(state.Objectives) > 0 {
 		return "", false

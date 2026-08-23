@@ -183,7 +183,7 @@ func (gs *GameState) damageFromIsland(target *player.Player, amount int, killerN
 		return
 	}
 	if gs.Broadcast != nil {
-		gs.Broadcast("killed", map[string]interface{}{"killerName": killerName, "killedName": target.Name})
+		gs.Broadcast("killed", map[string]interface{}{"killerName": killerName, "killedName": target.Name, "killedId": target.PlayerId})
 	}
 	if gs.OnPlayerKilled != nil {
 		gs.OnPlayerKilled(target.PlayerId, killerName)

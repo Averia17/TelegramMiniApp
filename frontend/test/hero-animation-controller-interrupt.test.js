@@ -69,3 +69,60 @@ test("spawn and outcome interrupt an active upper-body overlay", () => {
   assert.equal(controller.actions.get("aimSuper").getEffectiveWeight(), 0)
   controller.dispose()
 })
+
+test("full-body overlay restores locomotion without resetting its phase", () => {
+  const root = new THREE.Group()
+  const upper = new THREE.Bone()
+  upper.name = "Upper"
+  root.add(upper)
+  const idle = new THREE.AnimationClip("Idle", 1, [
+    new THREE.QuaternionKeyframeTrack("Upper.quaternion", [0, 1], [0, 0, 0, 1, 0, 0.7071068, 0, 0.7071068]),
+  ])
+  const attack = new THREE.AnimationClip("Attack", .1, [
+    new THREE.QuaternionKeyframeTrack("Upper.quaternion", [0, .1], [0, 0, 0, 1, 0, 0, 0.7071068, 0.7071068]),
+  ])
+  const controller = new GLBHeroController(root, [idle, attack], {
+    idle: "Idle",
+    attack: "Attack",
+  }, {attackPulse: 0, spawnOnLoad: false})
+
+  controller.update(.016, {alive: true, moving: false, attackPulse: 0})
+  controller.update(.24, {alive: true, moving: false, attackPulse: 0})
+  const phaseBeforeAttack = controller.actions.get("idle").time
+  controller.playOverlay("attack", 0)
+  controller.update(.11, {alive: true, moving: false, attackPulse: 0})
+
+  const idleAction = controller.actions.get("idle")
+  assert.ok(idleAction.time > phaseBeforeAttack)
+  assert.ok(idleAction.time > 0)
+  assert.ok(idleAction.getEffectiveWeight() < 1)
+  controller.dispose()
+})
+
+test("full-body overlay blends out before its finished event leaves an empty frame", () => {
+  const root = new THREE.Group()
+  const upper = new THREE.Bone()
+  upper.name = "Upper"
+  root.add(upper)
+  const idle = poseClip("Idle", 1)
+  const attack = poseClip("Attack", .2)
+  const controller = new GLBHeroController(root, [idle, attack], {
+    idle: "Idle",
+    attack: "Attack",
+  }, {spawnOnLoad: false, attackPulse: 0})
+
+  controller.update(.05, {alive: true, moving: false, attackPulse: 0})
+  controller.playOverlay("attack", 0)
+  const weights = []
+  for (let index = 0; index < 8; index += 1) {
+    controller.update(.05, {alive: true, moving: false, attackPulse: 0})
+    weights.push([
+      controller.actions.get("idle").getEffectiveWeight(),
+      controller.actions.get("attack").getEffectiveWeight(),
+    ])
+  }
+
+  assert.ok(weights.every(([idleWeight, attackWeight]) => idleWeight + attackWeight > .001))
+  assert.equal(controller.overlay, null)
+  controller.dispose()
+})

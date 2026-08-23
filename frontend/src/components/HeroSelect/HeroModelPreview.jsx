@@ -100,6 +100,7 @@ export const HeroModelPreview = ({hero, stage = false}) => {
       scene.add(rim)
 
       let model = new THREE.Group()
+      let orientationOffset = 0
       let animation = null
       let runtimeDisposed = false
       let frame
@@ -129,6 +130,7 @@ export const HeroModelPreview = ({hero, stage = false}) => {
           scene.remove(model)
           disposeObjectTree(model)
           model = instance.root
+          orientationOffset = instance.asset?.rotationOffset || 0
           model.scale.multiplyScalar(stage ? 1.28 : 1.02)
           model.position.x += instance.asset.previewOffsetX || 0
           scene.add(model)
@@ -158,7 +160,7 @@ export const HeroModelPreview = ({hero, stage = false}) => {
         previous = now
         model.userData.animate?.(time, stage ? .16 : .06, Math.max(0, Math.sin(time * .8 - 1.1) * 1.7 - .7))
         animation?.update(delta, {alive: true, moving: false})
-        model.rotation.y = .42 + Math.sin(time * .55) * .1
+        model.rotation.y = orientationOffset + .42 + Math.sin(time * .55) * .1
         renderer.render(scene, camera)
         frame = requestAnimationFrame(draw)
       }

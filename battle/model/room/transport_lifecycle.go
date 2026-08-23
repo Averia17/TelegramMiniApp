@@ -10,9 +10,12 @@ import (
 // registerClient owns connection replacement and reconnect semantics. It is
 // intentionally independent from the scheduler so another room runtime can
 // reuse the same authoritative transport policy.
-func (r *Room) registerClient(client *Client, emptySince *time.Time) {
+func (r *Room) registerClient(client *Client, emptySince *time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if client == nil || r.State == nil {
+		return ErrRoomFinished
+	}
 	if client.State == nil {
 		client.State = make(chan []byte, 1)
 	}
@@ -22,12 +25,24 @@ func (r *Room) registerClient(client *Client, emptySince *time.Time) {
 	*emptySince = time.Time{}
 	previous := r.Clients[client.Id]
 	existingPlayer := r.State.Players[client.Id]
+	if existingPlayer == nil {
+		if r.State.State == game.GameStateFinished {
+			return ErrRoomFinished
+		}
+		maxPlayers := r.MaxPlayers
+		if maxPlayers <= 0 {
+			maxPlayers = r.State.MaxPlayers
+		}
+		if maxPlayers > 0 && len(r.State.Players) >= maxPlayers {
+			return ErrRoomFull
+		}
+	}
 	r.Clients[client.Id] = client
 	delete(r.Disconnected, client.Id)
 
 	if previous != nil && previous != client {
 		r.dropPlayerActions(client.Id)
-		close(previous.Send)
+		previous.CloseSend()
 		if previous.Conn != nil {
 			_ = previous.Conn.Close()
 		}
@@ -63,6 +78,7 @@ func (r *Room) registerClient(client *Client, emptySince *time.Time) {
 			log.Printf("Store add player error: %v", err)
 		}
 	}
+	return nil
 }
 
 func (r *Room) unregisterClient(client *Client, emptySince *time.Time) {
@@ -75,7 +91,7 @@ func (r *Room) unregisterClient(client *Client, emptySince *time.Time) {
 		}
 		delete(r.Clients, client.Id)
 		r.Disconnected[client.Id] = time.Now()
-		close(client.Send)
+		client.CloseSend()
 		if store := currentStore(); store != nil {
 			if err := store.RemovePlayerFromRoom(r.Id, client.Id); err != nil {
 				log.Printf("Store remove player error: %v", err)
@@ -110,9 +126,7 @@ func (r *Room) LeaveForReconnect(client *Client) {
 		r.Disconnected = make(map[string]time.Time)
 	}
 	r.Disconnected[client.Id] = time.Now()
-	if client.Send != nil {
-		close(client.Send)
-	}
+	client.CloseSend()
 	if store := currentStore(); store != nil {
 		if err := store.RemovePlayerFromRoom(r.Id, client.Id); err != nil {
 			log.Printf("Store remove leaving player error: %v", err)
@@ -137,10 +151,8 @@ func (r *Room) deliverBroadcast(message []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, client := range r.Clients {
-		select {
-		case client.Send <- message:
-		default:
-			close(client.Send)
+		if !client.TrySend(message) {
+			client.CloseSend()
 			delete(r.Clients, client.Id)
 		}
 	}

@@ -1,5 +1,7 @@
 import * as THREE from "three"
+import {mergeGeometries} from "three/addons/utils/BufferGeometryUtils.js"
 import {
+  BUSH_VISIBILITY_FOCUS_EPSILON,
   createBushField,
   getBushVisibilityOpacity,
   setBushVisibilityOpacity,
@@ -18,6 +20,8 @@ import {isTeamBattleMode} from "../../battleMode.js"
 
 const ISLAND_TERRAIN_LAYER_HEIGHTS = [0.003, 0.006, 0.009]
 const STORM_SEGMENTS = 96
+const CONTACT_SHADOW_SEGMENTS = 20
+const STATIC_BATCH_CELL_SIZE = 512
 // Rebuilds dispose and recreate instanced environment batches. Keep this
 // coarse so ordinary movement never turns into a stream of scene rebuilds.
 const ENVIRONMENT_FOCUS_REBUILD_DISTANCE = 256
@@ -794,6 +798,8 @@ export class MapRenderer {
     this.debris = []
     this.signature = ""
     this.stormMesh = null
+    this.contactShadowBatch = null
+    this.staticBatches = []
     this.stormRadius = 0
     this.stormTargetRadius = 0
     this.phaseAtmosphere = null
@@ -801,6 +807,7 @@ export class MapRenderer {
     this.islandTerrain = null
     this.mapState = null
     this.focus = null
+    this.lastBushVisibilityFocus = null
     this.bushVisuals = new Map()
     this.wildflowerField = null
     this.objectiveObjects = new Map()
@@ -970,6 +977,8 @@ export class MapRenderer {
     const signature = createMapSignature(map)
     if (signature === this.signature) return
     this.signature = signature
+    this.clearContactShadowBatch()
+    this.clearStaticBatches()
     this.ground.sync(map.width, map.height, this.ground.theme, walls.filter(wall => wall.type === "water"))
     this.syncWildflowers()
 
@@ -1012,6 +1021,136 @@ export class MapRenderer {
       this.bushVisuals.delete(key)
       this.debris.push({object, age: 0, life: 0.28, baseY: object.position.y})
     })
+    this.rebuildContactShadowBatch()
+    this.rebuildStaticBatches()
+  }
+
+  clearContactShadowBatch() {
+    if (!this.contactShadowBatch) return
+    this.root.remove(this.contactShadowBatch)
+    disposeObjectTree(this.contactShadowBatch)
+    this.contactShadowBatch = null
+  }
+
+  clearStaticBatches() {
+    this.objects.forEach(object => object.traverse(node => {
+      if (!node.userData?.staticBatchHidden) return
+      node.userData.staticBatchHidden = false
+      node.visible = true
+    }))
+    this.staticBatches.forEach(batch => {
+      this.root.remove(batch)
+      disposeObjectTree(batch)
+    })
+    this.staticBatches = []
+  }
+
+  rebuildStaticBatches() {
+    const groups = new Map()
+    this.root.updateMatrixWorld(true)
+    this.objects.forEach((object, key) => {
+      // Destructible visuals leave the scene through the debris path. Keep
+      // their source meshes intact so the break animation remains complete.
+      if (object.userData?.visualType === "destructible" || object.userData?.visualType === "dead_tree") return
+      // Bush opacity is updated around the local hero, so those meshes must
+      // keep their individual material state instead of entering a static batch.
+      if (this.bushVisuals.has(key)) return
+      object.traverse(node => {
+        if (node.userData?.role === "contact-shadow") return
+        const role = node.userData?.role || (node.isMesh ? object.userData?.visualType : null)
+        if (!role || !node.geometry || !node.material) return
+        const material = Array.isArray(node.material) ? node.material[0] : node.material
+        const materialKey = [
+          material.type ?? "",
+          material.color?.getHex?.() ?? "",
+          material.roughness ?? "",
+          material.metalness ?? "",
+          material.emissive?.getHex?.() ?? "",
+          material.emissiveIntensity ?? "",
+          material.vertexColors ? 1 : 0,
+          material.flatShading ? 1 : 0,
+          material.polygonOffset ? 1 : 0,
+          material.polygonOffsetFactor ?? "",
+          material.polygonOffsetUnits ?? "",
+          material.wireframe ? 1 : 0,
+          material.opacity ?? 1,
+          material.transparent ? 1 : 0,
+          material.depthTest ? 1 : 0,
+          material.depthWrite ? 1 : 0,
+          material.side ?? "",
+          material.blending ?? "",
+          material.map?.uuid ?? "",
+        ].join(":")
+        const cellX = Math.floor((node.matrixWorld.elements[12] / WORLD_SCALE) / STATIC_BATCH_CELL_SIZE)
+        const cellZ = Math.floor((node.matrixWorld.elements[14] / WORLD_SCALE) / STATIC_BATCH_CELL_SIZE)
+        const key = `${role}:${materialKey}:${cellX}:${cellZ}`
+        if (!groups.has(key)) groups.set(key, {role, material, entries: []})
+        groups.get(key).entries.push(node)
+      })
+    })
+
+    groups.forEach(({role, material, entries}) => {
+      if (entries.length < 2) return
+      const geometries = entries.map(node => {
+        const geometry = node.geometry.clone()
+        geometry.applyMatrix4(node.matrixWorld)
+        return geometry
+      })
+      const merged = mergeGeometries(geometries, false)
+      geometries.forEach(geometry => geometry.dispose())
+      if (!merged) return
+      merged.computeBoundingBox()
+      merged.computeBoundingSphere()
+      const batch = new THREE.Mesh(merged, material.clone())
+      batch.name = `map-static-batch-${role}-${this.staticBatches.length}`
+      batch.userData.role = `static-batch:${role}`
+      batch.renderOrder = entries[0].renderOrder
+      this.root.add(batch)
+      this.staticBatches.push(batch)
+      entries.forEach(node => {
+        node.userData.staticBatchHidden = true
+        node.visible = false
+      })
+    })
+  }
+
+  rebuildContactShadowBatch() {
+    const shadows = []
+    this.objects.forEach(object => {
+      object.traverse(node => {
+        if (node.userData?.role !== "contact-shadow") return
+        shadows.push({
+          object,
+          node,
+          radius: Number(node.geometry?.parameters?.radius) || 1,
+        })
+      })
+    })
+    if (!shadows.length) return
+
+    this.root.updateMatrixWorld(true)
+    const geometry = new THREE.CircleGeometry(1, CONTACT_SHADOW_SEGMENTS)
+    const material = shadows[0].node.material.clone()
+    const batch = new THREE.InstancedMesh(geometry, material, shadows.length)
+    batch.name = "map-contact-shadow-batch"
+    batch.userData.role = "contact-shadow-batch"
+    batch.renderOrder = shadows[0].node.renderOrder
+
+    const matrix = new THREE.Matrix4()
+    const scale = new THREE.Vector3()
+    shadows.forEach(({object, node, radius}, index) => {
+      matrix.multiplyMatrices(object.matrixWorld, node.matrix)
+      scale.set(radius, radius, radius)
+      matrix.scale(scale)
+      batch.setMatrixAt(index, matrix)
+      // Keep the source node hidden so a later destructible-wall/map sync can
+      // rebuild the batch without losing the original shadow geometry.
+      node.visible = false
+    })
+    batch.instanceMatrix.needsUpdate = true
+    batch.computeBoundingSphere()
+    this.contactShadowBatch = batch
+    this.root.add(batch)
   }
 
   syncObjectives(objectives) {
@@ -1118,17 +1257,27 @@ export class MapRenderer {
   }
 
   update(delta) {
-    this.waterTexture.offset.add({x: delta * 0.035, y: delta * 0.018})
-    for (const [key, entry] of this.bushVisuals) {
-      if (this.objects.get(key) !== entry.object) {
-        this.bushVisuals.delete(key)
-        continue
+    // Mutate the cached offset in place; allocating a temporary object on
+    // every RAF fed avoidable GC work into the steady-state render loop.
+    this.waterTexture.offset.x += delta * 0.035
+    this.waterTexture.offset.y += delta * 0.018
+    const focusChanged = this.focus && (!this.lastBushVisibilityFocus || Math.hypot(
+      this.focus.x - this.lastBushVisibilityFocus.x,
+      this.focus.y - this.lastBushVisibilityFocus.y,
+    ) >= BUSH_VISIBILITY_FOCUS_EPSILON)
+    if (focusChanged) {
+      for (const [key, entry] of this.bushVisuals) {
+        if (this.objects.get(key) !== entry.object) {
+          this.bushVisuals.delete(key)
+          continue
+        }
+        setBushVisibilityOpacity(
+          entry.object,
+          getBushVisibilityOpacity(this.focus, entry.walls),
+          this.focus,
+        )
       }
-      setBushVisibilityOpacity(
-        entry.object,
-        getBushVisibilityOpacity(this.focus, entry.walls),
-        this.focus,
-      )
+      this.lastBushVisibilityFocus = {...this.focus}
     }
     if (this.stormMesh) {
       this.stormRadius = smoothStormRadius(this.stormRadius, this.stormTargetRadius, delta)
@@ -1161,6 +1310,8 @@ export class MapRenderer {
   }
 
   dispose() {
+    this.clearContactShadowBatch()
+    this.clearStaticBatches()
     if (this.stormMesh) disposeObjectTree(this.stormMesh)
     if (this.phaseAtmosphere) disposeObjectTree(this.phaseAtmosphere)
     if (this.beaconGroup) disposeObjectTree(this.beaconGroup)
@@ -1170,6 +1321,10 @@ export class MapRenderer {
     if (this.wildflowerField) disposeObjectTree(this.wildflowerField)
     this.objectiveObjects.forEach(object => disposeObjectTree(object))
     this.objectiveObjects.clear()
+    this.objects.forEach(object => disposeObjectTree(object))
+    this.objects.clear()
+    this.debris.forEach(piece => disposeObjectTree(piece.object))
+    this.debris = []
     this.bushVisuals.clear()
     this.waterTexture.dispose()
   }

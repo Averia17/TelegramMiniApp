@@ -49,6 +49,16 @@ export const getBattleResultView = result => {
   return "result"
 }
 
+export const isLocalBattleWinner = (params, playerId, playerName) => {
+  if (params?.winnerId) return String(params.winnerId) === String(playerId)
+  return params?.name === playerName
+}
+
+export const isLocalPlayerKilled = (params, playerId, playerName) => {
+  if (params?.killedId) return String(params.killedId) === String(playerId)
+  return params?.killedName === playerName
+}
+
 export const getStateBattleResult = (state, playerId, currentView) => {
   if (!playerId || ["dead", "result", "timeout"].includes(currentView)) return null
   const authoritativeState = state?.game?.state
