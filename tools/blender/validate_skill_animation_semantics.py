@@ -1,12 +1,18 @@
-"""Validate semantic phase metadata in every canonical skill .blend scene."""
+"""Validate semantic phase metadata in every canonical master Action."""
 
 from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import bpy
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import action_marker, activate_action
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC_PATH = Path(__file__).with_name("hero_skill_animation_semantics.json")
@@ -23,10 +29,12 @@ def main() -> None:
         heroes = {requested: heroes[requested]}
     for hero, clips in heroes.items():
         for clip, contract in clips.items():
-            path = SOURCE / hero / "scenes" / f"{clip}.blend"
-            bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-            scene = bpy.context.scene
-            markers = {marker.name: marker.frame for marker in scene.timeline_markers}
+            _, _, _, action = activate_action(hero, clip)
+            markers = {
+                name: action_marker(action, name)
+                for name in required
+                if action_marker(action, name) is not None
+            }
             missing = required - markers.keys()
             if missing:
                 failures.append(f"{hero}/{clip}: missing markers {sorted(missing)}")
@@ -38,13 +46,13 @@ def main() -> None:
                 failures.append(f"{hero}/{clip}: release is on the wrong frame")
             if markers["follow_through"] != expected_frames[-2]:
                 failures.append(f"{hero}/{clip}: follow-through is on the wrong frame")
-            if scene.get("skill_semantic") != contract["semantic"]:
+            if action.get("skill_semantic") != contract["semantic"]:
                 failures.append(f"{hero}/{clip}: semantic metadata is stale")
-            if scene.get("semantic_revision") != spec["schema"]:
+            if action.get("semantic_revision") != spec["schema"]:
                 failures.append(f"{hero}/{clip}: semantic revision is stale")
     if failures:
         raise RuntimeError("\n".join(failures))
-    print("PASS: all canonical skill scenes carry authored semantic phases")
+    print("PASS: all canonical master Actions carry authored semantic phases")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 package gamemap
 
 import (
+	"fmt"
 	"math"
 
 	"battle/service/geometry"
@@ -152,10 +153,13 @@ func GenerateTeamBattle(seed int64) *GameMap {
 				dx := float64(x-cx) / 4.1
 				dy := float64(y-cy) / 2.7
 				if dx*dx+dy*dy <= 1 {
-					addMirrored(x, y, "water")
+					addMirrored(x, y, "pond")
 				}
 			}
 		}
+		addFeature(fmt.Sprintf("team-pond-%d-%d", cx, cy), "pond", float64(cx), float64(cy), 0, 1)
+		mx, my := mirror(cx, cy)
+		addFeature(fmt.Sprintf("team-pond-%d-%d-mirror", cx, cy), "pond", float64(mx), float64(my), 0, 1)
 	}
 	addBushPatch := func(cx, cy int) {
 		for dy := -4; dy <= 4; dy++ {
@@ -179,7 +183,9 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	addGrove(43, 52)
 	addRuin(54, 43)
 	addBarricade(65, 28)
-	addPond(18, 66)
+	// Keep the base courtyard dry. This pond belongs to the outer approach,
+	// where it can enrich the landscape without touching the town hall or spawns.
+	addPond(28, 68)
 	addPond(35, 52)
 	// The upper bank gets three distinct ruin lairs instead of another broad
 	// bush field: each has a broken wall, a thorn perimeter, and a nearby bat
@@ -200,8 +206,72 @@ func GenerateTeamBattle(seed int64) *GameMap {
 		addBushPatch(patch[0], patch[1])
 	}
 
+	// The natural cover is interrupted by compact abandoned-city courtyards.
+	// These are not sealed houses: collision walls stay on the edges, while the
+	// centre and approach lanes remain usable fighting space. The authored half
+	// is mirrored across the main diagonal for team fairness.
+	clearCityFootprint := func(cx, cy int) {
+		for y := cy - 3; y <= cy+3; y++ {
+			for x := cx - 3; x <= cx+3; x++ {
+				clearMirrored(x, y)
+			}
+		}
+	}
+	addCityBlock := func(id string, cx, cy int, rotation, scale float64, wallOffsets, rubbleOffsets [][2]int) {
+		clearCityFootprint(cx, cy)
+		for _, offset := range wallOffsets {
+			addMirrored(cx+offset[0], cy+offset[1], "building_wall")
+		}
+		for _, offset := range rubbleOffsets {
+			addMirrored(cx+offset[0], cy+offset[1], "building_rubble")
+		}
+		addFeature(id, "city_building", float64(cx), float64(cy), rotation, scale)
+		mx, my := mirror(cx, cy)
+		addFeature(id+"-mirror", "city_building", float64(mx), float64(my), -rotation, scale)
+	}
+	// District footprints intentionally differ and leave a broad playable core:
+	// the market is almost entirely open, the depot has a loading-yard gap, and
+	// the homes form two offset cover wings instead of a closed ring.
+	addCityBlock("city-depot", 13, 52, -.08, 1.05,
+		[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}, {2, -1}, {2, 0}, {-2, 0}, {0, -1}},
+		[][2]int{{-3, -2}, {3, 0}, {-2, 1}, {2, 1}})
+	addCityBlock("city-market", 30, 47, .16, .92,
+		[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}},
+		[][2]int{{-3, -2}, {3, -2}, {-2, -1}, {2, -1}})
+	addCityBlock("city-apartments", 44, 60, -.18, 1.12,
+		[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {-2, -1}, {1, -1}, {-2, 0}, {1, 0}},
+		[][2]int{{-3, -2}, {2, -2}, {-3, 0}, {2, -1}})
+	// The outer bridges are the entry points into the abandoned town. Give
+	// both approaches a small gate-side house so the playable lanes read as
+	// districts instead of three bridges floating in a meadow.
+	addCityBlock("city-north-gate", 16, 31, -.12, .9,
+		[][2]int{{-2, -2}, {-2, -1}, {-2, 0}, {2, -2}, {2, -1}, {2, 0}, {-1, 2}, {0, 2}, {1, 2}},
+		[][2]int{{-3, -2}, {3, -2}, {-3, 0}, {3, 0}})
+	addCityBlock("city-south-ward", 49, 64, .14, .96,
+		[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}, {-2, -1}, {2, -1}, {-2, 0}},
+		[][2]int{{-3, -2}, {3, -2}, {-3, -1}, {3, -1}})
+	addCityTower := func(id string, cx, cy int, rotation, scale float64) {
+		clearAreaMirrored(cx, cy, 2)
+		addMirroredRect(cx-1, cy-1, cx+1, cy+1, "building_wall")
+		for _, offset := range [][2]int{{-2, -1}, {2, -1}, {-2, 1}, {2, 1}} {
+			addMirrored(cx+offset[0], cy+offset[1], "building_rubble")
+		}
+		addFeature(id, "city_tower", float64(cx), float64(cy), rotation, scale)
+		mx, my := mirror(cx, cy)
+		addFeature(id+"-mirror", "city_tower", float64(mx), float64(my), -rotation, scale)
+	}
+	addCityTower("city-watchtower", 35, 44, .08, 1)
+	addFeature("city-plaza", "city_plaza", 42, 48, 0, 1.0)
+	addFeature("city-plaza-mirror", "city_plaza", 48, 42, 0, 1.0)
+	for index, street := range [][2]int{{20, 27}, {22, 45}, {55, 61}} {
+		addFeature(fmt.Sprintf("city-street-%d", index), "city_street", float64(street[0]), float64(street[1]), -math.Pi/4, 1)
+		mx, my := mirror(street[0], street[1])
+		addFeature(fmt.Sprintf("city-street-%d-mirror", index), "city_street", float64(mx), float64(my), math.Pi/4, 1)
+	}
+
 	// Open plazas and spawn pockets are cleared symmetrically after dressing so
 	// no procedural cluster can seal a base or the central crossing.
+	clearAreaMirrored(42, 48, 5)
 	clearAreaMirrored(16, 63, 3)
 	clearAreaMirrored(39, 40, 5)
 	clearAreaMirrored(20, 54, 3)
@@ -243,6 +313,17 @@ func GenerateTeamBattle(seed int64) *GameMap {
 		}
 	}
 	addFortress(16, 63)
+	// The inner courtyard is intentionally dressed with passable landmarks.
+	// They give the base a lived-in medieval identity without stealing cover
+	// cells from the three spawn pockets or changing the combat geometry.
+	addBaseFeature := func(id, kind string, x, y, rotation, scale float64) {
+		addFeature(id, kind, x, y, rotation, scale)
+		mx, my := mirror(int(x), int(y))
+		addFeature(id+"-mirror", kind, float64(mx), float64(my), -rotation, scale)
+	}
+	addBaseFeature("blue-base-well", "base_well", 10, 66, .08, .9)
+	addBaseFeature("blue-base-workshop", "base_workshop", 20, 68, -.04, .82)
+	addBaseFeature("blue-base-wagon", "base_wagon", 12, 58, -.16, .86)
 	clearBridgeApproaches()
 	// Frame every bridge with the same small bank landmark. The cover stays
 	// outside the bridge corridor, so the crossing remains the obvious route

@@ -13,22 +13,11 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if os.fspath(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, os.fspath(SCRIPT_DIR))
 
+from master_action_utils import activate_action, save_master
 from polish_skill_secondary_motion import d, key_rotation
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 REVISION = 1
-
-
-def find_action(name: str):
-    return next(
-        (
-            action
-            for action in bpy.data.actions
-            if action.name.casefold().split(".")[0] == name.casefold()
-        ),
-        None,
-    )
 
 
 PROFILES = {
@@ -168,13 +157,7 @@ PROFILES = {
 
 
 def polish(hero: str, clip: str, profile: dict):
-    path = SOURCE / hero / "scenes" / f"{clip}.blend"
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    scene = bpy.context.scene
-    armature = next((obj for obj in scene.objects if obj.type == "ARMATURE"), None)
-    action = find_action(clip)
-    if armature is None or action is None:
-        raise RuntimeError(f"{hero}/{clip}: missing armature or action")
+    path, scene, armature, action = activate_action(hero, clip)
     if scene.get("natural_locomotion_revision"):
         print(f"SKIP {hero}/{clip}: existing locomotion pass")
         return
@@ -201,8 +184,7 @@ def polish(hero: str, clip: str, profile: dict):
     scene["natural_locomotion_pass"] = "balanced-locomotion-follow-through-v1"
     action["natural_locomotion_revision"] = REVISION
     action["natural_locomotion_pass"] = "balanced-locomotion-follow-through-v1"
-    bpy.context.preferences.filepaths.save_version = 0
-    bpy.ops.wm.save_as_mainfile(filepath=os.fspath(path), check_existing=False)
+    save_master(path)
     print(f"POLISHED {hero}/{clip}: balanced locomotion follow-through")
 
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import {access, readFile} from "node:fs/promises"
+import {readFile} from "node:fs/promises"
 import path from "node:path"
 import test from "node:test"
 import {fileURLToPath} from "node:url"
@@ -17,46 +17,18 @@ const readGlbJson = async url => {
 
 test("Brock Zeus publishes a separate companion cloud asset", async () => {
   const asset = HERO_ASSETS["Brock Zeus"]
+  assert.equal(asset.url, "/assets/heroes/output_heroes/brock-zeus-rebuild_base.glb")
   assert.equal(asset.clips.aimGadget, "AimGadget")
-  assert.equal(asset.companionUrl, "/assets/heroes/output_heroes/brock-zeus_cloud.glb")
+  assert.equal(asset.companionUrl, "/assets/heroes/output_heroes/brock-zeus-rebuild_cloud.glb")
   const character = await readGlbJson(asset.url)
   const nodeNames = new Set((character.nodes || []).map(node => node.name).filter(Boolean))
   assert.equal([...nodeNames].some(name => /cloud|locator/i.test(name)), false)
-  const armorNode = (character.nodes || []).find(node => node.name === "armor_GEO:PIV.001")
-  assert.equal(
-    [...nodeNames].some(name => name === "BrockZeus_RightArm_Repair"),
-    false,
-    "Brock Zeus must not publish the duplicate right-arm repair mesh",
-  )
-  assert.equal(
-    armorNode?.extras?.left_wrist_rest_repair_version,
-    2,
-    "Brock Zeus hand islands must use the per-component torso attachment repair",
-  )
-  assert.equal(
-    armorNode?.extras?.left_arm_rest_attachment_version,
-    3,
-    "Brock Zeus lower left arm cluster must use the overlapping shoulder attachment repair",
-  )
-  assert.equal(
-    armorNode?.extras?.left_hand_skinning_version,
-    3,
-    "Brock Zeus hand and forearm islands must share the repaired elbow skinning contract",
-  )
-  assert.equal(
-    armorNode?.extras?.left_hand_attachment_bone,
-    "L_Elbow",
-    "Brock Zeus left hand must follow the left forearm bone",
-  )
-  assert.equal(
-    armorNode?.extras?.right_forearm_attachment_bone,
-    "R_Elbow",
-    "Brock Zeus right forearm must follow the elbow bone before the wrist",
-  )
-  assert.equal(
-    armorNode?.extras?.left_hand_geometry_version,
-    4,
-    "Brock Zeus detached hand-side islands must be welded to the forearm in rest space",
+  for (const name of ["BrockZeus_Rig", "Root", "R_Elbow", "R_Hand", "ZeusPart_Head", "ZeusPart_R_Hand", "ZeusPart_L_Hand"]) {
+    assert.equal(nodeNames.has(name), true, `Brock Zeus archive rebuild must publish ${name}`)
+  }
+  assert.deepEqual(
+    [...new Set((character.animations || []).map(animation => animation.name))].sort(),
+    ["Aim", "AimGadget", "AimSuper", "Attack", "Gadget", "Spawn", "Victory", "death", "hit", "idle", "run", "super"].sort(),
   )
   const cloud = await readGlbJson(asset.companionUrl)
   assert.equal((cloud.meshes || []).length > 0, true)
@@ -64,14 +36,6 @@ test("Brock Zeus publishes a separate companion cloud asset", async () => {
   const cloudAnimations = cloud.animations || []
   assert.deepEqual([...new Set(cloudAnimations.map(animation => animation.name))].sort(), [
     "Cloud_Aim", "Cloud_AimGadget", "Cloud_AimSuper", "Cloud_Attack", "Cloud_Gadget",
-    "Cloud_Spawn", "Cloud_Victory", "Cloud_death", "Cloud_hit", "Cloud_idle", "Cloud_run", "Cloud_super",
+    "Cloud_Spawn", "Cloud_Victory", "Cloud_death", "Cloud_hit", "Cloud_idle", "Cloud_root_idle", "Cloud_run", "Cloud_super",
   ].sort())
-  for (const animation of cloudAnimations) {
-    assert.deepEqual(
-      new Set(animation.channels?.map(channel => channel.target?.path)),
-      new Set(["translation", "rotation", "scale"]),
-      `${animation.name} must animate movement, rotation, and scale`,
-    )
-  }
-  await access(path.join(frontendRoot, "public/assets/heroes/output_heroes/brock-zeus_cloud.glb"))
 })

@@ -140,6 +140,100 @@ func TestHandleFindMatchAllowsDisconnectedPlayerToStartANewBattle(t *testing.T) 
 	}
 }
 
+func TestHandleJoinByIdAllowsNewBattleAfterIntentionalLeave(t *testing.T) {
+	teamParties = sroom.NewPartyRegistry()
+	mroom.ResetRooms()
+	defer mroom.ResetRooms()
+
+	oldRoom := mroom.GetOrCreateRoom("old-battle", "old-battle", "small", "deathmatch", 4)
+	oldClient := &mroom.Client{Id: "player-1", Name: "Defeated fighter", HeroName: "Needle", Send: make(chan []byte, 8), State: make(chan []byte, 1)}
+	oldRoom.Register <- oldClient
+	deadline := time.Now().Add(time.Second)
+	for !oldRoom.HasPlayer(oldClient.Id) {
+		if time.Now().After(deadline) {
+			t.Fatal("player was not registered in the old battle")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	oldClient.Room = oldRoom
+
+	HandleLeaveBattle(oldClient)
+	for len(oldClient.Send) > 0 {
+		<-oldClient.Send
+	}
+
+	client := &mroom.Client{Id: "player-1", Name: "New battle", HeroName: "Needle", Send: make(chan []byte, 8), State: make(chan []byte, 1)}
+	HandleFindMatch(client, []byte(`{"type":"find_match","playerName":"New battle","heroName":"Needle"}`))
+	var matchFound struct {
+		Type   string `json:"type"`
+		Params struct {
+			RoomID string `json:"roomId"`
+		} `json:"params"`
+	}
+	select {
+	case message := <-client.Send:
+		if err := json.Unmarshal(message, &matchFound); err != nil {
+			t.Fatalf("decode match result: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("matchmaking did not return a room")
+	}
+	if matchFound.Type != "match_found" || matchFound.Params.RoomID == "" {
+		t.Fatalf("match result = %+v, want a new room", matchFound)
+	}
+
+	HandleJoinById(client, []byte(`{"type":"join_by_id","roomId":"`+matchFound.Params.RoomID+`","playerName":"New battle","heroName":"Needle"}`))
+	if room := mroom.FindRoom(matchFound.Params.RoomID); room == nil || !room.HasPlayer(client.Id) {
+		t.Fatal("player could not join a new battle after leaving the old one")
+	}
+	for len(client.Send) > 0 {
+		message := <-client.Send
+		if strings.Contains(string(message), "Already in battle") {
+			t.Fatalf("new battle join was rejected: %s", message)
+		}
+	}
+}
+
+func TestHandleRecoverBattleRestoresVoluntarilyLeftBattleByRoomId(t *testing.T) {
+	mroom.ResetRooms()
+	defer mroom.ResetRooms()
+
+	room := mroom.GetOrCreateRoom("reconnectable-battle", "reconnectable-battle", "small", "deathmatch", 4)
+	oldClient := &mroom.Client{Id: "player-1", Name: "Player", HeroName: "Needle", Send: make(chan []byte, 8), State: make(chan []byte, 1)}
+	room.Register <- oldClient
+	deadline := time.Now().Add(time.Second)
+	for !room.HasPlayer(oldClient.Id) {
+		if time.Now().After(deadline) {
+			t.Fatal("player was not registered in the battle")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	oldClient.Room = room
+	HandleLeaveBattle(oldClient)
+
+	client := &mroom.Client{Id: "player-1", Send: make(chan []byte, 8), State: make(chan []byte, 1)}
+	HandleRecoverBattle(client, []byte(`{"type":"recover_battle","roomId":"reconnectable-battle"}`))
+
+	select {
+	case message := <-client.Send:
+		var recovered map[string]any
+		if err := json.Unmarshal(message, &recovered); err != nil {
+			t.Fatalf("decode recovery response: %v", err)
+		}
+		params, _ := recovered["params"].(map[string]any)
+		if recovered["type"] != "battle_recovered" || params["status"] != "active" || params["roomId"] != room.Id {
+			t.Fatalf("recovery response = %s, want active room recovery", message)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("battle recovery did not return a response")
+	}
+
+	HandleJoinById(client, []byte(`{"type":"join_by_id","roomId":"reconnectable-battle","playerName":"Player","heroName":"Needle"}`))
+	if client.Room != room || !room.HasPlayer(client.Id) {
+		t.Fatal("voluntarily left player could not rejoin the battle by room id")
+	}
+}
+
 func TestHandleJoinDoesNotMoveOneConnectionIntoTwoRooms(t *testing.T) {
 	mroom.ResetRooms()
 	defer mroom.ResetRooms()
@@ -203,7 +297,7 @@ func TestHandleLeaveBattleRemovesOnlyBattleSessionMembership(t *testing.T) {
 	}
 	select {
 	case message := <-client.Send:
-		if !strings.Contains(string(message), "battle_left") {
+		if !strings.Contains(string(message), "battle_left") || !strings.Contains(string(message), "left_voluntarily") {
 			t.Fatalf("leave acknowledgement = %s, want battle_left", message)
 		}
 	default:

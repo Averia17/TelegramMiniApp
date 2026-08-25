@@ -252,7 +252,6 @@ def validate() -> list[str]:
 
         for asset_key in (
             "sourceMaster",
-            "sceneDirectory",
             "runtimeHero",
         ):
             asset_path = hero.get("assets", {}).get(asset_key)

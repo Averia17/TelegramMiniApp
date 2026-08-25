@@ -5,13 +5,18 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import sys
 from pathlib import Path
 
 import bpy
 from mathutils import Euler
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action, save_master
+
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 SPEC_PATH = Path(__file__).with_name("hero_skill_animation_semantics.json")
 AUTHOR_PATH = Path(__file__).with_name("author_skill_animation_semantics.py")
 INTENTS = {
@@ -74,22 +79,17 @@ def add_offset(bone, offset):
 
 
 def author(hero, clip, contract, intent, module):
-    path = SOURCE / hero / "scenes" / f"{clip}.blend"
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    scene = bpy.context.scene
+    path, scene, armature, action = activate_action(hero, clip)
     if scene.get("readability_revision", 0) >= 2:
         marker = scene.timeline_markers.get(intent)
         if marker is None:
             scene.timeline_markers.new(intent, frame=contract["release"])
-            bpy.ops.wm.save_as_mainfile(filepath=os.fspath(path), check_existing=False)
+            action[f"marker_{intent}"] = int(contract["release"])
+            save_master(path)
             print(f"MARKED {hero}/{clip}")
         else:
             print(f"SKIP {hero}/{clip}: already refined")
         return
-    armature = next((obj for obj in scene.objects if obj.type == "ARMATURE"), None)
-    action = find_action(ACTION_NAMES[clip])
-    if armature is None or action is None:
-        raise RuntimeError(f"{hero}/{clip}: missing armature or action")
     armature.animation_data_create()
     armature.animation_data.action = action
     accents = module.ACCENTS[hero][clip]
@@ -104,11 +104,11 @@ def author(hero, clip, contract, intent, module):
             path_name = add_offset(bone, scaled)
             bone.keyframe_insert(path_name, frame=frame, group=bone_name)
     scene.timeline_markers.new(intent, frame=contract["release"])
+    action[f"marker_{intent}"] = int(contract["release"])
     scene["readability_revision"] = 2
     scene["semantic_intent"] = intent
     scene["authoring_status"] = "semantic-authored-intent-refined"
-    bpy.context.preferences.filepaths.save_version = 0
-    bpy.ops.wm.save_as_mainfile(filepath=os.fspath(path), check_existing=False)
+    save_master(path)
     print(f"REFINED {hero}/{clip}: {intent}")
 
 

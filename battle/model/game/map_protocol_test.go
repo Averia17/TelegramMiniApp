@@ -21,6 +21,11 @@ func TestNewMapJSONPublishesCanonicalIdentityAndRevision(t *testing.T) {
 	if got.Walls[0].ColliderInsetX != canonical.Collisions[0].ColliderInsetX || got.Walls[0].ColliderInsetY != canonical.Collisions[0].ColliderInsetY {
 		t.Fatalf("first wall collider = %#v", got.Walls[0])
 	}
+	for _, wall := range got.Walls {
+		if wall.Type == "beacon" && wall.ColliderRadius <= 0 {
+			t.Fatalf("beacon collider radius was not serialized: %#v", wall)
+		}
+	}
 }
 
 func TestNewMapJSONKeepsIdentityOnCompactSnapshots(t *testing.T) {

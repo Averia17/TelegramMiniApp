@@ -22,6 +22,9 @@ func (r *Room) registerClient(client *Client, emptySince *time.Time) error {
 	if r.Disconnected == nil {
 		r.Disconnected = make(map[string]time.Time)
 	}
+	if r.PlayerStates == nil {
+		r.PlayerStates = make(map[string]BattleSessionStatus)
+	}
 	*emptySince = time.Time{}
 	previous := r.Clients[client.Id]
 	existingPlayer := r.State.Players[client.Id]
@@ -39,6 +42,7 @@ func (r *Room) registerClient(client *Client, emptySince *time.Time) error {
 	}
 	r.Clients[client.Id] = client
 	delete(r.Disconnected, client.Id)
+	r.PlayerStates[client.Id] = BattleSessionActive
 
 	if previous != nil && previous != client {
 		r.dropPlayerActions(client.Id)
@@ -91,6 +95,10 @@ func (r *Room) unregisterClient(client *Client, emptySince *time.Time) {
 		}
 		delete(r.Clients, client.Id)
 		r.Disconnected[client.Id] = time.Now()
+		if r.PlayerStates == nil {
+			r.PlayerStates = make(map[string]BattleSessionStatus)
+		}
+		r.PlayerStates[client.Id] = BattleSessionDisconnected
 		client.CloseSend()
 		if store := currentStore(); store != nil {
 			if err := store.RemovePlayerFromRoom(r.Id, client.Id); err != nil {
@@ -103,17 +111,30 @@ func (r *Room) unregisterClient(client *Client, emptySince *time.Time) {
 	}
 }
 
-// LeaveForReconnect immediately removes a deliberately closed transport from
-// active-room checks while preserving the player state for an explicit manual
-// recovery or a short network interruption.
+// LeaveForReconnect immediately removes a disconnected transport from active-
+// room checks while preserving the player state for manual recovery.
 func (r *Room) LeaveForReconnect(client *Client) {
+	r.leaveClient(client, BattleSessionDisconnected)
+}
+
+// LeaveVoluntarily records an explicit exit, such as pressing the battle
+// close button. The player remains in the state snapshot for room cleanup but
+// is no longer eligible for recovery or for blocking a new battle.
+func (r *Room) LeaveVoluntarily(client *Client) BattleSessionStatus {
+	return r.leaveClient(client, BattleSessionLeftVoluntarily)
+}
+
+func (r *Room) leaveClient(client *Client, status BattleSessionStatus) BattleSessionStatus {
 	if r == nil || client == nil {
-		return
+		return status
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if current, ok := r.Clients[client.Id]; !ok || current != client {
-		return
+		return status
+	}
+	if r.State != nil && r.State.State == game.GameStateFinished {
+		status = BattleSessionFinished
 	}
 	r.dropPlayerActions(client.Id)
 	if r.State != nil {
@@ -125,13 +146,18 @@ func (r *Room) LeaveForReconnect(client *Client) {
 	if r.Disconnected == nil {
 		r.Disconnected = make(map[string]time.Time)
 	}
+	if r.PlayerStates == nil {
+		r.PlayerStates = make(map[string]BattleSessionStatus)
+	}
 	r.Disconnected[client.Id] = time.Now()
+	r.PlayerStates[client.Id] = status
 	client.CloseSend()
 	if store := currentStore(); store != nil {
 		if err := store.RemovePlayerFromRoom(r.Id, client.Id); err != nil {
 			log.Printf("Store remove leaving player error: %v", err)
 		}
 	}
+	return status
 }
 
 func (r *Room) dropPlayerActions(playerID string) {

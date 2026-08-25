@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from pathlib import Path
 
 import bpy
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action, save_master
+
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 REVISION = 2
 PASS_NAME = "balanced-locomotion-follow-through-v2"
 
@@ -69,15 +74,7 @@ def find_action(name: str):
 
 
 def attenuate(hero: str, profile: dict[str, float]) -> None:
-    path = SOURCE / hero / "scenes" / "idle.blend"
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    scene = bpy.context.scene
-    armature = next((obj for obj in scene.objects if obj.type == "ARMATURE"), None)
-    action = (
-        armature.animation_data.action if armature and armature.animation_data else None
-    )
-    if armature is None or action is None:
-        raise RuntimeError(f"{hero}/idle: missing armature or action")
+    path, scene, armature, action = activate_action(hero, "idle")
     missing = sorted(set(profile) - set(armature.pose.bones.keys()))
     if missing:
         raise RuntimeError(f"{hero}/idle: missing bones {missing}")
@@ -108,8 +105,7 @@ def attenuate(hero: str, profile: dict[str, float]) -> None:
     scene["natural_locomotion_pass"] = PASS_NAME
     action["natural_locomotion_revision"] = REVISION
     action["natural_locomotion_pass"] = PASS_NAME
-    bpy.context.preferences.filepaths.save_version = 0
-    bpy.ops.wm.save_as_mainfile(filepath=os.fspath(path), check_existing=False)
+    save_master(path)
     print(f"REPAIRED {hero}/idle: {PASS_NAME}")
 
 

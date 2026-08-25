@@ -7,9 +7,14 @@ import (
 	"battle/service/geometry"
 )
 
-// Keep the gameplay footprint close to the visible stone pedestal. The beacon
-// capture radius is larger than this footprint so every hero can enter it.
-const battleRoyaleBeaconCollisionRadius = 96.0
+// The collision follows the platform's black outer rim while leaving a small
+// margin inside the 135px capture radius for the largest 15px hero.
+const battleRoyaleBeaconCollisionRadius = 118.0
+
+// Keep the whole approach to the beacon open. Terrain props are authored on a
+// 40px grid, so a circular 11.5-cell plaza removes the invisible cover ring
+// while leaving the outer authored landmarks intact.
+const battleRoyaleBeaconApproachClearRadius = 11.5
 
 // GenerateBattleRoyale builds the natural island arena for «Остров Первого Испытания».
 // The broad terrain is generated from low-frequency noise so every match keeps
@@ -222,6 +227,12 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 			gm.Spawners = append(gm.Spawners, &geometry.RectangleBody{X: float64(x) * tile, Y: float64(y) * tile, Width: tile, Height: tile})
 		}
 	}
+	// Clear this after all authored props are placed. Clearing only the initial
+	// terrain pass leaves later walls and landmarks blocking the plaza.
+	clearDisc(center, center, battleRoyaleBeaconApproachClearRadius)
+	// Keep one readable stone landmark outside the open plaza.
+	clear(20, 20)
+	add(20, 20, "menhir")
 
 	// Filter cleared cells from the authored collision list and keep bush groups
 	// stable for visibility, healing and bot perception.
@@ -270,7 +281,7 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 		MinY: float64(center)*tile - battleRoyaleBeaconCollisionRadius,
 		MaxX: float64(center)*tile + battleRoyaleBeaconCollisionRadius,
 		MaxY: float64(center)*tile + battleRoyaleBeaconCollisionRadius,
-		Type: "beacon",
+		Type: "beacon", ColliderRadius: battleRoyaleBeaconCollisionRadius,
 	})
 	assignBushGroups(gm.Collisions, tile)
 	return gm

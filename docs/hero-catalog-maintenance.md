@@ -19,7 +19,7 @@
 - Gameplay и баланс: `battle/model/game/heroes.go`.
 - Attack geometry и projectile contract: `battle/model/game/attack_config.go`.
 - Реализация способностей: `battle/model/game/combat_kits.go` и `battle/model/game/new_hero_kits.go`.
-- Runtime-анимации: `tools/blender/hero_animation_scene_manifest.json`, сцены в `frontend/assets-source/heroes/<slug>/scenes/` и экспортированные GLB.
+- Runtime-анимации: `tools/blender/hero_animation_scene_manifest.json`, master-файл `frontend/assets-source/heroes/<slug>/<slug>.blend` и экспортированные GLB. Для завершённых героев focused-сцен и legacy-архивов нет; Zeus временно остаётся исключением.
 - Клиентское отображение: `frontend/src/components/BattleGame/heroesConfig.js`.
 
 Каталог — единая точка контекста для ИИ, но не повод дублировать механику в нескольких runtime-источниках. При противоречии ИИ обязан остановиться, указать расхождение и синхронизировать источники в рамках текущей задачи.

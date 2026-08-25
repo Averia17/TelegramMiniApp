@@ -13,6 +13,15 @@ var (
 	ErrRoomFinished = errors.New("room has finished")
 )
 
+type BattleSessionStatus string
+
+const (
+	BattleSessionActive          BattleSessionStatus = "active"
+	BattleSessionDisconnected    BattleSessionStatus = "disconnected"
+	BattleSessionLeftVoluntarily BattleSessionStatus = "left_voluntarily"
+	BattleSessionFinished        BattleSessionStatus = "finished"
+)
+
 type Client struct {
 	Id          string
 	AccessToken string
@@ -83,6 +92,7 @@ type Room struct {
 	MaxPlayers   int
 	Clients      map[string]*Client
 	Disconnected map[string]time.Time
+	PlayerStates map[string]BattleSessionStatus
 	State        *game.GameState
 	Broadcast    chan []byte
 	Register     chan *Client
@@ -92,6 +102,19 @@ type Room struct {
 }
 
 func (r *Room) hasActivePlayer(playerID string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.State == nil || r.State.State == game.GameStateFinished {
+		return false
+	}
+	if status, ok := r.PlayerStates[playerID]; ok && (status == BattleSessionLeftVoluntarily || status == BattleSessionFinished) {
+		return false
+	}
+	player, ok := r.State.Players[playerID]
+	return ok && player != nil && !player.IsBot
+}
+
+func (r *Room) hasJoinablePlayer(playerID string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.State == nil || r.State.State == game.GameStateFinished {
@@ -107,6 +130,9 @@ func (r *Room) hasConnectedPlayer(playerID string) bool {
 	if r.State == nil || r.State.State == game.GameStateFinished {
 		return false
 	}
+	if status, ok := r.PlayerStates[playerID]; ok && status != BattleSessionActive {
+		return false
+	}
 	if _, connected := r.Clients[playerID]; !connected {
 		return false
 	}
@@ -120,8 +146,20 @@ func (r *Room) HasPlayer(playerID string) bool {
 	if r.State == nil {
 		return false
 	}
+	if status, ok := r.PlayerStates[playerID]; ok && status == BattleSessionFinished {
+		return false
+	}
+	if r.State.State == game.GameStateFinished {
+		return false
+	}
 	player, ok := r.State.Players[playerID]
 	return ok && player != nil && !player.IsBot
+}
+
+func (r *Room) PlayerStatus(playerID string) BattleSessionStatus {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.PlayerStates[playerID]
 }
 
 func (r *Room) MonsterCount() int {

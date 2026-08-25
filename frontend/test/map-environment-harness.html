@@ -172,8 +172,13 @@
       status.textContent = "Загрузка боевого рендерера…"
       await assetRegistry.preloadHeroes(["Kaze"])
 
+      const previewSpawn = selectedMode === "team"
+        ? map.teamSpawns?.Blue?.[0]
+        : map.spawners?.[0]
+      const initialX = previewSpawn ? Number(previewSpawn.x) + Number(previewSpawn.width || map.tileSize || 40) / 2 : map.width * .66
+      const initialY = previewSpawn ? Number(previewSpawn.y) + Number(previewSpawn.height || map.tileSize || 40) / 2 : map.height * .66
       const player = {
-        hero: "Kaze", name: "Инспектор", x: map.width * .66, y: map.height * .66,
+        hero: "Kaze", name: "Инспектор", x: initialX, y: initialY,
         rotation: 0, lives: 720, maxLives: 720, speed: 0, movementSpeed: map.tileSize || 40, radius: 14, moveX: 0, moveY: 0,
         aiming: false, attackPulse: 0, superPulse: 0, gadgetPulse: 0,
       }

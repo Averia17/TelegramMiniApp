@@ -15,24 +15,33 @@ description: |
 ## Project Layout
 
 ```
-tools/blender/                          # Python scripts (run inside Blender)
-  export_runtime_heroes_from_scenes.py  # Main GLB exporter
-  author_skill_animation_semantics.py   # Adds pose accents to skill scenes
-  hero_animation_scene_manifest.json    # Hero → scene clip manifest
-  hero_skill_animation_semantics.json   # Semantic contract per hero/clip
-  inspect_skill_animation_scenes.py     # Scene inspector
-  refine_*.py, validate_*.py            # Refinement and validation scripts
+tools/blender/                                # bpy scripts, run inside Blender
+  hero_animation_contract.py                  # Shared master/action contract
+  hero_animation_scene_manifest.json          # Hero and clip manifest
+  hero_skill_animation_semantics.json         # Skill semantic contract
+  export_runtime_heroes_from_master_blends.py # Canonical GLB exporter
+  validate_master_hero_sources.py             # Master source validator
+  author_skill_animation_semantics.py         # Action pose accents
+  inspect_*.py, refine_*.py, validate_*.py    # Inspection/refinement/QA
 
-frontend/assets-source/heroes/<hero>/   # Source .blend files per hero
-  scenes/
-    idle.blend, attack.blend, super.blend, gadget.blend, ...
+frontend/assets-source/heroes/<hero>/
+  <hero>.blend                                # One canonical authored source
+  textures/                                    # Source textures, when needed
+  source/                                      # Imported FBX/archive files
 
-frontend/public/assets/heroes/output_heroes/  # Runtime GLB output
+frontend/public/assets/heroes/output_heroes/
+  <hero>_base.glb                              # Canonical runtime output
 ```
+
+The master `.blend` is the only source of authored runtime animation for a
+completed hero. It contains the complete mesh/material setup, armature, props
+or companion objects, and all Blender Actions. Do not add a new
+`scenes/<clip>.blend` file for a completed hero. Zeus may temporarily retain
+legacy source files while explicitly on hold.
 
 ## Heroes (canonical list)
 
-`brock-zeus`, `fairy-mina`, `kaze`, `mandy`, `needle`, `persephone-lumi`, `wukong-mico`
+`brock-zeus`, `fairy-mina`, `kaze`, `mandy`, `needle`, `persephone-lumi`, `wukong-mico`, `katty`
 
 ## Standard Clips
 
@@ -51,62 +60,96 @@ frontend/public/assets/heroes/output_heroes/  # Runtime GLB output
 | gadget | Gadget | |
 | aim-gadget | AimGadget | Optional (needle, mandy, brock-zeus, kaze, fairy-mina) |
 
+The Action names are a runtime API. Keep them stable and unique: `idle`, `run`,
+`Attack`, `super`, `Aim`, `AimSuper`, `hit`, `death`, `Spawn`, `Victory`,
+`Gadget`, and the optional `AimGadget`. The source manifest also requires clip
+metadata (`hero_slug`, `clip_name`, `clip_kind`, `frame_start`, `frame_end`,
+`source_layout=master_actions`).
+
+## Visual and animation standard
+
+A hero is ready for the game when the following are true:
+
+- the full-body silhouette, face direction, colors, and primary prop are
+  readable at the gameplay camera distance;
+- the neutral pose is stable, grounded, centered at the origin, and uses the
+  project's consistent scale and axes;
+- the rig and mesh names remain stable, while props use explicit named sockets
+  and calibrated grip frames;
+- attack, Super, and Gadget clips communicate the hero's own ability fantasy
+  with a clear anticipation → release → follow-through rhythm;
+- idle/run do not drift or slide, and held props do not penetrate, float, or
+  snap at attach/release frames;
+- the master has no duplicate Actions such as `Attack.001` and no hidden
+  dependency on a different source scene.
+
 ## Running Blender Scripts
 
 All scripts in `tools/blender/` are designed to run **inside Blender's Python interpreter** (with `bpy` available). They are NOT standalone scripts.
 
 ### From CLI (background mode)
 
-```bash
+```powershell
 cd C:\Users\User\PycharmProjects\TelegramMiniApp
-blender --background --python tools/blender/export_runtime_heroes_from_scenes.py
+blender --background --python tools/blender/export_runtime_heroes_from_master_blends.py
 ```
 
 ### Filter by hero (environment variable)
 
 ```bash
-set HERO_FILTER=kaze && blender --background --python tools/blender/export_runtime_heroes_from_scenes.py
+$env:HERO_FILTER='kaze'; blender --background --python tools/blender/export_runtime_heroes_from_master_blends.py
 ```
 
 ### Fast export (skip force sampling)
 
 ```bash
-set BLENDER_EXPORT_FAST=1 && blender --background --python tools/blender/export_runtime_heroes_from_scenes.py
+$env:BLENDER_EXPORT_FAST='1'; blender --background --python tools/blender/export_runtime_heroes_from_master_blends.py
 ```
 
-## Export Process (`export_runtime_heroes_from_scenes.py`)
+## Export Process (`export_runtime_heroes_from_master_blends.py`)
 
-1. Reads `hero_animation_scene_manifest.json` for ordering validation
-2. For each hero:
-   - Opens `idle.blend` as the base (contains armature + geometry)
-   - Imports Actions from other scene .blend files via `bpy.data.libraries.load`
-   - Exports `{hero}_base.glb` with `export_animation_mode="ACTIONS"`
-3. Special case `brock-zeus`: also exports `brock-zeus_cloud.glb` (companion mesh with NLA tracks)
-4. Uses atomic temp-file + rename pattern to avoid Windows file-lock issues
+1. Reads `hero_animation_scene_manifest.json` and the shared contract.
+2. For each hero, opens only `frontend/assets-source/heroes/<hero>/<hero>.blend`.
+3. Validates the armature, canonical Actions, frame ranges, metadata, and
+   duplicate-action condition.
+4. Exports `<hero>_base.glb` with `export_animation_mode="ACTIONS"`.
+5. Special case `brock-zeus`: also exports `brock-zeus_cloud.glb` from the same
+   master because the companion is a runtime optimization, not another source.
+6. Uses atomic `.tmp.glb` → final replacement to avoid Windows file-lock
+   issues.
+
+The exporter is export-only. It must not author keys, import clip scenes, fix
+rigs, or silently omit a missing Action. Author changes in the master and save
+the master before exporting.
 
 ## Animation Semantics (`author_skill_animation_semantics.py`)
 
-This script adds local-space pose accents (anticipation → release → follow-through) to skill scenes without introducing root motion.
+This script adds local-space pose accents (anticipation → release → follow-through) to canonical skill Actions without introducing root motion.
 
 - Reads `hero_skill_animation_semantics.json` for frame contracts
-- Applies bone rotation offsets from the `ACCENTS` dictionary
+- Activates the relevant Action in the hero master and applies bone rotation
+  offsets from the `ACCENTS` dictionary
 - Adds timeline markers: `anticipation`, `release`, `follow_through`
 - Sets scene metadata: `skill_semantic`, `semantic_revision`, `authoring_status`
-- Saves the modified .blend in-place
+- Saves the modified master `.blend` in-place
 
 ## Validation Workflow
 
 Before committing animation work:
 
-1. Run `blender --background --python tools/blender/validate_all_skill_intents.py`
-2. Run `blender --background --python tools/blender/validate_skill_animation_semantics.py`
-3. Run `python tools/validate_hero_catalog.py` (standard Python, no Blender needed)
-4. Run `npm run validate:heroes` (frontend GLB validation)
+1. Run `blender --background --python tools/blender/validate_master_hero_sources.py`
+2. Run `blender --background --python tools/blender/validate_all_skill_intents.py`
+3. Run `blender --background --python tools/blender/validate_skill_animation_semantics.py`
+4. Run `python tools/validate_hero_catalog.py` (standard Python, no Blender needed)
+5. Run `npm run validate:heroes` (frontend GLB validation)
+6. Run the browser animation harness for the affected heroes when GLBs change.
 
 ## Key Conventions
 
-- **Never modify source .blend files directly** without a semantic revision bump
+- **Modify the canonical master** `<hero>/<hero>.blend`; bump semantic revision
+  metadata for authored skill changes
 - **Never create animation keys in the exporter** — it is export-only
-- **Focused scenes pattern**: each clip has its own .blend, idle is the master geometry source
+- **Master Actions pattern**: every clip is an Action inside the one master;
+  there is no focused scene source for completed heroes
 - **Windows file locking**: exporter uses `.tmp.glb` → rename pattern
 - **Export context override**: `export_gltf()` uses `bpy.context.temp_override()` for Blender 5.2 compatibility

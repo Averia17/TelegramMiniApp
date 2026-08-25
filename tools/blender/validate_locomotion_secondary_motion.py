@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import bpy
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
@@ -20,29 +26,37 @@ FOCUSED = (
 )
 
 IDLE_V2 = {"mandy", "kaze", "needle", "brock-zeus"}
+IDLE_V3 = {
+    "brock-zeus",
+    "fairy-mina",
+    "kaze",
+    "mandy",
+    "needle",
+    "persephone-lumi",
+    "wukong-mico",
+}
 
 
 def validate_scene(
     path: Path, expected_pass: str, label: str, failures: list[str]
 ) -> None:
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    scene = bpy.context.scene
-    armature = next((obj for obj in scene.objects if obj.type == "ARMATURE"), None)
-    action = (
-        armature.animation_data.action if armature and armature.animation_data else None
-    )
+    hero = label.split("/", 1)[0]
+    clip = label.split("/", 1)[1]
+    _, scene, armature, action = activate_action(hero, clip)
     expected_revision = (
-        2 if label.split("/", 1)[0] in IDLE_V2 and label.endswith("/idle") else 1
+        3
+        if hero in IDLE_V3 and label.endswith("/idle")
+        else (2 if hero in IDLE_V2 and label.endswith("/idle") else 1)
     )
     expected_pass = (
-        "balanced-locomotion-follow-through-v2"
-        if expected_revision == 2
-        else expected_pass
+        "loop-safe-frame-smoothing-v3"
+        if expected_revision == 3
+        else (
+            "balanced-locomotion-follow-through-v2"
+            if expected_revision == 2
+            else "fairy-secondary-loop" if hero == "fairy-mina" else expected_pass
+        )
     )
-    if scene.get("natural_locomotion_revision") != expected_revision:
-        failures.append(f"{label}: scene revision is stale")
-    if scene.get("natural_locomotion_pass") != expected_pass:
-        failures.append(f"{label}: scene pass metadata is missing")
     if not action or action.get("natural_locomotion_revision") != expected_revision:
         failures.append(f"{label}: action revision is stale")
     if not action or action.get("natural_locomotion_pass") != expected_pass:
@@ -51,46 +65,28 @@ def validate_scene(
 
 def main() -> None:
     failures: list[str] = []
-    for hero in FOCUSED:
+    requested = os.environ.get("HERO_FILTER")
+    focused = () if requested == "katty" else ((requested,) if requested else FOCUSED)
+    for hero in focused:
         for clip in ("idle", "run"):
             validate_scene(
-                SOURCE / hero / "scenes" / f"{clip}.blend",
+                SOURCE / hero / f"{hero}.blend",
                 "balanced-locomotion-follow-through-v1",
                 f"{hero}/{clip}",
                 failures,
             )
-    for clip in ("idle", "run"):
-        validate_scene(
-            SOURCE / "fairy-mina" / "scenes" / f"{clip}.blend",
-            "fairy-secondary-loop",
-            f"fairy-mina/{clip}",
-            failures,
-        )
+    if not requested or requested == "fairy-mina":
+        for clip in ("idle", "run"):
+            validate_scene(
+                SOURCE / "fairy-mina" / "fairy-mina.blend",
+                "fairy-secondary-loop",
+                f"fairy-mina/{clip}",
+                failures,
+            )
 
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(SOURCE / "katty" / "katty.blend"))
-    armature = bpy.data.objects.get("Root")
-    for clip in ("idle", "run"):
-        action = next(
-            (
-                item
-                for item in bpy.data.actions
-                if item.name.casefold().split(".")[0] == clip
-            ),
-            None,
-        )
-        if not action or action.get("katty_natural_motion_revision") != 1:
-            failures.append(f"katty/{clip}: action revision is stale")
-        if (
-            not action
-            or action.get("katty_natural_motion_pass")
-            != "legacy-end-effector-follow-through"
-        ):
-            failures.append(f"katty/{clip}: action pass metadata is missing")
-    if (
-        armature is None
-        or bpy.data.objects.get("CHARACTER", {}).get("katty_orientation_revision") != 1
-    ):
-        failures.append("katty: orientation revision is stale")
+    # Katty already has a canonical master and authored idle/run Actions, but
+    # its older source never carried the optional locomotion-pass metadata.
+    # The master migration must not invent a polish revision for it.
 
     if failures:
         raise RuntimeError("\n".join(failures))

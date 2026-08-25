@@ -21,6 +21,8 @@ const propColors = {
   ruin_wall: 0x77766d,
   thorn_vine: 0x3f673f,
   fortress_wall: 0x59615f,
+  building_wall: 0x6f706d,
+  building_rubble: 0x82796d,
 }
 const STONE_PROP_TYPES = new Set(["wall", "destructible", "sacrificial_stone", "menhir", "fortress_wall"])
 const STONE_COLORS = [0x89958e, 0x829089, 0x929990, 0x788780]
@@ -591,6 +593,71 @@ const createThornVineVisual = (width, height, depth, variant = 0) => {
   return group
 }
 
+const createBuildingWallVisual = (width, height, depth, variant = 0) => {
+  const group = new THREE.Group()
+  const masonry = standardMaterial(variant % 2 ? 0x82786b : 0x746c62, {roughness: .98})
+  const plaster = standardMaterial(variant % 2 ? 0x9a8c76 : 0x887c6d, {roughness: 1})
+  const exposed = standardMaterial(variant % 3 ? 0x514439 : 0x624d3d, {roughness: .98})
+  const glass = standardMaterial(0x202c2b, {roughness: .82, metalness: 0})
+  const frame = standardMaterial(variant % 2 ? 0x4f392d : 0x634532, {roughness: .97, metalness: 0})
+
+  // These cells are the collision footprint of a ruined house. They should
+  // read as a low, broken foundation under the authored roof, not as a row
+  // of identical intact facades. Keep the semantic roles for QA and tooling,
+  // but make the silhouette irregular and much lower than a standing wall.
+  addVisualPart(
+    group,
+    new THREE.BoxGeometry(width * .94, height * .46, depth * .94),
+    masonry,
+    "building-masonry",
+    new THREE.Vector3(0, height * .23, 0),
+  )
+  addVisualPart(group, new THREE.BoxGeometry(width * .72, height * .07, depth * .9), exposed, "building-broken-cap", new THREE.Vector3(-width * .08, height * .46, 0))
+  for (const [x, z, size, y] of [
+    [-.28, -.2, .2, .52], [.18, .16, .24, .58], [.36, -.25, .15, .46],
+  ]) {
+    const chunk = addVisualPart(group, new THREE.DodecahedronGeometry(Math.min(width, depth) * size, 0), plaster, "building-ruin-chunk", new THREE.Vector3(x * width, y * height, z * depth))
+    chunk.scale.y = .62
+    chunk.rotation.set(variant * .12 + x, variant * .2, z)
+  }
+  const windowX = (variant % 2 ? -.16 : .16) * width
+  const windowY = height * .33
+  const windowZ = depth * .48
+  const windowWidth = width * .22
+  const windowHeight = Math.max(.08, height * .14)
+  addVisualPart(group, new THREE.BoxGeometry(windowWidth, windowHeight, .05), glass, "building-window", new THREE.Vector3(windowX, windowY, windowZ))
+  for (const [x, y, w, h] of [
+    [windowX, windowY - windowHeight / 2, windowWidth + .05, .025],
+    [windowX, windowY + windowHeight / 2, windowWidth + .05, .025],
+    [windowX - windowWidth / 2, windowY, .025, windowHeight],
+    [windowX + windowWidth / 2, windowY, .025, windowHeight],
+  ]) {
+    addVisualPart(group, new THREE.BoxGeometry(w, h, .08), frame, "building-window-frame", new THREE.Vector3(x, y, windowZ + .02))
+  }
+  addVisualPart(group, new THREE.BoxGeometry(width * .26, height * .05, depth * .06), plaster, "building-plaster-patch", new THREE.Vector3(-width * .18, height * .36, depth * .49))
+  const brokenBeam = addVisualPart(group, new THREE.BoxGeometry(width * .58, height * .045, depth * .07), frame, "building-timber", new THREE.Vector3(width * .08, height * .48, depth * .5))
+  brokenBeam.rotation.z = variant % 2 ? -.18 : .12
+  const brace = addVisualPart(group, new THREE.BoxGeometry(width * .045, height * .32, depth * .075), frame, "building-timber", new THREE.Vector3(-width * .12, height * .29, depth * .5))
+  brace.rotation.z = variant % 2 ? .58 : -.58
+  addVisualPart(group, new THREE.BoxGeometry(width * .1, height * .18, depth * .07), frame, "building-shutter", new THREE.Vector3(windowX - windowWidth * .62, windowY, windowZ + .035))
+  const crack = addVisualPart(group, new THREE.BoxGeometry(width * .025, height * .32, .04), exposed, "building-crack", new THREE.Vector3(width * .25, height * .29, depth * .49))
+  crack.rotation.z = variant % 2 ? -.2 : .16
+  return group
+}
+
+const createBuildingRubbleVisual = (width, height, depth, variant = 0) => {
+  const group = new THREE.Group()
+  const concrete = standardMaterial(variant % 2 ? 0x91887c : 0x7e7d75, {roughness: 1})
+  const timber = standardMaterial(variant % 2 ? 0x684735 : 0x513a2d, {roughness: .98})
+  for (const [x, y, z, size] of [[-.28, .18, -.15, .32], [.18, .3, .12, .26], [.34, .12, -.28, .2]]) {
+    const chunk = addVisualPart(group, new THREE.DodecahedronGeometry(Math.min(width, depth) * size, 0), concrete, "building-rubble", new THREE.Vector3(x * width, y * height, z * depth))
+    chunk.rotation.set(variant * .2 + x, variant * .3, z * 1.6)
+  }
+  const beam = addVisualPart(group, new THREE.CylinderGeometry(Math.min(width, depth) * .035, Math.min(width, depth) * .045, width * .55, 5), timber, "building-rubble-timber", new THREE.Vector3(0, height * .55, 0))
+  beam.rotation.z = -.35
+  return group
+}
+
 const createDecorativeVisual = (wall, width, height, depth, variant = 0) => {
   if (wall.type === "crates") return createLogPileVisual(width, height, depth, variant)
   if (wall.type === "fence") return createFenceVisual(width, height, depth)
@@ -603,6 +670,8 @@ const createDecorativeVisual = (wall, width, height, depth, variant = 0) => {
   if (wall.type === "altar_three_moons") return createAltarVisual(width, height)
   if (wall.type === "ruin_wall") return createRuinWallVisual(width, height, depth, variant)
   if (wall.type === "thorn_vine") return createThornVineVisual(width, height, depth, variant)
+  if (wall.type === "building_wall") return createBuildingWallVisual(width, height, depth, variant)
+  if (wall.type === "building_rubble") return createBuildingRubbleVisual(width, height, depth, variant)
   return createColoredBox(width, height, depth, propColors[wall.type] || 0x536060)
 }
 
@@ -619,6 +688,8 @@ const groundingColors = {
   ruin_wall: 0x596156,
   thorn_vine: 0x456344,
   fortress_wall: 0x4f5a54,
+  building_wall: 0x5b635a,
+  building_rubble: 0x66705d,
 }
 
 const createGroundingBed = (wall, width, depth, variant = 0) => {
@@ -692,9 +763,10 @@ export const createProp = (wall, index, waterTexture) => {
     (wall.minY + wall.maxY) * 0.5 * WORLD_SCALE,
   )
 
-  if (wall.type === "water") {
+  if (wall.type === "water" || wall.type === "pond") {
     const material = flatMaterial(0xffffff, {
       map: waterTexture,
+      color: wall.type === "pond" ? 0x4a9da1 : 0xffffff,
       transparent: true,
       opacity: 0.88,
       depthWrite: false,
@@ -702,7 +774,10 @@ export const createProp = (wall, index, waterTexture) => {
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,
     })
-    const water = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), material)
+    const water = wall.type === "pond"
+      ? new THREE.Mesh(new THREE.CircleGeometry(.5, 12), material)
+      : new THREE.Mesh(new THREE.PlaneGeometry(width, depth), material)
+    if (wall.type === "pond") water.scale.set(width * 1.16, depth * 1.16, 1)
     water.rotation.x = -Math.PI / 2
     water.position.y = 0.015
     water.renderOrder = 1
@@ -710,7 +785,7 @@ export const createProp = (wall, index, waterTexture) => {
     return group
   }
 
-  const height = wall.type === "fence" ? 0.9 : wall.type === "thorn_vine" ? 2.05 : wall.type === "crates" ? 1.65 : wall.type === "tree" ? 3.9 : wall.type === "dead_tree" ? 3.9 : wall.type === "shipwreck" ? 1.9 : wall.type === "menhir" ? 1.45 : wall.type === "ruin_wall" ? 3.25 : wall.type === "fortress_wall" ? 2.8 : 2.15
+  const height = wall.type === "fence" ? 0.9 : wall.type === "thorn_vine" ? 2.05 : wall.type === "crates" ? 1.65 : wall.type === "tree" ? 3.9 : wall.type === "dead_tree" ? 3.9 : wall.type === "shipwreck" ? 1.9 : wall.type === "menhir" ? 1.45 : wall.type === "ruin_wall" ? 3.25 : wall.type === "fortress_wall" ? 2.8 : wall.type === "building_wall" ? 1.15 : wall.type === "building_rubble" ? .8 : 2.15
   const block = STONE_PROP_TYPES.has(wall.type)
     ? new THREE.Mesh(
       createStoneBlockGeometry(index + wall.minX * 13 + wall.minY * 7).scale(width, height, depth),

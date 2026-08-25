@@ -32,8 +32,10 @@ export const HERO_ASSETS = Object.freeze({
   Mandy: hero("Mandy", 0.92, 0, "mandy", mandyClips),
   "Fairy Mina": hero("Fairy Mina", 0.92, 0, "fairy-mina", fairyMinaClips),
   "Brock Zeus": Object.freeze({
-    ...hero("Brock Zeus", 0.92, 0, "brock-zeus", brockZeusClips),
-    companionUrl: "/assets/heroes/output_heroes/brock-zeus_cloud.glb",
+    ...hero("Brock Zeus", 0.92, 0, "brock-zeus-rebuild", brockZeusClips),
+    url: "/assets/heroes/output_heroes/brock-zeus-rebuild_base.glb",
+    companionUrl: "/assets/heroes/output_heroes/brock-zeus-rebuild_cloud.glb",
+    cacheBust: "20260825-attack-cloud-glove-v2",
     previewOffsetX: .68,
   }),
   Kaze: hero("Kaze", 0.92, 0, "kaze", kazeClips),

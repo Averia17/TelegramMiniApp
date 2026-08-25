@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import bpy
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
@@ -15,11 +21,7 @@ CASES = {
 }
 
 for hero, target_names in CASES.items():
-    path = SOURCE / hero / "scenes" / "idle.blend"
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    scene = bpy.context.scene
-    armature = next(obj for obj in scene.objects if obj.type == "ARMATURE")
-    action = armature.animation_data.action
+    _, scene, armature, action = activate_action(hero, "idle")
     start, end = (int(action.frame_range[0]), int(action.frame_range[1]))
     print(
         f"IDLE {hero} range={start}-{end} revision={scene.get('natural_locomotion_revision')} pass={scene.get('natural_locomotion_pass')}"

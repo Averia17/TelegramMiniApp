@@ -5,6 +5,9 @@ import {mergeGeometries} from "three/addons/utils/BufferGeometryUtils.js"
 import {HERO_ASSETS, getHeroAsset, resolveHeroName} from "./assetManifest.js"
 
 const loadWith = loader => url => loader.loadAsync(url)
+const runtimeAssetUrl = (asset, url) => asset?.cacheBust
+  ? `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(asset.cacheBust)}`
+  : url
 
 const ATTACHMENT_ROLES = new Set([
   "attack-cloud",
@@ -196,18 +199,34 @@ const attachCompanionCloud = (heroRoot, cloudScene) => {
   cloud.traverse(node => {
     node.userData.attachmentRole = "companion-cloud"
   })
-  target.add(cloud)
+  // Normalize the companion in its own scene space before parenting it to a
+  // deforming hero bone. Box3.setFromObject() on a skinned mesh can include
+  // the parent's bone/world transform after attachment and produce a huge
+  // bogus center, which sends the cloud far away from the hero in battle.
   cloud.position.set(0, 0, 0)
   cloud.rotation.set(0, 0, 0)
   cloud.updateMatrixWorld(true)
   const bounds = new THREE.Box3().setFromObject(cloud, true)
   const size = bounds.getSize(new THREE.Vector3())
   const extent = Math.max(size.x, size.y, size.z)
-  if (Number.isFinite(extent) && extent > .001) cloud.scale.multiplyScalar(.64 / extent)
+  // The hero is normalized after import and carries the gameplay scale on
+  // the armature parent. Use a larger authoring-space extent so the cloud
+  // remains readable above the hero instead of shrinking to a tiny mote.
+  if (Number.isFinite(extent) && extent > .001) cloud.scale.multiplyScalar(1.65 / extent)
+  target.add(cloud)
+  // Compute the center after parenting, but convert it back through the
+  // actual target bone. This avoids mixing the detached GLTF scene matrix
+  // with the hero's deforming Root matrix.
+  cloud.position.set(0, 0, 0)
   cloud.updateMatrixWorld(true)
   const centerWorld = new THREE.Box3().setFromObject(cloud, true).getCenter(new THREE.Vector3())
-  const targetWorld = target.localToWorld(new THREE.Vector3(.90, 1.82, -.10))
-  cloud.position.add(cloud.parent.worldToLocal(targetWorld).sub(cloud.parent.worldToLocal(centerWorld)))
+  const centerLocal = target.worldToLocal(centerWorld)
+  // Keep the companion clearly airborne: x offsets it to the hero's right,
+  // while y places it above the head rather than level with the face.
+  const targetWorld = heroRoot.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(.95, 2.95, -.08))
+  const targetLocal = target.worldToLocal(targetWorld)
+  cloud.position.copy(targetLocal.sub(centerLocal))
+  cloud.updateMatrixWorld(true)
   cloud.userData.attachmentRole = "companion-cloud"
   return cloud
 }
@@ -237,7 +256,7 @@ export class AssetRegistry {
       return Promise.resolve(null)
     }
     if (!this.heroLoads.has(asset.id)) {
-      const pending = this.load(asset.url)
+      const pending = this.load(runtimeAssetUrl(asset, asset.url))
         .then(gltf => {
           this.readyHeroes.add(asset.id)
           this.heroAssets.set(asset.id, gltf)
@@ -259,7 +278,7 @@ export class AssetRegistry {
     const asset = this.manifest[resolvedName] || getHeroAsset(resolvedName)
     if (!asset?.companionUrl) return Promise.resolve(null)
     if (!this.companionLoads.has(asset.id)) {
-      const pending = this.load(asset.companionUrl)
+      const pending = this.load(runtimeAssetUrl(asset, asset.companionUrl))
         .then(gltf => {
           this.readyCompanions.add(asset.id)
           this.companionAssets.set(asset.id, gltf)
@@ -341,8 +360,9 @@ export class AssetRegistry {
         child.receiveShadow = true
       }
     })
+    let cloudRoot = null
     if (companionGltf?.scene) {
-      const cloudRoot = clone(companionGltf.scene)
+      cloudRoot = clone(companionGltf.scene)
       cloudRoot.traverse(child => {
         if (Array.isArray(child.material)) child.material = child.material.map(material => material.clone())
         else if (child.material) child.material = child.material.clone()
@@ -351,13 +371,13 @@ export class AssetRegistry {
           child.receiveShadow = true
         }
       })
-      attachCompanionCloud(root, cloudRoot)
     }
     normalizeHeroHeight(root, asset.targetHeight || 2.45)
     mergeHeroRenderParts(root)
     root.scale.multiplyScalar(asset.scale)
     root.position.y += asset.groundOffset || 0
     root.rotation.y = asset.rotationOffset
+    if (cloudRoot) attachCompanionCloud(root, cloudRoot)
     return {root, animations, companionAnimations: companionGltf?.animations || [], asset}
   }
 

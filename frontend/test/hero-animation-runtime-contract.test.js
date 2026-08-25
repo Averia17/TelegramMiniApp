@@ -41,16 +41,15 @@ test("network respawn snaps the hero to its authoritative base position", async 
 })
 
 test("runtime hero export preserves authored Actions and samples them by default", async () => {
-  const exporter = await readFile(new URL("../../tools/blender/export_runtime_heroes_from_scenes.py", import.meta.url), "utf8")
+  const exporter = await readFile(new URL("../../tools/blender/export_runtime_heroes_from_master_blends.py", import.meta.url), "utf8")
   assert.match(exporter, /export_animation_mode="ACTIONS"/)
-  assert.match(exporter, /export_force_sampling=\(\s*True if os\.environ\.get\("BLENDER_EXPORT_FAST"\) != "1" else False\s*\)/)
+  assert.match(exporter, /export_force_sampling=not BLENDER_EXPORT_FAST/)
   assert.doesNotMatch(exporter, /rebind_action_slot|stash_action_for_export|GLTF_MODE/)
 })
 
-test("runtime hero export is driven only by focused scenes", async () => {
-  const exporter = await readFile(new URL("../../tools/blender/export_runtime_heroes_from_scenes.py", import.meta.url), "utf8")
-  assert.match(exporter, /focused_scenes/)
-  assert.match(exporter, /focused_scenes\["idle"\]/)
-  assert.doesNotMatch(exporter, /f"\{hero\}\.blend"/)
+test("runtime hero export is driven only by master blends", async () => {
+  const exporter = await readFile(new URL("../../tools/blender/export_runtime_heroes_from_master_blends.py", import.meta.url), "utf8")
+  assert.match(exporter, /f"\{hero\}\.blend"/)
+  assert.doesNotMatch(exporter, /focused_scenes|scenes[\\/]/)
   assert.doesNotMatch(exporter, /[\\/]animations[\\/]/)
 })

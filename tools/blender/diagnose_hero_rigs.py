@@ -67,7 +67,11 @@ def describe_scene(label: str):
 
 
 def source_report(hero: str):
-    path = SOURCE / hero / "scenes" / "idle.blend"
+    path = (
+        SOURCE / hero / "scenes" / "idle.blend"
+        if hero == "brock-zeus"
+        else SOURCE / hero / f"{hero}.blend"
+    )
     bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
     scene = bpy.context.scene
     armature = next((obj for obj in scene.objects if obj.type == "ARMATURE"), None)

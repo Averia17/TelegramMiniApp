@@ -314,6 +314,7 @@ type WallJSON struct {
 	BushGroup      int     `json:"bushGroup,omitempty"`
 	ColliderInsetX float64 `json:"colliderInsetX,omitempty"`
 	ColliderInsetY float64 `json:"colliderInsetY,omitempty"`
+	ColliderRadius float64 `json:"colliderRadius,omitempty"`
 }
 
 type RoomJoinedParams struct {

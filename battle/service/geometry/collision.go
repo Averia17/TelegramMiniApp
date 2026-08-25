@@ -100,6 +100,7 @@ type WallTile struct {
 	BushGroup      int
 	ColliderInsetX float64
 	ColliderInsetY float64
+	ColliderRadius float64
 }
 
 func (wall *WallTile) ColliderRect() RectangleBody {
@@ -110,6 +111,40 @@ func (wall *WallTile) ColliderRect() RectangleBody {
 		Width:  wall.MaxX - wall.MinX - insetX*2,
 		Height: wall.MaxY - wall.MinY - insetY*2,
 	}
+}
+
+func (wall *WallTile) ColliderCircle() *CircleBody {
+	if wall == nil || wall.ColliderRadius <= 0 {
+		return nil
+	}
+	return &CircleBody{
+		X:      (wall.MinX + wall.MaxX) / 2,
+		Y:      (wall.MinY + wall.MaxY) / 2,
+		Radius: wall.ColliderRadius,
+	}
+}
+
+func CorrectCircleWithWall(body *CircleBody, wall *WallTile) {
+	if body == nil || wall == nil {
+		return
+	}
+	if collider := wall.ColliderCircle(); collider != nil {
+		correctCircleWithCircle(body, collider)
+		return
+	}
+	wallRect := wall.ColliderRect()
+	correctCircleWithRectangle(body, &wallRect)
+}
+
+func CollidesCircleWithWall(body *CircleBody, wall *WallTile) bool {
+	if body == nil || wall == nil {
+		return false
+	}
+	if collider := wall.ColliderCircle(); collider != nil {
+		return CircleToCircle(body, collider)
+	}
+	wallRect := wall.ColliderRect()
+	return CircleToRectangle(body, &wallRect)
 }
 
 type SpatialHash struct {
@@ -237,8 +272,7 @@ func CorrectCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType 
 		if collisionType != "" && wall.Type != collisionType {
 			return true
 		}
-		wallRect := wall.ColliderRect()
-		correctCircleWithRectangle(body, &wallRect)
+		CorrectCircleWithWall(body, wall)
 		return true
 	})
 }
@@ -249,8 +283,7 @@ func CollidesCircleWithWalls(body *CircleBody, walls *SpatialHash, collisionType
 		if collisionType != "" && wall.Type != collisionType {
 			return true
 		}
-		wallRect := wall.ColliderRect()
-		if CircleToRectangle(body, &wallRect) {
+		if CollidesCircleWithWall(body, wall) {
 			collides = true
 			return false
 		}
@@ -268,8 +301,7 @@ func CorrectCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) {
 		if !IsBlockingWall(wall.Type) {
 			return true
 		}
-		wallRect := wall.ColliderRect()
-		correctCircleWithRectangle(body, &wallRect)
+		CorrectCircleWithWall(body, wall)
 		return true
 	})
 }
@@ -280,8 +312,7 @@ func CollidesCircleWithBlockingWalls(body *CircleBody, walls *SpatialHash) bool 
 		if !IsBlockingWall(wall.Type) {
 			return true
 		}
-		wallRect := wall.ColliderRect()
-		if CircleToRectangle(body, &wallRect) {
+		if CollidesCircleWithWall(body, wall) {
 			collides = true
 			return false
 		}

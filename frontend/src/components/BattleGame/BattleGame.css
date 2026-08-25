@@ -419,6 +419,10 @@
 .control-hint { padding: 7px 11px; color: rgba(255, 255, 255, 0.82); border-radius: 8px; background: rgba(19, 24, 59, 0.55); font: 700 10px system-ui, sans-serif; }
 .control-hint--cooldown { color: #ffe98a; background: rgba(57, 35, 49, .68); }
 .death-skull { font-size: 72px; }
+.battle-result-overlay { animation:battle-result-overlay-in .45s ease-out both; }
+.battle-result-card { animation:battle-result-card-in .55s cubic-bezier(.2,.85,.25,1.08) both; }
+@keyframes battle-result-overlay-in { from { opacity:0; } to { opacity:1; } }
+@keyframes battle-result-card-in { from { opacity:0; transform:translateY(26px) scale(.94); } to { opacity:1; transform:translateY(0) scale(1); } }
 
 .battle-minimap { position: absolute; z-index: 13; right: var(--battle-safe-right); top: 76px; width: 154px; aspect-ratio: 4/3; overflow: hidden; border: 4px solid rgba(255,255,255,.82); border-radius: 15px; background: rgba(31,45,69,.78); box-shadow: 0 5px 0 #17233e,0 8px 18px rgba(0,0,0,.25); pointer-events: none; }
 .mini-obstacles-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -603,7 +607,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lobby-live i, .lobby-status__signal, .battle-result-card__shine::after { animation: none; }
+  .lobby-live i, .lobby-status__signal, .battle-result-card__shine::after, .battle-result-overlay, .battle-result-card { animation: none; }
 }
 
 /* Team HUD uses a measured vertical stack instead of competing absolute slots.

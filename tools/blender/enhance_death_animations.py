@@ -9,13 +9,18 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from pathlib import Path
 
 import bpy
 from mathutils import Matrix, Vector
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action, save_master
+
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 REVISION = 1
 
 # Rotations are degrees in local bone space. Each profile deliberately accents
@@ -292,11 +297,7 @@ def key_transform(bone, frame):
 
 
 def polish(hero, profile):
-    path = SOURCE / hero / "scenes" / "death.blend"
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    scene = bpy.context.scene
-    armature = next(obj for obj in scene.objects if obj.type == "ARMATURE")
-    action = armature.animation_data.action
+    path, scene, armature, action = activate_action(hero, "death")
     if action.get("death_polish_revision") == REVISION:
         print(f"SKIP {hero}: already polished")
         return
@@ -340,7 +341,7 @@ def polish(hero, profile):
     scene["death_style"] = profile["style"]
     scene.frame_start = start
     scene.frame_end = end
-    bpy.ops.wm.save_as_mainfile(filepath=os.fspath(path), check_existing=False)
+    save_master(path)
     print(f"POLISHED {hero}: {profile['style']} ({start}-{end})")
 
 

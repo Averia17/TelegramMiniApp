@@ -6,7 +6,7 @@ import {Input, MOBILE_INPUT_MEDIA_QUERY} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
 import {getHeroSkill} from "./heroSkills.js"
 import {getBattlePlayerCount, getBattleResultView, getPlayerBattleStats, getPresentedBattleResult, getSynchronizedBattleView, isLocalBattleWinner, isLocalPlayerKilled} from "./battleOutcome"
-import {AbilityButton, ActiveStatusEffects, BattleMatchTimer, BattleMiniMap, BattleResultCard, BattleResultStats, IslandPhaseHud, IslandVoiceNotice, NetworkStatusNotice, TauntButton, TeamBattleHud, TeamObjectiveHud, TowerThreatNotice, TouchStick} from "./BattleGameUI.jsx"
+import {AbilityButton, ActiveStatusEffects, BattleMatchTimer, BattleMiniMap, BattleResultCard, IslandPhaseHud, IslandVoiceNotice, NetworkStatusNotice, TauntButton, TeamBattleHud, TeamObjectiveHud, TowerThreatNotice, TouchStick} from "./BattleGameUI.jsx"
 import {getAttackCooldownVisual} from "./attackCooldownVisual.js"
 import {getActiveStatusEffects} from "./statusEffects.js"
 import {formatBattleMessage} from "./battleMessages.js"
@@ -28,6 +28,7 @@ import {clearActiveBattle, saveActiveBattle, saveBattleHistoryRecord} from "../.
 import {shouldSpendBattleEnergy} from "./battleEnergy.js"
 import "./BattleGame.css"
 
+const DEATH_RESULT_DELAY_MS = 2000
 
 const saveBattleResult = (result, playerId, metadata = {}) => {
   try {
@@ -65,6 +66,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
   const [touchControls, setTouchControls] = useState({move: null, aim: null})
   const [tauntCooldown, setTauntCooldown] = useState(0)
   const tauntTimerRef = useRef(null)
+  const tauntPendingRef = useRef(false)
 
   const [gameState, setGameState] = useState(null)
   const [connected, setConnected] = useState(false)
@@ -73,7 +75,6 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
   const [messages, setMessages] = useState([])
   const [islandVoice, setIslandVoice] = useState(null)
   const [view, setViewState] = useState("connecting")
-  const [deathInfo, setDeathInfo] = useState(null)
   const [battleResult, setBattleResult] = useState(null)
   const [sceneReady, setSceneReady] = useState(false)
   const [assetsReady, setAssetsReady] = useState(false)
@@ -148,12 +149,12 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
   const revealPresentedDeath = useCallback(result => {
     if (!result || deathRevealStartedRef.current) return
     deathRevealStartedRef.current = true
-    // Let the interpolated lethal frame and the authored death pose be visible
-    // before the result overlay takes over the arena.
+    // Keep the arena and authored death pose visible long enough for the
+    // player to register the elimination before covering it with results.
     deathRevealTimerRef.current = window.setTimeout(() => {
       deathRevealTimerRef.current = null
       finishBattle({...result, ...pendingDeathInfoRef.current})
-    }, 420)
+    }, DEATH_RESULT_DELAY_MS)
   }, [finishBattle])
 
   const addMessage = useCallback((msg) => {
@@ -267,7 +268,12 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
             setIslandVoice({text: msg.params?.text || "Остров смотрит.", trigger: msg.params?.trigger || "unknown"})
           }
           if (msg.type === "taunt") {
-            rendererRef.current?.showTaunt(msg.params?.targetId || msg.params?.playerId, msg.params?.tauntId)
+            const tauntPlayerId = msg.params?.playerId
+            if (String(tauntPlayerId) === String(clientRef.current?.playerId)) {
+              tauntPendingRef.current = false
+            } else {
+              rendererRef.current?.showTaunt(tauntPlayerId, msg.params?.tauntId)
+            }
           }
           if (msg.type === "battle_recovered") {
             const decision = getBattleRecoveryDecision({
@@ -349,15 +355,17 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
           if (msg.type === "you_died") {
             const info = {killerName: msg.params?.killerName || "Unknown"}
             pendingDeathInfoRef.current = info
-            setDeathInfo(info)
           }
           if (msg.type === "killed" && isLocalPlayerKilled(msg.params, clientRef.current?.playerId, playerName)) {
             const info = {killerName: msg.params?.killerName || "Unknown"}
             pendingDeathInfoRef.current = info
-            setDeathInfo(info)
           }
           if (msg.type === "error" && viewRef.current !== "game") {
             reportBattleError({kind: "server", message: msg.params?.message})
+          }
+          if (msg.type === "error" && tauntPendingRef.current) {
+            tauntPendingRef.current = false
+            setTauntCooldown(0)
           }
         },
         () => {
@@ -610,7 +618,10 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
   })
   const sendTaunt = () => {
     if (tauntCooldown > 0 || !tauntTargetId || !tauntActive) return
-    clientRef.current?.taunt("clown_laugh", tauntTargetId)
+    const sentAt = clientRef.current?.taunt("clown_laugh", tauntTargetId)
+    if (sentAt === null || sentAt === undefined) return
+    tauntPendingRef.current = true
+    rendererRef.current?.showTaunt(clientRef.current?.playerId, "clown_laugh")
     setTauntCooldown(1.5)
     if (tauntTimerRef.current) window.clearInterval(tauntTimerRef.current)
     tauntTimerRef.current = window.setInterval(() => {
@@ -811,18 +822,6 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
             <TouchStick kind="move" control={touchControls.move}/>
             <TouchStick kind="fire" control={touchControls.aim} cooldownVisual={attackCooldownVisual}/>
           </>
-        )}
-
-        {view === "dead" && !isTeamBattle && (
-          <div className="battle-overlay" style={{background: "rgba(139, 0, 0, 0.85)"}}>
-            <div style={{textAlign: "center", color: "#fff"}}>
-              <div className="death-skull">☠</div>
-              <h2>ТЫ ВЫБЫЛ</h2>
-              <p>Тебя победил: {battleResult?.killerName || deathInfo?.killerName || "Неизвестный боец"}</p>
-              <BattleResultStats result={battleResult}/>
-              <button className="battle-result-button" onClick={handleBackToMenu}>В МЕНЮ</button>
-            </div>
-          </div>
         )}
 
         {view === "result" && (

@@ -1,18 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "schemaVersion": 1,
-  "catalogRevision": "2026-08-23",
+  "catalogRevision": "2026-08-25",
   "purpose": "Единый источник контекста по героям для gameplay, frontend, Blender и ИИ.",
   "maintenance": {
     "owner": "AI + game team",
     "updatePolicy": "docs/hero-catalog-maintenance.md",
     "lastReviewedBy": "Codex",
-    "lastReviewedAt": "2026-08-23"
+    "lastReviewedAt": "2026-08-25"
   },
   "sourceFingerprints": {
     "battle/model/game/heroes.go": "A5CC6CE1408BDE55771741FB28EE54C87AFA65E02F9C455AEFE3B14189940556",
     "battle/model/game/attack_config.go": "8397876405246401B0EC9BE518400E909249D90797E8444827EAC89A3295FE1D",
-    "tools/blender/hero_animation_scene_manifest.json": "6229C8EE8D96C46B14CC909407C53BF92B2079E011F93945BD564A6BBB75C862"
+    "tools/blender/hero_animation_scene_manifest.json": "4ED0CE9E68F095E90B8363E67F5FEA0602B43004711ED9DD26F998EC5FD6F4B1"
   },
   "contracts": {
     "runtimeAnimationFps": 30,
@@ -52,7 +52,7 @@
         "gadget": {"id": "spore_escape", "name": "Споровый побег", "description": "Рывок на 6 метров оставляет облако спор радиусом 90 на 2 секунды: оно замедляет на 40%, а третий стак спор оглушает.", "slot": "secondary", "prediction": "server", "mechanics": ["collision-aware рывок на 6 метров", "облако спор радиусом 90 на 2 секунды", "замедление 40%", "третий стак оглушает на 1 секунду"]}
       },
       "animations": {"manifestSlug": "needle", "available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
-      "assets": {"sceneDirectory": "frontend/assets-source/heroes/needle/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/needle_base.glb", "status": "runtime_ready"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/needle/needle.blend", "runtimeHero": "frontend/public/assets/heroes/output_heroes/needle_base.glb", "status": "runtime_ready"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
     },
     {
@@ -70,7 +70,7 @@
         "gadget": {"id": "unyielding_stance", "name": "Нерушимая стойка", "description": "На 1,8 секунды снижает входящий урон на 40%; следующий удар посохом наносит на 50% больше урона и замедляет цель.", "slot": "secondary", "prediction": "server", "mechanics": ["окно защиты 1,8 секунды", "снижение входящего урона на 40%", "следующий удар: +50% урона и замедление"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
-      "assets": {"sceneDirectory": "frontend/assets-source/heroes/mandy/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/mandy_base.glb", "status": "runtime_ready"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/mandy/mandy.blend", "runtimeHero": "frontend/public/assets/heroes/output_heroes/mandy_base.glb", "status": "runtime_ready"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/combat_kits.go", "frontend/src/components/BattleGame/heroesConfig.js"]
     },
     {
@@ -88,7 +88,7 @@
         "gadget": {"id": "repelling_wave", "name": "Отталкивающая волна", "description": "Волна радиусом 150 наносит 30 урона, отбрасывает врагов и очищает с Mina отрицательные эффекты.", "slot": "secondary", "prediction": "server", "mechanics": ["радиус 150", "30 урона", "отбрасывание", "очищение дебаффов Mina"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
-      "assets": {"sceneDirectory": "frontend/assets-source/heroes/fairy-mina/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/fairy-mina_base.glb", "status": "runtime_ready"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/fairy-mina/fairy-mina.blend", "runtimeHero": "frontend/public/assets/heroes/output_heroes/fairy-mina_base.glb", "status": "runtime_ready"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
     },
     {
@@ -106,7 +106,7 @@
         "gadget": {"id": "discharge_cable", "name": "Разрядный кабель", "description": "Следующий выстрел становится пробивающим лучом.", "slot": "secondary", "prediction": "server", "mechanics": ["луч до 800", "пробивает цели", "разрушает стены по линии"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
-      "assets": {"sceneDirectory": "frontend/assets-source/heroes/brock-zeus/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/brock-zeus_base.glb", "runtimeCompanion": "frontend/public/assets/heroes/output_heroes/brock-zeus_cloud.glb", "status": "runtime_ready_companion_cloud"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/brock-zeus/brock-zeus.blend", "runtimeHero": "frontend/public/assets/heroes/output_heroes/brock-zeus-rebuild_base.glb", "runtimeCompanion": "frontend/public/assets/heroes/output_heroes/brock-zeus-rebuild_cloud.glb", "status": "runtime_ready_companion_cloud"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
     },
     {
@@ -124,7 +124,7 @@
         "gadget": {"id": "vanish", "name": "Исчезновение", "description": "Невидимость на 3 секунды гарантирует первый удар с критом +100% урона.", "slot": "secondary", "prediction": "server", "mechanics": ["невидимость 3 секунды", "первый удар наносит 200% урона"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
-      "assets": {"sceneDirectory": "frontend/assets-source/heroes/kaze/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/kaze_base.glb", "status": "runtime_ready"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/kaze/kaze.blend", "runtimeHero": "frontend/public/assets/heroes/output_heroes/kaze_base.glb", "status": "runtime_ready"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
     },
     {
@@ -142,7 +142,7 @@
         "gadget": {"id": "stone_armor", "name": "Каменная броня", "description": "Броня на 4 секунды снижает урон на 60%, накапливает до 240 урона и взрывается на 80 урона в радиусе 140.", "slot": "secondary", "prediction": "server", "mechanics": ["снижение урона на 60%", "предел накопления 240", "взрыв 80 урона", "до 4 зарядов Ярости"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
-      "assets": {"sceneDirectory": "frontend/assets-source/heroes/wukong-mico/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/wukong-mico_base.glb", "status": "runtime_ready"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/wukong-mico/wukong-mico.blend", "runtimeHero": "frontend/public/assets/heroes/output_heroes/wukong-mico_base.glb", "status": "runtime_ready"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
     },
     {
@@ -160,7 +160,7 @@
         "gadget": {"id": "flower_burst", "name": "Цветочный взрыв", "description": "Поглощает цветы и сад, наносит каждой цели один общий всплеск на 55 урона и лечит Lumi на 10 HP за объект, максимум 50.", "slot": "secondary", "prediction": "server", "mechanics": ["поглощение каждого активного цветка и сада", "55 урона на цель без сложения перекрытий", "лечение Lumi на 10 HP за объект, максимум 50", "замедление на 2 секунды"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
-      "assets": {"sceneDirectory": "frontend/assets-source/heroes/persephone-lumi/scenes", "runtimeHero": "frontend/public/assets/heroes/output_heroes/persephone-lumi_base.glb", "status": "runtime_ready"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/persephone-lumi/persephone-lumi.blend", "runtimeHero": "frontend/public/assets/heroes/output_heroes/persephone-lumi_base.glb", "status": "runtime_ready"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
     },
     {
@@ -177,8 +177,8 @@
         "super": {"id": "paint_grenade", "name": "Красящая лужа", "description": "Лужа радиусом 220 слегка притягивает врагов, наносит 70 урона, наносит третий слой, ослепляет и замедляет их.", "slot": "primary", "prediction": "server", "mechanics": ["притяжение 25% в течение 0,5 секунды", "активация через 500 мс", "взрыв 70 урона", "лужа радиусом 220 на 7,5 секунды", "12 урона каждые 600 мс", "ослепление 2,5 секунды"]},
         "gadget": {"id": "paint_flight", "name": "Красколёт", "description": "На 2,2 секунды ускоряет Katty и позволяет перелетать стены, оставляя след; повторное касание следа взрывает его на 40 урона и 2 слоя краски.", "slot": "secondary", "prediction": "server", "mechanics": ["полёт 2,2 секунды", "скорость ×1,15", "след на 4 секунды", "взрыв при касании: 40 урона и 2 слоя"]}
       },
-      "animations": {"available": [], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "static_import"},
-      "assets": {"sourceMaster": "frontend/assets-source/heroes/katty/source/jacky_tricky_geo.fbx", "sceneDirectory": "frontend/assets-source/heroes/katty/source", "runtimeHero": "frontend/public/assets/heroes/output_heroes/katty_base.glb", "sourceUrl": "https://sketchfab.com/3d-models/tricky-janet-86283dbe8ca54428a26b6b9033d624a1", "status": "runtime_ready_static"},
+      "animations": {"manifestSlug": "katty", "available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/katty/katty.blend", "sourceReference": "frontend/assets-source/heroes/katty/source/jacky_tricky_geo.fbx", "runtimeHero": "frontend/public/assets/heroes/output_heroes/katty_base.glb", "sourceUrl": "https://sketchfab.com/3d-models/tricky-janet-86283dbe8ca54428a26b6b9033d624a1", "status": "runtime_ready"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go", "frontend/src/components/BattleGame/heroesConfig.js", "frontend/src/components/BattleGame/rendering/assets/assetManifest.js"]
     }
   ],

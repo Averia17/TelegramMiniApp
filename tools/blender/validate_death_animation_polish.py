@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import bpy
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
@@ -34,10 +40,7 @@ def main():
     failures = []
     styles = set()
     for hero in HEROES:
-        path = SOURCE / hero / "scenes" / "death.blend"
-        bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-        scene = bpy.context.scene
-        action = active_action()
+        path, scene, _, action = activate_action(hero, "death")
         marker_names = {marker.name for marker in scene.timeline_markers}
         missing = REQUIRED_MARKERS - marker_names
         if missing:
@@ -51,9 +54,7 @@ def main():
         if not style:
             failures.append(f"{hero}: missing death style")
         styles.add(style)
-    katty_path = SOURCE / "katty" / "katty.blend"
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(katty_path))
-    katty_death = bpy.data.actions.get("death")
+    _, _, _, katty_death = activate_action("katty", "death")
     if not katty_death or katty_death.get("death_polish_revision") != 1:
         failures.append("katty: death polish revision is stale")
     else:

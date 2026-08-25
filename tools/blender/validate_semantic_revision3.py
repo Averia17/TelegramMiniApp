@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import bpy
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import action_marker, activate_action
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
@@ -20,14 +26,17 @@ EXPECTED = {
 
 def main() -> None:
     failures = []
-    for (hero, clip), (marker_name, frame) in EXPECTED.items():
-        path = SOURCE / hero / "scenes" / f"{clip}.blend"
-        bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-        scene = bpy.context.scene
-        markers = {marker.name: marker.frame for marker in scene.timeline_markers}
-        if scene.get("readability_revision") != 3:
+    requested = os.environ.get("HERO_FILTER")
+    expected = {
+        key: value
+        for key, value in EXPECTED.items()
+        if not requested or key[0] == requested
+    }
+    for (hero, clip), (marker_name, frame) in expected.items():
+        _, _, _, action = activate_action(hero, clip)
+        if action.get("readability_revision") != 3:
             failures.append(f"{hero}/{clip}: expected readability revision 3")
-        if markers.get(marker_name) != frame:
+        if action_marker(action, marker_name) != frame:
             failures.append(f"{hero}/{clip}: expected {marker_name} at frame {frame}")
     if failures:
         raise RuntimeError("\n".join(failures))

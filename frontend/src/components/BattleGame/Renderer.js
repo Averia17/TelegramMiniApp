@@ -12,6 +12,7 @@ export class Renderer {
   isReady() { return this.impl.isReady() }
   setLocalPlayerId(id) { return this.impl.setLocalPlayerId(id) }
   setOutcome(outcome) { return this.impl.setOutcome(outcome) }
+  showTaunt(playerId, tauntId) { return this.impl.showTaunt(playerId, tauntId) }
   resize(width, height) { return this.impl.resize(width, height) }
   render() { return this.impl.render() }
   worldToScreen(x, y) { return this.impl.worldToScreen(x, y) }

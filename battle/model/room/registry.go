@@ -40,6 +40,7 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 		MaxPlayers:   profile.MaxPlayers,
 		Clients:      make(map[string]*Client),
 		Disconnected: make(map[string]time.Time),
+		PlayerStates: make(map[string]BattleSessionStatus),
 		Broadcast:    make(chan []byte, 256),
 		Register:     make(chan *Client),
 		Unregister:   make(chan *Client),
@@ -56,6 +57,11 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 		SendToPlayer: r.sendToPlayerUnlocked,
 	})
 	gs.OnGameEnd = func(players map[string]*player.Player, winner string, duration int64) {
+		for playerID, p := range players {
+			if p != nil && !p.IsBot && r.PlayerStates[playerID] != BattleSessionLeftVoluntarily {
+				r.PlayerStates[playerID] = BattleSessionFinished
+			}
+		}
 		result := &provider.BattleResult{
 			RoomId:   roomId,
 			EndedAt:  provider.NowMillis(),
@@ -127,14 +133,34 @@ func FindRoom(roomId string) *Room {
 	return rooms[roomId]
 }
 
-// FindRoomForPlayer is the recovery lookup. A room ID is only a hint: the
-// authoritative membership in the in-memory battle state decides whether a
-// player may resume a room. Finished rooms are handled by the result store.
+// FindRoomForPlayer is the implicit recovery lookup. Voluntarily left rooms
+// are excluded here so a normal reload does not silently resume an old battle.
+// Finished rooms are handled by the result store.
 func FindRoomForPlayer(playerID, hintedRoomID string) *Room {
 	roomsMu.RLock()
 	defer roomsMu.RUnlock()
 	if hintedRoomID != "" {
 		if r := rooms[hintedRoomID]; r != nil && r.hasActivePlayer(playerID) {
+			return r
+		}
+	}
+	for _, r := range rooms {
+		if r.hasActivePlayer(playerID) {
+			return r
+		}
+	}
+	return nil
+}
+
+// FindRoomForPlayerForRecovery honors an explicit room link even when the
+// player previously left that room voluntarily. Without a room hint,
+// voluntary exits remain excluded so a normal reload does not silently resume
+// an old battle.
+func FindRoomForPlayerForRecovery(playerID, hintedRoomID string) *Room {
+	roomsMu.RLock()
+	defer roomsMu.RUnlock()
+	if hintedRoomID != "" {
+		if r := rooms[hintedRoomID]; r != nil && r.hasJoinablePlayer(playerID) {
 			return r
 		}
 	}

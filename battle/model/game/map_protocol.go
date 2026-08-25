@@ -48,6 +48,7 @@ func NewMapJSON(name string, source *gamemap.GameMap, revision int, includeWalls
 			MinX: wall.MinX, MinY: wall.MinY, MaxX: wall.MaxX, MaxY: wall.MaxY,
 			Type: wall.Type, Blocking: geometry.IsBlockingWall(wall.Type), BushGroup: wall.BushGroup,
 			ColliderInsetX: wall.ColliderInsetX, ColliderInsetY: wall.ColliderInsetY,
+			ColliderRadius: wall.ColliderRadius,
 		})
 	}
 	return result

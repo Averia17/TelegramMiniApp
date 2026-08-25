@@ -1245,8 +1245,7 @@ func collidesCircleWithProjectileBlockingWallsExcept(body *geometry.CircleBody, 
 		if wall.Type == "river" || wall.Type == ignoredType || !geometry.IsBlockingWall(wall.Type) {
 			return true
 		}
-		wallRect := wall.ColliderRect()
-		if geometry.CircleToRectangle(body, &wallRect) {
+		if geometry.CollidesCircleWithWall(body, wall) {
 			collides = true
 			return false
 		}

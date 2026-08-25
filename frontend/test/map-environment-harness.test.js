@@ -11,6 +11,7 @@ test("map environment lab uses the complete battle renderer and canonical map", 
   assert.match(html, /loadCanonicalBattleMap/)
 	assert.match(html, /data-map-mode="team"/)
   assert.match(html, /loadCanonicalBattleMap\(fetch, selectedMode\)/)
+	assert.match(html, /previewSpawn = selectedMode === "team"/)
 	assert.match(html, /objectives: \(map\.objectives \|\| \[\]\)\.map/)
   assert.match(html, /new ThreeBattleRenderer\(canvas\)/)
   assert.match(html, /battleRenderer\.setState\(battleState\)/)

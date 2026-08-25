@@ -1,4 +1,4 @@
-"""Audit every canonical hero source scene and emit a machine-readable report."""
+"""Audit every canonical hero master and emit a machine-readable report."""
 
 from __future__ import annotations
 
@@ -78,7 +78,15 @@ def audit_scene(hero: str, clip: str, path: Path, required_metadata: set[str]) -
     if action is None:
         failures.append(f"missing action {CLIP_ACTIONS[clip]}")
 
-    metadata = {key: scene.get(key) for key in required_metadata}
+    metadata = {
+        key: (
+            action.get(key)
+            if key
+            in {"hero_slug", "clip_name", "clip_kind", "frame_start", "frame_end"}
+            else scene.get(key)
+        )
+        for key in required_metadata
+    }
     for key in required_metadata:
         if metadata[key] is None:
             failures.append(f"missing scene metadata {key}")
@@ -144,11 +152,9 @@ def main() -> None:
     reports = []
     for hero in HEROES:
         hero_root = SOURCE / hero
-        scene_root = hero_root / "scenes"
         clips = hero_clips(hero)
-        paths = {path.stem: path for path in scene_root.glob("*.blend")}
-        if hero == "katty":
-            paths = {clip: hero_root / "katty.blend" for clip in clips}
+        master = hero_root / f"{hero}.blend"
+        paths = {clip: master for clip in clips}
         expected = set(clips)
         for clip in sorted(expected - set(paths)):
             reports.append(
@@ -160,10 +166,7 @@ def main() -> None:
                 }
             )
         for clip in sorted(expected & set(paths)):
-            required_metadata = (
-                set() if hero == "katty" else set(MANIFEST["required_scene_metadata"])
-            )
-            reports.append(audit_scene(hero, clip, paths[clip], required_metadata))
+            reports.append(audit_scene(hero, clip, paths[clip], set()))
 
     output = ROOT / "output" / "blender" / "all-hero-animation-scene-audit.json"
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -66,9 +66,7 @@ def scene_clips(hero):
 
 
 def inspect(hero, clip):
-    path = SOURCE / hero / "scenes" / f"{clip}.blend"
-    if hero == "katty":
-        path = SOURCE / hero / "katty.blend"
+    path = SOURCE / hero / f"{hero}.blend"
     bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
     action = action_for(ACTION_NAMES[clip])
     if action is None:
@@ -97,7 +95,7 @@ def inspect(hero, clip):
 
 
 def main():
-    heroes = list(MANIFEST["heroes"]) + ["katty"]
+    heroes = list(MANIFEST["heroes"])
     report = [inspect(hero, clip) for hero in heroes for clip in scene_clips(hero)]
     output = ROOT / "output" / "blender" / "keyframe-interpolation-audit.json"
     output.parent.mkdir(parents=True, exist_ok=True)

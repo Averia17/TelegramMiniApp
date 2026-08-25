@@ -184,7 +184,7 @@ func TestTeamBattleUsesGroupedCoverAndAPassableDiagonalBorder(t *testing.T) {
 	}
 	waterCells := 0
 	for _, wall := range mapValue.Collisions {
-		if wall.Type == "water" {
+		if wall.Type == "water" || wall.Type == "pond" {
 			waterCells++
 		}
 	}
@@ -560,6 +560,186 @@ func TestTeamBattleAddsMirroredRuinsVinesAndNearbyBatLairs(t *testing.T) {
 		}
 		if !nearby {
 			t.Fatalf("bat spawn %d at (%.0f,%.0f) is not near a ruin lair", index, spawn.X, spawn.Y)
+		}
+	}
+}
+
+func TestTeamBattleAddsAbandonedCityDistricts(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	buildingWalls, rubble, buildings, plazas, streets, towers := 0, 0, 0, 0, 0, 0
+	features := make(map[[2]int]string)
+	for _, wall := range mapValue.Collisions {
+		switch wall.Type {
+		case "building_wall":
+			buildingWalls++
+		case "building_rubble":
+			rubble++
+		}
+	}
+	for _, feature := range mapValue.Features {
+		cell := [2]int{int(feature.X / 40), int(feature.Y / 40)}
+		features[cell] = feature.Type
+		switch feature.Type {
+		case "city_building":
+			buildings++
+		case "city_plaza":
+			plazas++
+		case "city_street":
+			streets++
+		case "city_tower":
+			towers++
+		}
+	}
+	if buildingWalls < 36 || rubble < 12 {
+		t.Fatalf("city collision dressing = %d building walls and %d rubble, want at least 36/12", buildingWalls, rubble)
+	}
+	if buildings < 8 || plazas < 2 || streets < 4 || towers != 2 {
+		t.Fatalf("city features = buildings %d, plazas %d, streets %d, towers %d, want at least 8/2/4/2", buildings, plazas, streets, towers)
+	}
+	for cell, kind := range features {
+		if kind != "city_building" && kind != "city_street" {
+			continue
+		}
+		if features[[2]int{cell[1], cell[0]}] != kind {
+			t.Fatalf("city feature %v (%s) has no diagonal twin", cell, kind)
+		}
+	}
+}
+
+func TestTeamBattleAddsLivingMirroredBaseDressing(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	counts := map[string]int{}
+	positions := map[[2]int]string{}
+	for _, feature := range mapValue.Features {
+		if feature.Type != "base_well" && feature.Type != "base_workshop" && feature.Type != "base_wagon" {
+			continue
+		}
+		counts[feature.Type]++
+		cell := [2]int{int(feature.X / 40), int(feature.Y / 40)}
+		positions[cell] = feature.Type
+	}
+	for _, kind := range []string{"base_well", "base_workshop", "base_wagon"} {
+		if counts[kind] != 2 {
+			t.Fatalf("base dressing %s = %d, want one authored feature per team", kind, counts[kind])
+		}
+	}
+	for cell, kind := range positions {
+		if positions[[2]int{cell[1], cell[0]}] != kind {
+			t.Fatalf("base feature %v (%s) has no diagonal twin", cell, kind)
+		}
+		blueDistance := math.Hypot(float64(cell[0]-16), float64(cell[1]-63))
+		redDistance := math.Hypot(float64(cell[0]-63), float64(cell[1]-16))
+		distance := math.Min(blueDistance, redDistance)
+		if distance < 4 || distance > 8 {
+			t.Fatalf("base feature %v (%s) is not in the readable inner fort courtyard: distance %.2f", cell, kind, distance)
+		}
+	}
+	for _, feature := range mapValue.Features {
+		if feature.Type == "base_well" || feature.Type == "base_workshop" || feature.Type == "base_wagon" {
+			for _, wall := range mapValue.Collisions {
+				if wall.Type != "objective" {
+					continue
+				}
+				if feature.X >= wall.MinX && feature.X <= wall.MaxX && feature.Y >= wall.MinY && feature.Y <= wall.MaxY {
+					t.Fatalf("base feature %s overlaps an objective collider", feature.ID)
+				}
+			}
+		}
+	}
+}
+
+func TestTeamBattleCityFramesEveryBridgeApproach(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	bridges := [][2]int{{22, 22}, {39, 39}, {57, 57}}
+	nearBridge := make(map[[2]int]bool)
+	for _, feature := range mapValue.Features {
+		if feature.Type != "city_building" && feature.Type != "city_street" && feature.Type != "city_tower" && feature.Type != "city_plaza" {
+			continue
+		}
+		cell := [2]int{int(feature.X / 40), int(feature.Y / 40)}
+		for _, bridge := range bridges {
+			if math.Hypot(float64(cell[0]-bridge[0]), float64(cell[1]-bridge[1])) <= 14 {
+				nearBridge[[2]int{bridge[0], bridge[1]}] = true
+			}
+		}
+	}
+	for _, bridge := range bridges {
+		if !nearBridge[bridge] {
+			t.Fatalf("bridge %v has no city landmark within 14 cells", bridge)
+		}
+	}
+	for _, id := range []string{"city-north-gate", "city-south-ward"} {
+		found := false
+		for _, feature := range mapValue.Features {
+			if feature.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing authored city district %q", id)
+		}
+	}
+}
+
+func TestTeamBattleCityKeepsDoorsBridgesAndSpawnsPlayable(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	blocking := make(map[[2]int]bool)
+	for _, wall := range mapValue.Collisions {
+		if wall == nil || !geometry.IsBlockingWall(wall.Type) || wall.Type == "objective" {
+			continue
+		}
+		blocking[[2]int{int(wall.MinX / 40), int(wall.MinY / 40)}] = true
+	}
+	for _, door := range [][2]int{{12, 52}, {29, 47}, {43, 60}, {52, 12}, {47, 29}, {60, 43}} {
+		if blocking[door] {
+			t.Fatalf("city doorway at %v is blocked", door)
+		}
+	}
+	for _, bridge := range [][2]int{{22, 22}, {39, 39}, {57, 57}} {
+		if blocking[bridge] {
+			t.Fatalf("bridge crossing at %v is blocked by city dressing", bridge)
+		}
+	}
+	for team, spawns := range mapValue.TeamSpawners {
+		for index, spawn := range spawns {
+			if blocking[[2]int{int(spawn.CenterX() / 40), int(spawn.CenterY() / 40)}] {
+				t.Fatalf("%s spawn %d overlaps city blocking cell", team, index)
+			}
+		}
+	}
+}
+
+func TestTeamBattleCityDistrictCoresStayEnterable(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	blocking := make(map[[2]int]bool)
+	for _, wall := range mapValue.Collisions {
+		if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
+			continue
+		}
+		blocking[[2]int{int(wall.MinX / 40), int(wall.MinY / 40)}] = true
+	}
+	for _, core := range [][2]int{{13, 52}, {52, 13}, {30, 47}, {47, 30}, {44, 60}, {60, 44}, {16, 31}, {31, 16}, {49, 64}, {64, 49}} {
+		if blocking[core] {
+			t.Fatalf("city district core %v is sealed; expected an enterable fighting courtyard", core)
+		}
+	}
+}
+
+func TestTeamBattleCityPlazaDoesNotOccupyRiverOrBridgeCells(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	for _, feature := range mapValue.Features {
+		if feature.Type != "city_plaza" {
+			continue
+		}
+		cell := [2]int{int(feature.X / 40), int(feature.Y / 40)}
+		for _, wall := range mapValue.Collisions {
+			if wall == nil || int(wall.MinX/40) != cell[0] || int(wall.MinY/40) != cell[1] {
+				continue
+			}
+			if wall.Type == "water" || wall.Type == "river" || wall.Type == "river_bridge" {
+				t.Fatalf("city plaza at %v overlaps %s collision", cell, wall.Type)
+			}
 		}
 	}
 }

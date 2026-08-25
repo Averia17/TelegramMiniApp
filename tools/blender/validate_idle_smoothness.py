@@ -23,7 +23,7 @@ LIMITS = {
 
 
 def inspect(hero: str, targets: dict[str, float]) -> list[str]:
-    path = SOURCE / hero / "scenes" / "idle.blend"
+    path = SOURCE / hero / f"{hero}.blend"
     bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
     scene = bpy.context.scene
     armature = next(obj for obj in scene.objects if obj.type == "ARMATURE")

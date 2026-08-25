@@ -290,7 +290,7 @@ func HandleJoin(c *mroom.Client, data []byte) {
 		sendError(c, "Invalid join request")
 		return
 	}
-	if mroom.FindRoomForPlayer(c.Id, "") != nil || c.Room != nil {
+	if mroom.FindConnectedRoomForPlayer(c.Id) != nil || c.Room != nil {
 		sendError(c, "Already in battle")
 		return
 	}
@@ -360,7 +360,10 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 		sendError(c, "Room access denied")
 		return
 	}
-	if existing := mroom.FindRoomForPlayer(c.Id, ""); existing != nil && existing != r {
+	// A disconnected player may still be retained in an old room for explicit
+	// reconnect recovery. That room must not block joining a freshly matched
+	// room after the player intentionally left the previous battle.
+	if existing := mroom.FindConnectedRoomForPlayer(c.Id); existing != nil && existing != r {
 		sendError(c, "Already in battle")
 		return
 	}
@@ -404,7 +407,7 @@ func HandleRecoverBattle(c *mroom.Client, data []byte) {
 		sendError(c, "Invalid recovery request")
 		return
 	}
-	if r := mroom.FindRoomForPlayer(c.Id, req.RoomID); r != nil {
+	if r := mroom.FindRoomForPlayerForRecovery(c.Id, req.RoomID); r != nil {
 		data, _ := json.Marshal(game.NewServerMessage("battle_recovered", map[string]interface{}{
 			"status":   "active",
 			"roomId":   r.Id,
@@ -571,15 +574,16 @@ func HandleLeaveBattle(c *mroom.Client) {
 	}
 	sroom.RemoveFromMatchQueue(c.Id)
 	teamParties.Leave(c.Id)
+	leaveStatus := mroom.BattleSessionLeftVoluntarily
 	if c.Room != nil {
 		room := c.Room
 		c.Room = nil
-		room.LeaveForReconnect(c)
+		leaveStatus = room.LeaveVoluntarily(c)
 	}
 	c.PendingRoomID = ""
 	c.PartyID = ""
 	c.PartySize = 0
-	data, _ := json.Marshal(game.NewServerMessage("battle_left", map[string]string{"status": "left"}))
+	data, _ := json.Marshal(game.NewServerMessage("battle_left", map[string]string{"status": string(leaveStatus)}))
 	c.TrySend(data)
 }
 

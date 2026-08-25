@@ -10,9 +10,15 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import bpy
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
@@ -40,19 +46,7 @@ def action_fcurves(action):
 
 
 def inspect_scene(hero: str, clip: str, action_name: str) -> dict:
-    path = SOURCE / hero / "scenes" / f"{clip}.blend"
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    armature = next(
-        (obj for obj in bpy.context.scene.objects if obj.type == "ARMATURE"), None
-    )
-    action = next(
-        (
-            candidate
-            for candidate in bpy.data.actions
-            if candidate.name.casefold().split(".")[0] == action_name.casefold()
-        ),
-        None,
-    )
+    path, scene, armature, action = activate_action(hero, clip)
     if armature is None or action is None:
         return {"hero": hero, "clip": clip, "error": "missing armature or action"}
 
@@ -65,7 +59,6 @@ def inspect_scene(hero: str, clip: str, action_name: str) -> dict:
             keyed_bones.add(curve.data_path.split('"')[1])
         key_frames.update(round(point.co[0], 3) for point in curve.keyframe_points)
 
-    scene = bpy.context.scene
     return {
         "hero": hero,
         "clip": clip,

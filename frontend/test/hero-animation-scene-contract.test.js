@@ -11,16 +11,11 @@ const manifest = JSON.parse(await readFile(
   "utf8",
 ))
 
-const expectedSceneClips = [
-  "idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "gadget",
-]
-
 for (const hero of manifest.heroes) {
-  test(`${hero} has one authored Blender scene for every runtime event`, async () => {
-    const clips = [...expectedSceneClips, ...(manifest.hero_animation_extras?.[hero] || [])]
-    for (const clip of clips) {
-      const file = path.join(sourceRoot, hero, "scenes", `${clip}.blend`)
-      await assert.doesNotReject(access(file), `${hero}/${clip}.blend is missing`)
-    }
+  test(`${hero} has one canonical master Blender source`, async () => {
+    const file = hero === "brock-zeus"
+      ? path.join(sourceRoot, hero, "scenes", "zeus_rebuild_master.blend")
+      : path.join(sourceRoot, hero, `${hero}.blend`)
+    await assert.doesNotReject(access(file), `${hero}.blend is missing`)
   })
 }

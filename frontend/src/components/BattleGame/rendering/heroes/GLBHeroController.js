@@ -297,28 +297,10 @@ export class GLBHeroController {
           })
         })
       }
-      root.updateMatrixWorld(true)
-      const cloudBounds = new THREE.Box3().setFromObject(this.cloud)
-      const cloudSize = cloudBounds.getSize(new THREE.Vector3())
-      const cloudExtent = Math.max(cloudSize.x, cloudSize.y, cloudSize.z)
-      if (Number.isFinite(cloudExtent) && cloudExtent > .001) {
-        this.cloud.scale.multiplyScalar(.64 / cloudExtent)
-        this.root.updateMatrixWorld(true)
-        const centerWorld = new THREE.Box3().setFromObject(this.cloud).getCenter(new THREE.Vector3())
-        // Target is expressed in gameplay scene units. The imported root may
-        // carry a large authoring-unit scale, so do not transform this offset
-        // as if it were another source-space coordinate.
-        // The diagonal lobby camera projects Brock's normal gameplay cloud far
-        // to the right. In previews, compensate for that view and tuck it behind
-        // his silhouette so the fighter remains the visual center.
-        const cloudTarget = this.previewLayout
-          ? new THREE.Vector3(-2.1, 1.34, -.28)
-          : new THREE.Vector3(.90, 1.82, -.10)
-        const targetWorld = root.getWorldPosition(new THREE.Vector3()).add(cloudTarget)
-        const centerInParent = this.cloud.parent.worldToLocal(centerWorld.clone())
-        const targetInParent = this.cloud.parent.worldToLocal(targetWorld.clone())
-        this.cloud.position.add(targetInParent.sub(centerInParent))
-      }
+      // AssetRegistry has already normalized and placed the companion in the
+      // hero Root's local space. Do not run a second world-space bounds pass
+      // here: Box3 on the attached skinned mesh mixes in the deforming bone
+      // matrix and can move the cloud hundreds of units away from the hero.
     }
     this.cloudBasePosition = this.cloud?.position.clone() || null
     this.cloudBaseScale = this.cloud?.scale.clone() || null
@@ -377,7 +359,11 @@ export class GLBHeroController {
     if (this.spawnCactus) this.spawnCactus.visible = false
     this.spawnElapsed = 0
     this.mandySpawnStaffElapsed = MANDY_SPAWN_STAFF_REVEAL_SECONDS
-    this.spawnDuration = Math.max(0.9, Number(options.spawnDuration) || 1.45)
+    // Brock Zeus has an authored 30-frame spawn. Keeping the generic 1.45s
+    // fallback stretched the clip and blocked the harness locomotion buttons
+    // long enough to make idle/run look missing.
+    const defaultSpawnDuration = this.heroName === "Brock Zeus" ? 1.0 : 1.45
+    this.spawnDuration = Math.max(0.9, Number(options.spawnDuration) || defaultSpawnDuration)
     this.aimWeight = 0
     this.aimYaw = 0
     this.aimPitch = 0
@@ -492,16 +478,19 @@ export class GLBHeroController {
     if (this.cloudState === "idle") {
       strike = Math.pow(Math.max(0, Math.sin(this.elapsed * 4.2)), 14) * .7
     } else if (this.cloudState === "attack") {
-      strike = pulse(6 / 16, .09)
+      // Brock's authored attack is 27 frames: the cloud compresses on the
+      // wind-up, then discharges with the glove at frames 8-10.
+      strike = pulse(8.5 / 27, .07)
     } else if (this.cloudState === "super") {
-      strike = Math.max(pulse(.50, .055), pulse(.60, .055), pulse(.70, .055))
+      // Three authored strikes at frames 18-20, 28-30 and 38-40 of 54.
+      strike = Math.max(pulse(19 / 54, .055), pulse(29 / 54, .055), pulse(39 / 54, .055))
       stormDarkness = Math.sin(Math.PI * clamp(phase, 0, 1)) * .68
     } else if (this.cloudState === "hit") {
-      strike = pulse(3 / 12, .10)
+      strike = pulse(4 / 16, .10)
     } else if (this.cloudState === "victory") {
-      strike = Math.max(pulse(20 / 60, .07), pulse(28 / 60, .07))
+      strike = Math.max(pulse(20 / 90, .07), pulse(60 / 90, .07))
     } else if (this.cloudState === "gadget") {
-      strike = pulse(4 / 16, .10) * .55
+      strike = pulse(10 / 30, .10) * .55
     } else if (["aim", "aimSuper", "aimGadget"].includes(this.cloudState)) {
       strike = Math.pow(Math.max(0, Math.sin(this.elapsed * 5.5)), 18) * .35
     }
@@ -524,6 +513,15 @@ export class GLBHeroController {
       ? this.cloud.getWorldPosition(new THREE.Vector3())
       : bounds.getCenter(new THREE.Vector3())
     this.cloudLightning.position.copy(this.root.worldToLocal(cloudWorld))
+    const boltStart = cloudWorld.clone()
+    const handWorld = this.rig.rightHand?.getWorldPosition(new THREE.Vector3())
+    const targetWorld = handWorld
+      ? handWorld.clone().add(handWorld.clone().sub(this.root.getWorldPosition(new THREE.Vector3())).normalize().multiplyScalar(1.35))
+      : boltStart.clone().add(new THREE.Vector3(0, -1, -1.2))
+    const boltDirection = this.root.worldToLocal(targetWorld).sub(this.root.worldToLocal(boltStart)).normalize()
+    if (boltDirection.lengthSq() > .001) {
+      this.cloudLightning.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), boltDirection)
+    }
     const rootWorldScale = this.root.getWorldScale(new THREE.Vector3())
     this.cloudLightning.scale.set(
       1 / Math.max(.001, rootWorldScale.x),
@@ -531,7 +529,12 @@ export class GLBHeroController {
       1 / Math.max(.001, rootWorldScale.z),
     )
     this.cloudLightning.visible = strike > .02
-    this.cloudLightning.rotation.z = Math.sin(this.elapsed * 93) * .035
+    this.cloudLightning.quaternion.multiply(
+      new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 0, 1),
+        Math.sin(this.elapsed * 93) * .035,
+      ),
+    )
     this.cloudLightning.children.forEach(child => {
       if (!child.material) return
       const layer = child.userData.lightningLayer
@@ -747,7 +750,12 @@ export class GLBHeroController {
           1 / Math.max(.001, rootWorldScale.z),
         )
         this.cloudLightning.visible = strike > .02
-        this.cloudLightning.rotation.z = Math.sin(this.elapsed * 93) * .035
+        this.cloudLightning.quaternion.multiply(
+          new THREE.Quaternion().setFromAxisAngle(
+            new THREE.Vector3(0, 0, 1),
+            Math.sin(this.elapsed * 93) * .035,
+          ),
+        )
         this.cloudLightning.children.forEach(child => {
           if (!child.material) return
           const layer = child.userData.lightningLayer

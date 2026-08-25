@@ -4,14 +4,18 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from pathlib import Path
 
 import bpy
 from mathutils import Euler, Quaternion
 
-ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action, save_master
 
+ROOT = Path(__file__).resolve().parents[2]
 NEEDLE_SCENES = (
     "idle",
     "run",
@@ -32,7 +36,7 @@ NEEDLE_OFFSETS = {
 }
 
 # These are authored transition centers found by audit_pose_extremes.py.  The
-# endpoints stay intact; only the two-frame transition around each center is
+# endpoints stay intact; only the short transition around each center is
 # replaced by a quaternion slerp with clamped Bezier handles.
 SMOOTH_CASES = (
     ("fairy-mina", "gadget", "R_shoulder_s", 6),
@@ -111,18 +115,7 @@ def clamp_silhouette_curves(action) -> None:
 
 
 def open_scene(hero: str, clip: str):
-    path = (
-        SOURCE / hero / ("katty.blend" if hero == "katty" else f"scenes/{clip}.blend")
-    )
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    armature = next(
-        (obj for obj in bpy.context.scene.objects if obj.type == "ARMATURE"), None
-    )
-    action = action_for(ACTION_NAMES[clip])
-    if armature is None or action is None:
-        raise RuntimeError(f"{hero}/{clip}: missing armature/action")
-    armature.animation_data_create()
-    armature.animation_data.action = action
+    path, _, armature, action = activate_action(hero, clip)
     return path, armature, action
 
 
@@ -167,8 +160,7 @@ def apply_needle_posture() -> None:
         )
         action["needle_arm_posture_revision"] = 1
         action["needle_arm_posture_pass"] = "lowered-right-arm-balanced-silhouette"
-        bpy.context.preferences.filepaths.save_version = 0
-        bpy.ops.wm.save_as_mainfile(filepath=os.fspath(path), check_existing=False)
+        save_master(path)
         print(f"POLISHED needle/{clip}: balanced right arm posture")
 
 
@@ -178,8 +170,8 @@ def smooth_transition(hero: str, clip: str, bone_name: str, center: int) -> None
     if bone is None:
         raise RuntimeError(f"{hero}/{clip}: missing bone {bone_name}")
     start, end = (int(value) for value in action.frame_range)
-    left = max(start, center - 2)
-    right = min(end, center + 2)
+    left = max(start, center - 4)
+    right = min(end, center + 4)
     if right - left < 2:
         return
     bpy.context.scene.frame_set(left)
@@ -203,7 +195,6 @@ def smooth_transition(hero: str, clip: str, bone_name: str, center: int) -> None
 
 
 def clamp_all_silhouette_curves() -> None:
-    seen = set()
     heroes = tuple(
         (
             "brock-zeus",
@@ -220,21 +211,17 @@ def clamp_all_silhouette_curves() -> None:
     for hero in heroes:
         for clip in clips:
             path = (
-                SOURCE
-                / hero
-                / ("katty.blend" if hero == "katty" else f"scenes/{clip}.blend")
+                ROOT / "frontend" / "assets-source" / "heroes" / hero / f"{hero}.blend"
             )
-            if path in seen or not path.exists():
+            if not path.exists():
                 continue
-            seen.add(path)
             _, armature, action = open_scene(hero, clip)
             clamp_silhouette_curves(action)
             bpy.context.scene["pose_curve_clamp_revision"] = 1
             bpy.context.scene["pose_curve_clamp_pass"] = "silhouette-auto-clamped-v1"
             action["pose_curve_clamp_revision"] = 1
             action["pose_curve_clamp_pass"] = "silhouette-auto-clamped-v1"
-            bpy.context.preferences.filepaths.save_version = 0
-            bpy.ops.wm.save_as_mainfile(filepath=os.fspath(path), check_existing=False)
+            save_master(path)
             print(f"CLAMPED {hero}/{clip}: silhouette rotation handles")
 
 

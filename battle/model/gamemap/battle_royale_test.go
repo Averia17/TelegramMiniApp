@@ -109,15 +109,92 @@ func TestGenerateBattleRoyaleLeavesBeaconCaptureRadiusAccessible(t *testing.T) {
 	// axis. A max-size hero must be able to occupy it without being stopped by
 	// the landmark's decorative platform footprint.
 	body := &geometry.CircleBody{
-		X:      center + beaconCaptureRadius - largestHeroRadius,
+		X:      center + beaconCaptureRadius,
 		Y:      center,
 		Radius: largestHeroRadius,
 	}
-	if geometry.CircleToRectangle(body, &geometry.RectangleBody{
-		X: beacon.MinX, Y: beacon.MinY, Width: beacon.MaxX - beacon.MinX, Height: beacon.MaxY - beacon.MinY,
-	}) {
-		t.Fatalf("beacon collider blocks capture radius at (%.0f,%.0f): collider=(%.0f,%.0f)-(%.0f,%.0f)",
-			body.X, body.Y, beacon.MinX, beacon.MinY, beacon.MaxX, beacon.MaxY)
+	if geometry.CollidesCircleWithWall(body, beacon) {
+		t.Fatalf("beacon collider blocks capture radius at (%.0f,%.0f): collider=(%.0f,%.0f)-(%.0f,%.0f), radius=%.0f",
+			body.X, body.Y, beacon.MinX, beacon.MinY, beacon.MaxX, beacon.MaxY, beacon.ColliderRadius)
+	}
+}
+
+func TestGenerateBattleRoyaleBeaconUsesCircularColliderForDiagonalCapture(t *testing.T) {
+	gameMap := GenerateBattleRoyale(CanonicalBattleRoyaleSeed)
+	const center = 1200.0
+	const heroRadius = 15.0
+	const captureRadius = 135.0
+
+	var beacon *geometry.WallTile
+	for _, wall := range gameMap.Collisions {
+		if wall.Type == "beacon" {
+			beacon = wall
+			break
+		}
+	}
+	if beacon == nil {
+		t.Fatal("battle royale map has no beacon collider")
+	}
+	if beacon.ColliderRadius <= 0 {
+		t.Fatalf("beacon collider radius = %.1f, want a circular collider", beacon.ColliderRadius)
+	}
+
+	diagonal := captureRadius / math.Sqrt2
+	body := &geometry.CircleBody{X: center + diagonal, Y: center + diagonal, Radius: heroRadius}
+	walls := geometry.NewSpatialHash(40)
+	walls.Insert(beacon)
+	if geometry.CollidesCircleWithBlockingWalls(body, walls) {
+		t.Fatalf("diagonal capture position is blocked: distance=%.1f", math.Hypot(body.X-center, body.Y-center))
+	}
+}
+
+func TestGenerateBattleRoyaleBeaconApproachDoesNotHitCentralTerrain(t *testing.T) {
+	gameMap := GenerateBattleRoyale(CanonicalBattleRoyaleSeed)
+	const center = 1200.0
+	const heroRadius = 15.0
+
+	// Reproduce the diagonal approach shown in the battle screenshot: the
+	// player starts outside the beacon plaza and moves straight toward it.
+	body := &geometry.CircleBody{
+		X:      center + 320,
+		Y:      center - 320,
+		Radius: heroRadius,
+	}
+	walls := geometry.NewSpatialHash(40)
+	for _, wall := range gameMap.Collisions {
+		walls.Insert(wall)
+	}
+	geometry.MoveCircleWithBlockingWalls(body, walls, -500, 500)
+
+	if distance := math.Hypot(body.X-center, body.Y-center); distance > 150 {
+		t.Fatalf("diagonal approach stopped %.0f units from beacon centre at (%.0f,%.0f), want the black rim reachable", distance, body.X, body.Y)
+	}
+}
+
+func TestGenerateBattleRoyaleBeaconApproachIsOpenAtShallowAngles(t *testing.T) {
+	gameMap := GenerateBattleRoyale(CanonicalBattleRoyaleSeed)
+	const center = 1200.0
+	const heroRadius = 15.0
+
+	// The screenshot shows a mostly horizontal approach, not a perfect
+	// diagonal. Check every angle so no narrow gap between authored lanes can
+	// act as an invisible wall corner.
+	walls := geometry.NewSpatialHash(40)
+	for _, wall := range gameMap.Collisions {
+		walls.Insert(wall)
+	}
+	for degrees := 0; degrees < 360; degrees += 5 {
+		angle := float64(degrees) * math.Pi / 180
+		body := &geometry.CircleBody{
+			X:      center + math.Cos(angle)*480,
+			Y:      center + math.Sin(angle)*480,
+			Radius: heroRadius,
+		}
+		geometry.MoveCircleWithBlockingWalls(body, walls, -math.Cos(angle)*600, -math.Sin(angle)*600)
+
+		if distance := math.Hypot(body.X-center, body.Y-center); distance > 150 {
+			t.Fatalf("approach at %d° stopped %.0f units from beacon centre at (%.0f,%.0f), want the black rim reachable", degrees, distance, body.X, body.Y)
+		}
 	}
 }
 

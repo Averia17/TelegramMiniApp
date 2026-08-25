@@ -15,3 +15,14 @@ test("BattleGame initializes effectivePlayerId before callbacks that capture it"
     "effectivePlayerId must be initialized before finishBattle captures it",
   )
 })
+
+test("BattleGame keeps the arena visible before opening the battle result", () => {
+  assert.match(battleGameSource, /const DEATH_RESULT_DELAY_MS = 2000/)
+  const deathReveal = battleGameSource.slice(
+    battleGameSource.indexOf("const revealPresentedDeath"),
+    battleGameSource.indexOf("const addMessage"),
+  )
+  assert.doesNotMatch(deathReveal, /setView\("dead"\)/)
+  assert.match(deathReveal, /finishBattle\(\{\.\.\.result, \.\.\.pendingDeathInfoRef\.current\}\)/)
+  assert.match(deathReveal, /\}, DEATH_RESULT_DELAY_MS\)/)
+})

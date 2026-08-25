@@ -5,13 +5,18 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 from pathlib import Path
 
 import bpy
 from mathutils import Quaternion
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action
+
 MANIFEST = json.loads(
     (Path(__file__).with_name("hero_animation_scene_manifest.json")).read_text(
         encoding="utf-8"
@@ -44,17 +49,6 @@ FOCUS_TOKENS = (
 )
 
 
-def find_action(name: str):
-    return next(
-        (
-            action
-            for action in bpy.data.actions
-            if action.name.casefold().split(".")[0] == name.casefold()
-        ),
-        None,
-    )
-
-
 def clips_for(hero: str) -> tuple[str, ...]:
     clips = tuple(dict.fromkeys(MANIFEST["event_clips"] + MANIFEST["ability_clips"]))
     if hero != "katty":
@@ -63,13 +57,7 @@ def clips_for(hero: str) -> tuple[str, ...]:
 
 
 def inspect(hero: str, clip: str) -> dict:
-    path = (
-        SOURCE / hero / ("katty.blend" if hero == "katty" else f"scenes/{clip}.blend")
-    )
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    scene = bpy.context.scene
-    armature = next((obj for obj in scene.objects if obj.type == "ARMATURE"), None)
-    action = find_action(ACTION_NAMES[clip])
+    path, scene, armature, action = activate_action(hero, clip)
     if armature is None or action is None:
         return {"hero": hero, "clip": clip, "failures": ["missing armature/action"]}
     armature.animation_data_create()

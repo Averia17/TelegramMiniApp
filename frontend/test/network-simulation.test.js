@@ -241,6 +241,31 @@ test("local prediction sweeps through the same blocking wall geometry as the bac
   assert.equal(next.y, 80)
 })
 
+test("local prediction treats the beacon collider as circular on diagonal approaches", () => {
+  const center = 500
+  const wall = {
+    minX: center - 96,
+    minY: center - 96,
+    maxX: center + 96,
+    maxY: center + 96,
+    type: "beacon",
+    blocking: true,
+    colliderRadius: 96,
+  }
+  const map = {width: 1200, height: 1200, walls: [wall]}
+  const next = movePosition(
+    {x: center + 170, y: center + 170},
+    {x: -1, y: -1},
+    {radius: 14, movementSpeed: 320},
+    1,
+    map,
+    createCollisionIndex(map.walls),
+  )
+
+  assert.ok(Math.hypot(next.x - center, next.y - center) < 130,
+    `diagonal beacon approach stopped too far away: (${next.x}, ${next.y})`)
+})
+
 test("local prediction lets a flying hero pass walls but still clamps to the map", () => {
   const wall = {minX: 100, minY: 0, maxX: 140, maxY: 200, type: "wall", blocking: true}
   const map = {width: 500, height: 500, walls: [wall]}

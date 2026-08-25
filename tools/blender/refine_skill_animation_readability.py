@@ -8,13 +8,18 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from pathlib import Path
 
 import bpy
 from mathutils import Euler
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action, save_master
+
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 ACTION_NAMES = {"gadget": "Gadget", "super": "super"}
 
 
@@ -281,18 +286,12 @@ def offsets_at(anchors, frame):
 
 
 def refine(hero, clip, refinement):
-    path = SOURCE / hero / "scenes" / f"{clip}.blend"
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    scene = bpy.context.scene
+    path, scene, armature, action = activate_action(hero, clip)
     target_revision = refinement.get("revision", 2)
     current_revision = scene.get("readability_revision")
     if current_revision == target_revision:
         print(f"SKIP {hero}/{clip}: already readability revision {target_revision}")
         return
-    armature = next((obj for obj in scene.objects if obj.type == "ARMATURE"), None)
-    action = find_action(ACTION_NAMES[clip])
-    if armature is None or action is None:
-        raise RuntimeError(f"{hero}/{clip}: missing armature or action")
     armature.animation_data_create()
     armature.animation_data.action = action
     anchors = refinement["anchors"]
@@ -349,10 +348,10 @@ def refine(hero, clip, refinement):
         if existing is not None:
             scene.timeline_markers.remove(existing)
         scene.timeline_markers.new(name, frame=frame)
+        action[f"marker_{name}"] = int(frame)
     scene["readability_revision"] = target_revision
     scene["authoring_status"] = "semantic-authored-readability-refined"
-    bpy.context.preferences.filepaths.save_version = 0
-    bpy.ops.wm.save_as_mainfile(filepath=os.fspath(path), check_existing=False)
+    save_master(path)
     print(f"REFINED {hero}/{clip}")
 
 

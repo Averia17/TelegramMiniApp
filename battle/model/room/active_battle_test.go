@@ -56,3 +56,45 @@ func TestLeaveForReconnectStopsActiveChecksButPreservesManualRecovery(t *testing
 		t.Fatal("explicit leave removed the player from recoverable battle state")
 	}
 }
+
+func TestLeaveVoluntarilyMarksSessionAndStopsRecovery(t *testing.T) {
+	ResetRooms()
+	defer ResetRooms()
+
+	battle := GetOrCreateRoom("voluntary-leave", "voluntary-leave", "small", "deathmatch", 4)
+	battle.mu.Lock()
+	battle.State.PlayerAdd("player-1", "Player", "Needle")
+	client := &Client{Id: "player-1", Send: make(chan []byte, 1)}
+	battle.Clients["player-1"] = client
+	battle.mu.Unlock()
+
+	battle.LeaveVoluntarily(client)
+
+	if got := battle.PlayerStatus("player-1"); got != BattleSessionLeftVoluntarily {
+		t.Fatalf("voluntary leave status = %q, want %q", got, BattleSessionLeftVoluntarily)
+	}
+	if got := FindRoomForPlayer("player-1", ""); got != nil {
+		t.Fatalf("voluntarily left player remained recoverable in %v", got)
+	}
+	if !battle.HasPlayer("player-1") {
+		t.Fatal("voluntarily left player was removed from the joinable battle")
+	}
+}
+
+func TestVoluntaryLeaveCanRecoverByExplicitRoomHint(t *testing.T) {
+	ResetRooms()
+	defer ResetRooms()
+
+	battle := GetOrCreateRoom("voluntary-reconnect", "voluntary-reconnect", "small", "deathmatch", 4)
+	battle.mu.Lock()
+	battle.State.PlayerAdd("player-1", "Player", "Needle")
+	client := &Client{Id: "player-1", Send: make(chan []byte, 1)}
+	battle.Clients["player-1"] = client
+	battle.mu.Unlock()
+
+	battle.LeaveVoluntarily(client)
+
+	if got := FindRoomForPlayerForRecovery("player-1", battle.Id); got != battle {
+		t.Fatalf("explicit room recovery = %v, want %v", got, battle)
+	}
+}

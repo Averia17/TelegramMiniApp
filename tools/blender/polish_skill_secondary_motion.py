@@ -11,13 +11,18 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 from pathlib import Path
 
 import bpy
 from mathutils import Euler
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action, save_master
+
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 SPEC_PATH = Path(__file__).with_name("hero_skill_animation_semantics.json")
 REVISION = 2
 ACTION_NAMES = {"attack": "Attack", "super": "super", "gadget": "Gadget"}
@@ -176,13 +181,7 @@ def key_rotation(bone, frame: int, offset):
 
 
 def polish(hero: str, clip: str, contract: dict):
-    path = SOURCE / hero / "scenes" / f"{clip}.blend"
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    scene = bpy.context.scene
-    armature = next((obj for obj in scene.objects if obj.type == "ARMATURE"), None)
-    action = find_action(ACTION_NAMES[clip])
-    if armature is None or action is None:
-        raise RuntimeError(f"{hero}/{clip}: missing armature or action")
+    path, scene, armature, action = activate_action(hero, clip)
     if scene.get("natural_motion_revision") == REVISION:
         print(f"SKIP {hero}/{clip}: secondary-motion revision {REVISION}")
         return
@@ -211,8 +210,7 @@ def polish(hero: str, clip: str, contract: dict):
     scene["natural_motion_pass"] = "delayed-secondary-overlap-v2"
     action["natural_motion_revision"] = REVISION
     action["natural_motion_pass"] = "delayed-secondary-overlap-v2"
-    bpy.context.preferences.filepaths.save_version = 0
-    bpy.ops.wm.save_as_mainfile(filepath=os.fspath(path), check_existing=False)
+    save_master(path)
     print(f"POLISHED {hero}/{clip}: delayed secondary overlap")
 
 

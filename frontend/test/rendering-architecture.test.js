@@ -590,10 +590,172 @@ test("team map mounts natural diagonal river features without adding collision o
 	assert.ok(river)
 	const water = river.getObjectByName("team-river-water")
 	water.geometry.computeBoundingBox()
-	assert.ok(water.geometry.boundingBox.min.x <= -100, "river should reach the western ocean")
-	assert.ok(water.geometry.boundingBox.max.x >= 100, "river should reach the eastern ocean")
-	assert.ok(water.geometry.boundingBox.max.x < 120, "river mouth should not overshoot into a second ocean edge")
+	assert.ok(water.geometry.boundingBox.min.x <= -88, "river should reach the western shoreline")
+	assert.ok(water.geometry.boundingBox.max.x >= 88, "river should reach the eastern shoreline")
+	assert.ok(water.geometry.boundingBox.max.x < 105, "river mouth should stay inside the island shoreline")
 	mapRenderer.dispose()
+})
+
+test("abandoned city features render as lightweight building, street, and plaza landmarks", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  mapRenderer.sync({
+    width: 3200, height: 3200, tileSize: 40, walls: [], features: [
+      {id: "city-depot", type: "city_building", x: 520, y: 2080, rotation: -.08, scale: 1.05},
+      {id: "city-watchtower", type: "city_tower", x: 1360, y: 1760, rotation: 0, scale: 1},
+      {id: "city-street-0", type: "city_street", x: 880, y: 1800, rotation: -Math.PI / 4, scale: 1},
+      {id: "city-plaza", type: "city_plaza", x: 1600, y: 1600, rotation: 0, scale: 1},
+    ],
+  })
+
+  const building = root.children.find(object => object.userData.featureId === "city-depot")
+  const street = root.children.find(object => object.userData.featureId === "city-street-0")
+  const plaza = root.children.find(object => object.userData.featureId === "city-plaza")
+  assert.ok(building)
+  assert.ok(street)
+  assert.ok(plaza)
+  const buildingRoles = new Set()
+  building.traverse(child => { if (child.userData?.role) buildingRoles.add(child.userData.role) })
+  assert.equal(buildingRoles.has("city-facade-overlay"), false, "blocking cells own the building silhouette")
+  assert.equal(buildingRoles.has("city-wall"), false, "the feature must not duplicate the blocking wall volumes")
+  assert.equal(buildingRoles.has("city-roof"), true)
+  assert.equal(buildingRoles.has("city-window"), true)
+  assert.equal(buildingRoles.has("city-rubble"), true)
+  assert.equal(buildingRoles.has("city-door"), true)
+  assert.equal(buildingRoles.has("city-window-frame"), true)
+  assert.equal(buildingRoles.has("city-awning"), true)
+  assert.equal(buildingRoles.has("city-chimney"), true)
+  assert.equal(buildingRoles.has("city-hanging-sign"), true)
+  assert.equal(buildingRoles.has("city-roof-debris"), true)
+  assert.equal(buildingRoles.has("city-ivy-leaf"), true)
+  assert.equal(buildingRoles.has("city-wood-beam"), true)
+  assert.equal(buildingRoles.has("city-courtyard-well"), true)
+  assert.equal(buildingRoles.has("city-courtyard-weed"), true)
+  const tower = root.children.find(object => object.userData.featureId === "city-watchtower")
+  assert.ok(tower)
+  const towerRoles = new Set()
+  tower.traverse(child => { if (child.userData?.role) towerRoles.add(child.userData.role) })
+  assert.equal(towerRoles.has("city-tower-base"), true)
+  assert.equal(towerRoles.has("city-tower-roof"), true)
+  assert.equal(towerRoles.has("city-tower-window"), true)
+  const dirtPath = street.getObjectByName("city-dirt-path")
+  assert.ok(dirtPath)
+  dirtPath.geometry.computeBoundingBox()
+  assert.ok(dirtPath.geometry.boundingBox.max.x - dirtPath.geometry.boundingBox.min.x < 120, "street dressing must not paint a giant ground polygon")
+  const streetRoles = new Set()
+  street.traverse(child => { if (child.userData?.role) streetRoles.add(child.userData.role) })
+  assert.equal(streetRoles.has("city-path-stone"), true)
+  assert.equal(streetRoles.has("city-lantern"), true)
+  assert.equal(streetRoles.has("city-cart-body"), true)
+  assert.equal(streetRoles.has("city-barrel"), true)
+  assert.equal(streetRoles.has("city-car-body"), false)
+  assert.equal(streetRoles.has("city-dumpster"), false)
+  assert.ok(plaza.getObjectByName("city-plaza-well"))
+  assert.equal(plaza.rotation.y, 0, "an authored zero rotation must not fall back to the default diagonal angle")
+  const plazaRoles = new Set()
+  plaza.traverse(child => { if (child.userData?.role) plazaRoles.add(child.userData.role) })
+  assert.equal(plazaRoles.has("city-plaza-tile"), true)
+  assert.equal(plazaRoles.has("city-plaza-crack"), true)
+  assert.equal(plazaRoles.has("city-plaza-weed"), true)
+  assert.equal(plazaRoles.has("city-plaza-well"), true)
+  assert.equal(plazaRoles.has("city-plaza-torch"), true)
+  assert.equal(plazaRoles.has("city-plaza-stall-roof"), true)
+  assert.equal(plazaRoles.has("city-plaza-goods"), true)
+  assert.equal(plazaRoles.has("city-plaza-lamp"), false)
+  mapRenderer.dispose()
+})
+
+test("authored city buildings use distinct silhouettes and unique lived-in prop sets", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  mapRenderer.sync({
+    width: 3200, height: 3200, tileSize: 40, walls: [], features: [
+      {id: "city-depot", type: "city_building", x: 520, y: 2080, rotation: 0, scale: 1},
+      {id: "city-market", type: "city_building", x: 1200, y: 1880, rotation: 0, scale: 1},
+      {id: "city-apartments", type: "city_building", x: 1760, y: 2400, rotation: 0, scale: 1},
+      {id: "city-north-gate", type: "city_building", x: 640, y: 1240, rotation: 0, scale: 1},
+      {id: "city-south-ward", type: "city_building", x: 1960, y: 2560, rotation: 0, scale: 1},
+    ],
+  })
+
+  const signatures = new Map()
+  const uniqueRoles = {
+    "city-depot": "city-depot-loading-dock",
+    "city-market": "city-market-stall",
+    "city-apartments": "city-apartment-balcony",
+    "city-north-gate": "city-gate-portcullis",
+    "city-south-ward": "city-forge-anvil",
+  }
+  Object.entries(uniqueRoles).forEach(([id, requiredRole]) => {
+    const building = root.children.find(object => object.userData.featureId === id)
+    assert.ok(building, `missing ${id}`)
+    const roles = []
+    building.traverse(child => { if (child.userData?.role) roles.push(child.userData.role) })
+    assert.equal(roles.includes(requiredRole), true, `${id} lacks its authored prop signature`)
+    signatures.set(id, roles.filter(role => role.startsWith("city-")).join("|"))
+  })
+  assert.equal(new Set(signatures.values()).size, 5, "city buildings should not be duplicated templates")
+  const depot = root.children.find(object => object.userData.featureId === "city-depot")
+  const depotRoles = new Set()
+  depot.traverse(child => { if (child.userData?.role) depotRoles.add(child.userData.role) })
+  assert.equal(depotRoles.has("city-depot-double-door"), true)
+  assert.equal(depotRoles.has("city-depot-signboard"), true)
+  mapRenderer.dispose()
+})
+
+test("team bases render medieval town dressing without duplicating collision geometry", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  mapRenderer.sync({
+    width: 3200, height: 3200, tileSize: 40, walls: [], features: [
+      {id: "blue-base-well", type: "base_well", x: 800, y: 2640, rotation: 0, scale: 1},
+      {id: "blue-base-workshop", type: "base_workshop", x: 440, y: 2680, rotation: 0, scale: 1},
+      {id: "blue-base-wagon", type: "base_wagon", x: 480, y: 2320, rotation: .12, scale: 1},
+    ],
+  })
+
+  assert.equal(mapRenderer.objects.size, 0)
+  assert.equal(mapRenderer.featureObjects.size, 3)
+  const expectedRoles = {
+    "blue-base-well": ["base-well-stone", "base-well-crank", "base-well-bucket"],
+    "blue-base-workshop": ["base-workshop-roof", "base-workshop-anvil", "base-workshop-barrel"],
+    "blue-base-wagon": ["base-wagon-body", "base-wagon-wheel", "base-wagon-sack"],
+  }
+  Object.entries(expectedRoles).forEach(([id, roles]) => {
+    const feature = root.children.find(object => object.userData.featureId === id)
+    assert.ok(feature, `missing ${id}`)
+    const actual = new Set()
+    feature.traverse(child => { if (child.userData?.role) actual.add(child.userData.role) })
+    roles.forEach(role => assert.equal(actual.has(role), true, `${id} lacks ${role}`))
+  })
+  mapRenderer.dispose()
+})
+
+test("team map terrain layers keep water, shore, plaza, and bridge in explicit priority order", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  mapRenderer.sync({
+    width: 3200, height: 3200, tileSize: 40, walls: [], features: [
+      {id: "team-river", type: "river", x: 1600, y: 1600, rotation: -Math.PI / 4, scale: 1},
+      {id: "team-bridge", type: "river_bridge", x: 1600, y: 1600, rotation: -Math.PI / 4, scale: 1},
+      {id: "city-plaza", type: "city_plaza", x: 1600, y: 1600, rotation: 0, scale: 1},
+    ],
+  })
+
+  const river = root.children.find(object => object.userData.featureId === "team-river")
+  const bridge = root.children.find(object => object.userData.featureId === "team-bridge")
+  const plaza = root.children.find(object => object.userData.featureId === "city-plaza")
+  const water = river.getObjectByName("team-river-water")
+  const shore = river.getObjectByName("team-river-shore")
+  const deck = bridge.getObjectByName("team-river-bridge-deck")
+  const surface = plaza.getObjectByName("city-plaza-surface")
+  assert.ok(water.position.y < shore.position.y)
+  assert.ok(shore.position.y < surface.position.y)
+  assert.ok(surface.position.y < deck.position.y)
+  assert.ok(water.renderOrder < shore.renderOrder)
+  assert.ok(shore.renderOrder < surface.renderOrder)
+  assert.ok(surface.renderOrder < deck.renderOrder)
+  mapRenderer.dispose()
 })
 
 test("local reconciliation compares a server snapshot with matching client-local history", () => {
@@ -2337,6 +2499,14 @@ test("team structures mount world-space HP bars and protect the town hall visual
   assert.equal(tower.userData.objectiveHealthFill.scale.x, tower.userData.objectiveHealthFill.userData.fullWidth * .5)
   assert.equal(hall.userData.objectiveProtection.visible, true)
   assert.ok(hall.getObjectByName("town-hall-protected-shield"))
+  for (const role of ["team-town-hall-timber", "team-town-hall-door", "team-town-hall-window", "team-town-hall-banner"]) {
+    assert.ok(hall.getObjectByName(role), `town hall lacks ${role}`)
+  }
+  for (const role of ["team-tower-battlement", "team-tower-window", "team-tower-banner", "team-tower-balcony"]) {
+    assert.ok(tower.getObjectByName(role), `tower lacks ${role}`)
+  }
+  assert.ok(hall.getObjectByName("team-town-hall-roof").children.length >= 2)
+  assert.ok(tower.getObjectByName("team-tower-roof").geometry)
   const protectionLabel = hall.getObjectByName("town-hall-protected-label")
   assert.ok(protectionLabel)
   assert.equal(protectionLabel.renderOrder, 4)
@@ -2716,6 +2886,39 @@ test("ordinary grass is a single flat green ground without dense black-prone ins
   assert.equal(root.children[0], ground.mesh)
   assert.equal(ground.mesh.userData.role, "grass-ground")
   assert.equal(ground.mesh.material.color.getHex(), 0x4f9b50)
+})
+
+test("city collision cells use concrete-like fixed-size wall visuals and rubble", () => {
+  const wall = createProp(
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "building_wall", blocking: true},
+    4,
+    new THREE.Texture(),
+  )
+  const rubble = createProp(
+    {minX: 60, minY: 20, maxX: 100, maxY: 60, type: "building_rubble", blocking: true},
+    5,
+    new THREE.Texture(),
+  )
+  assert.equal(wall.userData.visualType, "building_wall")
+  assert.equal(rubble.userData.visualType, "building_rubble")
+  const wallRoles = new Set()
+  const rubbleRoles = new Set()
+  wall.traverse(child => { if (child.userData?.role) wallRoles.add(child.userData.role) })
+  rubble.traverse(child => { if (child.userData?.role) rubbleRoles.add(child.userData.role) })
+  assert.equal(wallRoles.has("building-masonry"), true)
+  assert.equal(wallRoles.has("building-window"), true)
+  assert.equal(wallRoles.has("building-timber"), true)
+  assert.equal(wallRoles.has("building-window-frame"), true)
+  assert.equal(wallRoles.has("building-plaster-patch"), true)
+  assert.equal(wallRoles.has("building-concrete"), false)
+  assert.equal(rubbleRoles.has("building-rubble"), true)
+  assert.equal(rubbleRoles.has("building-rubble-timber"), true)
+  for (const prop of [wall, rubble]) {
+    prop.traverse(node => {
+      node.geometry?.dispose?.()
+      node.material?.dispose?.()
+    })
+  }
 })
 
 test("grass ground receives directional prop shadows", () => {

@@ -16,7 +16,7 @@ import {
   BUSH_HERO_OPACITY,
   getBushConcealmentMix,
 } from "./BushConcealment"
-import {createClownTaunt} from "./tauntVisuals.js"
+import {CLOWN_TAUNT_DISPLAY_SCALE, createClownTaunt} from "./tauntVisuals.js"
 import {AttackReloadIndicator} from "./AttackReloadIndicator.js"
 import {getSpawnProtectionVisualState} from "./spawnProtectionVisuals.js"
 import {
@@ -33,6 +33,7 @@ import {
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const blend = (speed, delta) => 1 - Math.exp(-speed * delta)
+const TAUNT_BASE_HEIGHT = 6
 const heroSpeed = heroName => HEROES_CONFIG.find(hero => hero.name === heroName)?.speed || ANIMATION_REFERENCE_SPEED
 export const getTeamPresentation = (state, teamBattle, localTeam, isLocalPlayer = false) => {
   if (!teamBattle || !state?.team) return {role: "", color: "#55df57", ring: "#55df57"}
@@ -380,9 +381,9 @@ export class HeroView {
     if (tauntId !== "clown_laugh" || this.disposed) return
     this.tauntRemaining = 1.7
     this.taunt.visible = true
-    this.taunt.position.y = 5.5
+    this.taunt.position.y = TAUNT_BASE_HEIGHT
     this.taunt.rotation.set(0, 0, 0)
-    this.taunt.scale.setScalar(.15)
+    this.taunt.scale.setScalar(CLOWN_TAUNT_DISPLAY_SCALE * .15)
   }
 
   update(delta, time, inBush) {
@@ -434,7 +435,7 @@ export class HeroView {
     const flightMix = clamp(this.flightVisualHeight / FLIGHT_HOVER_HEIGHT, 0, 1)
     const flightBodyHeight = getFlightBodyHeight(this.flightVisualHeight, time)
     if (this.label) this.label.position.y = 4.5 + this.flightVisualHeight
-    if (this.taunt) this.taunt.position.y = 5.5 + this.flightVisualHeight + Math.sin((Number(time) || 0) * 6) * .12
+    if (this.taunt) this.taunt.position.y = TAUNT_BASE_HEIGHT + this.flightVisualHeight + Math.sin((Number(time) || 0) * 6) * .12
     if (this.shadow) {
       const shadowScale = 1 - flightMix * .32
       this.shadow.scale.set(shadowScale, .48, shadowScale)
@@ -514,9 +515,10 @@ export class HeroView {
       const entrance = Math.min(1, elapsed / .18)
       const exit = this.tauntRemaining < .28 ? this.tauntRemaining / .28 : 1
       this.taunt.visible = this.tauntRemaining > 0
-      this.taunt.position.y = 5.5 + this.flightVisualHeight + Math.sin(elapsed * 6) * .12
-      this.taunt.rotation.y += delta * 3.8
-      this.taunt.scale.setScalar((.92 + .12 * Math.sin(elapsed * 8)) * entrance * exit)
+      this.taunt.position.y = TAUNT_BASE_HEIGHT + this.flightVisualHeight + Math.sin(elapsed * 6) * .12
+      this.taunt.rotation.y = Math.sin(elapsed * 3.2) * .16
+      this.taunt.rotation.z = Math.sin(elapsed * 4.4) * .035
+      this.taunt.scale.setScalar(CLOWN_TAUNT_DISPLAY_SCALE * (.92 + .12 * Math.sin(elapsed * 8)) * entrance * exit)
     }
     this.recoil *= Math.exp(-15 * delta)
     this.hit *= Math.exp(-12 * delta)
@@ -549,6 +551,7 @@ export class HeroView {
   dispose() {
     this.disposed = true
     this.animation?.dispose()
+    this.taunt?.userData?.tauntTexture?.dispose?.()
     disposeObjectTree(this.group)
   }
 }

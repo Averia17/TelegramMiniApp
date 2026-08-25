@@ -1,25 +1,11 @@
-# Todo: переработка скиллов активных героев
+# Hero Master Blend Migration Tasks
 
-- [x] Сверить восемь активных наборов с backend, frontend, каталогом и VFX.
-- [x] Изучить актуальные классы и механические паттерны Brawl Stars.
-- [x] Зафиксировать матрицу роли, боевого цикла и допустимого AoE.
-- [x] Снять baseline backend/frontend тестов.
-- [x] Написать RED-тесты на новые контракты Needle, Mina и Brock.
-- [x] Реализовать и проверить упрощённые projectile/impact правила.
-- [x] Написать RED-тесты на отсутствие hidden AoE у Mandy, Kaze и Mico.
-- [x] Удалить hidden AoE/status effects и проверить новые payoff-механики.
-- [x] Написать RED-тесты на один anchor Lumi и projectile burst Katty.
-- [x] Реализовать ground-control Lumi и Katty.
-- [x] Синхронизировать server/frontend/docs описания и fingerprint.
-- [x] Прогнать frontend tests/build, целевые Go-тесты и валидатор каталога.
-- [x] Выполнить короткий browser QA и закрыть task-owned браузер.
-- [x] Повторить полный Go suite и отдельно записать оставшиеся baseline-падения.
-- [x] Выполнить `git diff --check`.
-- [x] Team battle: add configurable party-aware queue units
-- [x] Team battle: form two teams and enforce per-team hero uniqueness
-- [x] Team battle: add diagonal base map and corner spawns
-- [x] Team battle: add town halls, towers, and objective victory
-- [x] Team battle: add territory respawn cooldown
-- [x] Team battle: update map environment harness
-- [x] Team battle: replace sparse map blockout with grouped cover and passable diagonal stream
-- [x] Team battle: add invite-link party flow
+- [x] Inventory current focused scenes and Actions for the in-scope heroes.
+- [x] Add source-contract tests.
+- [x] Implement the focused-scene to master migration for the in-scope heroes.
+- [x] Implement master-only runtime export and validator.
+- [x] Remove in-scope focused sources after validation; keep Zeus sources intact.
+- [x] Regenerate and validate in-scope runtime GLBs.
+- [x] Update dependent scripts/tests/docs.
+- [x] Run focused frontend tests, GLB validation, Blender checks, and browser QA.
+- [ ] Full repository test/build and Zeus migration remain deferred by user request.

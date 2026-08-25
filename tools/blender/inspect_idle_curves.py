@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import bpy
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
@@ -27,11 +33,7 @@ def fcurves(action):
 
 
 for hero, names in CASES.items():
-    bpy.ops.wm.open_mainfile(
-        filepath=os.fspath(SOURCE / hero / "scenes" / "idle.blend")
-    )
-    arm = next(o for o in bpy.context.scene.objects if o.type == "ARMATURE")
-    action = arm.animation_data.action
+    _, scene, arm, action = activate_action(hero, "idle")
     print(f"IDLE {hero} {action.frame_range[:]}")
     for name in names:
         curves = [c for c in fcurves(action) if f'pose.bones["{name}"]' in c.data_path]

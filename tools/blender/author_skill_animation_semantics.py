@@ -10,10 +10,16 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 from pathlib import Path
 
 import bpy
 from mathutils import Euler
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import activate_action, save_master
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
@@ -435,18 +441,10 @@ def sampled_offsets(contract, accents, frame):
 
 
 def author_scene(hero, clip, contract, revision):
-    path = SOURCE / hero / "scenes" / f"{clip}.blend"
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    scene = bpy.context.scene
-    if scene.get("semantic_revision") == revision:
+    path, scene, armature, action = activate_action(hero, clip)
+    if action.get("semantic_revision") == revision:
         print(f"SKIP {hero}/{clip}: already revision {revision}")
         return
-    armature = next((obj for obj in scene.objects if obj.type == "ARMATURE"), None)
-    action = find_action(ACTION_NAMES[clip])
-    if armature is None or action is None:
-        raise RuntimeError(f"{hero}/{clip}: missing armature or canonical action")
-    armature.animation_data_create()
-    armature.animation_data.action = action
 
     accents = ACCENTS[hero][clip]
     target_bones = set().union(*(pose.keys() for pose in accents.values()))
@@ -498,11 +496,17 @@ def author_scene(hero, clip, contract, revision):
     scene["skill_semantic"] = contract["semantic"]
     scene["semantic_revision"] = revision
     scene["authoring_status"] = "semantic-authored"
+    action["skill_semantic"] = contract["semantic"]
+    action["semantic_revision"] = revision
+    action["authoring_status"] = "semantic-authored"
+    action["marker_anticipation"] = contract["frames"][1]
+    action["marker_release"] = contract["release"]
+    action["marker_follow_through"] = contract["frames"][-2]
     scene.frame_start = start
     scene.frame_end = end
     scene.render.fps = 30
     bpy.context.preferences.filepaths.save_version = 0
-    bpy.ops.wm.save_as_mainfile(filepath=os.fspath(path), check_existing=False)
+    save_master(path)
     print(f"AUTHORED {hero}/{clip}")
 
 

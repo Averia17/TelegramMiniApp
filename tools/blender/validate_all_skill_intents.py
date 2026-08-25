@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import bpy
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from master_action_utils import action_marker, activate_action
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
@@ -46,14 +52,18 @@ INTENT_FRAMES = {("brock-zeus", "super"): 42}
 def main() -> None:
     failures = []
     spec = json.loads(SPEC.read_text(encoding="utf-8"))
-    for hero, clips in INTENTS.items():
+    requested = os.environ.get("HERO_FILTER")
+    intents = {requested: INTENTS[requested]} if requested else INTENTS
+    for hero, clips in intents.items():
         for clip, intent in clips.items():
-            path = SOURCE / hero / "scenes" / f"{clip}.blend"
-            bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-            scene = bpy.context.scene
-            markers = {marker.name: marker.frame for marker in scene.timeline_markers}
+            _, _, _, action = activate_action(hero, clip)
+            markers = {
+                name: action_marker(action, name)
+                for name in (intent,)
+                if action_marker(action, name) is not None
+            }
             expected_revision = EXPECTED_REVISIONS.get((hero, clip), 2)
-            if scene.get("readability_revision") != expected_revision:
+            if action.get("readability_revision") != expected_revision:
                 failures.append(
                     f"{hero}/{clip}: readability revision is not {expected_revision}"
                 )
@@ -65,7 +75,7 @@ def main() -> None:
                 failures.append(f"{hero}/{clip}: intent marker is not on release frame")
     if failures:
         raise RuntimeError("\n".join(failures))
-    print("PASS: all focused hero skills carry a semantic intent beat")
+    print("PASS: all master hero Actions carry a semantic intent beat")
 
 
 if __name__ == "__main__":

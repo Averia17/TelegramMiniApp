@@ -33,7 +33,7 @@
       "gadget": {"frames": [1, 6, 13, 21, 30], "release": 13, "semantic": "gather every active garden inward and snap them into one detonation"}
     },
     "brock-zeus": {
-      "attack": {"frames": [0, 3, 6, 10, 16], "release": 6, "semantic": "charge lightning with the cloud, fire forward, recoil once"},
+      "attack": {"frames": [0, 4, 8, 12, 13, 15, 16, 24, 30], "release": 13, "semantic": "draw the cloud into the open glove, charge, fire a linear burst, then reform the cloud behind Zeus"},
       "super": {"frames": [0, 10, 18, 30, 42, 50], "release": 18, "semantic": "call and point three distinct lightning strikes, with the final strike held"},
       "gadget": {"frames": [0, 4, 10, 16], "release": 10, "semantic": "prime the cloud cable and hold a charged next-shot pose without firing"}
     }

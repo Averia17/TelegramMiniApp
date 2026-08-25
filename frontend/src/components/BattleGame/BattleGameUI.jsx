@@ -270,7 +270,7 @@ export const TowerThreatNotice = ({state, localId}) => {
 export const TauntButton = ({cooldown = 0, disabled = false, onUse}) => {
   const pressHandlers = useTouchPressHandlers(onUse)
   return (
-    <button className="battle-ability battle-taunt" title="Показать клоуна над ближайшим противником" aria-label="Показать клоуна над ближайшим противником" disabled={disabled || cooldown > 0} {...pressHandlers}>
+    <button className="battle-ability battle-taunt" title="Показать клоуна над собой" aria-label="Показать клоуна над собой" disabled={disabled || cooldown > 0} {...pressHandlers}>
       <b>{cooldown > 0 ? cooldown.toFixed(1) : "🤡"}</b>
       <span>НАСМЕШКА</span>
     </button>

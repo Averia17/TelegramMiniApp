@@ -91,6 +91,16 @@ const colliderBounds = wall => {
   }
 }
 
+const colliderCircle = wall => {
+  const radius = Number(wall?.colliderRadius)
+  if (!Number.isFinite(radius) || radius <= 0) return null
+  return {
+    x: (Number(wall?.minX) + Number(wall?.maxX)) / 2,
+    y: (Number(wall?.minY) + Number(wall?.maxY)) / 2,
+    radius,
+  }
+}
+
 export const createCollisionIndex = walls => {
   const source = Array.isArray(walls) ? walls : EMPTY_WALLS
   const cells = new Map()
@@ -159,6 +169,22 @@ export const queryCollisionWalls = (index, position, radius, result = null) => {
 const resolveWalls = (position, radius, walls) => {
   let {x, y} = position
   for (const wall of walls || []) {
+    const circle = colliderCircle(wall)
+    if (circle) {
+      const dx = x - circle.x
+      const dy = y - circle.y
+      const distance = Math.hypot(dx, dy)
+      const minimumDistance = radius + circle.radius
+      if (distance >= minimumDistance) continue
+      if (distance > 0.0001) {
+        const push = minimumDistance - distance
+        x += dx / distance * push
+        y += dy / distance * push
+      } else {
+        x += minimumDistance
+      }
+      continue
+    }
     const bounds = colliderBounds(wall)
     const closestX = clamp(x, bounds.minX, bounds.maxX)
     const closestY = clamp(y, bounds.minY, bounds.maxY)

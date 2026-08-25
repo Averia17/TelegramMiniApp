@@ -10,9 +10,6 @@ const angleDistance = (left, right) => Math.abs(Math.atan2(
   Math.sin(left - right),
   Math.cos(left - right),
 ))
-// The regenerated Katty GLB is authored camera-facing; the runtime no longer
-// needs the 180° correction that belonged to the previous export.
-const KATTY_ORIENTATION_OFFSET = 0
 
 runWithBrowser(
   () => launchHeadlessChromium(chromium, {headless: true}),
@@ -46,8 +43,8 @@ runWithBrowser(
       await page.waitForTimeout(900)
       const angle = await page.evaluate(() => window.qa.getView().model.rotation.y)
       assert.ok(
-        angleDistance(angle, expectedAngle + KATTY_ORIENTATION_OFFSET) < 0.25,
-        `Katty facing ${angle} did not reach ${expectedAngle + KATTY_ORIENTATION_OFFSET}`,
+        angleDistance(angle, expectedAngle) < 0.25,
+        `Katty facing ${angle} did not reach ${expectedAngle}`,
       )
       return angle
     }

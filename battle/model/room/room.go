@@ -167,6 +167,7 @@ func (r *Room) expireDisconnectedPlayers() {
 			continue
 		}
 		delete(r.Disconnected, playerID)
+		delete(r.PlayerStates, playerID)
 		r.State.PlayerRemove(playerID)
 	}
 }

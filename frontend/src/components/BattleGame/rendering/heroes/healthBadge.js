@@ -22,9 +22,31 @@ export const getHeroHealthFraction = state => {
   return clamp(current / maximum, 0, 1)
 }
 
+export const getHeroShieldValue = state => Math.max(0, Math.round(Number(state?.shieldHp) || 0))
+
+export const getHeroShieldFraction = state => {
+  const {maximum} = healthValues(state)
+  return clamp(getHeroShieldValue(state) / maximum, 0, 1)
+}
+
+export const getHeroHealthBarSegments = state => {
+  const {current, maximum} = healthValues(state)
+  const shield = getHeroShieldValue(state)
+  const total = Math.max(1, maximum + shield)
+  return {
+    health: clamp(current / total, 0, 1),
+    shield: clamp(shield / total, 0, 1),
+  }
+}
+
 export const formatHeroHealthLabel = state => {
   const {current, maximum} = healthValues(state)
   return `${current} / ${maximum}`
+}
+
+export const formatHeroShieldLabel = state => {
+  const shield = getHeroShieldValue(state)
+  return shield > 0 ? `ЩИТ ${shield}` : ""
 }
 
 export const createHealthBadge = ({
@@ -78,10 +100,13 @@ export const updateHealthBadge = (sprite, state, options = {}) => {
   const displayName = options.displayName || state.name || state.hero || "Hero"
   const marker = options.marker || null
   const health = getHeroHealthFraction(state)
+  const shield = getHeroShieldValue(state)
+  const {health: healthBarFraction, shield: shieldBarFraction} = getHeroHealthBarSegments(state)
+  const shieldLabel = formatHeroShieldLabel(state)
   const nameFontSize = getBattleViewportFontSize(BATTLE_FONT_SIZES.heroName, BATTLE_FONT_SIZES.heroNameCompact)
   const healthFontSize = options.healthFontSize || sprite.userData.healthFontSize || BATTLE_FONT_SIZES.health
   const healthColor = options.healthColor || (health < 0.35 ? "#ff4b57" : health < 0.65 ? "#ffc934" : "#55df57")
-  const signature = `${state.name}:${state.hero}:${state.lives}:${state.maxLives}:${showName}:${displayName}:${nameFontSize}:${healthFontSize}:${healthColor}:${marker?.id || ""}:${marker?.filled || 0}`
+  const signature = `${state.name}:${state.hero}:${state.lives}:${state.maxLives}:${shield}:${showName}:${displayName}:${nameFontSize}:${healthFontSize}:${healthColor}:${marker?.id || ""}:${marker?.filled || 0}`
   if (sprite.userData.signature === signature) return
   sprite.userData.signature = signature
 
@@ -107,8 +132,32 @@ export const updateHealthBadge = (sprite, state, options = {}) => {
   context.fillText(healthText, 128, 34)
   context.fillStyle = "#151d34"
   context.fillRect(38, 47, 180, 17)
+  // Stack both resources in one track: green is current HP, amber is the
+  // extra shield to its right. Hits visibly shorten the amber segment first.
+  const barX = 43
+  const barY = 52
+  const barWidth = 170
+  const barHeight = 7
+  context.fillStyle = "#0d1428"
+  context.fillRect(barX, barY, barWidth, barHeight)
   context.fillStyle = healthColor
-  context.fillRect(43, 52, 170 * health, 7)
+  const healthWidth = barWidth * healthBarFraction
+  context.fillRect(barX, barY, healthWidth, barHeight)
+  if (shield > 0) {
+    const shieldX = barX + healthWidth
+    const shieldWidth = barWidth * shieldBarFraction
+    context.fillStyle = "#ffc247"
+    context.fillRect(shieldX, barY, shieldWidth, barHeight)
+    context.fillStyle = "#fff0a6"
+    context.fillRect(shieldX, barY, shieldWidth, 2)
+    context.font = battleCanvasFont(900, BATTLE_FONT_SIZES.marker)
+    context.textAlign = "right"
+    context.lineWidth = 4
+    context.strokeStyle = "#17213b"
+    context.strokeText(shieldLabel, 213, 73)
+    context.fillStyle = "#ffd45c"
+    context.fillText(shieldLabel, 213, 73)
+  }
   if (marker) {
     context.font = battleCanvasFont(900, BATTLE_FONT_SIZES.marker)
     context.textAlign = "left"
