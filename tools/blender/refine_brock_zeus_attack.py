@@ -8,10 +8,11 @@ import os
 from pathlib import Path
 
 import bpy
+from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[2]
 MASTER = (
-    ROOT / "frontend/assets-source/heroes/brock-zeus/scenes/zeus_rebuild_master.blend"
+    ROOT / "frontend/assets-source/heroes/brock-zeus/zeus_base.blend"
 )
 REPORT = ROOT / "artifacts/brock-zeus-archive-rebuild/archive_rebuild_report.json"
 FPS = 30
@@ -106,6 +107,36 @@ def repair_wrist_seams():
         "ZeusPart_R_Hand": (0.015, -0.015, 0.015),
         "ZeusPart_L_Hand": (0.004, 0.010, 0.010),
     }
+    v5_repairs = {
+        # The source seam was mathematically touching, but the stylized hand
+        # silhouette still left a visible gap in the oblique lobby camera.
+        # Move the whole rigid hand into the matching forearm/cuff so the
+        # overlap survives both the idle pose and the authored skill clips.
+        "ZeusPart_R_Hand": (-0.065, 0.045, 0.060),
+        "ZeusPart_L_Hand": (0.040, 0.010, 0.080),
+    }
+    v6_repairs = {
+        # v5 reduced the gap in the lobby, but the idle silhouette still
+        # exposed a thin background sliver below each cuff. Close that last
+        # visible seam with a conservative cumulative correction.
+        "ZeusPart_R_Hand": (-0.045, 0.030, 0.045),
+        "ZeusPart_L_Hand": (0.030, 0.008, 0.045),
+    }
+    v7_repairs = {
+        # In the oblique lobby camera the previous world-space correction
+        # moved both hands farther toward the screen edges. Bring the hands
+        # inward in the authored X direction and slightly upward so the
+        # wrist stumps overlap the cuffs in the actual player-facing view.
+        "ZeusPart_R_Hand": (0.100, 0.000, 0.020),
+        "ZeusPart_L_Hand": (-0.100, 0.000, 0.020),
+    }
+    v8_repairs = {
+        # Align the actual wrist ends, not just the single closest mesh
+        # vertices used by the seam probe. The imported hand centers were
+        # offset from the cuff axis by almost one wrist radius.
+        "ZeusPart_R_Hand": (0.300, 0.000, 0.120),
+        "ZeusPart_L_Hand": (-0.180, 0.000, 0.100),
+    }
     for name, offset in repairs.items():
         hand = bpy.data.objects.get(name)
         if hand is None:
@@ -120,7 +151,39 @@ def repair_wrist_seams():
                 vertex.co.z -= rollback[2]
             hand.data.update()
             hand["wrist_seam_revision"] = "zeus-wrist-seam-v3"
+        if hand.get("wrist_seam_revision") == "zeus-wrist-seam-v5":
+            for vertex in hand.data.vertices:
+                vertex.co.x += v6_repairs[name][0]
+                vertex.co.y += v6_repairs[name][1]
+                vertex.co.z += v6_repairs[name][2]
+            hand.data.update()
+            hand["wrist_seam_revision"] = "zeus-wrist-seam-v6"
+            continue
+        if hand.get("wrist_seam_revision") == "zeus-wrist-seam-v6":
+            for vertex in hand.data.vertices:
+                vertex.co.x += v7_repairs[name][0]
+                vertex.co.y += v7_repairs[name][1]
+                vertex.co.z += v7_repairs[name][2]
+            hand.data.update()
+            hand["wrist_seam_revision"] = "zeus-wrist-seam-v7"
+            continue
+        if hand.get("wrist_seam_revision") == "zeus-wrist-seam-v7":
+            for vertex in hand.data.vertices:
+                vertex.co.x += v8_repairs[name][0]
+                vertex.co.y += v8_repairs[name][1]
+                vertex.co.z += v8_repairs[name][2]
+            hand.data.update()
+            hand["wrist_seam_revision"] = "zeus-wrist-seam-v8"
+            continue
+        if hand.get("wrist_seam_revision") == "zeus-wrist-seam-v8":
+            continue
         if hand.get("wrist_seam_revision") == "zeus-wrist-seam-v3":
+            for vertex in hand.data.vertices:
+                vertex.co.x += v5_repairs[name][0]
+                vertex.co.y += v5_repairs[name][1]
+                vertex.co.z += v5_repairs[name][2]
+            hand.data.update()
+            hand["wrist_seam_revision"] = "zeus-wrist-seam-v5"
             continue
         for vertex in hand.data.vertices:
             vertex.co.x += offset[0]
@@ -177,6 +240,86 @@ def repair_wrist_bone_pivots(armature):
         hand.use_connect = True
     bpy.ops.object.mode_set(mode="OBJECT")
     armature.data["wrist_pivot_revision"] = "zeus-wrist-pivot-v1"
+
+
+def remove_wrist_bridges(armature):
+    """Remove an experimental bridge that distorted the forearm silhouette."""
+    for side in ("R", "L"):
+        bridge = bpy.data.objects.get(f"ZeusWristBridge_{side}")
+        if bridge is not None:
+            bpy.data.objects.remove(bridge, do_unlink=True)
+    armature.data.pop("wrist_bridge_revision", None)
+
+
+def add_wrist_skin_overlaps(armature):
+    """Add a small hand-weighted skin section under each cuff."""
+    if armature.data.get("wrist_skin_revision") == "zeus-wrist-skin-v1":
+        return
+    material = bpy.data.objects["ZeusPart_R_Hand"].data.materials[0]
+    for side, bone_name in (("R", "R_Hand"), ("L", "L_Hand")):
+        name = f"ZeusWristSkin_{side}"
+        old = bpy.data.objects.get(name)
+        if old is not None:
+            bpy.data.objects.remove(old, do_unlink=True)
+        bone = armature.data.bones[bone_name]
+        seam = Vector(bone.head_local)
+        axis = (Vector(bone.tail_local) - seam).normalized()
+        start = seam - axis * 0.30
+        end = seam + axis * 0.22
+        reference = Vector((0.0, 1.0, 0.0))
+        if abs(axis.dot(reference)) > 0.9:
+            reference = Vector((1.0, 0.0, 0.0))
+        side_axis = axis.cross(reference).normalized()
+        up_axis = axis.cross(side_axis).normalized()
+        vertices = []
+        rings = 8
+        for center, radius in ((start, 0.15), (end, 0.17)):
+            for index in range(rings):
+                angle = math.tau * index / rings
+                vertices.append(tuple(
+                    center
+                    + side_axis * (math.cos(angle) * radius)
+                    + up_axis * (math.sin(angle) * radius)
+                ))
+        faces = []
+        for index in range(rings):
+            next_index = (index + 1) % rings
+            faces.append((index, next_index, rings + next_index, rings + index))
+        faces.extend([tuple(reversed(range(rings))), tuple(range(rings, rings * 2))])
+        mesh = bpy.data.meshes.new(name)
+        mesh.from_pydata(vertices, [], faces)
+        mesh.materials.append(material)
+        skin = bpy.data.objects.new(name, mesh)
+        bpy.context.collection.objects.link(skin)
+        skin.parent = armature
+        skin.matrix_parent_inverse = armature.matrix_world.inverted()
+        skin.vertex_groups.new(name=bone_name).add(range(rings * 2), 1.0, "REPLACE")
+        modifier = skin.modifiers.new("BrockZeus_Rig", "ARMATURE")
+        modifier.object = armature
+        skin["attachment_role"] = "body-wrist-skin"
+        skin["wrist_skin_revision"] = "zeus-wrist-skin-v1"
+    armature.data["wrist_skin_revision"] = "zeus-wrist-skin-v1"
+
+
+def align_wrist_finger_assemblies():
+    """Move the separate finger meshes with their matching palm."""
+    corrections = {
+        "R": (0.302, 0.063, 0.237),
+        "L": (-0.206, 0.028, 0.255),
+    }
+    for side, offset in corrections.items():
+        for part in ("Index_02", "Thumb_01", "Thumb_02"):
+            hand = bpy.data.objects.get(f"ZeusPart_{side}_{part}")
+            if hand is None:
+                continue
+            if hand.get("wrist_assembly_revision") == "zeus-wrist-assembly-v1":
+                continue
+            for vertex in hand.data.vertices:
+                vertex.co.x += offset[0]
+                vertex.co.y += offset[1]
+                vertex.co.z += offset[2]
+            hand.data.update()
+            hand["wrist_assembly_revision"] = "zeus-wrist-assembly-v1"
 
 
 def apply_pose(armature, pose):
@@ -454,6 +597,9 @@ def main():
     refine_idle_pose()
     repair_wrist_seams()
     repair_wrist_bone_pivots(armature)
+    remove_wrist_bridges(armature)
+    align_wrist_finger_assemblies()
+    add_wrist_skin_overlaps(armature)
     author_character_attack(armature)
     author_cloud_attack(cloud)
     update_report()

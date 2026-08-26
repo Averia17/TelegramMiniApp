@@ -377,6 +377,46 @@ func botProximityScore(distance, maxDistance, weight float64) float64 {
 	return math.Max(0, 1-distance/maxDistance) * weight
 }
 
+const botBatContestRadius = 220.0
+
+// botMonsterContestedByEnemy is deliberately perception-limited. A camp is
+// contested only when the bot can currently see a live enemy close enough to
+// contest the bat; map-wide player coordinates must not turn neutral farming
+// into omniscient target selection.
+func (gs *GameState) botMonsterContestedByEnemy(bot *player.Player, target *botTarget, now int64) bool {
+	if gs == nil || bot == nil || target == nil || target.monster == nil || !target.monster.IsAlive() {
+		return false
+	}
+	for _, candidate := range gs.Players {
+		if candidate == nil || candidate.PlayerId == bot.PlayerId || !candidate.IsAlive() || candidate.InvulnerableUntil > now || candidate.Team == bot.Team {
+			continue
+		}
+		if math.Hypot(candidate.X-target.x, candidate.Y-target.y) > botBatContestRadius || !candidate.CanBulletHurt(bot.PlayerId, bot.Team) {
+			continue
+		}
+		if gs.botCanSee(bot, candidate, now) {
+			return true
+		}
+	}
+	return false
+}
+
+func (gs *GameState) botHasVisibleContestedMonster(bot *player.Player, now int64) bool {
+	if gs == nil || bot == nil {
+		return false
+	}
+	for id, candidate := range gs.Monsters {
+		if candidate == nil || !gs.botCanSeeMonster(bot, candidate) {
+			continue
+		}
+		target := &botTarget{kind: "monster", id: id, monster: candidate, x: candidate.X, y: candidate.Y}
+		if gs.botMonsterContestedByEnemy(bot, target, now) {
+			return true
+		}
+	}
+	return false
+}
+
 func (gs *GameState) botTargetScore(bot *player.Player, target *botTarget, now int64) float64 {
 	if bot == nil || target == nil {
 		return math.Inf(-1)
@@ -417,6 +457,12 @@ func (gs *GameState) botTargetScore(bot *player.Player, target *botTarget, now i
 	score = 8 + botProximityScore(target.distance, BotVisionRange, 20)
 	if target.distance <= botAttackRange(bot)+target.radius() {
 		score += 12
+	}
+	if gs.botMonsterContestedByEnemy(bot, target, now) {
+		// A contested camp is a deliberate PvP opportunity, not background
+		// farming. It becomes worth contesting, while the selection guard below
+		// still keeps the visible hero as the actual combat target.
+		score += 18
 	}
 	if memory := gs.BotMemory[bot.PlayerId]; memory != nil && memory.TargetType == "monster" &&
 		memory.TargetID == target.id && now-memory.LastSeenAt <= BotTargetStickDuration.Milliseconds() {
@@ -476,7 +522,7 @@ func (gs *GameState) botSelectTarget(bot *player.Player, now int64) *botTarget {
 	if bot == nil {
 		return nil
 	}
-	var best, sticky *botTarget
+	var best, bestPlayer, bestMonster, sticky *botTarget
 	consider := func(candidate *botTarget) {
 		memory := gs.BotMemory[bot.PlayerId]
 		if memory != nil && memory.TargetType == candidate.kind && memory.TargetID == candidate.id {
@@ -484,6 +530,12 @@ func (gs *GameState) botSelectTarget(bot *player.Player, now int64) *botTarget {
 		}
 		if best == nil || candidate.score > best.score || (candidate.score == best.score && candidate.id < best.id) {
 			best = candidate
+		}
+		if candidate.player != nil && (bestPlayer == nil || candidate.score > bestPlayer.score || (candidate.score == bestPlayer.score && candidate.id < bestPlayer.id)) {
+			bestPlayer = candidate
+		}
+		if candidate.monster != nil && (bestMonster == nil || candidate.score > bestMonster.score || (candidate.score == bestMonster.score && candidate.id < bestMonster.id)) {
+			bestMonster = candidate
 		}
 	}
 	for id, candidate := range gs.Players {
@@ -503,6 +555,12 @@ func (gs *GameState) botSelectTarget(bot *player.Player, now int64) *botTarget {
 		target := &botTarget{kind: "monster", id: id, monster: candidate, x: candidate.X, y: candidate.Y, distance: distance}
 		target.score = gs.botTargetScore(bot, target, now)
 		consider(target)
+	}
+	if bestPlayer != nil && bestMonster != nil && gs.botMonsterContestedByEnemy(bot, bestMonster, now) {
+		// Do not let the camp's contest bonus make the bot shoot a bat while the
+		// enemy who is contesting it is visible. The camp can create a fight;
+		// it must never hide the fight's primary target.
+		return bestPlayer
 	}
 	if memory := gs.BotMemory[bot.PlayerId]; memory != nil && sticky != nil && now < memory.DecisionUntil {
 		// Humans usually commit to a fight for a short burst instead of

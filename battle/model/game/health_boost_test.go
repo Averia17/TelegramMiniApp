@@ -105,6 +105,63 @@ func TestMonsterDeathAlwaysAppendsOneHealthBoostDrop(t *testing.T) {
 	}
 }
 
+func TestBatRewardKeepsTheLethalClaimantAndTeamVisibility(t *testing.T) {
+	gs := newTestGameState()
+	gs.Mode = ModeTeamDeathmatch
+	gs.State = GameStateGame
+	gs.PlayerAdd("killer", "Killer", "Kaze")
+	killer := gs.Players["killer"]
+	killer.Team = "Blue"
+	target := monster.NewMonster(140, 100, 16, 512, 512, 1)
+	gs.Monsters["bat"] = target
+
+	if !gs.damageMonster("bat", target, 1, killer.PlayerId) {
+		t.Fatal("monster was not killed")
+	}
+	if len(gs.Props) != 1 {
+		t.Fatalf("monster reward count=%d, want one", len(gs.Props))
+	}
+	reward := gs.Props[0]
+	if reward.HealthBoostKillerID != killer.PlayerId || reward.VisibilityTeam != killer.Team || reward.VisibilityPlayerID != "" {
+		t.Fatalf("bat reward claimant=%q team=%q player=%q, want killer/team ownership", reward.HealthBoostKillerID, reward.VisibilityTeam, reward.VisibilityPlayerID)
+	}
+}
+
+func TestBatRewardTelemetryDistinguishesDeniedEnemyAndTeamClaim(t *testing.T) {
+	gs := newTestGameState()
+	gs.Mode = ModeTeamDeathmatch
+	gs.State = GameStateGame
+	gs.PlayerAdd("killer", "Killer", "Kaze")
+	gs.PlayerAdd("ally", "Ally", "Needle")
+	gs.PlayerAdd("enemy", "Enemy", "Mandy")
+	killer, ally, enemy := gs.Players["killer"], gs.Players["ally"], gs.Players["enemy"]
+	killer.Team, ally.Team, enemy.Team = "Blue", "Blue", "Red"
+	killer.X, killer.Y = 100, 100
+	ally.X, ally.Y = 120, 100
+	enemy.X, enemy.Y = 100, 100
+	reward := prop.NewProp("health_boost", killer.X, killer.Y, 12)
+	reward.LootType = "bat"
+	reward.LootSourceID = "bat-camp"
+	reward.HealthBoostKillerID = killer.PlayerId
+	reward.VisibilityTeam = killer.Team
+	gs.Props = append(gs.Props, reward)
+
+	gs.collectPickups(enemy)
+	if !reward.Active {
+		t.Fatal("enemy attempt consumed a team-owned bat reward")
+	}
+	gs.collectPickups(killer)
+
+	metrics := gs.BatLifecycleMetricsSnapshot()
+	if metrics.RewardClaims != 1 || metrics.RewardDenials != 1 || metrics.RewardClaimsByRole["Assassin"] != 1 {
+		t.Fatalf("bat reward claim metrics = %#v, want one denied enemy and one attributed team claim", metrics)
+	}
+	events := gs.BatLifecycleTimelineSnapshot()
+	if len(events) != 2 || events[0].Kind != "denial" || events[0].BatID != "bat-camp" || events[0].ClaimantID != enemy.PlayerId || events[1].Kind != "claim" || events[1].BatID != "bat-camp" || events[1].ClaimantID != killer.PlayerId || events[1].KillerID != killer.PlayerId {
+		t.Fatalf("bat reward claimant timeline = %#v, want denied enemy then successful killer claim", events)
+	}
+}
+
 func TestMonsterDeathSchedulesOneRewardPerDeterministicCampCycle(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame

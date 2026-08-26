@@ -374,7 +374,11 @@ export class AssetRegistry {
       })
     }
     normalizeHeroHeight(root, asset.targetHeight || 2.45)
-    mergeHeroRenderParts(root)
+    // Brock Zeus has rigidly authored elbow/hand pieces whose bind matrices
+    // must remain independent. Merging these SkinnedMeshes into one shared
+    // skeleton wrapper changes their visual seam in the lobby preview even
+    // though the source GLB skinning is correct.
+    if (resolvedName !== "Brock Zeus") mergeHeroRenderParts(root)
     root.scale.multiplyScalar(asset.scale)
     root.position.y += asset.groundOffset || 0
     root.rotation.y = asset.rotationOffset

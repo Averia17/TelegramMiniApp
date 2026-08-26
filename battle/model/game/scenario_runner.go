@@ -43,6 +43,7 @@ type CombatScenarioReport struct {
 	Checkpoints        []CombatScenarioCheckpoint `json:"checkpoints"`
 	EventIDs           []uint64                   `json:"eventIds,omitempty"`
 	Metrics            []CombatScenarioMetric     `json:"metrics,omitempty"`
+	BatTimeline        []BatTimelineEvent         `json:"batTimeline,omitempty"`
 }
 
 type CombatScenarioRunner struct {
@@ -226,6 +227,7 @@ func (runner *CombatScenarioRunner) RecordBotAIMetrics(prefix string) error {
 		"attackHits":                float64(metrics.AttackHits),
 		"peelDecisions":             float64(metrics.PeelDecisions),
 		"resourceContestDecisions":  float64(metrics.ResourceContestDecisions),
+		"batFarmDecisions":          float64(metrics.BatFarmDecisions),
 		"spawnProtectionAvoidances": float64(metrics.SpawnProtectionAvoidances),
 		"stuckReplans":              float64(metrics.StuckReplans),
 		"idleDecisionTicks":         float64(metrics.IdleDecisionTicks),
@@ -240,6 +242,57 @@ func (runner *CombatScenarioRunner) RecordBotAIMetrics(prefix string) error {
 		if samples := metrics.ActionScoreSamples[action]; samples > 0 {
 			values["actionScore."+action] = sum / float64(samples)
 		}
+	}
+	for role, count := range metrics.ResourceContestByRole {
+		values["contestRole."+role] = float64(count)
+	}
+	keys := make([]string, 0, len(values))
+	for name := range values {
+		keys = append(keys, name)
+	}
+	sort.Strings(keys)
+	for _, name := range keys {
+		if err := runner.RecordMetric(prefix+"."+name, values[name]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RecordBatLifecycleMetrics copies the neutral camp lifecycle counters into a
+// scenario report, keeping world telemetry replayable without adding it to the
+// live snapshot protocol.
+func (runner *CombatScenarioRunner) RecordBatLifecycleMetrics(prefix string) error {
+	if runner == nil || runner.state == nil {
+		return fmt.Errorf("scenario bat metrics require a state")
+	}
+	if prefix == "" {
+		prefix = "bat"
+	}
+	metrics := runner.state.BatLifecycleMetricsSnapshot()
+	values := map[string]float64{
+		"noticeStarts":      float64(metrics.NoticeStarts),
+		"noticeCancels":     float64(metrics.NoticeCancels),
+		"windupStarts":      float64(metrics.WindupStarts),
+		"strikes":           float64(metrics.Strikes),
+		"rewards":           float64(metrics.Rewards),
+		"respawns":          float64(metrics.Respawns),
+		"rewardClaims":      float64(metrics.RewardClaims),
+		"rewardDenials":     float64(metrics.RewardDenials),
+		"firstDamageEvents": float64(metrics.FirstDamageEvents),
+		"contestStarts":     float64(metrics.ContestStarts),
+		"damageEvents":      float64(metrics.DamageEvents),
+		"effectiveDamage":   float64(metrics.EffectiveDamage),
+		"rewardExpiries":    float64(metrics.RewardExpiries),
+	}
+	if metrics.NoticeStarts > 0 {
+		values["noticeToStrikeRate"] = float64(metrics.Strikes) / float64(metrics.NoticeStarts)
+	}
+	for role, count := range metrics.RewardClaimsByRole {
+		values["rewardClaimRole."+role] = float64(count)
+	}
+	for role, damage := range metrics.DamageByRole {
+		values["damageRole."+role] = float64(damage)
 	}
 	keys := make([]string, 0, len(values))
 	for name := range values {
@@ -269,7 +322,7 @@ func (runner *CombatScenarioRunner) Report() CombatScenarioReport {
 		ScenarioID: runner.scenarioID, Seed: runner.seed,
 		CombatProfileID: CombatProfileID, CombatRulesVersion: CombatRulesVersion,
 		Mode: runner.mode, Inputs: inputs, Checkpoints: checkpoints, EventIDs: eventIDs,
-		Metrics: metrics,
+		Metrics: metrics, BatTimeline: runner.state.BatLifecycleTimelineSnapshot(),
 	}
 }
 
@@ -305,6 +358,16 @@ func ValidateCombatScenarioReport(report CombatScenarioReport) error {
 			return fmt.Errorf("scenario metric at index %d has no name", index)
 		}
 	}
+	var previousTimelineAt int64
+	for index, event := range report.BatTimeline {
+		if event.AtMs < 0 || event.Kind == "" {
+			return fmt.Errorf("invalid bat timeline event at index %d", index)
+		}
+		if index > 0 && event.AtMs < previousTimelineAt {
+			return fmt.Errorf("bat timeline is not monotonic")
+		}
+		previousTimelineAt = event.AtMs
+	}
 	return nil
 }
 
@@ -321,6 +384,7 @@ type combatStateHashMonster struct {
 	X, Y            float64
 	Lives, MaxLives int
 	State           monster.MonsterState
+	NoticeUntil     int64
 	WindupUntil     int64
 }
 
@@ -387,7 +451,7 @@ func HashCombatState(state *GameState) string {
 			if m == nil {
 				continue
 			}
-			projection.Monsters = append(projection.Monsters, combatStateHashMonster{ID: id, X: m.X, Y: m.Y, Lives: m.Lives, MaxLives: m.MaxLives, State: m.State, WindupUntil: m.AttackWindupUntil})
+			projection.Monsters = append(projection.Monsters, combatStateHashMonster{ID: id, X: m.X, Y: m.Y, Lives: m.Lives, MaxLives: m.MaxLives, State: m.State, NoticeUntil: m.NoticeUntil, WindupUntil: m.AttackWindupUntil})
 		}
 		respawnIDs := make([]string, 0, len(state.MonsterRespawns))
 		for id := range state.MonsterRespawns {

@@ -639,6 +639,61 @@ func TestBotAttacksVisibleMonsterWithItsSelectedTarget(t *testing.T) {
 	}
 }
 
+func TestBotRaisesPriorityForAVisibleContestedBat(t *testing.T) {
+	gs := &GameState{Map: &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}, Walls: geometry.NewSpatialHash(TileSize)}
+	bot := perceptionPlayer("bot", 100, 100)
+	bot.Team = "Blue"
+	enemy := perceptionPlayer("enemy", 280, 100)
+	enemy.Team = "Red"
+	bat := monster.NewMonster(220, 100, 16, 1000, 1000, monster.MonsterLives)
+
+	gs.Players = map[string]*player.Player{bot.PlayerId: bot, enemy.PlayerId: enemy}
+	gs.Monsters = map[string]*monster.Monster{"bat": bat}
+	plainBat := &botTarget{kind: "monster", id: "bat", monster: bat, x: bat.X, y: bat.Y, distance: 120}
+	contestedBat := &botTarget{kind: "monster", id: "bat", monster: bat, x: bat.X, y: bat.Y, distance: 120}
+	gs.Players[enemy.PlayerId].X = 800
+	plainScore := gs.botTargetScore(bot, plainBat, 10_000)
+	gs.Players[enemy.PlayerId].X = 280
+	contestedScore := gs.botTargetScore(bot, contestedBat, 10_000)
+
+	if contestedScore <= plainScore {
+		t.Fatalf("contested bat score=%.1f, plain score=%.1f; contest should be an explicit decision signal", contestedScore, plainScore)
+	}
+}
+
+func TestBotKeepsVisibleHeroPriorityOverContestedBat(t *testing.T) {
+	gs := &GameState{Map: &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}, Walls: geometry.NewSpatialHash(TileSize)}
+	bot := perceptionPlayer("bot", 100, 100)
+	bot.Team = "Blue"
+	enemy := perceptionPlayer("enemy", 500, 100)
+	enemy.Team = "Red"
+	bat := monster.NewMonster(420, 100, 16, 1000, 1000, monster.MonsterLives)
+	gs.Players = map[string]*player.Player{bot.PlayerId: bot, enemy.PlayerId: enemy}
+	gs.Monsters = map[string]*monster.Monster{"bat": bat}
+
+	selected := gs.botSelectTarget(bot, 10_000)
+	if selected == nil || selected.kind != "player" || selected.player != enemy {
+		t.Fatalf("bot selected %q instead of the visible contesting hero", targetID(selected))
+	}
+}
+
+func TestBotBreaksBatCommitmentWhenHeroContestsCamp(t *testing.T) {
+	gs := &GameState{Map: &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}, Walls: geometry.NewSpatialHash(TileSize), BotMemory: map[string]*BotPerception{}}
+	bot := perceptionPlayer("bot", 100, 100)
+	bot.Team = "Blue"
+	enemy := perceptionPlayer("enemy", 500, 100)
+	enemy.Team = "Red"
+	bat := monster.NewMonster(420, 100, 16, 1000, 1000, monster.MonsterLives)
+	gs.Players = map[string]*player.Player{bot.PlayerId: bot, enemy.PlayerId: enemy}
+	gs.Monsters = map[string]*monster.Monster{"bat": bat}
+	gs.BotMemory[bot.PlayerId] = &BotPerception{TargetType: "monster", TargetID: "bat", DecisionUntil: 20_000}
+
+	selected := gs.botSelectTarget(bot, 10_000)
+	if selected == nil || selected.kind != "player" || selected.player != enemy {
+		t.Fatalf("bot kept sticky bat target during an active contest: %q", targetID(selected))
+	}
+}
+
 func TestBotPrioritizesProjectileDodgeOverVisibleMonster(t *testing.T) {
 	gs := newTestGameState()
 	gs.Map = &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480}

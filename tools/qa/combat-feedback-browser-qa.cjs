@@ -4,7 +4,7 @@ const {chromium} = require(path.resolve(__dirname, "../../frontend/node_modules/
 const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cjs")
 
 const ROOT = path.resolve(__dirname, "../..")
-const BASE_URL = process.env.COMBAT_FEEDBACK_QA_URL || "http://localhost"
+const BASE_URL = process.env.COMBAT_FEEDBACK_QA_URL || "http://127.0.0.1"
 const DEV_USER = process.env.COMBAT_FEEDBACK_QA_USER || String(920000000 + Math.floor(Math.random() * 9999999))
 const OUTPUT = path.join(ROOT, "output", "playwright", "combat-feedback")
 
@@ -21,7 +21,10 @@ runWithBrowser(
     })
     page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
 
-    await page.goto(`${BASE_URL}/?devUser=${encodeURIComponent(DEV_USER)}`, {waitUntil: "domcontentloaded", timeout: 30000})
+    // The local gateway can keep third-party Telegram/font requests open while
+    // the app is already usable. Wait for the document commit and then for the
+    // actual lobby control instead of coupling QA to those external resources.
+    await page.goto(`${BASE_URL}/?devUser=${encodeURIComponent(DEV_USER)}`, {waitUntil: "commit", timeout: 30000})
     await page.locator(".hero-roster-button").click()
     const cards = page.locator(".hero-roster .hero-card")
     await cards.nth(0).click()

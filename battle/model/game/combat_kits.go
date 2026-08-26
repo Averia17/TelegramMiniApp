@@ -262,7 +262,7 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 			continue
 		}
 		damage := mandyStrikeDamage(source.AttackDmg, focused, gadgetArmed)
-		gs.damageMonster(id, target, damage)
+		gs.damageMonster(id, target, damage, source.PlayerId)
 	}
 	if gs.Mode == ModeTeamDeathmatch {
 		for _, objective := range gs.Objectives {
@@ -358,7 +358,7 @@ func (gs *GameState) updatePendingMandySupers() {
 		}
 		for id, target := range gs.Monsters {
 			if target != nil && target.IsAlive() && insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {
-				gs.damageMonster(id, target, 140)
+				gs.damageMonster(id, target, 140, cast.Owner)
 			}
 		}
 		gs.destroyWallsInBeam(cast.X, cast.Y, cast.Angle, reach, 50)

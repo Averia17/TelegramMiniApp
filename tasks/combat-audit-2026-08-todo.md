@@ -37,10 +37,11 @@ T3, T11, T12, T15 и T16 можно выполнять параллельно п
 - [x] T14b: построить generated Go/JS views и fingerprint report.
 - [x] Починить canonical master asset Brock Zeus, stale fingerprint и текущие
       frontend failures.
-- [ ] Прогнать baseline tests и снять balance/topology/pacing reports.
+- [x] Прогнать baseline tests и снять baseline topology report; balance
+      before/after и pacing comparison остаются отдельными gates.
 
-Текущий baseline на 2026-08-26: `go test ./...` проходит; frontend — 580
-тестов, 576 pass, 0 fail, 4 skipped. `validate_hero_catalog.py`, profile
+Текущий baseline на 2026-08-26: `go test ./...` проходит; frontend — 584
+теста, 580 pass, 0 fail, 4 skipped. `validate_hero_catalog.py`, profile
 validator, generated-view check, ESLint и production build проходят.
 
 ## Phase 1 — общий combat contract
@@ -65,14 +66,21 @@ validator, generated-view check, ESLint и production build проходят.
 ## Phase 3 — карта и единая HP-экономика
 
 - [ ] T12: topology report, spawn safety, LOS, camps и resource routes.
+      Dynamic route report, safety gates и team-lane p50/p90 arrival deltas
+      для bat/health_boost реализованы; для полного T12 остаётся solo seed
+      fairness.
 - [x] T6: удалить health crates/potion-red/auto-team HP reward.
 - [ ] T6: оставить зелёный cube, который меняет только MaxHP, с cap/TTL/ownership.
       MaxHP-only, cap, TTL и hero/team ownership реализованы; safe-position,
-      no-benefit consumption guard реализованы; active-budget и contest
-      telemetry остаются.
+      no-benefit consumption guard реализованы; active-budget остаётся.
 - [ ] T6: сделать bats camps с patrol, telegraph, leash, contest и reward.
       Patrol, wind-up/strike, leash/return, deterministic respawn и reward
-      cycle реализованы; notice-state и contest telemetry остаются.
+      cycle реализованы; bot-side contest signal/telemetry теперь добавлены,
+      notice-state теперь фиксирует цель на 350 ms и передаётся в snapshot;
+      world-level lifecycle telemetry (notice/cancel/windup/strike/reward/
+      respawn) теперь собирается в replay и bounded metrics; role-level bot
+      response и reward ownership/claim-denial/claim outcome также
+      экспортируются; bounded claimant timeline добавлен в scenario report.
 
 ## Phase 4 — полный roster
 
@@ -102,7 +110,7 @@ validator, generated-view check, ESLint и production build проходят.
 - [x] `cd battle; go test ./...`
 - [x] `cd frontend; npm test`
 - [x] `cd frontend; npm run build`
-- [ ] Deterministic combat/bot scenarios pass.
+- [x] Deterministic combat/bot scenarios pass.
 - [ ] Focused browser QA for ranged, melee, support, zone, bat and team fight.
 - [x] `git diff --check`.
 
@@ -115,9 +123,21 @@ validator, generated-view check, ESLint и production build проходят.
       replayable 3v3 utility/peel с bot accuracy metric; Kaze smoke matrix
       теперь закрывает accuracy tiers и direct trade с валидируемым
       attempts/hits ratio, roster basic smoke закрывает readable hit path для
-      8 героев, полный balance/counter matrix остаётся.
+      8 героев, counter-role smoke закрывает базовые entry/disengage пары Kaze
+      и Brock, skill-centrality smoke проверяет измеримый Super effect всех 8
+      героев, time-injected bot reports проверяют активность solo/team и zero
+      unexplained idle, role benchmark проверяет tactical priority всех 8
+      героев, counter-role movement matrix прогоняет entry/keep-distance для
+      всех 8, outcome matrix теперь сохраняет full-ammo damage/deletion,
+      cadence/reload/basic DPS и finite TTK для всех 8; skill conversion и
+      counterplay-window matrix теперь проверяет wind-up/feedback phase всех 8;
+      skill-conversion matrix проверяет basic-vs-Super outcome всех 8, а
+      miss-path smoke закрывает отсутствие урона при ошибочном aim; полный
+      balance/counter matrix и historical delta остаются.
 - [ ] Before/after report с TTK, basic downtime, full-ammo deletion rate,
-      skill conversion и counterplay window.
+      skill conversion и counterplay window. Сейчас есть replayable baseline
+      TTK/cadence/full-ammo reports, но нет исторического before-профиля и
+      сводной after/before delta-таблицы.
 - [ ] Combat event schema с `matchId`, `phase`, `hero`, `source`, `target`,
       `abilitySlot`, `distance`, `effectiveDamage`, `accepted/reason` и
       `resourceBefore/resourceAfter`.
@@ -125,10 +145,16 @@ validator, generated-view check, ESLint и production build проходят.
 - [ ] AI utility report: hard interrupt count, action score, target switches,
       retreat, skill use, resource contest и basic attack accuracy уже
       экспортируются; idle decision ticks и mean score по action теперь тоже
-      экспортируются, но накопление по полной role/mode matrix и time-based
-      idle/stuck report ещё открыто.
+      экспортируются; time-injected solo/team smoke теперь подтверждает
+      active decisions, attack attempts и zero unexplained idle, но накопление
+      по полной role/mode matrix, role-specific match outcomes и stuck report
+      ещё открыто.
 - [ ] Visual timeline test: intent → cast → telegraph → active → impact →
-      status, включая отсутствие эффекта при промахе.
+      status, включая отсутствие эффекта при промахе. Counterplay-window smoke
+      уже закрывает wind-up и phase mapping Super для 8 героев; полный timeline
+      теперь проверяет accepted command и конкретные initial/impact effects для
+      всех 8 Super; базовый и Super miss-path уже проверены, status/intent
+      timeline в браузере остаётся.
 
 ## Третий проход — implementation task cards
 
@@ -254,7 +280,9 @@ before/after matrix.
 - [ ] Ввести cube budget, TTL, cap, ownership и безопасный drop position.
       Сейчас закрыты profile TTL (30s), snapshot/expiry loop, 5-stack cap,
       hero-team ownership, safe-position fallback и deterministic bat
-      reward-per-cycle; общий active-budget/contest telemetry остаётся. Если
+      reward-per-cycle; lifecycle telemetry, role-level bot response и
+      claimant ownership/claim-denial telemetry закрыты; общий active-budget
+      остаётся. Если
       команда полностью на cap, cube не потребляется без state change.
 - [x] Обновить `ApplyHealthBoost`/tests: `MaxLives` растёт, текущие `Lives`
       при подборе не растут.
@@ -262,8 +290,11 @@ before/after matrix.
 - [ ] Перевести bats на patrol/notice/chase/wind-up/strike/leash/reward.
       Выполнено первым runtime-срезом: patrol вместо простоя, server-side
       wind-up/strike с отменой при потере цели, leash/return и deterministic
-      respawn с одним reward за цикл camp. Notice-state и contest metrics
-      остаются отдельным следующим срезом.
+      respawn с одним reward за цикл camp. Notice-state, world lifecycle
+      counters и bot-side contest response по роли теперь входят в
+      runtime/telemetry; reward ownership, first damage, team contest start,
+      damage contribution, denied enemy claim, expiry и successful
+      role-attributed claim теперь также фиксируются.
 - [x] Явно оставить lunar non-HP loot вне Phase-1 HP profile или выключить его
       отдельным flag; не смешивать его с зелёным cube.
       Профиль объявляет healthPickupIds=[health_boost] и отделяет lunar loot
@@ -303,17 +334,24 @@ scenario report and review before next hero.
 - [ ] Ввести role-aware engage/retreat/skill/cube/bat/objective policies.
       Первый decision-срез закрыт для engage/retreat/green cube; добавлен
       expected-value выбор Super против Gadget по роли и боевой ситуации.
-      Bat/objective policies пока используют существующие seams и требуют
-      отдельного contest/assignment слоя.
+      Добавлен отдельный `batResourceBehavior`: только flank/assassin ведёт
+      известный живой camp, когда нет видимого героя и нет критического HP/cap;
+      выбор отражается в bounded `batFarmDecisions` metric. Для видимого
+      contested camp добавлены perception-limited contest score, общий helper
+      для utility/target selection и interrupt sticky bat-target при появлении
+      героя-конкурента; contest response записывается отдельно от обычного
+      фарма в `resourceContestDecisions`. Objective policy и полная
+      contest/assignment матрица всё ещё требуют отдельного слоя.
 - [ ] Добавить team assignments, focus fire, regroup и revive/respawn awareness.
       Role-to-assignment слой уже добавлен для team bots (`support`, `flank`,
       `anchor`, `frontline`) и меняет порядок tactical policies; focus fire
       закреплён через recent ally contact, peel теперь реагирует на recent
       ally damage, а spawn-protected targets исключаются. Resource contest
       scoring добавлен для публичного зелёного cube; bat contest учитывается
-      через contested-target utility, respawn awareness ведёт team bot к
-      ближайшему союзному spawn перед возрождением. Остались полная scenario
-      matrix и accuracy/idle reports.
+      через единый perception-limited target/utility signal с приоритетом
+      видимого героя над camp, respawn awareness ведёт team bot к ближайшему
+      союзному spawn перед возрождением. Остались полная scenario matrix и
+      accuracy/idle reports.
 
 **Acceptance:** bot не idle/stuck, не игнорирует безопасный ресурс без причины,
 не убегает без угрозы, применяет skill по ожидаемой ценности и объясняет
@@ -382,10 +420,18 @@ hard CC, immunity, escape и sustain без явной цены; role signature 
 **Depends on:** T0. **Likely files:** `battle/model/gamemap/*`, map protocol,
 minimap/pickup renderer, map tests and deterministic scenario runner.
 
-- [ ] Снять topology report: spawn safety, cover, LOS, choke, route count,
-      camp timing, resource contest и drop safety.
-- [ ] Удалить authored potion-red sustain points или превратить их в camp/lair
-      landmarks, не перекрашивать механически.
+- [x] Снять static topology report: spawn reachability, collision/cover,
+      bridge/vine/choke geometry, route reachability и visual sectors.
+      Артефакт: `output/playwright/abandoned-city-map/global-audit/report.json`.
+- [x] Дополнить topology report динамическими camp timing, resource contest и
+      green-cube drop-safety p50/p90 измерениями. Повторяемый запуск:
+      `cd battle; go run ./cmd/resource-topology-report`. Текущий baseline:
+      168 маршрутов, 0 недостижимых, 0 небезопасных drop-кандидатов, 2/8
+      bat-camp contestable; p50/p90 bat = 11.7/19.8 с, cube = 11.9/23.3 с.
+- [x] Удалить authored potion-red sustain points или превратить их в camp/lair
+      landmarks, не перекрашивать механически: в match spawn/drop pipeline
+      остался только health_boost, а центральные bat camps теперь являются
+      отдельными contest landmarks.
 - [ ] Проверить solo seed fairness и team lane symmetry по p50/p90 timing.
 
 **Acceptance:** cube/bat/objective создают выбор и contest, но не требуют
@@ -454,11 +500,11 @@ deterministic tests, report scripts and `tasks/scenarios/*`.
       checkpoint report; before/after diff остаётся pending.
 - [x] Добавить стабильный authoritative state hash и versioned checkpoint
       report foundation.
-- [ ] Добавить сценарии Super charge, respawn, cube ownership, bat contest,
-      Kaze/Katty и solo/team mode. Сейчас есть replayable Kaze basic и Katty
-      paint-setup smoke tests, а также deterministic Super/respawn/cube/bat
-      scenario pack; полный solo/team matrix, 3v3 reports и before/after diff
-      остаются.
+- [x] Добавить детерминированные сценарии Super charge, respawn, cube
+      ownership, bat contest, Kaze/Katty и базовый solo/team smoke. Сейчас
+      есть replayable Kaze basic и Katty paint-setup smoke tests, а также
+      deterministic Super/respawn/cube/bat scenario pack.
+- [ ] Довести полный solo/team matrix, 3v3 reports и before/after diff.
 
 **Acceptance:** повтор одного сценария даёт одинаковый state hash и event
 timeline; изменение profile даёт читаемый diff, а не перезаписывает baseline.
@@ -491,7 +537,8 @@ serialized JSON report review.
 - [ ] Balance: каждый герой выигрывает свой benchmark matchup и имеет
       documented counterplay.
 - [ ] Skill centrality: отключение skills меняет исход хотя бы одного сценария
-      каждого героя; basic-only kill rate не растёт после rework без объяснения.
+      каждого героя; baseline smoke уже проверяет измеримый Super effect всех 8,
+      но before/after outcome и basic-only kill rate ещё не закрыты.
 - [ ] Attack cadence: нет длинного необъяснимого downtime, input-to-fire и
       reload dead time входят в report.
 - [ ] Visual: один skill intent даёт один правильный telegraph/impact/status,

@@ -18,7 +18,7 @@ const heroes = [...manifest.heroes]
 for (const hero of heroes) {
   test(`${hero} has one canonical master blend source`, async () => {
     const file = hero === "brock-zeus"
-      ? path.join(sourceRoot, hero, "scenes", "zeus_rebuild_master.blend")
+      ? path.join(sourceRoot, hero, "zeus_base.blend")
       : path.join(sourceRoot, hero, `${hero}.blend`)
     await assert.doesNotReject(access(file))
   })

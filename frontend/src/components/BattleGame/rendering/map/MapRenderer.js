@@ -485,13 +485,20 @@ const createBaseWellVisual = scale => {
   const stoneLight = new THREE.MeshStandardMaterial({color: 0x8a8b77, roughness: .98, flatShading: true})
   const wood = new THREE.MeshStandardMaterial({color: 0x60412f, roughness: .98, flatShading: true})
   const iron = new THREE.MeshStandardMaterial({color: 0x3d4140, roughness: .72, metalness: .2, flatShading: true})
+  const water = new THREE.MeshStandardMaterial({color: 0x367f87, roughness: .6, metalness: .04, flatShading: true})
   createBaseFeaturePart(group, new THREE.CylinderGeometry(1.05, 1.18, .28, 10), stone, "base-well-stone", new THREE.Vector3(0, .14, 0))
   createBaseFeaturePart(group, new THREE.TorusGeometry(.88, .16, 5, 10), stoneLight, "base-well-stone", new THREE.Vector3(0, .34, 0), new THREE.Euler(Math.PI / 2, 0, 0))
+  createBaseFeaturePart(group, new THREE.CylinderGeometry(.72, .72, .035, 12), water, "base-well-water", new THREE.Vector3(0, .38, 0))
   for (const x of [-.78, .78]) createBaseFeaturePart(group, new THREE.CylinderGeometry(.09, .12, 1.8, 6), wood, "base-well-crank", new THREE.Vector3(x, 1.05, 0))
   createBaseFeaturePart(group, new THREE.BoxGeometry(1.85, .1, .12), wood, "base-well-crank", new THREE.Vector3(0, 1.92, 0))
   createBaseFeaturePart(group, new THREE.CylinderGeometry(.055, .055, 1.05, 6), iron, "base-well-crank", new THREE.Vector3(0, 1.2, 0))
+  createBaseFeaturePart(group, new THREE.CylinderGeometry(.025, .025, .55, 5), wood, "base-well-rope", new THREE.Vector3(0, .9, -.38))
   createBaseFeaturePart(group, new THREE.CylinderGeometry(.22, .28, .42, 8), wood, "base-well-bucket", new THREE.Vector3(0, .72, -.38))
   createBaseFeaturePart(group, new THREE.CylinderGeometry(.3, .3, .05, 8), iron, "base-well-bucket", new THREE.Vector3(0, .94, -.38))
+  for (const [x, z] of [[-.98, -.18], [.92, .2]]) {
+    const stoneBlock = createBaseFeaturePart(group, new THREE.DodecahedronGeometry(.2, 0), stoneLight, "base-well-stone-detail", new THREE.Vector3(x, .28, z))
+    stoneBlock.scale.y = .65
+  }
   return group
 }
 
@@ -502,14 +509,25 @@ const createBaseWorkshopVisual = scale => {
   const roof = new THREE.MeshStandardMaterial({color: 0x6b5541, roughness: 1, flatShading: true})
   const stone = new THREE.MeshStandardMaterial({color: 0x6c746c, roughness: .98, flatShading: true})
   const iron = new THREE.MeshStandardMaterial({color: 0x343a39, roughness: .56, metalness: .3, flatShading: true})
+  const fire = new THREE.MeshStandardMaterial({color: 0xd17a32, roughness: .4, emissive: 0x632209, emissiveIntensity: .52, flatShading: true})
   createBaseFeaturePart(group, new THREE.BoxGeometry(3.25, 1.35, 1.55), wood, "base-workshop-frame", new THREE.Vector3(0, .72, 0))
-  createBaseFeaturePart(group, new THREE.BoxGeometry(3.65, .18, 1.95), roof, "base-workshop-roof", new THREE.Vector3(0, 1.55, 0), new THREE.Euler(0, 0, -.08))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(1.9, .18, 1.95), roof, "base-workshop-roof", new THREE.Vector3(-.87, 1.7, 0), new THREE.Euler(0, 0, .2))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(1.9, .18, 1.95), roof, "base-workshop-roof", new THREE.Vector3(.87, 1.7, 0), new THREE.Euler(0, 0, -.2))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.14, .16, 2.05), wood, "base-workshop-roof-ridge", new THREE.Vector3(0, 1.94, 0))
+  for (const x of [-1.45, -.72, .72, 1.45]) createBaseFeaturePart(group, new THREE.BoxGeometry(.055, .045, 1.88), wood, "base-workshop-roof-slats", new THREE.Vector3(x, 1.82, 0))
   for (const x of [-1.35, 1.35]) createBaseFeaturePart(group, new THREE.CylinderGeometry(.09, .11, 1.8, 6), wood, "base-workshop-frame", new THREE.Vector3(x, .9, -.7))
-  createBaseFeaturePart(group, new THREE.BoxGeometry(.7, .34, .38), iron, "base-workshop-anvil", new THREE.Vector3(.58, .94, -.88))
-  createBaseFeaturePart(group, new THREE.CylinderGeometry(.12, .16, .7, 6), iron, "base-workshop-anvil", new THREE.Vector3(.58, .55, -.88))
-  createBaseFeaturePart(group, new THREE.CylinderGeometry(.42, .48, .7, 10), stone, "base-workshop-barrel", new THREE.Vector3(-.92, .42, -.87))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.7, .34, .38), iron, "base-workshop-anvil", new THREE.Vector3(.58, .94, -1.02))
+  createBaseFeaturePart(group, new THREE.CylinderGeometry(.12, .16, .7, 6), iron, "base-workshop-anvil", new THREE.Vector3(.58, .55, -1.02))
+  createBaseFeaturePart(group, new THREE.CylinderGeometry(.42, .48, .7, 10), stone, "base-workshop-barrel", new THREE.Vector3(-.92, .42, -1.0))
   createBaseFeaturePart(group, new THREE.BoxGeometry(.5, .5, .35), roof, "base-workshop-crate", new THREE.Vector3(1.15, .28, .72), new THREE.Euler(0, .18, .05))
   createBaseFeaturePart(group, new THREE.ConeGeometry(.16, .48, 6), iron, "base-workshop-chimney", new THREE.Vector3(-1.05, 1.78, .2))
+  createBaseFeaturePart(group, new THREE.CylinderGeometry(.28, .34, .16, 8), stone, "base-workshop-fire", new THREE.Vector3(-1.02, .18, -1.12))
+  createBaseFeaturePart(group, new THREE.SphereGeometry(.14, 7, 5), fire, "base-workshop-fire", new THREE.Vector3(-1.02, .42, -1.12))
+  const hammerHandle = createBaseFeaturePart(group, new THREE.CylinderGeometry(.035, .045, .72, 5), wood, "base-workshop-hammer", new THREE.Vector3(.95, 1.08, -1.08), new THREE.Euler(0, 0, -.52))
+  hammerHandle.rotation.y = -.14
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.25, .13, .14), iron, "base-workshop-hammer", new THREE.Vector3(1.22, 1.38, -.98), new THREE.Euler(0, 0, -.52))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(1.02, .12, .08), wood, "base-workshop-shelf", new THREE.Vector3(-.28, 1.27, -1.02))
+  for (const x of [-.68, .1]) createBaseFeaturePart(group, new THREE.CylinderGeometry(.07, .08, .2, 6), iron, "base-workshop-shelf", new THREE.Vector3(x, 1.44, -1.02))
   return group
 }
 
@@ -528,8 +546,168 @@ const createBaseWagonVisual = scale => {
   createBaseFeaturePart(group, new THREE.BoxGeometry(1.25, .12, .12), darkWood, "base-wagon-pole", new THREE.Vector3(1.72, .65, 0), new THREE.Euler(0, 0, -.08))
   createBaseFeaturePart(group, new THREE.DodecahedronGeometry(.38, 0), cloth, "base-wagon-sack", new THREE.Vector3(-.8, 1.25, .1))
   createBaseFeaturePart(group, new THREE.DodecahedronGeometry(.26, 0), cloth, "base-wagon-sack", new THREE.Vector3(1.05, 1.12, .2))
+  for (const x of [-.68, .46]) createBaseFeaturePart(group, new THREE.BoxGeometry(.1, .28, 1.12), darkWood, "base-wagon-strap", new THREE.Vector3(x, 1.16, 0), new THREE.Euler(0, -.08, .04))
+  const crate = createBaseFeaturePart(group, new THREE.BoxGeometry(.58, .5, .52), wood, "base-wagon-crate", new THREE.Vector3(-1.03, .98, .28), new THREE.Euler(0, -.12, .02))
+  crate.userData.detail = "slatted-crate"
+  for (const z of [-.02, .18]) createBaseFeaturePart(group, new THREE.BoxGeometry(.62, .045, .05), darkWood, "base-wagon-crate", new THREE.Vector3(-1.03, .98 + z, .55), new THREE.Euler(0, -.12, 0))
+  createBaseFeaturePart(group, new THREE.DodecahedronGeometry(.22, 0), cloth, "base-wagon-hay", new THREE.Vector3(.3, 1.23, -.2))
   return group
 }
+
+const createBaseBarracksVisual = scale => {
+  const group = new THREE.Group()
+  group.scale.setScalar(scale)
+  const timber = new THREE.MeshStandardMaterial({color: 0x5a3828, roughness: 1, flatShading: true})
+  const plaster = new THREE.MeshStandardMaterial({color: 0x9a8065, roughness: 1, flatShading: true})
+  const roof = new THREE.MeshStandardMaterial({color: 0x563c31, roughness: 1, flatShading: true})
+  const dark = new THREE.MeshStandardMaterial({color: 0x292f32, roughness: .9, flatShading: true})
+  const iron = new THREE.MeshStandardMaterial({color: 0x394146, roughness: .62, metalness: .25, flatShading: true})
+  const banner = new THREE.MeshStandardMaterial({color: 0x3977a8, roughness: .9, flatShading: true})
+  createBaseFeaturePart(group, new THREE.BoxGeometry(4.05, .24, 2.42), stoneLightMaterial(), "base-barracks-foundation", new THREE.Vector3(0, .12, 0))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(3.72, 1.52, 2.18), plaster, "base-barracks-wall", new THREE.Vector3(0, .92, .06))
+  for (const x of [-1.75, 1.75]) createBaseFeaturePart(group, new THREE.BoxGeometry(.2, 1.7, 2.3), timber, "base-barracks-timber", new THREE.Vector3(x, .92, .06))
+  for (const x of [-1.12, 0, 1.12]) createBaseFeaturePart(group, new THREE.BoxGeometry(.14, 1.5, 2.25), timber, "base-barracks-timber", new THREE.Vector3(x, .92, -.03))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(1.95, .18, 2.72), roof, "base-barracks-roof", new THREE.Vector3(-1.02, 1.92, .02), new THREE.Euler(0, 0, .24))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(1.95, .18, 2.72), roof, "base-barracks-roof", new THREE.Vector3(1.02, 1.92, .02), new THREE.Euler(0, 0, -.24))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.16, .16, 2.78), timber, "base-barracks-roof-ridge", new THREE.Vector3(0, 2.2, .02))
+  for (const x of [-1.45, -.72, .72, 1.45]) createBaseFeaturePart(group, new THREE.BoxGeometry(.06, .045, 2.42), timber, "base-barracks-roof-slats", new THREE.Vector3(x, 2.1, .02))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.72, 1.02, .12), dark, "base-barracks-door", new THREE.Vector3(0, .67, -1.08))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.9, .12, .16), timber, "base-barracks-door", new THREE.Vector3(0, 1.2, -1.12))
+  for (const x of [-1.25, 1.25]) {
+    createBaseFeaturePart(group, new THREE.BoxGeometry(.54, .48, .08), dark, "base-barracks-window", new THREE.Vector3(x, 1.12, -1.1))
+    createBaseFeaturePart(group, new THREE.BoxGeometry(.06, .56, .1), timber, "base-barracks-window", new THREE.Vector3(x, 1.12, -1.16))
+  }
+  for (const x of [-1.25, 1.25]) {
+    createBaseFeaturePart(group, new THREE.CylinderGeometry(.36, .36, .1, 8), iron, "base-barracks-shield", new THREE.Vector3(x, .92, -1.24), new THREE.Euler(Math.PI / 2, 0, 0))
+    createBaseFeaturePart(group, new THREE.BoxGeometry(.08, .5, .08), banner, "base-barracks-shield", new THREE.Vector3(x, .92, -1.31))
+    createBaseFeaturePart(group, new THREE.BoxGeometry(.5, .08, .08), banner, "base-barracks-shield", new THREE.Vector3(x, .92, -1.31))
+  }
+  createBaseFeaturePart(group, new THREE.CylinderGeometry(.045, .06, 2.2, 5), iron, "base-barracks-banner", new THREE.Vector3(1.46, 2.58, -.1))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.68, .56, .06), banner, "base-barracks-banner", new THREE.Vector3(1.72, 2.35, -.1), new THREE.Euler(0, 0, -.12))
+  createBaseFeaturePart(group, new THREE.CylinderGeometry(.16, .2, .44, 8), iron, "base-barracks-lantern", new THREE.Vector3(-1.8, 1.76, -1.12))
+  createBaseFeaturePart(group, new THREE.SphereGeometry(.11, 7, 5), fireMaterial(), "base-barracks-lantern", new THREE.Vector3(-1.8, 1.86, -1.12))
+  return group
+}
+
+const createBaseStorehouseVisual = scale => {
+  const group = new THREE.Group()
+  group.scale.setScalar(scale)
+  const timber = new THREE.MeshStandardMaterial({color: 0x68432b, roughness: 1, flatShading: true})
+  const plank = new THREE.MeshStandardMaterial({color: 0x876044, roughness: 1, flatShading: true})
+  const roof = new THREE.MeshStandardMaterial({color: 0x75604a, roughness: 1, flatShading: true})
+  const dark = new THREE.MeshStandardMaterial({color: 0x303538, roughness: .9, flatShading: true})
+  const iron = new THREE.MeshStandardMaterial({color: 0x3b403e, roughness: .7, metalness: .18, flatShading: true})
+  const cloth = new THREE.MeshStandardMaterial({color: 0xb0804a, roughness: .94, flatShading: true})
+  createBaseFeaturePart(group, new THREE.BoxGeometry(4.0, .22, 2.28), stoneLightMaterial(), "base-storehouse-foundation", new THREE.Vector3(0, .11, .04))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(3.68, 1.46, 2.02), plank, "base-storehouse-wall", new THREE.Vector3(0, .86, .08))
+  for (const x of [-1.7, 1.7]) createBaseFeaturePart(group, new THREE.BoxGeometry(.2, 1.65, 2.15), timber, "base-storehouse-timber", new THREE.Vector3(x, .88, .06))
+  for (const x of [-.9, .9]) createBaseFeaturePart(group, new THREE.BoxGeometry(.12, 1.5, 2.1), timber, "base-storehouse-timber", new THREE.Vector3(x, .88, -.02))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(1.96, .18, 2.6), roof, "base-storehouse-roof", new THREE.Vector3(-1.02, 1.8, .03), new THREE.Euler(0, 0, .22))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(1.96, .18, 2.6), roof, "base-storehouse-roof", new THREE.Vector3(1.02, 1.8, .03), new THREE.Euler(0, 0, -.22))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.15, .16, 2.68), timber, "base-storehouse-roof-ridge", new THREE.Vector3(0, 2.06, .03))
+  for (const x of [-1.45, -.72, .72, 1.45]) createBaseFeaturePart(group, new THREE.BoxGeometry(.06, .045, 2.34), timber, "base-storehouse-roof-slats", new THREE.Vector3(x, 1.96, .03))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(1.1, 1.03, .12), dark, "base-storehouse-door", new THREE.Vector3(0, .67, -1.02))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(1.34, .12, .16), timber, "base-storehouse-door", new THREE.Vector3(0, 1.2, -1.06))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(3.18, .14, .72), cloth, "base-storehouse-awning", new THREE.Vector3(0, 1.62, -1.34), new THREE.Euler(.18, 0, 0))
+  for (const x of [-1.35, 1.35]) createBaseFeaturePart(group, new THREE.CylinderGeometry(.07, .1, 1.4, 6), timber, "base-storehouse-awning", new THREE.Vector3(x, .9, -1.48))
+  for (const [x, z, y] of [[-1.24, -.84, .42], [1.24, -.8, .42], [1.02, .62, .34]]) {
+    createBaseFeaturePart(group, new THREE.BoxGeometry(.62, .55, .58), plank, "base-storehouse-crate", new THREE.Vector3(x, y, z), new THREE.Euler(0, x * .08, 0))
+    createBaseFeaturePart(group, new THREE.BoxGeometry(.66, .045, .06), timber, "base-storehouse-crate", new THREE.Vector3(x, y + .16, z - .3), new THREE.Euler(0, x * .08, 0))
+  }
+  for (const x of [-.82, .82]) {
+    createBaseFeaturePart(group, new THREE.CylinderGeometry(.4, .44, .64, 10), timber, "base-storehouse-barrel", new THREE.Vector3(x, .4, -.95))
+    createBaseFeaturePart(group, new THREE.TorusGeometry(.35, .045, 5, 10), iron, "base-storehouse-barrel", new THREE.Vector3(x, .55, -.95), new THREE.Euler(Math.PI / 2, 0, 0))
+  }
+  return group
+}
+
+const createBaseStableVisual = scale => {
+  const group = new THREE.Group()
+  group.scale.setScalar(scale)
+  const timber = new THREE.MeshStandardMaterial({color: 0x69452d, roughness: 1, flatShading: true})
+  const darkWood = new THREE.MeshStandardMaterial({color: 0x463024, roughness: 1, flatShading: true})
+  const roof = new THREE.MeshStandardMaterial({color: 0x806346, roughness: 1, flatShading: true})
+  const plaster = new THREE.MeshStandardMaterial({color: 0x9d8568, roughness: 1, flatShading: true})
+  const hay = new THREE.MeshStandardMaterial({color: 0xc18b3f, roughness: 1, flatShading: true})
+  const iron = new THREE.MeshStandardMaterial({color: 0x38403c, roughness: .7, metalness: .16, flatShading: true})
+  createBaseFeaturePart(group, new THREE.BoxGeometry(4.08, .2, 2.5), stoneLightMaterial(), "base-stable-foundation", new THREE.Vector3(0, .1, .08))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(3.7, 1.42, .26), plaster, "base-stable-frame", new THREE.Vector3(0, .85, .88))
+  for (const x of [-1.82, 1.82]) createBaseFeaturePart(group, new THREE.CylinderGeometry(.1, .14, 2.0, 6), timber, "base-stable-frame", new THREE.Vector3(x, 1.0, -.1))
+  for (const x of [-.92, .92]) createBaseFeaturePart(group, new THREE.CylinderGeometry(.08, .12, 1.86, 6), timber, "base-stable-stall", new THREE.Vector3(x, .94, -.22))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(3.72, .18, 2.74), roof, "base-stable-roof", new THREE.Vector3(0, 1.92, .05))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(3.34, .12, .16), darkWood, "base-stable-roof", new THREE.Vector3(0, 2.06, -.05))
+  for (const x of [-1.35, -.45, .45, 1.35]) createBaseFeaturePart(group, new THREE.BoxGeometry(.06, .045, 2.48), darkWood, "base-stable-roof-slats", new THREE.Vector3(x, 2.0, .05))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(3.2, .28, .34), timber, "base-stable-trough", new THREE.Vector3(0, .42, -1.02))
+  for (const x of [-1.28, 1.28]) createBaseFeaturePart(group, new THREE.CylinderGeometry(.08, .1, .62, 6), timber, "base-stable-trough", new THREE.Vector3(x, .7, -1.02))
+  for (const x of [-1.28, .05, 1.28]) {
+    createBaseFeaturePart(group, new THREE.DodecahedronGeometry(.46, 0), hay, "base-stable-hay", new THREE.Vector3(x, .62, .42))
+    createBaseFeaturePart(group, new THREE.DodecahedronGeometry(.3, 0), hay, "base-stable-hay", new THREE.Vector3(x + .16, 1.02, .32))
+  }
+  createBaseFeaturePart(group, new THREE.BoxGeometry(1.18, .08, .08), iron, "base-stable-harness", new THREE.Vector3(-1.02, 1.26, .78))
+  for (const x of [-1.45, -.62]) createBaseFeaturePart(group, new THREE.BoxGeometry(.08, .36, .08), iron, "base-stable-harness", new THREE.Vector3(x, 1.04, .78))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.62, .42, .08), roof, "base-stable-sign", new THREE.Vector3(0, 1.46, -1.19))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.1, .52, .1), timber, "base-stable-sign", new THREE.Vector3(0, 1.68, -1.19))
+  return group
+}
+
+const createBaseChapelVisual = scale => {
+  const group = new THREE.Group()
+  group.scale.setScalar(scale)
+  const stone = new THREE.MeshStandardMaterial({color: 0x747a76, roughness: .98, flatShading: true})
+  const stoneLight = new THREE.MeshStandardMaterial({color: 0xa19783, roughness: .98, flatShading: true})
+  const roof = new THREE.MeshStandardMaterial({color: 0x4a5660, roughness: .98, flatShading: true})
+  const timber = new THREE.MeshStandardMaterial({color: 0x543528, roughness: 1, flatShading: true})
+  const dark = new THREE.MeshStandardMaterial({color: 0x252d31, roughness: .92, flatShading: true})
+  const glass = new THREE.MeshStandardMaterial({color: 0x4c9bb1, roughness: .48, metalness: .08, flatShading: true})
+  const iron = new THREE.MeshStandardMaterial({color: 0x3b403e, roughness: .7, metalness: .18, flatShading: true})
+  const ivy = new THREE.MeshStandardMaterial({color: 0x3e743f, roughness: 1, flatShading: true})
+  createBaseFeaturePart(group, new THREE.BoxGeometry(3.62, .22, 2.34), stoneLight, "base-chapel-foundation", new THREE.Vector3(0, .11, .08))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(3.35, 1.62, 2.12), stone, "base-chapel-wall", new THREE.Vector3(0, .94, .12))
+  for (const x of [-1.55, 1.55]) createBaseFeaturePart(group, new THREE.BoxGeometry(.3, 1.85, 2.28), stoneLight, "base-chapel-buttress", new THREE.Vector3(x, 1.0, .1))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(1.86, .18, 2.58), roof, "base-chapel-roof", new THREE.Vector3(-.93, 1.96, .1), new THREE.Euler(0, 0, .2))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(1.86, .18, 2.58), roof, "base-chapel-roof", new THREE.Vector3(.93, 1.96, .1), new THREE.Euler(0, 0, -.2))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.15, .16, 2.64), timber, "base-chapel-roof-ridge", new THREE.Vector3(0, 2.2, .1))
+  for (const x of [-1.35, -.68, .68, 1.35]) createBaseFeaturePart(group, new THREE.BoxGeometry(.055, .045, 2.3), timber, "base-chapel-roof-slats", new THREE.Vector3(x, 2.1, .1))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.78, 1.05, .12), dark, "base-chapel-door", new THREE.Vector3(0, .68, -1.0))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.96, .12, .14), timber, "base-chapel-door", new THREE.Vector3(0, 1.22, -1.05))
+  createBaseFeaturePart(group, new THREE.CylinderGeometry(.33, .33, .1, 8), glass, "base-chapel-window", new THREE.Vector3(0, 1.45, -1.1), new THREE.Euler(Math.PI / 2, 0, 0))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.06, .6, .08), timber, "base-chapel-window", new THREE.Vector3(0, 1.45, -1.18))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.6, .06, .08), timber, "base-chapel-window", new THREE.Vector3(0, 1.45, -1.18))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.08, 1.05, .08), timber, "base-chapel-cross", new THREE.Vector3(0, 2.72, -.02))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.48, .08, .08), timber, "base-chapel-cross", new THREE.Vector3(0, 2.88, -.02))
+  createBaseFeaturePart(group, new THREE.BoxGeometry(.65, 1.22, .7), stone, "base-chapel-bell-tower", new THREE.Vector3(1.15, 2.35, .36))
+  createBaseFeaturePart(group, new THREE.ConeGeometry(.58, .72, 4), roof, "base-chapel-bell-tower", new THREE.Vector3(1.15, 3.32, .36), new THREE.Euler(0, Math.PI / 4, 0))
+  createBaseFeaturePart(group, new THREE.TorusGeometry(.2, .055, 5, 8), timber, "base-chapel-bell", new THREE.Vector3(1.15, 2.48, -.02), new THREE.Euler(Math.PI / 2, 0, 0))
+  createBaseFeaturePart(group, new THREE.SphereGeometry(.14, 7, 5), iron, "base-chapel-bell", new THREE.Vector3(1.15, 2.48, -.02))
+  for (const [x, y, z] of [[-1.3, .8, -.98], [1.28, 1.1, -.98], [-1.45, 1.38, .92]]) {
+    const leaf = createBaseFeaturePart(group, new THREE.DodecahedronGeometry(.24, 0), ivy, "base-chapel-ivy", new THREE.Vector3(x, y, z))
+    leaf.scale.set(1.2, .7, .55)
+  }
+  return group
+}
+
+const createBaseCourtyardVisual = scale => {
+  const group = new THREE.Group()
+  group.scale.setScalar(scale)
+  const paving = new THREE.MeshStandardMaterial({color: 0x837b68, roughness: 1, flatShading: true})
+  const edge = new THREE.MeshStandardMaterial({color: 0x5e6259, roughness: .98, flatShading: true})
+  const timber = new THREE.MeshStandardMaterial({color: 0x5a3828, roughness: 1, flatShading: true})
+  const cloth = new THREE.MeshStandardMaterial({color: 0x3977a8, roughness: .92, flatShading: true})
+  createBaseFeaturePart(group, new THREE.RingGeometry(2.15, 4.65, 14), paving, "base-courtyard-surface", new THREE.Vector3(0, .035, 0), new THREE.Euler(-Math.PI / 2, 0, 0))
+  createBaseFeaturePart(group, new THREE.TorusGeometry(4.58, .13, 5, 14), edge, "base-courtyard-ring", new THREE.Vector3(0, .08, 0), new THREE.Euler(Math.PI / 2, 0, 0))
+  for (const [x, z, rotation] of [[0, -3.25, 0], [3.25, 0, Math.PI / 2], [0, 3.25, 0], [-3.25, 0, Math.PI / 2]]) {
+    const cobble = createBaseFeaturePart(group, new THREE.BoxGeometry(1.1, .12, .58), edge, "base-courtyard-cobble", new THREE.Vector3(x, .12, z), new THREE.Euler(0, rotation, 0))
+    cobble.rotation.x = -.08
+  }
+  for (const x of [-3.7, 3.7]) {
+    createBaseFeaturePart(group, new THREE.CylinderGeometry(.07, .1, 1.75, 6), timber, "base-courtyard-banner", new THREE.Vector3(x, .86, -.24))
+    createBaseFeaturePart(group, new THREE.BoxGeometry(.64, .5, .06), cloth, "base-courtyard-banner", new THREE.Vector3(x + (x < 0 ? .24 : -.24), 1.42, -.24), new THREE.Euler(0, 0, x < 0 ? -.12 : .12))
+  }
+  return group
+}
+
+const stoneLightMaterial = () => new THREE.MeshStandardMaterial({color: 0x8a8b77, roughness: .98, flatShading: true})
+const fireMaterial = () => new THREE.MeshStandardMaterial({color: 0xd17a32, roughness: .4, emissive: 0x632209, emissiveIntensity: .52, flatShading: true})
 
 const createRiverVisual = scale => {
   const group = new THREE.Group()
@@ -729,6 +907,12 @@ const createReadableCityBuildingVisual = (scale, variant = 0, archetype = "depot
       part(new THREE.DodecahedronGeometry(.12 * U, 0), greenCloth, "city-market-goods", (x + .22) * U, .76, (z + .04) * U)
     })
     beam(.5 * U, .52, .08, redCloth, "city-market-banner", 0, 2.48, -1.58 * U, new THREE.Euler(0, 0, -.08))
+    for (const [x, z, size] of [[-1.95, -.62, .18], [2.18, -.48, .15]]) {
+      part(new THREE.CylinderGeometry(size * U, size * 1.12 * U, .24, 8), timberLight, "city-market-produce", x * U, .78, z * U)
+      part(new THREE.DodecahedronGeometry(size * .72 * U, 0), x < 0 ? redCloth : greenCloth, "city-market-produce", (x + .04) * U, .99, (z - .02) * U)
+    }
+    part(new THREE.BoxGeometry(.2 * U, .28, .2 * U), iron, "city-market-lantern", -.18 * U, 1.55, -1.24 * U)
+    part(new THREE.SphereGeometry(.085 * U, 6, 4), fire, "city-market-lantern", -.18 * U, 1.55, -1.24 * U)
     rubble(-2.15, -1.5, .18); rubble(2.1, 1.3, .2)
     return group
   }
@@ -749,6 +933,10 @@ const createReadableCityBuildingVisual = (scale, variant = 0, archetype = "depot
     for (const x of [-1.82, 1.82]) {
       part(new THREE.CylinderGeometry(.045 * U, .07 * U, 1.15, 6), timber, "city-gate-torch", x * U, .72, -.48 * U)
       part(new THREE.ConeGeometry(.13 * U, .25, 6), redCloth, "city-gate-torch", x * U, 1.42, -.48 * U)
+    }
+    for (const x of [-.52, 0, .52]) {
+      const chainLink = part(new THREE.TorusGeometry(.14 * U, .025 * U, 5, 9), iron, "city-gate-chain", x * U, .72, -.62 * U, new THREE.Euler(Math.PI / 2, 0, x === 0 ? .25 : -.18))
+      chainLink.rotation.y = x * .18
     }
     beam(.78 * U, .42, .08, redCloth, "city-gate-sign", 0, 3.0, -.25 * U)
     rubble(-2.0, .8, .18); rubble(2.05, -.75, .2)
@@ -775,6 +963,10 @@ const createReadableCityBuildingVisual = (scale, variant = 0, archetype = "depot
     part(new THREE.BoxGeometry(.34 * U, .32, .06), redCloth, "city-apartment-clothesline", -.4 * U, 2.62, .9 * U)
     part(new THREE.BoxGeometry(.3 * U, .28, .06), greenCloth, "city-apartment-clothesline", .22 * U, 2.62, .9 * U)
     part(new THREE.BoxGeometry(.55 * U, .75, .06), dark, "city-window", -.48 * U, 1.18, -.76 * U)
+    part(new THREE.BoxGeometry(.5 * U, .78, .08), dark, "city-apartment-door", .72 * U, .52, -.78 * U)
+    beam(.58 * U, .08, .08, timber, "city-apartment-door", .72 * U, .96, -.82 * U)
+    part(new THREE.SphereGeometry(.055 * U, 6, 4), stoneLight, "city-apartment-door", .92 * U, .54, -.84 * U)
+    for (const [x, y] of [[1.08, 1.03], [1.35, .92], [1.54, 1.1]]) part(new THREE.DodecahedronGeometry(.1 * U, 0), greenCloth, "city-apartment-herbs", x * U, y, -1.04 * U)
     rubble(-1.8, 1.2, .2); rubble(1.85, -1.3, .18)
     return group
   }
@@ -795,6 +987,9 @@ const createReadableCityBuildingVisual = (scale, variant = 0, archetype = "depot
     beam(.34 * U, .9, .34 * U, iron, "city-chimney", -.58 * U, 2.0, .55 * U)
     for (const x of [1.5, 1.65, 1.8]) beam(.55 * U, .3, .24 * U, timberLight, "city-forge-woodpile", x * U, .48, .72 * U, new THREE.Euler(0, 0, x % .2 ? .08 : -.08))
     beam(.9 * U, .08, .08, iron, "city-forge-tool", .72 * U, .9, -.92 * U, new THREE.Euler(0, 0, -.55))
+    beam(.62 * U, .15, .36 * U, timber, "city-forge-bellows", .88 * U, 1.02, -1.0 * U, new THREE.Euler(0, 0, -.12))
+    beam(.1 * U, .55, .1 * U, timber, "city-forge-bellows", .58 * U, 1.15, -.96 * U, new THREE.Euler(0, 0, .24))
+    part(new THREE.CylinderGeometry(.045 * U, .065 * U, .34, 6), iron, "city-forge-bellows", 1.2 * U, 1.04, -.99 * U, new THREE.Euler(0, 0, -.2))
     rubble(-1.8, -1.25, .18); rubble(1.9, 1.3, .2)
     return group
   }
@@ -809,6 +1004,8 @@ const createReadableCityBuildingVisual = (scale, variant = 0, archetype = "depot
   for (const z of [.84, 1.02]) beam(.66 * U, .055, .055 * U, timber, "city-depot-roof-beam", -.78 * U, 1.76, z * U, new THREE.Euler(0, 0, -.25))
   beam(1.55 * U, .18, .52 * U, timberLight, "city-depot-loading-dock", 0, .42, -1.04 * U)
   for (const x of [-.68, .68]) beam(.12 * U, .62, .12 * U, timber, "city-depot-loading-dock", x * U, .72, -1.29 * U)
+  beam(.08 * U, 1.18, .06, timber, "city-depot-brace", -.78 * U, 1.03, -.71 * U, new THREE.Euler(0, 0, -.42))
+  beam(.08 * U, 1.18, .06, timber, "city-depot-brace", .78 * U, 1.03, -.71 * U, new THREE.Euler(0, 0, .42))
   for (const x of [-.2, .2]) {
     beam(.36 * U, 1.16, .1, timber, "city-depot-double-door", x * U, .78, -.61 * U, new THREE.Euler(0, 0, x < 0 ? -.04 : .04))
     part(new THREE.SphereGeometry(.06 * U, 6, 4), iron, "city-depot-double-door", (x + (x < 0 ? .12 : -.12)) * U, .78, -.69 * U)
@@ -1036,8 +1233,14 @@ const createCityTowerVisual = scale => {
   const roof = cityMaterial(0x5f4938, {roughness: 1})
   const iron = cityMaterial(0x343a36, {roughness: .88, metalness: .08})
   const dark = cityMaterial(0x1f2929, {roughness: .7})
+  const banner = cityMaterial(0x7b4138, {roughness: 1})
+  const fire = cityMaterial(0xd07a32, {roughness: .4, emissive: 0x68220a, emissiveIntensity: .5})
   addCityPart(group, new THREE.CylinderGeometry(1.52, 1.76, 2.75, 8), stone, "city-tower-base", new THREE.Vector3(0, 1.38, 0))
   addCityPart(group, new THREE.CylinderGeometry(1.28, 1.42, .2, 8), stoneLight, "city-tower-base", new THREE.Vector3(0, 2.82, 0))
+  for (const [x, z] of [[-.82, -.82], [.82, -.82], [-.82, .82], [.82, .82]]) {
+    const merlon = addCityPart(group, new THREE.BoxGeometry(.42, .32, .42), stoneLight, "city-tower-battlement", new THREE.Vector3(x, 3.06, z))
+    merlon.rotation.y = (x * z > 0 ? .12 : -.12)
+  }
   addCityPart(group, new THREE.ConeGeometry(1.55, 1.42, 4), roof, "city-tower-roof", new THREE.Vector3(0, 3.62, 0))
   addCityPart(group, new THREE.BoxGeometry(.62, 1.05, .08), dark, "city-tower-window", new THREE.Vector3(0, 1.85, 1.43))
   addCityPart(group, new THREE.BoxGeometry(.1, 1.16, .12), timber, "city-tower-window", new THREE.Vector3(-.38, 1.85, 1.48))
@@ -1049,6 +1252,10 @@ const createCityTowerVisual = scale => {
   addCityPart(group, new THREE.BoxGeometry(.84, .08, .12), timber, "city-tower-door", new THREE.Vector3(0, 1.14, 1.48))
   addCityPart(group, new THREE.CylinderGeometry(.035, .05, 1.15, 5), iron, "city-tower-flag", new THREE.Vector3(0, 4.55, 0))
   addCityPart(group, new THREE.ConeGeometry(.26, .38, 3), timber, "city-tower-flag", new THREE.Vector3(.22, 4.32, 0))
+  const signalBrazier = addCityPart(group, new THREE.CylinderGeometry(.2, .25, .12, 8), iron, "city-tower-signal-brazier", new THREE.Vector3(1.02, 3.18, .62))
+  signalBrazier.rotation.x = .08
+  addCityPart(group, new THREE.SphereGeometry(.14, 7, 5), fire, "city-tower-signal-brazier", new THREE.Vector3(1.02, 3.38, .62))
+  addCityPart(group, new THREE.BoxGeometry(.52, .34, .045), banner, "city-tower-banner", new THREE.Vector3(-.24, 4.34, .02), new THREE.Euler(0, 0, -.16))
   return group
 }
 
@@ -1058,8 +1265,8 @@ const createCityStreetVisual = scale => {
   const dirt = cityMaterial(0x675a4d, {roughness: 1})
   const cobble = cityMaterial(0x6d6759, {roughness: 1})
   const puddle = cityMaterial(0x4a5f5a, {roughness: .72, transparent: true, opacity: .68})
-  const rut = cityMaterial(0x4c4238, {roughness: 1})
   const wood = cityMaterial(0x5b402b, {roughness: .98})
+  const darkWood = cityMaterial(0x3f3027, {roughness: 1})
   const iron = cityMaterial(0x3f4038, {roughness: .92, metalness: .08})
   const lanternGlass = cityMaterial(0xb17b43, {roughness: .38, emissive: 0x6e2b0a, emissiveIntensity: .45})
   const cloth = cityMaterial(0x7b6048, {roughness: 1})
@@ -1070,15 +1277,18 @@ const createCityStreetVisual = scale => {
   surface.receiveShadow = true
   group.add(setMapRenderLayer(surface, 30))
 
-  const stones = [
-    [-2.45, -.38, .22, .14], [-1.78, .31, .18, -.1], [-1.05, -.28, .2, .18], [-.38, .24, .16, -.22],
-    [.32, -.3, .23, .12], [1.05, .28, .19, -.18], [1.82, -.25, .22, .16], [2.45, .3, .16, -.1],
-    [-2.12, .02, .14, .28], [-.7, .03, .15, -.24], [.76, .02, .17, .2], [2.1, .04, .13, -.18],
+  const cobbleClusters = [
+    [-1.82, -.28, .92, .14], [.05, .16, 1.08, -.16], [1.86, -.2, .88, .12],
   ]
-  stones.forEach(([x, z, size, rotation], index) => {
-    const stone = addCityPart(group, new THREE.DodecahedronGeometry(CITY_CELL * size, 0), cobble, "city-path-stone", new THREE.Vector3(x * CITY_CELL, .18 + index % 2 * .015, z * CITY_CELL))
-    stone.scale.y = .28
-    stone.rotation.y = rotation
+  cobbleClusters.forEach(([x, z, size, rotation]) => {
+    const bed = addCityPart(group, new THREE.CylinderGeometry(CITY_CELL * size * .38, CITY_CELL * size * .46, .1, 8), cobble, "city-street-cobble-cluster", new THREE.Vector3(x * CITY_CELL, .15, z * CITY_CELL))
+    bed.scale.y = .26
+    bed.rotation.y = rotation
+    for (const [offsetX, offsetZ, offsetSize] of [[-.22, -.04, .23], [.16, .08, .2], [.02, -.14, .16]]) {
+      const stone = addCityPart(group, new THREE.DodecahedronGeometry(CITY_CELL * size * offsetSize, 0), cobble, "city-street-cobble-cluster", new THREE.Vector3((x + offsetX) * CITY_CELL, .21, (z + offsetZ) * CITY_CELL))
+      stone.scale.y = .3
+      stone.rotation.y = rotation + offsetX
+    }
   })
   for (const [x, z, rx, rz] of [[-1.72, -.4, .48, .17], [1.55, .36, .35, .14]]) {
     const water = new THREE.Mesh(new THREE.CircleGeometry(CITY_CELL * rx, 12), puddle)
@@ -1088,16 +1298,13 @@ const createCityStreetVisual = scale => {
     water.name = "city-path-puddle"
     group.add(setMapRenderLayer(water, 32))
   }
-  for (const [x, z, length, rotation] of [[-2.25, .4, 1.05, -.22], [.1, -.4, .76, .45], [2.15, .26, .9, -.1]]) {
-    const rutPart = addCityPart(group, new THREE.BoxGeometry(CITY_CELL * length, .035, .07), rut, "city-path-rut", new THREE.Vector3(x * CITY_CELL, .18, z * CITY_CELL))
-    rutPart.rotation.y = rotation
-  }
   const lanternX = -CITY_CELL * 2.55
   addCityPart(group, new THREE.CylinderGeometry(.055, .09, 1.72, 6), wood, "city-lantern", new THREE.Vector3(lanternX, .86, CITY_CELL * .43))
   const lanternArm = addCityPart(group, new THREE.BoxGeometry(.46, .07, .07), wood, "city-lantern", new THREE.Vector3(lanternX + .18, 1.68, CITY_CELL * .43))
   lanternArm.rotation.z = -.16
   addCityPart(group, new THREE.BoxGeometry(.2, .3, .2), iron, "city-lantern", new THREE.Vector3(lanternX + .38, 1.5, CITY_CELL * .43))
   addCityPart(group, new THREE.SphereGeometry(.09, 6, 4), lanternGlass, "city-lantern-glow", new THREE.Vector3(lanternX + .38, 1.5, CITY_CELL * .43))
+  addCityPart(group, new THREE.ConeGeometry(.17, .12, 5), wood, "city-lantern", new THREE.Vector3(lanternX + .38, 1.72, CITY_CELL * .43))
 
   const cart = new THREE.Group()
   cart.position.set(CITY_CELL * 1.35, .08, -CITY_CELL * .48)
@@ -1111,12 +1318,18 @@ const createCityStreetVisual = scale => {
     farWheel.position.z = -CITY_CELL * .39
     cart.add(farWheel)
   }
-  addCityPart(cart, new THREE.CylinderGeometry(.035, .035, CITY_CELL * 1.05, 5), wood, "city-cart-wood", new THREE.Vector3(-CITY_CELL * .92, .51, 0)).rotation.z = -.12
+  addCityPart(cart, new THREE.CylinderGeometry(.035, .035, CITY_CELL * 1.1, 5), wood, "city-cart-handle", new THREE.Vector3(-CITY_CELL * .82, .51, 0)).rotation.z = -.12
+  addCityPart(cart, new THREE.DodecahedronGeometry(.22, 0), cloth, "city-cart-sack", new THREE.Vector3(-CITY_CELL * .3, .82, CITY_CELL * .1))
+  addCityPart(cart, new THREE.BoxGeometry(CITY_CELL * .48, .38, CITY_CELL * .46), wood, "city-street-crate", new THREE.Vector3(CITY_CELL * .34, .84, -CITY_CELL * .12), new THREE.Euler(0, -.1, .02))
+  for (const z of [-.3, .3]) addCityPart(cart, new THREE.BoxGeometry(CITY_CELL * .52, .045, .05), darkWood, "city-street-crate", new THREE.Vector3(CITY_CELL * .34, .84, z * CITY_CELL), new THREE.Euler(0, -.1, 0))
   group.add(cart)
 
   for (const [x, z, height] of [[-1.8, .62, .48], [-1.28, .65, .42]]) {
     addCityPart(group, new THREE.CylinderGeometry(.2, .24, height, 10), wood, "city-barrel", new THREE.Vector3(x * CITY_CELL, height / 2 + .12, z * CITY_CELL))
-    addCityPart(group, new THREE.TorusGeometry(.21, .025, 5, 10), iron, "city-barrel", new THREE.Vector3(x * CITY_CELL, .2, z * CITY_CELL))
+    for (const y of [.16, .34, .52]) {
+      const hoop = addCityPart(group, new THREE.TorusGeometry(.21, .025, 5, 10), iron, "city-barrel", new THREE.Vector3(x * CITY_CELL, y, z * CITY_CELL))
+      hoop.rotation.x = Math.PI / 2
+    }
   }
   return group
 }
@@ -1203,6 +1416,31 @@ const createCityPlazaVisual = scale => {
     addCityPart(group, new THREE.CylinderGeometry(.075, .075, .18, 6), iron, "city-plaza-torch", new THREE.Vector3((x + lean * .15) * CITY_CELL, 1.48, z * CITY_CELL))
     addCityPart(group, new THREE.ConeGeometry(.13, .34, 6), fire, "city-plaza-torch", new THREE.Vector3((x + lean * .3) * CITY_CELL, 1.72, z * CITY_CELL))
   }
+  // A notice board, a basket and a broken wheel give the square a human
+  // scale and a history without adding opaque cover or collision volumes.
+  const noticeX = -CITY_CELL * 2.78
+  const noticeZ = -CITY_CELL * 2.7
+  addCityPart(group, new THREE.BoxGeometry(CITY_CELL * 1.05, .82, .12), wood, "city-plaza-noticeboard", new THREE.Vector3(noticeX, .86, noticeZ))
+  for (const x of [-.38, .38]) addCityPart(group, new THREE.CylinderGeometry(.06, .08, 1.25, 6), wood, "city-plaza-noticeboard", new THREE.Vector3(noticeX + x * CITY_CELL, .45, noticeZ))
+  for (const [x, y, width, height] of [[-.26, .9, .28, .2], [.14, .72, .22, .26], [.3, 1.02, .18, .14]]) {
+    const notice = addCityPart(group, new THREE.BoxGeometry(CITY_CELL * width, height, .025), tileEdge, "city-plaza-notice", new THREE.Vector3(noticeX + x * CITY_CELL, y, noticeZ - .07))
+    notice.rotation.z = x * .3
+  }
+  const lanternX = CITY_CELL * 2.86
+  const lanternZ = CITY_CELL * 2.54
+  addCityPart(group, new THREE.CylinderGeometry(.055, .08, 1.5, 6), wood, "city-plaza-lantern", new THREE.Vector3(lanternX, .8, lanternZ))
+  addCityPart(group, new THREE.BoxGeometry(.48, .06, .06), wood, "city-plaza-lantern", new THREE.Vector3(lanternX + .2, 1.48, lanternZ), new THREE.Euler(0, 0, -.16))
+  addCityPart(group, new THREE.BoxGeometry(.2, .28, .2), iron, "city-plaza-lantern", new THREE.Vector3(lanternX + .4, 1.34, lanternZ))
+  addCityPart(group, new THREE.SphereGeometry(.085, 6, 4), fire, "city-plaza-lantern", new THREE.Vector3(lanternX + .4, 1.34, lanternZ))
+  const basketX = CITY_CELL * 1.62
+  const basketZ = -CITY_CELL * 2.72
+  addCityPart(group, new THREE.CylinderGeometry(.25 * CITY_CELL, .31 * CITY_CELL, .26, 8), wood, "city-plaza-basket", new THREE.Vector3(basketX, .31, basketZ))
+  const basketHandle = addCityPart(group, new THREE.TorusGeometry(.2 * CITY_CELL, .035 * CITY_CELL, 5, 10, Math.PI), wood, "city-plaza-basket", new THREE.Vector3(basketX, .5, basketZ))
+  basketHandle.rotation.x = Math.PI / 2
+  const wheel = addCityPart(group, new THREE.TorusGeometry(.55 * CITY_CELL, .1 * CITY_CELL, 6, 12), wood, "city-plaza-cart-wheel", new THREE.Vector3(-CITY_CELL * 1.78, .62, CITY_CELL * 2.52))
+  wheel.rotation.x = Math.PI / 2
+  wheel.rotation.z = -.18
+  addCityPart(group, new THREE.CylinderGeometry(.035, .035, CITY_CELL * .92, 5), wood, "city-plaza-cart-wheel", new THREE.Vector3(-CITY_CELL * 1.78, .48, CITY_CELL * 2.52), new THREE.Euler(0, 0, .18))
   return group
 }
 
@@ -1226,6 +1464,11 @@ const createTeamFeatureVisual = feature => {
   if (type === "base_well") group.add(createBaseWellVisual(scale))
   if (type === "base_workshop") group.add(createBaseWorkshopVisual(scale))
   if (type === "base_wagon") group.add(createBaseWagonVisual(scale))
+  if (type === "base_barracks") group.add(createBaseBarracksVisual(scale))
+  if (type === "base_storehouse") group.add(createBaseStorehouseVisual(scale))
+  if (type === "base_stable") group.add(createBaseStableVisual(scale))
+  if (type === "base_chapel") group.add(createBaseChapelVisual(scale))
+  if (type === "base_courtyard") group.add(createBaseCourtyardVisual(scale))
   group.position.set(Number(feature.x) * WORLD_SCALE, 0, Number(feature.y) * WORLD_SCALE)
   group.userData.featureId = feature.id
   return group
@@ -1862,9 +2105,6 @@ export class MapRenderer {
       // Bush opacity is updated around the local hero, so those meshes must
       // keep their individual material state instead of entering a static batch.
       if (this.bushVisuals.has(key)) return
-      // Soft vine clumps sway as a single organic silhouette. Keep their
-      // meshes unbatched so the animation does not freeze into a baked pose.
-      if (object.userData?.visualType === "vine") return
       object.traverse(node => {
         if (node.userData?.role === "contact-shadow") return
         const role = node.userData?.role || (node.isMesh ? object.userData?.visualType : null)
@@ -2035,9 +2275,6 @@ export class MapRenderer {
   add(key, object, bushWalls = null) {
     this.objects.set(key, object)
     this.root.add(object)
-    if (object?.userData?.visualType === "vine") {
-      object.userData.swayPhase = String(key).split("").reduce((sum, char) => sum + char.charCodeAt(0), 0) * .017
-    }
     const walls = bushWalls || object?.userData?.bushWalls
     if (Array.isArray(walls) && walls.length) {
       object.userData.bushWalls = walls
@@ -2108,12 +2345,6 @@ export class MapRenderer {
       if (data.glow) data.glow.scale.setScalar(1 + pulse * 1.8)
       if (data.activationRing) data.activationRing.rotation.z += delta * (data.open ? .7 : .25)
     }
-    const now = performance.now() / 1000
-    this.objects.forEach(object => {
-      if (object.userData?.visualType !== "vine") return
-      object.rotation.y = Math.sin(now * 1.25 + (object.userData.swayPhase || 0)) * .025
-      object.position.y = Math.sin(now * 1.7 + (object.userData.swayPhase || 0)) * .004
-    })
     for (const piece of this.debris) {
       piece.age += delta
       const progress = Math.min(1, piece.age / piece.life)

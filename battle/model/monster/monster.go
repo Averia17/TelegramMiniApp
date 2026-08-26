@@ -12,6 +12,7 @@ type MonsterState string
 const (
 	MonsterIdle   MonsterState = "idle"
 	MonsterPatrol MonsterState = "patrol"
+	MonsterNotice MonsterState = "notice"
 	MonsterChase  MonsterState = "chase"
 	MonsterWindup MonsterState = "windup"
 )
@@ -36,6 +37,7 @@ const (
 	MonsterIdleDurationMax    = 3000
 	MonsterPatrolDurationMin  = 1000
 	MonsterPatrolDurationMax  = 3000
+	MonsterNoticeDuration     = 350
 	MonsterAttackBackoff      = 3000
 	MonsterAttackWindup       = 450
 )
@@ -60,6 +62,7 @@ type Monster struct {
 	SpawnY             float64
 	ReturningHome      bool
 	IgnorePlayersUntil int64
+	NoticeUntil        int64
 	MoveX              float64
 	MoveY              float64
 	MoveScale          float64
@@ -97,9 +100,26 @@ func (m *Monster) Update(players map[string]*player.Player) {
 		m.updateIdle(players)
 	case MonsterPatrol:
 		m.updatePatrol(players)
+	case MonsterNotice:
+		m.updateNotice(players)
 	case MonsterChase:
 		m.updateChase(players)
 	}
+}
+
+func (m *Monster) updateNotice(players map[string]*player.Player) {
+	p, ok := players[m.TargetPlayerId]
+	if !ok || !p.IsAlive() {
+		m.loseTarget()
+		return
+	}
+	if NowMillis() < m.NoticeUntil {
+		m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
+		return
+	}
+	m.State = MonsterChase
+	m.NoticeUntil = 0
+	m.updateChase(players)
 }
 
 func (m *Monster) updateIdle(players map[string]*player.Player) {

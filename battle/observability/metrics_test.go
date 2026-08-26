@@ -89,10 +89,11 @@ func TestRecordBattleTickPublishesOperationalSignals(t *testing.T) {
 func TestRecordBotAIMetricsPublishesBoundedDecisionSignals(t *testing.T) {
 	registry := NewRegistry()
 	RecordBotAIMetrics(registry, BotAIMetricSample{
-		Mode:             "team deathmatch",
-		ActionSelections: map[string]uint64{"engage": 4, "collect_pickup": 2, "player-123": 99},
-		ActionScoreMeans: map[string]float64{"engage": 42, "player-123": 99},
-		ActionSwitches:   3, HardInterrupts: 2, RetreatDecisions: 1,
+		Mode:                  "team deathmatch",
+		ActionSelections:      map[string]uint64{"engage": 4, "collect_pickup": 2, "player-123": 99},
+		ActionScoreMeans:      map[string]float64{"engage": 42, "player-123": 99},
+		ResourceContestByRole: map[string]uint64{"Assassin": 3, "player-123": 99},
+		ActionSwitches:        3, HardInterrupts: 2, RetreatDecisions: 1,
 		AbilityUses: 5, PeelDecisions: 2, ResourceContestDecisions: 3,
 		AttackAttempts: 8, AttackHits: 5,
 		SpawnProtectionAvoidances: 4, StuckReplans: 1,
@@ -106,6 +107,7 @@ func TestRecordBotAIMetricsPublishesBoundedDecisionSignals(t *testing.T) {
 		`battle_bot_action_selections_total{action="collect_pickup",mode="team deathmatch"} 2`,
 		`battle_bot_action_switches_total{mode="team deathmatch"} 3`,
 		`battle_bot_resource_contest_decisions_total{mode="team deathmatch"} 3`,
+		`battle_bot_bat_contest_responses_total{mode="team deathmatch",role="Assassin"} 3`,
 		`battle_bot_attack_attempts_total{mode="team deathmatch"} 8`,
 		`battle_bot_attack_hits_total{mode="team deathmatch"} 5`,
 		`battle_bot_spawn_protection_avoids_total{mode="team deathmatch"} 4`,
@@ -119,5 +121,43 @@ func TestRecordBotAIMetricsPublishesBoundedDecisionSignals(t *testing.T) {
 	}
 	if !strings.Contains(body, "battle_bot_action_score") || !strings.Contains(body, `action="engage"`) {
 		t.Fatalf("bounded action score gauge missing:\n%s", body)
+	}
+}
+
+func TestRecordBatLifecycleMetricsPublishesBoundedWorldSignals(t *testing.T) {
+	registry := NewRegistry()
+	RecordBatLifecycleMetrics(registry, BatLifecycleMetricSample{
+		Mode: "team deathmatch", NoticeStarts: 4, NoticeCancels: 1,
+		WindupStarts: 3, Strikes: 2, Rewards: 2, Respawns: 1,
+		RewardClaims: 1, RewardDenials: 2,
+		RewardClaimsByRole: map[string]uint64{"Assassin": 1, "player-123": 99},
+		FirstDamageEvents:  1, ContestStarts: 1, DamageEvents: 3,
+		EffectiveDamage: 20, RewardExpiries: 1,
+		DamageByRole: map[string]uint64{"Controller": 14, "player-123": 99},
+	})
+
+	metrics := httptest.NewRecorder()
+	registry.ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := metrics.Body.String()
+	for _, want := range []string{
+		`battle_bat_notice_starts_total{mode="team deathmatch"} 4`,
+		`battle_bat_notice_cancels_total{mode="team deathmatch"} 1`,
+		`battle_bat_windup_starts_total{mode="team deathmatch"} 3`,
+		`battle_bat_strikes_total{mode="team deathmatch"} 2`,
+		`battle_bat_rewards_total{mode="team deathmatch"} 2`,
+		`battle_bat_respawns_total{mode="team deathmatch"} 1`,
+		`battle_bat_reward_claims_total{mode="team deathmatch"} 1`,
+		`battle_bat_reward_denials_total{mode="team deathmatch"} 2`,
+		`battle_bat_reward_claims_by_role_total{mode="team deathmatch",role="Assassin"} 1`,
+		`battle_bat_first_damage_events_total{mode="team deathmatch"} 1`,
+		`battle_bat_contest_starts_total{mode="team deathmatch"} 1`,
+		`battle_bat_damage_events_total{mode="team deathmatch"} 3`,
+		`battle_bat_effective_damage_total{mode="team deathmatch"} 20`,
+		`battle_bat_reward_expiries_total{mode="team deathmatch"} 1`,
+		`battle_bat_damage_by_role_total{mode="team deathmatch",role="Controller"} 14`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("bat lifecycle metric missing %q:\n%s", want, body)
+		}
 	}
 }

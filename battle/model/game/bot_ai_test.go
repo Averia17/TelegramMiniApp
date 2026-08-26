@@ -131,6 +131,87 @@ func TestTeamBotFarmsVisibleMonsterBeforePushingBase(t *testing.T) {
 	}
 }
 
+func TestTeamBotFlankSeeksKnownBatWhenNoHeroIsVisible(t *testing.T) {
+	state := &GameState{
+		Mode:       ModeTeamDeathmatch,
+		Players:    map[string]*player.Player{},
+		Monsters:   map[string]*monster.Monster{},
+		Objectives: map[string]*ObjectiveState{},
+	}
+	bot := &player.Player{CircleBody: geometry.CircleBody{X: 100, Y: 100}, PlayerId: "bot", Team: "Blue", Lives: 700, MaxLives: 700, HeroName: "Kaze", IsBot: true}
+	state.Players[bot.PlayerId] = bot
+	bat := monster.NewMonster(320, 220, 16, 1000, 1000, 100)
+	state.Monsters["bat"] = bat
+	ctx := &teamBotContext{gs: state, bot: bot, now: 10_000, assignment: teamAssignmentFlank}
+
+	intent, ok := (batResourceBehavior{}).Decide(ctx)
+	if !ok || intent.kind != teamIntentAttackPlayer || intent.target == nil || intent.target.monster != bat {
+		t.Fatalf("bat resource intent = %#v ok=%v, want flank bot to farm known bat", intent, ok)
+	}
+}
+
+func TestTeamBotDoesNotFarmBatWhileCriticallyWounded(t *testing.T) {
+	state := &GameState{
+		Mode:       ModeTeamDeathmatch,
+		Players:    map[string]*player.Player{},
+		Monsters:   map[string]*monster.Monster{},
+		Objectives: map[string]*ObjectiveState{},
+	}
+	bot := &player.Player{CircleBody: geometry.CircleBody{X: 100, Y: 100}, PlayerId: "bot", Team: "Blue", Lives: 120, MaxLives: 700, HeroName: "Kaze", IsBot: true}
+	state.Players[bot.PlayerId] = bot
+	state.Monsters["bat"] = monster.NewMonster(320, 220, 16, 1000, 1000, 100)
+	ctx := &teamBotContext{gs: state, bot: bot, now: 10_000, assignment: teamAssignmentFlank}
+
+	if intent, ok := (batResourceBehavior{}).Decide(ctx); ok {
+		t.Fatalf("critically wounded bot farmed bat: intent=%#v", intent)
+	}
+}
+
+func TestTeamBotReportsKnownBatFarmDecision(t *testing.T) {
+	state := &GameState{
+		Mode:       ModeTeamDeathmatch,
+		State:      GameStateGame,
+		Players:    map[string]*player.Player{},
+		Monsters:   map[string]*monster.Monster{},
+		Objectives: map[string]*ObjectiveState{},
+		BotMemory:  map[string]*BotPerception{},
+		botAI:      newTeamBattleBotStrategy(),
+	}
+	bot := &player.Player{CircleBody: geometry.CircleBody{X: 100, Y: 100}, PlayerId: "bot", Team: "Blue", Lives: 700, MaxLives: 700, HeroName: "Kaze", IsBot: true}
+	state.Players[bot.PlayerId] = bot
+	state.Monsters["bat"] = monster.NewMonster(900, 900, 16, 1000, 1000, 100)
+
+	state.updateBots()
+	if got := state.BotAIMetricsSnapshot().BatFarmDecisions; got != 1 {
+		t.Fatalf("bat farm decisions=%d, want 1", got)
+	}
+}
+
+func TestTeamBotReportsContestResponseWhenHeroClaimsBatCamp(t *testing.T) {
+	state := &GameState{
+		Mode:       ModeTeamDeathmatch,
+		State:      GameStateGame,
+		Players:    map[string]*player.Player{},
+		Monsters:   map[string]*monster.Monster{},
+		Objectives: map[string]*ObjectiveState{},
+		BotMemory:  map[string]*BotPerception{},
+		botAI:      newTeamBattleBotStrategy(),
+	}
+	bot := &player.Player{CircleBody: geometry.CircleBody{X: 100, Y: 100}, PlayerId: "bot", Team: "Blue", Lives: 700, MaxLives: 700, HeroName: "Kaze", IsBot: true, Ammo: 1, MaxAmmo: 3}
+	enemy := &player.Player{CircleBody: geometry.CircleBody{X: 500, Y: 100}, PlayerId: "enemy", Team: "Red", Lives: 700, MaxLives: 700, HeroName: "Needle"}
+	state.Players[bot.PlayerId], state.Players[enemy.PlayerId] = bot, enemy
+	state.Monsters["bat"] = monster.NewMonster(420, 100, 16, 1000, 1000, monster.MonsterLives)
+
+	state.updateBots()
+
+	if got := state.BotAIMetricsSnapshot().ResourceContestDecisions; got != 1 {
+		t.Fatalf("resource contest decisions=%d, want one hero-vs-bat contest response", got)
+	}
+	if got := state.BotAIMetricsSnapshot().ResourceContestByRole["Assassin"]; got != 1 {
+		t.Fatalf("assassin contest responses=%d, want one role-attributed response", got)
+	}
+}
+
 func TestTeamBotRoutesToVisibleHealthBoostWhenNoImmediateThreatExists(t *testing.T) {
 	state := newTestGameState()
 	state.Mode = ModeTeamDeathmatch

@@ -6,6 +6,40 @@ const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cj
 
 const baseUrl = process.env.HERO_SELECT_QA_URL || "http://localhost:5173"
 const output = path.resolve(__dirname, "../../output/playwright/hero-select-card.png")
+const heroCatalog = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../docs/hero-catalog.json"), "utf8"))
+
+// Keep the browser fixture on the same source of truth as the audited roster.
+// The real endpoint exposes the flattened Hero wire model, while the catalog
+// document stores the balance and kit sections in a review-friendly shape.
+const heroes = heroCatalog.heroes.map(hero => ({
+  name: hero.name,
+  displayName: hero.name.toUpperCase(),
+  rarity: hero.identity.role === "Sharpshooter" ? "mythic" : hero.identity.role === "Assassin" ? "legendary" : "rare",
+  title: hero.identity.role,
+  attackDescription: hero.abilities.basic.description,
+  superDescription: hero.abilities.super.description,
+  passiveDescription: hero.description,
+  color: hero.identity.color,
+  radius: hero.identity.radius,
+  maxLives: hero.balance.maxLives,
+  speed: hero.balance.speed,
+  attackDamage: hero.balance.attackDamage,
+  attackRate: hero.balance.attackRateMs,
+  reloadTime: hero.balance.reloadTimeMs,
+  maxAmmo: hero.balance.maxAmmo,
+  bulletSpeed: hero.balance.bulletSpeed,
+  bulletSize: hero.balance.bulletSize,
+  attackType: hero.balance.attackType,
+  role: hero.identity.role,
+  desc: hero.description,
+  regenRate: hero.balance.regenRate,
+  attack: hero.basicAttack,
+  kit: {
+    basic: hero.abilities.basic,
+    super: hero.abilities.super,
+    gadget: hero.abilities.gadget,
+  },
+}))
 
 runWithBrowser(
   () => launchHeadlessChromium(chromium, {headless: true}),
@@ -33,7 +67,7 @@ runWithBrowser(
           next_energy_in: 0,
         }})
       }
-      if (pathname.endsWith("/heroes")) return route.fulfill({json: []})
+      if (pathname.endsWith("/heroes")) return route.fulfill({json: heroes})
       return route.fulfill({json: {}})
     })
 

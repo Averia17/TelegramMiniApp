@@ -137,6 +137,12 @@ type GameState struct {
 	BotMemory               map[string]*BotPerception
 	botMetrics              BotAIMetrics
 	botMetricsFlushed       bool
+	batMetrics              BatLifecycleMetrics
+	batMetricsFlushed       bool
+	batDamageTeams          map[string]string
+	batDamageSeen           map[string]bool
+	batContested            map[string]bool
+	batTimeline             []BatTimelineEvent
 	botAI                   BotAIStrategy
 	IslandVoiceNextAt       map[string]int64
 	IslandVoiceKillClaimed  map[string]bool
@@ -194,16 +200,66 @@ type BotAIMetrics struct {
 	AttackHits                uint64
 	PeelDecisions             uint64
 	ResourceContestDecisions  uint64
+	ResourceContestByRole     map[string]uint64
+	BatFarmDecisions          uint64
 	SpawnProtectionAvoidances uint64
 	StuckReplans              uint64
 	IdleDecisionTicks         uint64
 }
 
+// BatLifecycleMetrics are match-local counters for the neutral camp loop.
+// They intentionally describe world events rather than bot decisions, so a
+// replay can distinguish a readable bat encounter from an AI that merely
+// chose to farm it.
+type BatLifecycleMetrics struct {
+	NoticeStarts       uint64
+	NoticeCancels      uint64
+	WindupStarts       uint64
+	Strikes            uint64
+	Rewards            uint64
+	Respawns           uint64
+	RewardClaims       uint64
+	RewardDenials      uint64
+	RewardClaimsByRole map[string]uint64
+	FirstDamageEvents  uint64
+	ContestStarts      uint64
+	DamageEvents       uint64
+	EffectiveDamage    uint64
+	RewardExpiries     uint64
+	DamageByRole       map[string]uint64
+}
+
+// BatTimelineEvent is a bounded, match-local audit record for one neutral-camp
+// outcome. It is intentionally absent from the live snapshot and exported
+// metrics: scenario reports may retain claimant/source IDs, while production
+// telemetry stays aggregate-only.
+type BatTimelineEvent struct {
+	AtMs       int64  `json:"atMs"`
+	BatID      string `json:"batId"`
+	Kind       string `json:"kind"`
+	SourceID   string `json:"sourceId,omitempty"`
+	ClaimantID string `json:"claimantId,omitempty"`
+	KillerID   string `json:"killerId,omitempty"`
+	Team       string `json:"team,omitempty"`
+	Role       string `json:"role,omitempty"`
+	Damage     int    `json:"damage,omitempty"`
+}
+
+const maxBatTimelineEvents = 256
+
 func newBotAIMetrics() BotAIMetrics {
 	return BotAIMetrics{
-		ActionSelections:   make(map[string]uint64),
-		ActionScoreSums:    make(map[string]float64),
-		ActionScoreSamples: make(map[string]uint64),
+		ActionSelections:      make(map[string]uint64),
+		ActionScoreSums:       make(map[string]float64),
+		ActionScoreSamples:    make(map[string]uint64),
+		ResourceContestByRole: make(map[string]uint64),
+	}
+}
+
+func newBatLifecycleMetrics() BatLifecycleMetrics {
+	return BatLifecycleMetrics{
+		RewardClaimsByRole: make(map[string]uint64),
+		DamageByRole:       make(map[string]uint64),
 	}
 }
 
@@ -225,6 +281,10 @@ func (gs *GameState) BotAIMetricsSnapshot() BotAIMetrics {
 	snapshot.ActionScoreSamples = make(map[string]uint64, len(gs.botMetrics.ActionScoreSamples))
 	for action, count := range gs.botMetrics.ActionScoreSamples {
 		snapshot.ActionScoreSamples[action] = count
+	}
+	snapshot.ResourceContestByRole = make(map[string]uint64, len(gs.botMetrics.ResourceContestByRole))
+	for role, count := range gs.botMetrics.ResourceContestByRole {
+		snapshot.ResourceContestByRole[role] = count
 	}
 	return snapshot
 }

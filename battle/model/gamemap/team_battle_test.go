@@ -544,7 +544,15 @@ func TestTeamBattleAddsMirroredRuinsVinesAndNearbyBatLairs(t *testing.T) {
 			}
 		}
 		if !nearby {
-			t.Fatalf("bat spawn %d at (%.0f,%.0f) is not near a ruin lair", index, spawn.X, spawn.Y)
+			for _, bridge := range [][2]float64{{22.5, 22.5}, {39.5, 39.5}, {57.5, 57.5}} {
+				if math.Hypot(spawn.X-bridge[0]*40, spawn.Y-bridge[1]*40) <= 4*40 {
+					nearby = true
+					break
+				}
+			}
+		}
+		if !nearby {
+			t.Fatalf("bat spawn %d at (%.0f,%.0f) is not near a ruin lair or central bridge landmark", index, spawn.X, spawn.Y)
 		}
 	}
 }
@@ -613,15 +621,24 @@ func TestTeamBattleAddsLivingMirroredBaseDressing(t *testing.T) {
 	counts := map[string]int{}
 	positions := map[[2]int]string{}
 	for _, feature := range mapValue.Features {
-		if feature.Type != "base_well" && feature.Type != "base_workshop" && feature.Type != "base_wagon" {
+		if feature.Type != "base_well" && feature.Type != "base_workshop" && feature.Type != "base_wagon" &&
+			feature.Type != "base_barracks" && feature.Type != "base_storehouse" && feature.Type != "base_stable" && feature.Type != "base_chapel" {
 			continue
 		}
 		counts[feature.Type]++
 		cell := [2]int{int(feature.X / 40), int(feature.Y / 40)}
 		positions[cell] = feature.Type
 	}
-	for _, kind := range []string{"base_well", "base_workshop", "base_wagon"} {
-		if counts[kind] != 2 {
+	for _, kind := range []string{"base_well", "base_workshop", "base_wagon", "base_barracks", "base_storehouse", "base_stable", "base_chapel", "base_courtyard"} {
+		want := 2
+		if kind == "base_courtyard" {
+			for _, feature := range mapValue.Features {
+				if feature.Type == kind {
+					counts[kind]++
+				}
+			}
+		}
+		if counts[kind] != want {
 			t.Fatalf("base dressing %s = %d, want one authored feature per team", kind, counts[kind])
 		}
 	}
@@ -637,7 +654,8 @@ func TestTeamBattleAddsLivingMirroredBaseDressing(t *testing.T) {
 		}
 	}
 	for _, feature := range mapValue.Features {
-		if feature.Type == "base_well" || feature.Type == "base_workshop" || feature.Type == "base_wagon" {
+		if feature.Type == "base_well" || feature.Type == "base_workshop" || feature.Type == "base_wagon" ||
+			feature.Type == "base_barracks" || feature.Type == "base_storehouse" || feature.Type == "base_stable" {
 			for _, wall := range mapValue.Collisions {
 				if wall.Type != "objective" {
 					continue
@@ -751,8 +769,8 @@ func TestTeamBattleCityObjectCollidersAreTightAndBlocking(t *testing.T) {
 			t.Fatalf("city circle collider bounds do not match radius: %+v", wall)
 		}
 	}
-	if count != 42 {
-		t.Fatalf("city object colliders = %d, want 42 authored hard-prop and roof footprints", count)
+	if count != 54 {
+		t.Fatalf("city object colliders = %d, want 54 authored hard-prop, base-dressing and roof footprints", count)
 	}
 }
 

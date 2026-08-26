@@ -319,15 +319,7 @@ func (gs *GameState) botUtilityContextFor(bot *player.Player, target *botTarget,
 		} else {
 			ctx.TargetHealthFraction = 1
 			if target.monster != nil {
-				for _, candidate := range gs.Players {
-					if candidate == nil || !candidate.IsAlive() || candidate.PlayerId == bot.PlayerId || candidate.Team == bot.Team {
-						continue
-					}
-					if math.Hypot(candidate.X-target.x, candidate.Y-target.y) <= 220 && gs.botCanSee(bot, candidate, now) {
-						ctx.TargetContested = true
-						break
-					}
-				}
+				ctx.TargetContested = gs.botMonsterContestedByEnemy(bot, target, now)
 			}
 		}
 	}
@@ -387,6 +379,9 @@ func (gs *GameState) botUtilityActionFor(id string, bot *player.Player, target *
 	}
 	if (ctx.PickupContested && selected == botUtilityCollect) || (ctx.TargetContested && selected == botUtilityEngage) {
 		gs.botMetrics.ResourceContestDecisions++
+		if ctx.TargetContested {
+			gs.recordBotBatContestResponse(bot)
+		}
 	}
 	// This is a conservative diagnostic, not a gameplay rule: only a decision
 	// tick with no visible target/resource and no movement velocity is counted.

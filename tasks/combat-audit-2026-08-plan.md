@@ -527,8 +527,11 @@ patrol → notice → chase → wind-up → strike → retreat/leash → defeate
 
 Обязательные правила: видимый wind-up, одна понятная зона удара, leash при
 выходе из camp, запрет бесконечного преследования, spawn protection от
-моментального урона и telemetry на contest time, damage taken, kills и reward
-conversion. Если bat не создаёт выбора между риском и наградой, его нужно
+моментального урона и telemetry на contest time, damage taken, kills, reward
+ownership, denied claims и reward conversion. Сейчас server-side reward
+ownership, first-damage/contest timeline, effective damage, expiry и
+role-attributed claim/deny уже добавлены; active-budget остаётся. Если bat не
+создаёт выбора между риском и наградой, его нужно
 убрать из режима, а не оставлять ради заполнения карты.
 
 ### 5. Балансировать не только DPS, а power budget героя
@@ -1001,8 +1004,38 @@ scenario report и помечается по роли, режиму и уров�
   runner валидирует attempts/hits и сохраняет ratio как отдельные metrics;
 - добавлен roster basic smoke для всех 8 героев; он выявил и исправил Mina
   launch-overlap collision, из-за которой звёзды гасли на первом тике;
+- добавлен replayable counter-role smoke: Kaze входит на дальнюю цель, а Brock
+  создаёт дистанцию против близкого Kaze; отчёты проверяют детерминизм и валидность;
+- добавлена replayable skill-centrality smoke-матрица для всех восьми героев:
+  семь Super дают измеримый combat effect, а Mina отдельно проверяется по shield
+  и фактическому heal; это baseline centrality, не финальный balance proof;
+- добавлены 2-секундные time-injected bot reports для solo и team: decisions,
+  attack attempts/accuracy, action score и отсутствие необъяснимого idle
+  проверяются на повторяемом отчёте;
+- добавлен role benchmark для всех восьми героев: utility layer проверяет
+  читаемый приоритет engage/retreat/collect в заданной боевой ситуации;
+- counter-role smoke расширен до movement matrix всех восьми героев: melee
+  entry на дистанции и ranged disengage/keep-distance теперь проверяются через
+  реальный bot steering, а не только через чистые score-функции;
+- добавлена replayable outcome matrix для всех восьми героев: full-ammo
+  damage/deletion, фактические shots fired, attack cadence, reload и basic DPS;
+  отдельный TTK runner учитывает projectile resolution и reload, а не только
+  формулу из каталога;
+- добавлена replayable counterplay-window matrix для всех восьми Super с
+  проверкой wind-up и feedback phase; найден и исправлен незарегистрированный
+  `kaze_dash`, который ошибочно попадал в fallback `cast` phase;
+- добавлена skill-conversion matrix для всех восьми героев: basic-vs-Super
+  delta и отдельный control/support signal; miss-path smoke подтверждает, что
+  ошибочный basic aim не наносит скрытый урон ни одному герою;
+- добавлен visual timeline scenario для всех восьми Super: accepted command,
+  initial feedback phase, delayed impact materialization и Super miss-path;
+  теперь проверяется не только факт cast, но и конкретный effect/zone contract;
 - базовые catalog/frontend/build/lint/Go gates и browser checks для combat
-  feedback и melee range.
+  feedback и melee range;
+- browser smoke через живой gateway подтвердил hero roster (8 карточек),
+  synthetic combat feedback, team battle shell на 9 mobile viewport и
+  touch-управление без overlap/overflow; static topology audit сохранил
+  метрики и screenshots в `output/playwright/abandoned-city-map/global-audit`.
 
 Открыты и не должны считаться выполненными до evidence:
 
@@ -1013,11 +1046,23 @@ scenario report и помечается по роли, режиму и уров�
 - полный role-aware utility AI с expected-value objective policy, полной
   accuracy/direct-trade scenario matrix для всего ростера, idle/stuck/
   action-score reports по role/mode и полноценные counter-role outcomes;
+  текущий smoke покрывает только две базовые пары, а не всю матрицу;
   расширенными human playtest evidence;
-- bat notice-state и contest telemetry, topology reports карт и human playtest;
+- world-level bat lifecycle telemetry уже добавлена (notice/cancel/windup/
+  strike/reward/respawn) в replay и bounded metrics; role-level bot contest
+  response также экспортируется; claimant-level bat contest attribution теперь
+  сохраняется в bounded match-local timeline и scenario report, без добавления
+  IDs в live snapshot/Prometheus; solo seed fairness по p50/p90 и human
+  playtest остаются;
+  server-side bat notice-state уже добавлен, а динамический
+  topology/resource-route report уже добавлен:
+  168 route samples, safe-drop p50/p90 и 2/8 contestable team-battle camps;
+  team-lane fairness теперь выражена отдельными p50/p90 arrival deltas для bat
+  и health_boost, чтобы зеркальность проверялась не только по authored camp
+  pairs;
 - полный visual contract для всего ростера и staged rollout/rollback;
-- backend-backed mobile/team browser QA: локальный QA без party WebSocket не
-  подтверждает сетевой сценарий.
+- backend-backed mobile/team browser QA для team shell закрыт на живом gateway;
+  отдельные ranged/support/zone/bat visual cases и human playtest остаются.
 
 ## Definition of Done
 

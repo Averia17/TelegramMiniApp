@@ -1,6 +1,9 @@
 package game
 
-import "battle/observability"
+import (
+	"battle/model/player"
+	"battle/observability"
+)
 
 func (gs *GameState) resetBotAIMetrics() {
 	if gs == nil {
@@ -19,6 +22,31 @@ func (gs *GameState) recordBotHardInterrupt() {
 func (gs *GameState) recordBotAbilityUse() {
 	if gs != nil {
 		gs.botMetrics.AbilityUses++
+	}
+}
+
+// recordBotBatContestResponse attributes a live bat contest response to the
+// bot's finite combat role. Player IDs and hero names stay out of metrics.
+func (gs *GameState) recordBotBatContestResponse(bot *player.Player) {
+	if gs == nil || bot == nil {
+		return
+	}
+	role := botRoleFor(bot)
+	if !isBotMetricRole(role) {
+		role = "other"
+	}
+	if gs.botMetrics.ResourceContestByRole == nil {
+		gs.botMetrics.ResourceContestByRole = make(map[string]uint64)
+	}
+	gs.botMetrics.ResourceContestByRole[role]++
+}
+
+func isBotMetricRole(role string) bool {
+	switch role {
+	case "Support", "Assassin", "Tank", "Fighter", "Controller", "Sharpshooter", "other":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -47,8 +75,11 @@ func (gs *GameState) flushBotAIMetrics() {
 		AttackHits:                metrics.AttackHits,
 		PeelDecisions:             metrics.PeelDecisions,
 		ResourceContestDecisions:  metrics.ResourceContestDecisions,
+		ResourceContestByRole:     metrics.ResourceContestByRole,
+		BatFarmDecisions:          metrics.BatFarmDecisions,
 		SpawnProtectionAvoidances: metrics.SpawnProtectionAvoidances,
 		StuckReplans:              metrics.StuckReplans,
 		IdleDecisionTicks:         metrics.IdleDecisionTicks,
 	})
+	gs.flushBatLifecycleMetrics()
 }

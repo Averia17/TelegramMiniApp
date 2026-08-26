@@ -10,6 +10,7 @@ type Prop struct {
 	geometry.CircleBody
 	Type                string
 	LootType            string
+	LootSourceID        string
 	Lives               int
 	MaxLives            int
 	Active              bool

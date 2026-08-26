@@ -46,7 +46,7 @@ import {
   smoothStormRadius,
 } from "../src/components/BattleGame/rendering/map/MapRenderer.js"
 import {GroundRenderer} from "../src/components/BattleGame/rendering/map/GroundRenderer.js"
-import {createProp} from "../src/components/BattleGame/rendering/map/PropRenderer.js"
+import {createProp, createVineField} from "../src/components/BattleGame/rendering/map/PropRenderer.js"
 import {createWildflowerField} from "../src/components/BattleGame/rendering/map/WildflowerRenderer.js"
 import {createBushField} from "../src/components/BattleGame/rendering/map/BushRenderer.js"
 import {PickupRenderer} from "../src/components/BattleGame/rendering/map/PickupRenderer.js"
@@ -605,6 +605,20 @@ test("bat wind-up exposes a readable danger telegraph", () => {
   monsters.dispose()
 })
 
+test("bat notice exposes intent before the chase begins", () => {
+  const root = new THREE.Group()
+  const monsters = new MonsterRenderer(root)
+  monsters.sync({
+    bat_1: {x: 120, y: 220, radius: 24, lives: 184, maxLives: 260, rotation: 0, state: "notice", noticeUntil: Date.now() + 300},
+  })
+
+  const view = monsters.views.get("bat_1")
+  assert.equal(view.noticeTelegraph.visible, true)
+  assert.equal(view.noticeTelegraph.userData.role, "bat-notice-telegraph")
+  assert.equal(view.windupTelegraph.visible, false)
+  monsters.dispose()
+})
+
 test("abandoned city features render as lightweight building, street, and plaza landmarks", () => {
   const root = new THREE.Group()
   const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
@@ -641,16 +655,21 @@ test("abandoned city features render as lightweight building, street, and plaza 
   assert.equal(towerRoles.has("city-tower-base"), true)
   assert.equal(towerRoles.has("city-tower-roof"), true)
   assert.equal(towerRoles.has("city-tower-window"), true)
+  assert.equal(towerRoles.has("city-tower-battlement"), true)
+  assert.equal(towerRoles.has("city-tower-signal-brazier"), true)
   const dirtPath = street.getObjectByName("city-dirt-path")
   assert.ok(dirtPath)
   dirtPath.geometry.computeBoundingBox()
   assert.ok(dirtPath.geometry.boundingBox.max.x - dirtPath.geometry.boundingBox.min.x < 120, "street dressing must not paint a giant ground polygon")
   const streetRoles = new Set()
   street.traverse(child => { if (child.userData?.role) streetRoles.add(child.userData.role) })
-  assert.equal(streetRoles.has("city-path-stone"), true)
+  assert.equal(streetRoles.has("city-street-cobble-cluster"), true)
   assert.equal(streetRoles.has("city-lantern"), true)
   assert.equal(streetRoles.has("city-cart-body"), true)
   assert.equal(streetRoles.has("city-barrel"), true)
+  assert.equal(streetRoles.has("city-street-crate"), true)
+  assert.equal(streetRoles.has("city-path-rut"), false)
+  assert.equal(streetRoles.has("city-cart-wood"), false)
   assert.equal(streetRoles.has("city-car-body"), false)
   assert.equal(streetRoles.has("city-dumpster"), false)
   assert.ok(plaza.getObjectByName("city-plaza-well"))
@@ -664,6 +683,10 @@ test("abandoned city features render as lightweight building, street, and plaza 
   assert.equal(plazaRoles.has("city-plaza-torch"), true)
   assert.equal(plazaRoles.has("city-plaza-stall-roof"), true)
   assert.equal(plazaRoles.has("city-plaza-goods"), true)
+  assert.equal(plazaRoles.has("city-plaza-noticeboard"), true)
+  assert.equal(plazaRoles.has("city-plaza-lantern"), true)
+  assert.equal(plazaRoles.has("city-plaza-basket"), true)
+  assert.equal(plazaRoles.has("city-plaza-cart-wheel"), true)
   assert.equal(plazaRoles.has("city-plaza-lamp"), false)
   mapRenderer.dispose()
 })
@@ -696,6 +719,13 @@ test("authored city buildings use distinct silhouettes and unique lived-in prop 
     "city-north-gate": "city-gate-rope",
     "city-south-ward": "city-forge-ember",
   }
+  const detailRoles = {
+    "city-depot": "city-depot-brace",
+    "city-market": "city-market-produce",
+    "city-apartments": "city-apartment-door",
+    "city-north-gate": "city-gate-chain",
+    "city-south-ward": "city-forge-bellows",
+  }
   Object.entries(uniqueRoles).forEach(([id, requiredRole]) => {
     const building = root.children.find(object => object.userData.featureId === id)
     assert.ok(building, `missing ${id}`)
@@ -703,6 +733,7 @@ test("authored city buildings use distinct silhouettes and unique lived-in prop 
     building.traverse(child => { if (child.userData?.role) roles.push(child.userData.role) })
     assert.equal(roles.includes(requiredRole), true, `${id} lacks its authored prop signature`)
     assert.equal(roles.includes(signatureRoles[id]), true, `${id} lacks layered authored detail ${signatureRoles[id]}`)
+    assert.equal(roles.includes(detailRoles[id]), true, `${id} lacks a readable small prop ${detailRoles[id]}`)
     signatures.set(id, roles.filter(role => role.startsWith("city-")).join("|"))
   })
   assert.equal(new Set(signatures.values()).size, 5, "city buildings should not be duplicated templates")
@@ -726,18 +757,28 @@ test("team bases render medieval town dressing without duplicating collision geo
   const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
   mapRenderer.sync({
     width: 3200, height: 3200, tileSize: 40, walls: [], features: [
-      {id: "blue-base-well", type: "base_well", x: 800, y: 2640, rotation: 0, scale: 1},
-      {id: "blue-base-workshop", type: "base_workshop", x: 440, y: 2680, rotation: 0, scale: 1},
-      {id: "blue-base-wagon", type: "base_wagon", x: 480, y: 2320, rotation: .12, scale: 1},
+      {id: "blue-base-well", type: "base_well", x: 460, y: 2640, rotation: 0, scale: 1},
+      {id: "blue-base-workshop", type: "base_workshop", x: 460, y: 2380, rotation: 0, scale: 1},
+      {id: "blue-base-wagon", type: "base_wagon", x: 820, y: 2760, rotation: .12, scale: 1},
+      {id: "blue-base-barracks", type: "base_barracks", x: 520, y: 2300, rotation: 0, scale: 1},
+      {id: "blue-base-storehouse", type: "base_storehouse", x: 840, y: 2600, rotation: 0, scale: 1},
+      {id: "blue-base-stable", type: "base_stable", x: 920, y: 2520, rotation: 0, scale: 1},
+      {id: "blue-base-chapel", type: "base_chapel", x: 640, y: 2760, rotation: 0, scale: 1},
+      {id: "blue-base-courtyard", type: "base_courtyard", x: 660, y: 2540, rotation: 0, scale: 1},
     ],
   })
 
   assert.equal(mapRenderer.objects.size, 0)
-  assert.equal(mapRenderer.featureObjects.size, 3)
+  assert.equal(mapRenderer.featureObjects.size, 8)
   const expectedRoles = {
     "blue-base-well": ["base-well-stone", "base-well-crank", "base-well-bucket"],
-    "blue-base-workshop": ["base-workshop-roof", "base-workshop-anvil", "base-workshop-barrel"],
-    "blue-base-wagon": ["base-wagon-body", "base-wagon-wheel", "base-wagon-sack"],
+    "blue-base-workshop": ["base-workshop-roof", "base-workshop-anvil", "base-workshop-barrel", "base-workshop-hammer", "base-workshop-fire"],
+    "blue-base-wagon": ["base-wagon-body", "base-wagon-wheel", "base-wagon-sack", "base-wagon-strap", "base-wagon-crate"],
+    "blue-base-barracks": ["base-barracks-wall", "base-barracks-roof", "base-barracks-door", "base-barracks-shield", "base-barracks-banner"],
+    "blue-base-storehouse": ["base-storehouse-wall", "base-storehouse-roof", "base-storehouse-crate", "base-storehouse-barrel", "base-storehouse-awning"],
+    "blue-base-stable": ["base-stable-frame", "base-stable-roof", "base-stable-stall", "base-stable-trough", "base-stable-hay"],
+    "blue-base-chapel": ["base-chapel-wall", "base-chapel-roof", "base-chapel-door", "base-chapel-bell-tower", "base-chapel-bell", "base-chapel-window"],
+    "blue-base-courtyard": ["base-courtyard-surface", "base-courtyard-ring", "base-courtyard-banner", "base-courtyard-cobble"],
   }
   Object.entries(expectedRoles).forEach(([id, roles]) => {
     const feature = root.children.find(object => object.userData.featureId === id)
@@ -2093,6 +2134,26 @@ test("adjacent vine cells compose into one readable overgrowth clump", () => {
   mapRenderer.dispose()
 })
 
+test("team map overgrowth stays still during map updates", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  mapRenderer.sync({
+    width: 320,
+    height: 240,
+    walls: [{minX: 40, minY: 40, maxX: 80, maxY: 80, type: "vine", blocking: false}],
+  })
+
+  const vine = [...mapRenderer.objects.values()].find(object => object.userData.visualType === "vine")
+  const initialRotation = vine.rotation.y
+  const initialHeight = vine.position.y
+
+  mapRenderer.update(1 / 60)
+
+  assert.equal(vine.rotation.y, initialRotation)
+  assert.equal(vine.position.y, initialHeight)
+  mapRenderer.dispose()
+})
+
 test("map crate cells render as natural log piles instead of default box planks", () => {
   const prop = createProp(
     {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "crates"},
@@ -2897,6 +2958,26 @@ test("team battle vine cells render as dense soft overgrowth", () => {
   })
 })
 
+test("team battle vine fields do not leave detached stem fragments", () => {
+  const field = createVineField([
+    {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "vine", blocking: false},
+  ], 0)
+  let detachedStems = 0
+  field.traverse(child => {
+    if (child.userData?.role === "vine-field-stem") detachedStems += 1
+  })
+
+  assert.equal(field.userData.visualType, "vine")
+  assert.equal(field.userData.softTerrain, true)
+  assert.equal(detachedStems, 0)
+  assert.ok(field.getObjectByName("bush-field-crown"))
+
+  field.traverse(node => {
+    node.geometry?.dispose?.()
+    node.material?.dispose?.()
+  })
+})
+
 test("map atmosphere changes with every playable island phase", () => {
   const root = new THREE.Group()
   const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
@@ -2972,7 +3053,11 @@ test("city collision cells use concrete-like fixed-size wall visuals and rubble"
   assert.equal(rubble.userData.visualType, "building_rubble")
   const wallRoles = new Set()
   const rubbleRoles = new Set()
+  const wallChunkRadii = []
   wall.traverse(child => { if (child.userData?.role) wallRoles.add(child.userData.role) })
+  wall.traverse(child => {
+    if (child.userData?.role === "building-ruin-chunk") wallChunkRadii.push(child.geometry.parameters.radius)
+  })
   rubble.traverse(child => { if (child.userData?.role) rubbleRoles.add(child.userData.role) })
   assert.equal(wallRoles.has("building-masonry"), true)
   assert.equal(wallRoles.has("building-window"), true)
@@ -2980,8 +3065,11 @@ test("city collision cells use concrete-like fixed-size wall visuals and rubble"
   assert.equal(wallRoles.has("building-window-frame"), true)
   assert.equal(wallRoles.has("building-plaster-patch"), true)
   assert.equal(wallRoles.has("building-concrete"), false)
-  assert.equal(rubbleRoles.has("building-rubble"), true)
-  assert.equal(rubbleRoles.has("building-rubble-timber"), true)
+  assert.ok(wallChunkRadii.some(radius => radius >= 40 * WORLD_SCALE * .3), "ruin boulders should have a substantial readable silhouette")
+  assert.equal(rubbleRoles.has("building-rubble-bed"), true)
+  assert.equal(rubbleRoles.has("building-rubble-block"), true)
+  assert.equal(rubbleRoles.has("building-rubble-beam"), true)
+  assert.equal(rubbleRoles.has("building-rubble-timber"), false)
   for (const prop of [wall, rubble]) {
     prop.traverse(node => {
       node.geometry?.dispose?.()

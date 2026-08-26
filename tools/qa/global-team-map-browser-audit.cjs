@@ -1,10 +1,10 @@
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const path = require("node:path")
-const {chromium} = require("playwright")
+const {chromium} = require(path.resolve(__dirname, "../../frontend/node_modules/playwright"))
 const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cjs")
 
-const baseUrl = process.env.MAP_QA_URL || "http://localhost"
+const baseUrl = process.env.MAP_QA_URL || "http://127.0.0.1"
 const output = path.resolve(__dirname, "../../output/playwright/abandoned-city-map/global-audit")
 
 const sectors = [
@@ -27,6 +27,19 @@ const vineViews = [
   ["vine-clump-west", 10, 47],
   ["vine-clump-grove", 25, 65],
 ]
+const detailViews = [
+  ["city-street-detail", 20, 27],
+  ["city-plaza-detail", 42, 48],
+  ["city-watchtower-detail", 35, 44],
+  ["base-workshop-detail", 11.5, 59.5],
+  ["base-well-detail", 11.5, 66],
+  ["base-wagon-detail", 20.5, 69],
+  ["base-barracks-detail", 13, 57.5],
+  ["base-storehouse-detail", 21, 65],
+  ["base-stable-detail", 23, 63],
+  ["base-chapel-detail", 16, 69],
+  ["base-courtyard-detail", 16.5, 63.5],
+]
 
 runWithBrowser(
   () => launchHeadlessChromium(chromium, {headless: true}),
@@ -38,7 +51,7 @@ runWithBrowser(
     page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()) })
     page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
 
-    await page.goto(`${baseUrl}/test/map-environment-harness.html?mode=team`, {waitUntil: "domcontentloaded", timeout: 30_000})
+    await page.goto(`${baseUrl}/test/map-environment-harness.html?mode=team`, {waitUntil: "commit", timeout: 30_000})
     await page.waitForFunction(() => document.querySelector("#status")?.classList.contains("is-ready"), {timeout: 30_000})
     await page.evaluate(() => document.querySelector("#toggle-panel")?.click())
     await page.evaluate(() => {
@@ -161,7 +174,7 @@ runWithBrowser(
 
     assert.equal(metrics.map.id, "team-battle@20260816")
     assert.equal(metrics.duplicateCollisionCells.length, 0, `duplicate collision cells: ${metrics.duplicateCollisionCells.join(", ")}`)
-    assert.equal(collisionProbe.cityObjectBlockingCount, 42)
+    assert.equal(collisionProbe.cityObjectBlockingCount, 56)
     assert.equal(collisionProbe.endX <= collisionProbe.expectedContactX + .5, true, `city object probe crossed collider: ${JSON.stringify(collisionProbe)}`)
     assert.equal(collisionProbe.endX > collisionProbe.startX + 1, true, `city object probe did not approach collider: ${JSON.stringify(collisionProbe)}`)
     assert.equal(collisionProbe.roofEndX <= collisionProbe.expectedRoofContactX + .5, true, `roof probe crossed collider: ${JSON.stringify(collisionProbe)}`)
@@ -170,8 +183,8 @@ runWithBrowser(
     assert.equal(metrics.vineCells >= 24, true)
     assert.deepEqual(metrics.vineBlockingCells, [])
     assert.equal(metrics.cityFeatures >= 11, true)
-    assert.equal(metrics.baseFeatures, 6)
-    assert.deepEqual(metrics.baseFeatureSummary, {base_well: 2, base_workshop: 2, base_wagon: 2})
+    assert.equal(metrics.baseFeatures, 16)
+    assert.deepEqual(metrics.baseFeatureSummary, {base_well: 2, base_workshop: 2, base_wagon: 2, base_barracks: 2, base_storehouse: 2, base_stable: 2, base_chapel: 2, base_courtyard: 2})
     assert.deepEqual(consoleErrors, [])
     assert.deepEqual(pageErrors, [])
 
@@ -237,8 +250,33 @@ runWithBrowser(
       await page.waitForTimeout(220)
       await page.screenshot({path: path.join(output, `${name}.png`), fullPage: true})
     }
+    for (const [name, x, y] of detailViews) {
+      await page.evaluate(({name, x, y}) => {
+        const target = {x: x * 40, y: y * 40}
+        window.qa.updatePosition(target.x, target.y, name)
+        window.qa.battleRenderer.cameraRig.follow(target, {width: window.qa.map.width, height: window.qa.map.height}, 1)
+        window.qa.battleRenderer.cameraRig.preferredVertical = 18
+        window.qa.battleRenderer.render()
+      }, {name, x, y})
+      await page.waitForTimeout(220)
+      await page.screenshot({path: path.join(output, `${name}.png`), fullPage: true})
+    }
 
-    process.stdout.write(JSON.stringify({metrics, screenshots: sectors.map(([name]) => path.join(output, `${name}.png`)).concat(path.join(output, "overview.png"), baseViews.map(([name]) => path.join(output, `${name}.png`)), cityViews.map(([name]) => path.join(output, `${name}.png`)), vineViews.map(([name]) => path.join(output, `${name}.png`))), consoleErrors, pageErrors}, null, 2))
+    const report = {
+      generatedAt: new Date().toISOString(),
+      metrics,
+      scope: {
+        staticTopology: "complete",
+        dynamicResourceRoutes: "pending",
+        note: "Cube/bat contest timing and safe drops require a live combat scenario; this report covers the canonical map collision, reachability and visual topology.",
+      },
+      screenshots: sectors.map(([name]) => path.join(output, `${name}.png`)).concat(path.join(output, "overview.png"), baseViews.map(([name]) => path.join(output, `${name}.png`)), cityViews.map(([name]) => path.join(output, `${name}.png`)), vineViews.map(([name]) => path.join(output, `${name}.png`)), detailViews.map(([name]) => path.join(output, `${name}.png`))),
+      consoleErrors,
+      pageErrors,
+    }
+    const reportPath = path.join(output, "report.json")
+    fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
+    process.stdout.write(JSON.stringify({...report, reportPath}, null, 2))
   },
 ).catch(error => {
   console.error(error)

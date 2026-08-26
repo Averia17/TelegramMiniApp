@@ -4,7 +4,7 @@ const assert = require("node:assert/strict")
 const {chromium} = require(path.resolve(__dirname, "../../frontend/node_modules/playwright"))
 const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cjs")
 
-const baseUrl = process.env.MOBILE_BATTLE_SHELL_QA_URL || "http://localhost"
+const baseUrl = process.env.MOBILE_BATTLE_SHELL_QA_URL || "http://127.0.0.1"
 const outputDir = path.resolve(__dirname, "../../output/playwright/mobile-battle-shell")
 const viewports = [
   {name: "android-compact", width: 320, height: 568},
@@ -121,7 +121,9 @@ runWithBrowser(
       localStorage.setItem(`battle_hero:${userId}`, "Needle")
     }, devUser)
     await page.route("**/api/party/**", route => route.fulfill({status: 200, contentType: "application/json", body: "{}"}))
-    await page.goto(`${baseUrl}/?devUser=${devUser}`, {waitUntil: "domcontentloaded", timeout: 30000})
+    // Ignore long-lived third-party resources; the battle shell has its own
+    // readiness signal and can be tested as soon as the document commits.
+    await page.goto(`${baseUrl}/?devUser=${devUser}`, {waitUntil: "commit", timeout: 30000})
     await page.locator(".lp-play-btn:not([disabled])").waitFor({timeout: 30000})
     await page.locator(".lp-play-btn:not([disabled])").click()
     await page.waitForFunction(() => {

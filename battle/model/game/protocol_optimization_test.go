@@ -86,6 +86,25 @@ func TestStateUpdateIncludesCombatContractVersion(t *testing.T) {
 	}
 }
 
+func TestMonsterJSONCarriesNoticeWindow(t *testing.T) {
+	data, err := json.Marshal(MonsterJSON{
+		State: "notice", NoticeUntil: 10_350, WindupUntil: 0,
+	})
+	if err != nil {
+		t.Fatalf("marshal monster notice: %v", err)
+	}
+	var wire struct {
+		State       string `json:"state"`
+		NoticeUntil int64  `json:"noticeUntil"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		t.Fatalf("decode monster notice: %v", err)
+	}
+	if wire.State != "notice" || wire.NoticeUntil != 10_350 {
+		t.Fatalf("monster notice wire = %#v, want state/noticeUntil", wire)
+	}
+}
+
 func TestRejectedCombatEventKeepsExplicitOutcomeFields(t *testing.T) {
 	data, err := json.Marshal(CombatEventJSON{
 		ID: 1, Ts: 100, Kind: "ability", AbilitySlot: "primary",

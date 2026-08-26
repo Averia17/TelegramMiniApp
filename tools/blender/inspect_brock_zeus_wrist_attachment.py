@@ -10,7 +10,7 @@ import bpy
 from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[2]
-MASTER = ROOT / "frontend/assets-source/heroes/brock-zeus/scenes/zeus_rebuild_master.blend"
+MASTER = ROOT / "frontend/assets-source/heroes/brock-zeus/zeus_base.blend"
 REPORT = ROOT / "output/blender/brock-zeus-wrist-attachment-report.json"
 
 

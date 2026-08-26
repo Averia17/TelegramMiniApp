@@ -14,7 +14,7 @@ const manifest = JSON.parse(await readFile(
 for (const hero of manifest.heroes) {
   test(`${hero} has one canonical master Blender source`, async () => {
     const file = hero === "brock-zeus"
-      ? path.join(sourceRoot, hero, "scenes", "zeus_rebuild_master.blend")
+      ? path.join(sourceRoot, hero, "zeus_base.blend")
       : path.join(sourceRoot, hero, `${hero}.blend`)
     await assert.doesNotReject(access(file), `${hero}.blend is missing`)
   })

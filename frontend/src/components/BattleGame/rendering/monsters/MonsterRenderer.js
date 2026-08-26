@@ -63,6 +63,25 @@ const createWindupTelegraph = () => {
   return ring
 }
 
+const createNoticeTelegraph = () => {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(.92, 1.08, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0xffd43b,
+      transparent: true,
+      opacity: .7,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  )
+  ring.rotation.x = -Math.PI / 2
+  ring.position.y = -BAT_HEIGHT * WORLD_SCALE + .045
+  ring.renderOrder = 17
+  ring.visible = false
+  ring.userData.role = "bat-notice-telegraph"
+  return ring
+}
+
 const createBat = state => {
   const group = new THREE.Group()
   group.userData.kind = "bat"
@@ -113,10 +132,11 @@ const createBat = state => {
 
   const shadow = createContactShadow(.72)
   shadow.position.y = -BAT_HEIGHT * WORLD_SCALE + .02
+  const noticeTelegraph = createNoticeTelegraph()
   const windupTelegraph = createWindupTelegraph()
   const health = createHealthBar()
   updateHealthBadge(health.label, state, {healthColor: "#ff4657"})
-  group.add(shadow, windupTelegraph, leftWing, rightWing, body, head, leftEar, rightEar, health.group)
+  group.add(shadow, noticeTelegraph, windupTelegraph, leftWing, rightWing, body, head, leftEar, rightEar, health.group)
 
   const visualScale = Math.max(.82, Number(state.radius) * WORLD_SCALE / 1.45)
   group.scale.setScalar(visualScale)
@@ -130,6 +150,7 @@ const createBat = state => {
     healthFill: null,
     healthLabel: health.label,
     healthFraction: getHealthBarFraction(state.lives, state.maxLives),
+    noticeTelegraph,
     windupTelegraph,
     targetX: state.x,
     targetY: state.y,
@@ -175,8 +196,15 @@ export class MonsterRenderer {
   updateView(view, state) {
     view.group.position.copy(worldToScene(state.x, state.y, BAT_HEIGHT))
     view.group.rotation.y = Math.PI / 2 - (Number(state.rotation) || 0)
+    const noticing = state.state === "notice"
     const windingUp = state.state === "windup"
+    view.noticeTelegraph.visible = noticing
     view.windupTelegraph.visible = windingUp
+    if (noticing) {
+      const remaining = Math.max(0, Number(state.noticeUntil) - Date.now())
+      const pulse = 1 + Math.sin(remaining / 55) * .1
+      view.noticeTelegraph.scale.setScalar(pulse)
+    }
     if (windingUp) {
       const remaining = Math.max(0, Number(state.windupUntil) - Date.now())
       const pulse = .9 + Math.sin(remaining / 60) * .08

@@ -28,8 +28,8 @@ runWithBrowser(
         })
       }
       return {
-        hero: await load("/assets/heroes/output_heroes/brock-zeus-rebuild-v10_base.glb"),
-        cloud: await load("/assets/heroes/output_heroes/brock-zeus-rebuild-v10_cloud.glb"),
+        hero: await load("/assets/heroes/output_heroes/brock-zeus_base.glb"),
+        cloud: await load("/assets/heroes/output_heroes/brock-zeus_cloud.glb"),
         harness: window.render_game_to_text(),
       }
     })

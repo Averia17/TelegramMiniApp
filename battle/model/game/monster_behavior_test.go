@@ -9,6 +9,10 @@ import (
 	"testing"
 )
 
+func monsterHasAcquiredTarget(m *monster.Monster, playerID string) bool {
+	return m != nil && m.TargetPlayerId == playerID && (m.State == monster.MonsterNotice || m.State == monster.MonsterChase)
+}
+
 func TestMonsterStopsChasingAfterItsLeash(t *testing.T) {
 	gs := &GameState{
 		State:    GameStateGame,
@@ -22,7 +26,7 @@ func TestMonsterStopsChasingAfterItsLeash(t *testing.T) {
 	gs.Players[p.PlayerId], gs.Monsters["m1"] = p, m
 
 	gs.updateMonsters()
-	if m.State != monster.MonsterChase || m.TargetPlayerId != p.PlayerId {
+	if !monsterHasAcquiredTarget(m, p.PlayerId) {
 		t.Fatalf("monster did not acquire a nearby player: state=%s target=%q", m.State, m.TargetPlayerId)
 	}
 
@@ -51,6 +55,35 @@ func TestMonsterDoesNotAcquirePlayerOutsideItsSight(t *testing.T) {
 
 	if m.State == monster.MonsterChase || m.TargetPlayerId != "" {
 		t.Fatalf("monster acquired a player outside sight range: state=%s target=%q", m.State, m.TargetPlayerId)
+	}
+}
+
+func TestBatShowsNoticeWindowBeforeChasing(t *testing.T) {
+	now := int64(10_000)
+	gs := &GameState{
+		State:    GameStateGame,
+		Map:      &gamemap.GameMap{WidthInPixels: 800, HeightInPixels: 800},
+		Walls:    geometry.NewSpatialHash(TileSize),
+		Players:  map[string]*player.Player{},
+		Monsters: map[string]*monster.Monster{},
+		clockNow: func() int64 { return now },
+	}
+	p := &player.Player{CircleBody: geometry.CircleBody{X: 170, Y: 100, Radius: 16}, PlayerId: "p1", Lives: 100, MaxLives: 100}
+	m := monster.NewMonsterAt(now, 100, 100, 16, 800, 800, monster.MonsterLives)
+	gs.Players[p.PlayerId], gs.Monsters["m1"] = p, m
+
+	gs.updateMonsters()
+	if m.State != monster.MonsterNotice || m.TargetPlayerId != p.PlayerId || m.NoticeUntil <= now {
+		t.Fatalf("bat notice = state=%s target=%q until=%d, want a visible pre-chase window", m.State, m.TargetPlayerId, m.NoticeUntil)
+	}
+	if m.MoveScale != 0 {
+		t.Fatalf("bat moved during notice: move=(%.2f, %.2f) scale=%.2f", m.MoveX, m.MoveY, m.MoveScale)
+	}
+
+	now = m.NoticeUntil + 1
+	gs.updateMonsters()
+	if m.State != monster.MonsterChase || m.TargetPlayerId != p.PlayerId {
+		t.Fatalf("bat did not enter chase after notice: state=%s target=%q", m.State, m.TargetPlayerId)
 	}
 }
 
@@ -88,7 +121,7 @@ func TestMonsterUsesSlightlyMoreAggressiveButBoundedSight(t *testing.T) {
 	gs.Players[p.PlayerId], gs.Monsters["m1"] = p, m
 
 	gs.updateMonsters()
-	if m.State != monster.MonsterChase || m.TargetPlayerId != p.PlayerId {
+	if !monsterHasAcquiredTarget(m, p.PlayerId) {
 		t.Fatalf("monster did not acquire target inside its bounded sight: state=%s target=%q", m.State, m.TargetPlayerId)
 	}
 }
@@ -109,7 +142,7 @@ func TestMonsterLosesPlayerTrailWhenPlayerEntersBush(t *testing.T) {
 	gs.Players[p.PlayerId], gs.Monsters["m1"] = p, m
 
 	gs.updateMonsters()
-	if m.State != monster.MonsterChase {
+	if !monsterHasAcquiredTarget(m, p.PlayerId) {
 		t.Fatalf("monster did not start chasing a visible player: state=%s", m.State)
 	}
 
@@ -177,7 +210,7 @@ func TestMonsterAcquiresNearbyVisiblePlayerAcrossSolidCover(t *testing.T) {
 
 	gs.updateMonsters()
 
-	if m.State != monster.MonsterChase || m.TargetPlayerId != p.PlayerId {
+	if !monsterHasAcquiredTarget(m, p.PlayerId) {
 		t.Fatalf("nearby visible player did not trigger monster across cover: state=%s target=%q", m.State, m.TargetPlayerId)
 	}
 }

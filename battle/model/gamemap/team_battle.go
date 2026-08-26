@@ -122,6 +122,32 @@ func teamBattleCityColliderSpecs(archetype string) []teamBattleCityColliderSpec 
 	}
 }
 
+func teamBattleBaseColliderSpecs(archetype string) []teamBattleCityColliderSpec {
+	// Base dressing is physical too, but each footprint is deliberately kept
+	// to the visible ground contact of the authored model. Roof eaves, banners,
+	// wagon poles, and open stable fronts stay outside the collider.
+	switch archetype {
+	case "base_well":
+		return []teamBattleCityColliderSpec{{X: 0, Y: 0, Radius: .48}}
+	case "base_workshop":
+		return []teamBattleCityColliderSpec{{X: 0, Y: 0, Width: 1.28, Height: .82}}
+	case "base_wagon":
+		return []teamBattleCityColliderSpec{{X: 0, Y: 0, Width: 1.2, Height: .76}}
+	case "base_barracks":
+		return []teamBattleCityColliderSpec{{X: 0, Y: .02, Width: 1.62, Height: 1.08}}
+	case "base_storehouse":
+		return []teamBattleCityColliderSpec{{X: 0, Y: .02, Width: 1.5, Height: .92}}
+	case "base_stable":
+		return []teamBattleCityColliderSpec{{X: 0, Y: .03, Width: 1.56, Height: 1.02}}
+	case "base_chapel":
+		return []teamBattleCityColliderSpec{{X: 0, Y: .04, Width: 1.38, Height: .98}}
+	case "base_courtyard":
+		return nil
+	default:
+		return nil
+	}
+}
+
 // GenerateTeamBattle builds an authored 3v3 arena. The two bases sit on
 // opposite sides of the main diagonal, and every authored cell is reflected
 // across that diagonal so both teams get the same readable combat language.
@@ -436,12 +462,22 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	// cells from the three spawn pockets or changing the combat geometry.
 	addBaseFeature := func(id, kind string, x, y, rotation, scale float64) {
 		addFeature(id, kind, x, y, rotation, scale)
-		mx, my := mirror(int(x), int(y))
-		addFeature(id+"-mirror", kind, float64(mx), float64(my), -rotation, scale)
+		mx, my := y, x
+		addFeature(id+"-mirror", kind, mx, my, -rotation, scale)
+		for _, spec := range teamBattleBaseColliderSpecs(kind) {
+			cityObjectColliders = append(cityObjectColliders,
+				teamBattleCityObjectCollider(x, y, rotation, scale, spec),
+				teamBattleCityObjectCollider(mx, my, -rotation, scale, spec))
+		}
 	}
-	addBaseFeature("blue-base-well", "base_well", 10, 66, .08, .9)
-	addBaseFeature("blue-base-workshop", "base_workshop", 20, 68, -.04, .82)
-	addBaseFeature("blue-base-wagon", "base_wagon", 12, 58, -.16, .86)
+	addBaseFeature("blue-base-well", "base_well", 11.5, 66, .08, .95)
+	addBaseFeature("blue-base-workshop", "base_workshop", 11.5, 59.5, -.04, .95)
+	addBaseFeature("blue-base-wagon", "base_wagon", 20.5, 69, -.16, .95)
+	addBaseFeature("blue-base-barracks", "base_barracks", 13, 57.5, .08, 1)
+	addBaseFeature("blue-base-storehouse", "base_storehouse", 21, 65, -.12, 1)
+	addBaseFeature("blue-base-stable", "base_stable", 23, 63, .14, 1)
+	addBaseFeature("blue-base-chapel", "base_chapel", 16, 69, -.08, .96)
+	addBaseFeature("blue-base-courtyard", "base_courtyard", 16.5, 63.5, -math.Pi/4, 1)
 	clearBridgeApproaches()
 	// Frame every bridge with the same small bank landmark. The cover stays
 	// outside the bridge corridor, so the crossing remains the obvious route
@@ -596,21 +632,24 @@ func GenerateTeamBattle(seed int64) *GameMap {
 		addVineClump(clump[0], clump[1])
 	}
 
-	// Neutral resources are authored in four positions and mirrored through the
-	// map center. The order is intentional: each first-half
-	// entry has its exact counterpart at index+4, which makes balance checks and
-	// future map edits straightforward.
+	// Neutral resources use three mirrored side-lane pairs plus two camps on the
+	// central diagonal. The diagonal camps are deliberately contestable from
+	// both bases; the side lanes provide safer rewards and invasion routes. The
+	// order keeps the first two mirrored pairs at index+4 for stable map checks.
 	addMonster := func(tileX, tileY float64) {
 		x, y := tileX*tile, tileY*tile
 		gm.MonsterSpawns = append(gm.MonsterSpawns, MapMonsterSpawn{X: x, Y: y})
 	}
-	monsterPoints := [][2]float64{{18.5, 47.5}, {29.5, 61.5}, {43.5, 70.5}, {22.5, 40.5}}
+	monsterPoints := [][2]float64{{18.5, 47.5}, {29.5, 61.5}, {43.5, 70.5}, {39.5, 39.5}}
 	for _, point := range monsterPoints {
 		addMonster(point[0], point[1])
 	}
-	for _, point := range monsterPoints {
+	// The centre-line camps are their own mirrors. Add a second diagonal camp so
+	// the team map keeps eight authored slots without duplicating one position.
+	for _, point := range monsterPoints[:3] {
 		addMonster(point[1], point[0])
 	}
+	addMonster(22.5, 22.5)
 	addSpawnPair := func(team string, x, y int) {
 		spawner := &geometry.RectangleBody{X: float64(x) * tile, Y: float64(y) * tile, Width: tile, Height: tile}
 		gm.Spawners = append(gm.Spawners, spawner)

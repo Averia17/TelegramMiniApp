@@ -66,6 +66,7 @@ var impactEffectKinds = map[string]struct{}{
 	"crate_hit":             {},
 	"crate_break":           {},
 	"rock":                  {},
+	"kaze_dash":             {},
 	"mina_air_wave":         {},
 	"wall_break":            {},
 	"objective_hit":         {},

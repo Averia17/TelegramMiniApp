@@ -54,3 +54,39 @@ func TestScenarioPackCounterRolesKeepEntryAndDisengageReadable(t *testing.T) {
 		}
 	}
 }
+
+func TestScenarioPackRosterCounterRoleMovementMatrix(t *testing.T) {
+	tests := []struct {
+		hero, enemy  string
+		botX, enemyX float64
+		wantSign     float64
+	}{
+		{hero: "Needle", enemy: "Kaze", botX: 100, enemyX: 180, wantSign: -1},
+		{hero: "Mandy", enemy: "Brock Zeus", botX: 100, enemyX: 450, wantSign: 1},
+		{hero: "Fairy Mina", enemy: "Kaze", botX: 100, enemyX: 180, wantSign: -1},
+		{hero: "Brock Zeus", enemy: "Kaze", botX: 300, enemyX: 400, wantSign: -1},
+		{hero: "Kaze", enemy: "Brock Zeus", botX: 100, enemyX: 500, wantSign: 1},
+		{hero: "Wukong Mico", enemy: "Brock Zeus", botX: 100, enemyX: 450, wantSign: 1},
+		{hero: "Persephone Lumi", enemy: "Kaze", botX: 100, enemyX: 180, wantSign: -1},
+		{hero: "Katty", enemy: "Kaze", botX: 100, enemyX: 160, wantSign: -1},
+	}
+	run := func() []CombatScenarioReport {
+		reports := make([]CombatScenarioReport, 0, len(tests))
+		for _, test := range tests {
+			report := runCounterRoleTrial(t, test.hero, test.enemy, test.botX, test.enemyX)
+			moveX, ok := scenarioMetric(report, "moveX")
+			if !ok || moveX*test.wantSign <= 0 {
+				t.Fatalf("%s against %s movement=%.2f, want sign %.0f: %#v", test.hero, test.enemy, moveX, test.wantSign, report)
+			}
+			if err := ValidateCombatScenarioReport(report); err != nil {
+				t.Fatalf("%s counter-role report invalid: %v", test.hero, err)
+			}
+			reports = append(reports, report)
+		}
+		return reports
+	}
+	first, second := run(), run()
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("roster counter-role reports differ:\nfirst=%#v\nsecond=%#v", first, second)
+	}
+}

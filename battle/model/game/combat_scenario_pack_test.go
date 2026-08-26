@@ -166,6 +166,9 @@ func TestScenarioPackCubeOwnershipAndBatContestReportsAreReplayable(t *testing.T
 		if state.Monsters["bat"] == nil || !state.Monsters["bat"].IsAlive() {
 			t.Fatal("bat camp did not respawn deterministically")
 		}
+		if err := runner.RecordBatLifecycleMetrics("bat"); err != nil {
+			t.Fatalf("record bat lifecycle metrics: %v", err)
+		}
 		if err := runner.RecordMetric("telegraphShown", 1); err != nil {
 			t.Fatalf("record bat telegraph: %v", err)
 		}
@@ -182,5 +185,8 @@ func TestScenarioPackCubeOwnershipAndBatContestReportsAreReplayable(t *testing.T
 	firstBat, secondBat := runBat(), runBat()
 	if !reflect.DeepEqual(firstBat, secondBat) {
 		t.Fatalf("bat reports differ:\nfirst=%#v\nsecond=%#v", firstBat, secondBat)
+	}
+	if len(firstBat.BatTimeline) != 3 || firstBat.BatTimeline[0].Kind != "first_damage" || firstBat.BatTimeline[1].Kind != "damage" || firstBat.BatTimeline[2].Kind != "reward" || firstBat.BatTimeline[2].BatID != "bat" {
+		t.Fatalf("bat report claimant timeline=%#v, want deterministic first damage and camp reward", firstBat.BatTimeline)
 	}
 }

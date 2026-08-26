@@ -12,7 +12,7 @@
   "sourceFingerprints": {
     "battle/model/game/heroes.go": "88E767ABFDDACA3B94BBD45C6F0362D892569B857C6FF36673BBF6711CBB04A2",
     "battle/model/game/attack_config.go": "8397876405246401B0EC9BE518400E909249D90797E8444827EAC89A3295FE1D",
-    "tools/blender/hero_animation_scene_manifest.json": "517842AA998BF69D71703F56A368C6C013918811885E0183EC2C13611F870643"
+    "tools/blender/hero_animation_scene_manifest.json": "0F4C03F98AFB1EC2E04E169CA65AE7F45771D702129CB33CA64C23DA417E765A"
   },
   "contracts": {
     "runtimeAnimationFps": 30,
@@ -106,7 +106,7 @@
         "gadget": {"id": "discharge_cable", "name": "Разрядный кабель", "description": "Следующий выстрел становится пробивающим лучом.", "slot": "secondary", "prediction": "server", "mechanics": ["луч до 800", "пробивает цели", "разрушает стены по линии"]}
       },
       "animations": {"available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory", "aim-gadget"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},
-      "assets": {"sourceMaster": "frontend/assets-source/heroes/brock-zeus/scenes/zeus_rebuild_master.blend", "runtimeHero": "frontend/public/assets/heroes/output_heroes/brock-zeus-rebuild-v10_base.glb", "runtimeCompanion": "frontend/public/assets/heroes/output_heroes/brock-zeus-rebuild-v10_cloud.glb", "status": "runtime_ready_companion_cloud"},
+      "assets": {"sourceMaster": "frontend/assets-source/heroes/brock-zeus/zeus_base.blend", "runtimeHero": "frontend/public/assets/heroes/output_heroes/brock-zeus_base.glb", "runtimeCompanion": "frontend/public/assets/heroes/output_heroes/brock-zeus_cloud.glb", "status": "runtime_ready_companion_cloud"},
       "implementationRefs": ["battle/model/game/heroes.go", "battle/model/game/new_hero_kits.go"]
     },
     {

@@ -17,9 +17,9 @@ const readGlbJson = async url => {
 
 test("Brock Zeus publishes a separate companion cloud asset", async () => {
   const asset = HERO_ASSETS["Brock Zeus"]
-  assert.equal(asset.url, "/assets/heroes/output_heroes/brock-zeus-rebuild-v10_base.glb")
+  assert.equal(asset.url, "/assets/heroes/output_heroes/brock-zeus_base.glb")
   assert.equal(asset.clips.aimGadget, "AimGadget")
-  assert.equal(asset.companionUrl, "/assets/heroes/output_heroes/brock-zeus-rebuild-v10_cloud.glb")
+  assert.equal(asset.companionUrl, "/assets/heroes/output_heroes/brock-zeus_cloud.glb")
   const character = await readGlbJson(asset.url)
   const nodeNames = new Set((character.nodes || []).map(node => node.name).filter(Boolean))
   assert.equal([...nodeNames].some(name => /cloud|locator/i.test(name)), false)

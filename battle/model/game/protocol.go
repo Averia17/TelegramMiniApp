@@ -243,6 +243,7 @@ type MonsterJSON struct {
 	MaxLives    int     `json:"maxLives"`
 	Tier        int     `json:"tier,omitempty"`
 	State       string  `json:"state,omitempty"`
+	NoticeUntil int64   `json:"noticeUntil,omitempty"`
 	WindupUntil int64   `json:"windupUntil,omitempty"`
 }
 

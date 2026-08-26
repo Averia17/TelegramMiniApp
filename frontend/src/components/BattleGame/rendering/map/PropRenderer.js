@@ -654,7 +654,7 @@ const createVineClumpVisual = (width, height, depth, variant = 0) => {
   return group
 }
 
-export const createVineField = (walls, variant = 0) => {
+export const createVineField = walls => {
   const field = createBushField(walls, "vine")
   field.name = "vine-field"
   field.userData.visualType = "vine"
@@ -662,23 +662,6 @@ export const createVineField = (walls, variant = 0) => {
   delete field.userData.bushWalls
   delete field.userData.bushTiles
   delete field.userData.bushOpacityMeshes
-
-  const stems = standardMaterial(variant % 2 ? 0x416d37 : 0x355d32, {roughness: 1})
-  const sortedWalls = [...walls].sort((left, right) => (left.minY - right.minY) || (left.minX - right.minX))
-  sortedWalls.forEach((wall, index) => {
-    if (index % 3 !== variant % 3) return
-    const x = (Number(wall.minX) + Number(wall.maxX)) * .5 * WORLD_SCALE
-    const z = (Number(wall.minY) + Number(wall.maxY)) * .5 * WORLD_SCALE
-    const size = Math.min(Number(wall.maxX) - Number(wall.minX), Number(wall.maxY) - Number(wall.minY)) * WORLD_SCALE
-    createBranchSegment(
-      field,
-      new THREE.Vector3(x - size * .25, .08, z + size * .12),
-      new THREE.Vector3(x + size * .12, .58, z - size * .08),
-      Math.max(.018, size * .045),
-      stems,
-      "vine-field-stem",
-    )
-  })
   return field
 }
 
@@ -701,8 +684,12 @@ const createBuildingWallVisual = (width, height, depth, variant = 0) => {
     new THREE.Vector3(-width * .08, height * .16, -depth * .22),
   )
   addVisualPart(group, new THREE.BoxGeometry(width * .3, height * .44, depth * .42), exposed, "building-broken-cap", new THREE.Vector3(width * .25, height * .22, depth * .16))
+  // The broken masonry is intentionally chunky: each ruin cell should read
+  // as a collapsed wall at the battle camera distance, not as a scatter of
+  // marble-sized stones. Keep the centres inside the cell so the larger
+  // silhouette does not create an invisible visual overhang into the lane.
   for (const [x, z, size, y] of [
-    [-.28, -.2, .2, .52], [.18, .16, .24, .58], [.36, -.25, .15, .46],
+    [-.3, -.2, .29, .58], [.18, .16, .34, .64], [.34, -.24, .23, .52],
   ]) {
     const chunk = addVisualPart(group, new THREE.DodecahedronGeometry(Math.min(width, depth) * size, 0), plaster, "building-ruin-chunk", new THREE.Vector3(x * width, y * height, z * depth))
     chunk.scale.y = .62
@@ -736,13 +723,63 @@ const createBuildingWallVisual = (width, height, depth, variant = 0) => {
 const createBuildingRubbleVisual = (width, height, depth, variant = 0) => {
   const group = new THREE.Group()
   const concrete = standardMaterial(variant % 2 ? 0x91887c : 0x7e7d75, {roughness: 1})
+  const concreteLight = standardMaterial(variant % 3 ? 0xa39a89 : 0xaaa18e, {roughness: .98})
+  const mortar = standardMaterial(variant % 2 ? 0x5f6259 : 0x68685e, {roughness: 1})
   const timber = standardMaterial(variant % 2 ? 0x684735 : 0x513a2d, {roughness: .98})
-  for (const [x, y, z, size] of [[-.28, .18, -.15, .32], [.18, .3, .12, .26], [.34, .12, -.28, .2]]) {
-    const chunk = addVisualPart(group, new THREE.DodecahedronGeometry(Math.min(width, depth) * size, 0), concrete, "building-rubble", new THREE.Vector3(x * width, y * height, z * depth))
-    chunk.rotation.set(variant * .2 + x, variant * .3, z * 1.6)
-  }
-  const beam = addVisualPart(group, new THREE.CylinderGeometry(Math.min(width, depth) * .035, Math.min(width, depth) * .045, width * .55, 5), timber, "building-rubble-timber", new THREE.Vector3(0, height * .55, 0))
-  beam.rotation.z = -.35
+  const timberLight = standardMaterial(variant % 2 ? 0x946342 : 0x85583c, {roughness: .96})
+
+  // Rubble occupies a full collision cell, so its visual needs to read as a
+  // collapsed piece of a house rather than three loose pebbles and a stray
+  // line. A broad foundation keeps every detail grounded and makes the
+  // footprint legible at the normal battle camera distance.
+  const bed = addVisualPart(
+    group,
+    new THREE.BoxGeometry(width * .86, height * .07, depth * .78),
+    mortar,
+    "building-rubble-bed",
+    new THREE.Vector3(-width * .02, height * .035, depth * .02),
+    new THREE.Euler(0, variant % 2 ? -.08 : .1, 0),
+  )
+  bed.scale.y = .9
+
+  const blocks = [
+    [-.3, .19, -.18, .32, .3, .3, .08],
+    [.03, .27, .05, .37, .36, .31, -.16],
+    [.33, .17, -.22, .27, .26, .25, .2],
+    [-.08, .43, .2, .29, .25, .28, -.3],
+  ]
+  blocks.forEach(([x, y, z, scaleX, scaleY, scaleZ, rotation], index) => {
+    const block = addVisualPart(
+      group,
+      new THREE.DodecahedronGeometry(1, 0),
+      index % 3 === 0 ? concreteLight : concrete,
+      "building-rubble-block",
+      new THREE.Vector3(x * width, y * height, z * depth),
+    )
+    block.scale.set(width * scaleX, height * scaleY, depth * scaleZ)
+    block.rotation.set(variant * .12 + x, rotation + variant * .08, z * 1.4)
+  })
+
+  // Two substantial timber fragments cross the masonry and touch the pile;
+  // they are deliberately thick enough to remain readable instead of
+  // looking like unconnected decorative strokes.
+  const beam = addVisualPart(
+    group,
+    new THREE.BoxGeometry(width * .68, height * .1, depth * .12),
+    timber,
+    "building-rubble-beam",
+    new THREE.Vector3(width * .02, height * .57, -depth * .02),
+    new THREE.Euler(.05, variant % 2 ? -.52 : .42, variant % 2 ? .08 : -.06),
+  )
+  beam.scale.y = .95
+  addVisualPart(
+    group,
+    new THREE.BoxGeometry(width * .42, height * .075, depth * .1),
+    timberLight,
+    "building-rubble-beam",
+    new THREE.Vector3(-width * .16, height * .72, depth * .12),
+    new THREE.Euler(-.08, variant % 2 ? .3 : -.38, 0),
+  )
   return group
 }
 

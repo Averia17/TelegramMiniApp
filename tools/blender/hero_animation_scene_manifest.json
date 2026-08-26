@@ -3,7 +3,7 @@
   "fps": 30,
   "source_layout": "master_actions",
   "master_filename": "{hero}.blend",
-  "master_files": {"brock-zeus": "scenes/zeus_rebuild_master.blend"},
+  "master_files": {"brock-zeus": "zeus_base.blend"},
   "event_clips": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"],
   "ability_clips": ["attack", "super", "gadget"],
   "hero_animation_extras": {"brock-zeus": ["aim-gadget"], "fairy-mina": ["aim-gadget"], "kaze": ["aim-gadget"], "mandy": ["aim-gadget"], "needle": ["aim-gadget"]},

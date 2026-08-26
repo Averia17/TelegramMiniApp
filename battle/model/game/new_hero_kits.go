@@ -298,7 +298,7 @@ func (gs *GameState) resolveKattySuperImpact(owner *player.Player, zone *HeroZon
 		if target == nil || !target.IsAlive() || math.Hypot(target.X-zone.X, target.Y-zone.Y) > zone.Radius+target.Radius {
 			continue
 		}
-		gs.damageMonster(id, target, KattySuperImpactDamage)
+		gs.damageMonster(id, target, KattySuperImpactDamage, owner.PlayerId)
 	}
 	for _, crate := range gs.Props {
 		if crate == nil || !crate.Active || !isBreakableCrate(crate) || math.Hypot(crate.X-zone.X, crate.Y-zone.Y) > zone.Radius+crate.Radius {
@@ -330,7 +330,7 @@ func (gs *GameState) damageKattyPuddle(zone *DamageZone) int {
 		if target == nil || !target.IsAlive() || math.Hypot(target.X-zone.X, target.Y-zone.Y) > zone.Radius+target.Radius {
 			continue
 		}
-		gs.damageMonster(id, target, zone.Damage)
+		gs.damageMonster(id, target, zone.Damage, zone.Owner)
 		hits++
 	}
 	for _, crate := range gs.Props {
@@ -373,7 +373,7 @@ func (gs *GameState) resolveKattyPaintSprayImpact(shot *bullet.Bullet) {
 		if target == nil || !target.IsAlive() || math.Hypot(target.X-shot.X, target.Y-shot.Y) > radius+target.Radius {
 			continue
 		}
-		gs.damageMonster(id, target, damage)
+		gs.damageMonster(id, target, damage, shot.PlayerId)
 	}
 	for _, crate := range gs.Props {
 		if crate == nil || !crate.Active || !isBreakableCrate(crate) || math.Hypot(crate.X-shot.X, crate.Y-shot.Y) > radius+crate.Radius {
@@ -417,7 +417,7 @@ func (BrockZeusKit) Basic(gs *GameState, p *player.Player, _ int64, angle, _ flo
 			along := dx*math.Cos(angle) + dy*math.Sin(angle)
 			across := math.Abs(-dx*math.Sin(angle) + dy*math.Cos(angle))
 			if along > 0 && along <= 800 && across <= target.Radius+18 {
-				gs.damageMonster(id, target, int(math.Round(float64(p.AttackDmg)*(1+math.Min(4, along/200)*.15))))
+				gs.damageMonster(id, target, int(math.Round(float64(p.AttackDmg)*(1+math.Min(4, along/200)*.15))), p.PlayerId)
 			}
 		}
 		gs.destroyWallsInSector(p.X, p.Y, angle, 800, .08)
@@ -831,7 +831,7 @@ func (gs *GameState) updateNewHeroSystems() {
 				}
 				for id, target := range gs.Monsters {
 					if target != nil && target.IsAlive() && segmentHitsCircle(z.X, z.Y, z.ToX, z.ToY, target.X, target.Y, z.Radius+target.Radius) {
-						gs.damageMonster(id, target, ZeusFireTrailDamage)
+						gs.damageMonster(id, target, ZeusFireTrailDamage, z.Owner)
 					}
 				}
 			}

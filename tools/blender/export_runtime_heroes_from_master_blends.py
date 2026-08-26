@@ -93,21 +93,15 @@ def require_body_actions(hero: str) -> None:
         raise RuntimeError(f"{hero}: master has no armature")
 
 
-def is_cloud_object(obj) -> bool:
-    current = obj
-    while current:
-        if "cloud" in current.name.casefold():
-            return True
-        current = current.parent
-    return False
+def is_brock_body_mesh(obj) -> bool:
+    return obj.type == "MESH" and obj.name.startswith("ZeusPart_")
 
 
 def select_body_for_brock() -> None:
     bpy.ops.object.select_all(action="DESELECT")
     for obj in bpy.context.scene.objects:
-        if obj.type in {"CAMERA", "LIGHT"} or is_cloud_object(obj):
-            continue
-        obj.select_set(True)
+        if is_brock_body_mesh(obj):
+            obj.select_set(True)
     armature = find_armature()
     if armature is None:
         raise RuntimeError("brock-zeus: no armature while selecting body")
@@ -172,7 +166,7 @@ def export_brock(hero_dir: Path) -> None:
     require_body_actions("brock-zeus")
     select_body_for_brock()
     atomic_export(
-        OUTPUT / "brock-zeus-rebuild-v11_base.glb",
+        OUTPUT / "brock-zeus_base.glb",
         use_selection=True,
         export_animation_mode="ACTIONS",
         export_skins=True,
@@ -181,7 +175,7 @@ def export_brock(hero_dir: Path) -> None:
     bpy.ops.wm.open_mainfile(filepath=os.fspath(master))
     configure_cloud_nla()
     atomic_export(
-        OUTPUT / "brock-zeus-rebuild-v11_cloud.glb",
+        OUTPUT / "brock-zeus_cloud.glb",
         use_selection=True,
         export_animation_mode="NLA_TRACKS",
         export_skins=False,

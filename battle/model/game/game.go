@@ -83,6 +83,7 @@ func InitGameStateWithDependencies(gs *GameState, dependencies GameDependencies)
 	gs.TemporaryWalls = make(map[*geometry.WallTile]int64)
 	gs.BotMemory = make(map[string]*BotPerception)
 	gs.resetBotAIMetrics()
+	gs.resetBatLifecycleMetrics()
 	gs.botAI = newBotAIStrategy(gs.Mode)
 	gs.IslandVoiceNextAt = make(map[string]int64)
 	gs.IslandVoiceKillClaimed = make(map[string]bool)
@@ -486,6 +487,26 @@ func (gs *GameState) updateMonsters() {
 			gs.moveMonsterHome(monsterID, m)
 			continue
 		}
+		if m.State == monster.MonsterNotice {
+			target := gs.Players[m.TargetPlayerId]
+			chaseDistance := math.Hypot(m.X-m.SpawnX, m.Y-m.SpawnY)
+			if target == nil || !target.IsAlive() || !gs.monsterCanSeePlayer(m, target) || chaseDistance > monster.MonsterChaseLeash {
+				gs.recordBatNoticeCancel()
+				m.State = monster.MonsterIdle
+				m.TargetPlayerId = ""
+				m.NoticeUntil = 0
+				m.ReturningHome = true
+				m.IgnorePlayersUntil = now + monster.MonsterLostTargetDelay
+				gs.moveMonster(monsterID, m, 0, 0, monster.MonsterChasePace+float64(m.Tier)*12)
+				continue
+			}
+			if now < m.NoticeUntil {
+				m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
+				continue
+			}
+			m.State = monster.MonsterChase
+			m.NoticeUntil = 0
+		}
 		if m.State == monster.MonsterWindup {
 			target := gs.Players[m.TargetPlayerId]
 			if target == nil || !target.IsAlive() || !gs.monsterCanSeePlayer(m, target) || math.Hypot(target.X-m.X, target.Y-m.Y) > 72 {
@@ -500,6 +521,7 @@ func (gs *GameState) updateMonsters() {
 			m.State = monster.MonsterChase
 			m.AttackWindupUntil = 0
 			m.LastAttackAt = now
+			gs.recordBatStrike()
 			gs.applyDamage(target, 62+m.Tier*18)
 			if !target.IsAlive() {
 				gs.Broadcast("killed", map[string]interface{}{
@@ -529,9 +551,13 @@ func (gs *GameState) updateMonsters() {
 		} else if now >= m.IgnorePlayersUntil {
 			target = gs.closestVisibleMonsterPlayer(m)
 			if target != nil {
-				m.State = monster.MonsterChase
+				gs.recordBatNoticeStart()
+				m.State = monster.MonsterNotice
 				m.TargetPlayerId = target.PlayerId
 				m.ChaseOriginX, m.ChaseOriginY = m.X, m.Y
+				m.NoticeUntil = now + monster.MonsterNoticeDuration
+				m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
+				continue
 			}
 		}
 		if target == nil {
@@ -559,6 +585,7 @@ func (gs *GameState) updateMonsters() {
 			cooldown = 900
 		}
 		if closest < 56 && now-m.LastAttackAt >= cooldown {
+			gs.recordBatWindupStart()
 			m.State = monster.MonsterWindup
 			m.AttackWindupUntil = now + monster.MonsterAttackWindup
 			m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
@@ -1748,13 +1775,25 @@ func (gs *GameState) collectPickups(p *player.Player) {
 	}
 	now := gs.nowMs()
 	for _, pr := range gs.Props {
-		if !pr.Active || pr.ExpiresAt > 0 && pr.ExpiresAt <= now || !canCollectPickup(p, pr) {
-			if pr.ExpiresAt > 0 && pr.ExpiresAt <= now {
+		if pr == nil {
+			continue
+		}
+		expired := pr.ExpiresAt > 0 && pr.ExpiresAt <= now
+		if !pr.Active || expired {
+			if expired {
 				pr.Active = false
 			}
 			continue
 		}
-		if geometry.CircleToCircle(&p.CircleBody, &pr.CircleBody) {
+		inside := geometry.CircleToCircle(&p.CircleBody, &pr.CircleBody)
+		if pr.Type == "health_boost" && pr.LootType == "bat" && inside && !canCollectPickup(p, pr) {
+			gs.recordBatRewardDenial(p, pr)
+			continue
+		}
+		if !canCollectPickup(p, pr) {
+			continue
+		}
+		if inside {
 			switch pr.Type {
 			case "power":
 				pr.Active = false
@@ -1766,7 +1805,13 @@ func (gs *GameState) collectPickups(p *player.Player) {
 				p.Speed = math.Max(p.Speed, math.Min(p.Speed*1.012, 14.25))
 			case "health_boost":
 				if !gs.collectHealthBoost(p, pr) {
+					if pr.LootType == "bat" {
+						gs.recordBatRewardDenial(p, pr)
+					}
 					continue
+				}
+				if pr.LootType == "bat" {
+					gs.recordBatRewardClaim(p, pr)
 				}
 				pr.Active = false
 				gs.addEffect("health_boost", p.X, p.Y, 0, 0, 24, 0, 0, 0, "#4dff70", 0, 700)
@@ -1810,6 +1855,9 @@ func (gs *GameState) expireProps(now int64) {
 	for _, pr := range gs.Props {
 		if pr != nil && pr.Active && pr.ExpiresAt > 0 && pr.ExpiresAt <= now {
 			pr.Active = false
+			if pr.Type == "health_boost" && pr.LootType == "bat" {
+				gs.recordBatRewardExpiry(pr)
+			}
 		}
 	}
 }
@@ -2268,26 +2316,31 @@ func (gs *GameState) chainDamage(owner string, first *player.Player, radius floa
 			continue
 		}
 		target := gs.Monsters[bestMonsterID]
-		gs.damageMonster(bestMonsterID, target, damage)
+		gs.damageMonster(bestMonsterID, target, damage, owner)
 		gs.addEffect("lightning", fromX, fromY, target.X, target.Y, 0, 0, 0, 0, "#65efff", 0, 260)
 		hit[bestMonsterID] = true
 		fromX, fromY = target.X, target.Y
 	}
 }
 
-func (gs *GameState) damageMonster(id string, target *monster.Monster, damage int) bool {
+func (gs *GameState) damageMonster(id string, target *monster.Monster, damage int, sourceIDs ...string) bool {
 	if target == nil || !target.IsAlive() || damage <= 0 {
 		return false
+	}
+	damageSourceID := gs.activeSourceID
+	if len(sourceIDs) > 0 && sourceIDs[0] != "" {
+		damageSourceID = sourceIDs[0]
 	}
 	livesBefore := target.Lives
 	target.Hurt(damage)
 	dealt := livesBefore - target.Lives
-	if source := gs.Players[gs.activeSourceID]; source != nil {
+	if source := gs.Players[damageSourceID]; source != nil {
 		addSuperChargeForEffectiveDamage(source, target.MaxLives, dealt)
 	}
+	gs.recordBatDamage(id, gs.Players[damageSourceID], dealt)
 	if gs.activeCommandID != "" {
 		gs.emitCombatEvent(CombatEvent{
-			Kind: "hit", CommandID: gs.activeCommandID, SourceID: gs.activeSourceID,
+			Kind: "hit", CommandID: gs.activeCommandID, SourceID: damageSourceID,
 			TargetType: "monsters", TargetID: id, ProjectileID: gs.activeProjectileID, Damage: dealt,
 		})
 	}
@@ -2296,9 +2349,19 @@ func (gs *GameState) damageMonster(id string, target *monster.Monster, damage in
 	}
 	dropX, dropY := gs.safeHealthBoostDropPosition(target.X+8, target.Y, 14)
 	reward := prop.NewProp("health_boost", dropX, dropY, 14)
-	reward.LootType = "health_boost"
+	reward.LootType = "bat"
+	reward.LootSourceID = id
 	reward.ExpiresAt = gs.nowMs() + HealthBoostTTL.Milliseconds()
+	if source := gs.Players[damageSourceID]; source != nil && source.PlayerId != "" {
+		reward.HealthBoostKillerID = source.PlayerId
+		if gs.Mode == ModeTeamDeathmatch && source.Team != "" {
+			reward.VisibilityTeam = source.Team
+		} else {
+			reward.VisibilityPlayerID = source.PlayerId
+		}
+	}
 	gs.Props = append(gs.Props, reward)
+	gs.recordBatReward(id, gs.Players[damageSourceID], reward)
 	if gs.MonsterRespawns == nil {
 		gs.MonsterRespawns = make(map[string]MonsterRespawn)
 	}
@@ -2308,6 +2371,9 @@ func (gs *GameState) damageMonster(id string, target *monster.Monster, damage in
 		Tier: target.Tier, MaxLives: target.MaxLives,
 	}
 	delete(gs.Monsters, id)
+	delete(gs.batDamageTeams, id)
+	delete(gs.batDamageSeen, id)
+	delete(gs.batContested, id)
 	return true
 }
 
@@ -2340,6 +2406,7 @@ func (gs *GameState) updateMonsterRespawns(now int64) {
 			m.Tier = 1
 		}
 		gs.Monsters[id] = m
+		gs.recordBatRespawn()
 		delete(gs.MonsterRespawns, id)
 	}
 }
@@ -2385,7 +2452,7 @@ func (gs *GameState) hitSectorWithDamage(source *player.Player, angle, reach, ha
 		if !gs.autoAimHitsTarget(source, target.X, target.Y, target.Radius, angle, reach, halfArc) {
 			continue
 		}
-		gs.damageMonster(id, target, damage)
+		gs.damageMonster(id, target, damage, source.PlayerId)
 		hits++
 		gs.addEffect("damage", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ffe55c", damage, 260)
 	}
@@ -2510,7 +2577,7 @@ func (gs *GameState) radialDamageExcept(owner string, x, y, radius float64, dama
 		if target == nil || !target.IsAlive() || math.Hypot(target.X-x, target.Y-y) > radius+target.Radius {
 			continue
 		}
-		gs.damageMonster(id, target, damage)
+		gs.damageMonster(id, target, damage, owner)
 		hits++
 	}
 	return hits
@@ -2536,7 +2603,7 @@ func (gs *GameState) radialDamageOnce(owner string, x, y, radius float64, damage
 		if hit[key] || target == nil || !target.IsAlive() || math.Hypot(target.X-x, target.Y-y) > radius+target.Radius {
 			continue
 		}
-		gs.damageMonster(id, target, damage)
+		gs.damageMonster(id, target, damage, owner)
 		hit[key] = true
 		hits++
 	}
@@ -2873,6 +2940,7 @@ func (gs *GameState) resetMatchAbilityRuntime() {
 	gs.NextCombatEventID = 0
 	gs.BotMemory = make(map[string]*BotPerception)
 	gs.resetBotAIMetrics()
+	gs.resetBatLifecycleMetrics()
 	gs.activeCommandID, gs.activeSourceID = "", ""
 	gs.activeProjectileID, gs.commandHasProjectile = 0, false
 	gs.activeAutoAim, gs.hasAutoAimTarget = false, false

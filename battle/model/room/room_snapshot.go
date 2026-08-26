@@ -146,6 +146,7 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 				MaxLives:    m.MaxLives,
 				Tier:        m.Tier,
 				State:       string(m.State),
+				NoticeUntil: m.NoticeUntil,
 				WindupUntil: m.AttackWindupUntil,
 			}
 		}
