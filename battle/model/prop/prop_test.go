@@ -3,10 +3,10 @@ package prop
 import "testing"
 
 func TestNewProp(t *testing.T) {
-	p := NewProp("potion-red", 100, 200, 12)
+	p := NewProp("health_boost", 100, 200, 12)
 
-	if p.Type != "potion-red" {
-		t.Errorf("Type = %v, want potion-red", p.Type)
+	if p.Type != "health_boost" {
+		t.Errorf("Type = %v, want health_boost", p.Type)
 	}
 	if p.X != 100 || p.Y != 200 {
 		t.Errorf("Position = (%v,%v), want (100,200)", p.X, p.Y)
@@ -20,7 +20,7 @@ func TestNewProp(t *testing.T) {
 }
 
 func TestPropDeactivate(t *testing.T) {
-	p := NewProp("potion-red", 0, 0, 12)
+	p := NewProp("health_boost", 0, 0, 12)
 	p.Active = false
 	if p.Active {
 		t.Error("deactivated prop should not be active")

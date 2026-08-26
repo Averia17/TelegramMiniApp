@@ -1,0 +1,10 @@
+{
+  "profileId": "combat-profile",
+  "schemaVersion": 1,
+  "profileRevision": "2026-08-26-phase-1-combat-core",
+  "fingerprint": "3B2F8D0486E03BA44B3A706E5E547BCA7AA1E3AEADDAA88462C56C41D9233BD4",
+  "generatedViews": [
+    "battle/model/game/combat_profile_generated.go",
+    "frontend/src/components/BattleGame/combatProfile.generated.js"
+  ]
+}

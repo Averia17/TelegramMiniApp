@@ -4,7 +4,6 @@ import (
 	"battle/model/player"
 	"battle/service/geometry"
 	"math"
-	"time"
 )
 
 // CombatKit is the polymorphic Match Scene contract. Hero-specific behavior
@@ -248,11 +247,13 @@ func (MandyKit) Basic(gs *GameState, source *player.Player, ts int64, angle, _ f
 				stunDuration = MandyFocusedStunDuration
 			}
 			target.StunUntil = max(target.StunUntil, ts+stunDuration.Milliseconds())
+			addSuperChargeForControl(source, target, stunDuration.Milliseconds())
 			if slowUntil > 0 {
 				target.SlowUntil = slowUntil
 			}
 			if gadgetArmed {
-				gs.healPlayerAt(source, int(math.Ceil(float64(source.MaxLives)*.10)), ts)
+				healed := gs.healPlayerAt(source, int(math.Ceil(float64(source.MaxLives)*.10)), ts)
+				addSuperChargeForSupport(source, healed, source.MaxLives)
 			}
 		}
 	}
@@ -306,7 +307,7 @@ func insideSector(x, y, targetX, targetY, targetRadius, angle, reach, halfArc fl
 }
 
 func (gs *GameState) updateMandyFocus() {
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	for _, source := range gs.Players {
 		if source == nil || source.HeroName != "Mandy" || !source.IsAlive() {
 			continue
@@ -323,7 +324,7 @@ func (gs *GameState) updateMandyFocus() {
 }
 
 func (gs *GameState) updatePendingMandySupers() {
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	kept := gs.PendingMandySupers[:0]
 	for _, cast := range gs.PendingMandySupers {
 		if cast == nil {
@@ -350,7 +351,10 @@ func (gs *GameState) updatePendingMandySupers() {
 			along := math.Abs((target.X-cast.X)*math.Cos(cast.Angle) + (target.Y-cast.Y)*math.Sin(cast.Angle))
 			progress := math.Min(1, along/math.Max(1, reach))
 			gs.dealPlayerDamage(source, target, int(math.Round(140*(1+progress*.57))))
-			target.StunUntil = max(target.StunUntil, now+MandySuperStunDuration.Milliseconds())
+			if target.IsAlive() {
+				target.StunUntil = max(target.StunUntil, now+MandySuperStunDuration.Milliseconds())
+				addSuperChargeForControl(source, target, MandySuperStunDuration.Milliseconds())
+			}
 		}
 		for id, target := range gs.Monsters {
 			if target != nil && target.IsAlive() && insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {
@@ -401,7 +405,7 @@ func (gs *GameState) destroyWallsInBeam(x, y, angle, reach, halfWidth float64) i
 }
 
 func (gs *GameState) updateScheduledShots() {
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	kept := gs.ScheduledShots[:0]
 	for _, scheduled := range gs.ScheduledShots {
 		if scheduled == nil {
@@ -427,7 +431,7 @@ func (gs *GameState) updateScheduledShots() {
 }
 
 func (gs *GameState) updateDamageZones() {
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	kept := gs.DamageZones[:0]
 	damagedByGroup := make(map[string]map[string]bool)
 	for _, zone := range gs.DamageZones {

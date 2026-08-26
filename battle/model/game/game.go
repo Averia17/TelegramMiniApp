@@ -9,7 +9,6 @@ import (
 	"battle/service/geometry"
 	"fmt"
 	"math"
-	"math/rand"
 	"sort"
 	"time"
 )
@@ -27,6 +26,13 @@ const (
 
 func InitGameState(gs *GameState) {
 	InitGameStateWithDependencies(gs, GameDependencies{})
+}
+
+func (gs *GameState) nowMs() int64 {
+	if gs != nil && gs.clockNow != nil {
+		return gs.clockNow()
+	}
+	return time.Now().UnixMilli()
 }
 
 func InitGameStateWithDependencies(gs *GameState, dependencies GameDependencies) {
@@ -58,6 +64,7 @@ func InitGameStateWithDependencies(gs *GameState, dependencies GameDependencies)
 	gs.rules = dependencies.Rules
 	gs.Players = make(map[string]*player.Player)
 	gs.Monsters = make(map[string]*monster.Monster)
+	gs.MonsterRespawns = make(map[string]MonsterRespawn)
 	gs.Bullets = make([]*bullet.Bullet, 0)
 	gs.Props = make([]*prop.Prop, 0)
 	gs.Actions = make([]Action, 0)
@@ -75,6 +82,7 @@ func InitGameStateWithDependencies(gs *GameState, dependencies GameDependencies)
 	gs.Skyfalls = make([]*Skyfall, 0)
 	gs.TemporaryWalls = make(map[*geometry.WallTile]int64)
 	gs.BotMemory = make(map[string]*BotPerception)
+	gs.resetBotAIMetrics()
 	gs.botAI = newBotAIStrategy(gs.Mode)
 	gs.IslandVoiceNextAt = make(map[string]int64)
 	gs.IslandVoiceKillClaimed = make(map[string]bool)
@@ -163,19 +171,35 @@ func (gs *GameState) updateWithDelta(elapsed time.Duration) {
 	gs.updateBots()
 	gs.updateMonsters()
 	gs.updateBullets()
-	gs.updateTeamObjectivesAt(time.Now().UnixMilli())
-	gs.updateTeamRespawns(time.Now().UnixMilli())
+	now := gs.nowMs()
+	gs.expireProps(now)
+	gs.updateTeamObjectivesAt(now)
+	gs.updateTeamRespawns(now)
 	gs.expireEffects()
-	gs.pruneCombatEvents(time.Now().UnixMilli())
+	gs.pruneCombatEvents(now)
 }
 
 func (gs *GameState) emitCombatEvent(event CombatEvent) {
 	if event.CommandID == "" {
 		return
 	}
+	if event.Phase == "" {
+		switch event.Kind {
+		case "hit":
+			event.Phase = "impact"
+		case "ability":
+			if event.Accepted {
+				event.Phase = "accepted"
+			} else {
+				event.Phase = "rejected"
+			}
+		default:
+			event.Phase = "command"
+		}
+	}
 	gs.NextCombatEventID++
 	event.ID = gs.NextCombatEventID
-	event.Ts = time.Now().UnixMilli()
+	event.Ts = gs.nowMs()
 	gs.CombatEvents = append(gs.CombatEvents, event)
 }
 
@@ -190,7 +214,7 @@ func (gs *GameState) pruneCombatEvents(now int64) {
 }
 
 func (gs *GameState) updateRegeneration() {
-	gs.updateRegenerationAt(time.Now().UnixMilli())
+	gs.updateRegenerationAt(gs.nowMs())
 }
 
 func (gs *GameState) updateRegenerationAt(now int64) {
@@ -385,7 +409,7 @@ func (gs *GameState) updateGame() {
 			gs.startWaiting()
 			return
 		}
-		if gs.LobbyEndsAt < time.Now().UnixMilli() {
+		if gs.LobbyEndsAt < gs.nowMs() {
 			gs.startGame()
 		}
 	case GameStateGame:
@@ -395,12 +419,12 @@ func (gs *GameState) updateGame() {
 			return
 		}
 		if gs.Mode != ModeTeamDeathmatch {
-			gs.updateIsland(time.Now().UnixMilli())
+			gs.updateIsland(gs.nowMs())
 		}
 		if gs.finishBattleIfDecided() {
 			return
 		}
-		if gs.GameEndsAt < time.Now().UnixMilli() {
+		if gs.GameEndsAt < gs.nowMs() {
 			winner := gs.getTimeoutWinner()
 			gs.setWinnerPlayerID(winner)
 			gs.EndReason = resultReason(gs.matchRules(), gs, winner, true)
@@ -434,11 +458,11 @@ func (gs *GameState) updatePlayers() {
 				if v.AutoAim {
 					angle, v.AimDistance = gs.autoAimTarget(action.PlayerId)
 				}
-				gs.playerShootWithMode(action.PlayerId, time.Now().UnixMilli(), angle, v.ClientID, v.AutoAim, v.AimDistance)
+				gs.playerShootWithMode(action.PlayerId, gs.nowMs(), angle, v.ClientID, v.AutoAim, v.AimDistance)
 			}
 		case "ability":
 			if v, ok := action.Value.(*AbilityValue); ok {
-				gs.playerAbility(action.PlayerId, time.Now().UnixMilli(), v.Slot, v.ClientID, v.TargetID)
+				gs.playerAbility(action.PlayerId, gs.nowMs(), v.Slot, v.ClientID, v.TargetID)
 			}
 		case "aiming":
 			if v, ok := action.Value.(*AimingValue); ok {
@@ -451,7 +475,8 @@ func (gs *GameState) updatePlayers() {
 }
 
 func (gs *GameState) updateMonsters() {
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
+	gs.updateMonsterRespawns(now)
 	index := 0
 	for monsterID, m := range gs.Monsters {
 		if m == nil || !m.IsAlive() {
@@ -459,6 +484,34 @@ func (gs *GameState) updateMonsters() {
 		}
 		if m.ReturningHome {
 			gs.moveMonsterHome(monsterID, m)
+			continue
+		}
+		if m.State == monster.MonsterWindup {
+			target := gs.Players[m.TargetPlayerId]
+			if target == nil || !target.IsAlive() || !gs.monsterCanSeePlayer(m, target) || math.Hypot(target.X-m.X, target.Y-m.Y) > 72 {
+				m.State = monster.MonsterChase
+				m.AttackWindupUntil = 0
+				continue
+			}
+			if now < m.AttackWindupUntil {
+				m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
+				continue
+			}
+			m.State = monster.MonsterChase
+			m.AttackWindupUntil = 0
+			m.LastAttackAt = now
+			gs.applyDamage(target, 62+m.Tier*18)
+			if !target.IsAlive() {
+				gs.Broadcast("killed", map[string]interface{}{
+					"killerName": "A bat",
+					"killedName": target.Name,
+					"killedId":   target.PlayerId,
+				})
+				if gs.OnPlayerKilled != nil {
+					gs.OnPlayerKilled(target.PlayerId, "A bat")
+				}
+				gs.finishBattleIfDecided()
+			}
 			continue
 		}
 		var target *player.Player
@@ -482,7 +535,15 @@ func (gs *GameState) updateMonsters() {
 			}
 		}
 		if target == nil {
-			gs.moveMonster(monsterID, m, 0, 0, monster.MonsterChasePace+float64(m.Tier)*12)
+			if m.State != monster.MonsterPatrol {
+				m.State = monster.MonsterPatrol
+				m.LastActionAt = now
+				m.Rotation = math.Atan2(m.Y-m.SpawnY, m.X-m.SpawnX) + math.Pi/2
+			} else if now-m.LastActionAt >= int64(monster.MonsterPatrolDurationMax) {
+				m.LastActionAt = now
+				m.Rotation += math.Pi / 2
+			}
+			gs.moveMonster(monsterID, m, math.Cos(m.Rotation), math.Sin(m.Rotation), monster.MonsterSpeedPatrol*monster.MonsterChasePace)
 			continue
 		}
 		closest := math.Hypot(target.X-m.X, target.Y-m.Y)
@@ -498,19 +559,10 @@ func (gs *GameState) updateMonsters() {
 			cooldown = 900
 		}
 		if closest < 56 && now-m.LastAttackAt >= cooldown {
-			m.LastAttackAt = now
-			gs.applyDamage(target, 62+m.Tier*18)
-			if !target.IsAlive() {
-				gs.Broadcast("killed", map[string]interface{}{
-					"killerName": "A bat",
-					"killedName": target.Name,
-					"killedId":   target.PlayerId,
-				})
-				if gs.OnPlayerKilled != nil {
-					gs.OnPlayerKilled(target.PlayerId, "A bat")
-				}
-				gs.finishBattleIfDecided()
-			}
+			m.State = monster.MonsterWindup
+			m.AttackWindupUntil = now + monster.MonsterAttackWindup
+			m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
+			gs.addEffect("bat_windup", m.X, m.Y, target.X, target.Y, m.Radius+10, 0, 0, 0, "#ff486f", monster.MonsterAttackWindup, monster.MonsterAttackWindup)
 		}
 		index++
 	}
@@ -616,10 +668,9 @@ func (gs *GameState) monsterCanSeePlayer(m *monster.Monster, target *player.Play
 }
 
 func (gs *GameState) updateStatuses() {
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	for _, p := range gs.Players {
 		expirePlayerShieldAt(p, now)
-		p.SuperCharge = SuperChargePercent(p, now)
 		gs.reloadAmmo(p, now)
 		if p.ShieldStackUntil > 0 && p.ShieldStackUntil <= now {
 			p.ShieldStacks, p.ShieldStackUntil = 0, 0
@@ -697,7 +748,7 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 	if gs.State != GameStateGame || target == nil || !target.IsAlive() {
 		return 0
 	}
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	expirePlayerShieldAt(target, now)
 	target.InterruptRegenerationAt(now)
 	if target.InvulnerableUntil > now {
@@ -723,9 +774,10 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 	}
 	livesBefore := target.Lives
 	shieldBefore := target.ShieldHP
-	target.TakeDamage(amount)
+	target.TakeDamageAt(amount, now)
 	dealt := livesBefore - target.Lives + shieldBefore - target.ShieldHP
 	if livesBefore > 0 && target.Lives <= 0 {
+		target.SuperCharge = 0
 		target.Deaths++
 		if gs.Mode != ModeTeamDeathmatch && target.Place == 0 {
 			if place := gs.countActivePlayers() + 1; place > 1 {
@@ -758,7 +810,11 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 	dealt := gs.applyDamageAmount(target, amount)
 	if dealt > 0 && target != nil {
 		if source != nil {
+			if source.IsBot {
+				gs.botMetrics.AttackHits++
+			}
 			source.PlayerDamage += dealt
+			addSuperChargeFromEffectiveDamage(source, target, dealt)
 		}
 		gs.recordLastContact(source, target)
 	}
@@ -780,7 +836,7 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 			gs.dropHeroHealthBoost(target, source)
 			if !gs.IslandVoiceKillClaimed[source.PlayerId] {
 				gs.IslandVoiceKillClaimed[source.PlayerId] = true
-				gs.emitIslandVoice(source.PlayerId, IslandVoiceTriggerKill, time.Now().UnixMilli())
+				gs.emitIslandVoice(source.PlayerId, IslandVoiceTriggerKill, gs.nowMs())
 			}
 		}
 		gs.Broadcast("killed", map[string]interface{}{
@@ -800,8 +856,10 @@ func (gs *GameState) dropHeroHealthBoost(target, killer *player.Player) {
 	if target == nil || killer == nil || killer.PlayerId == "" {
 		return
 	}
-	reward := prop.NewProp("health_boost", target.X, target.Y, 14)
+	dropX, dropY := gs.safeHealthBoostDropPosition(target.X, target.Y, 14)
+	reward := prop.NewProp("health_boost", dropX, dropY, 14)
 	reward.LootType = "hero"
+	reward.ExpiresAt = gs.nowMs() + HealthBoostTTL.Milliseconds()
 	reward.HealthBoostKillerID = killer.PlayerId
 	if gs.Mode == ModeTeamDeathmatch && killer.Team != "" {
 		reward.VisibilityTeam = killer.Team
@@ -809,6 +867,34 @@ func (gs *GameState) dropHeroHealthBoost(target, killer *player.Player) {
 		reward.VisibilityPlayerID = killer.PlayerId
 	}
 	gs.Props = append(gs.Props, reward)
+}
+
+func (gs *GameState) safeHealthBoostDropPosition(x, y, radius float64) (float64, float64) {
+	valid := func(candidateX, candidateY float64) bool {
+		candidate := &geometry.CircleBody{X: candidateX, Y: candidateY, Radius: radius}
+		return gs.Walls == nil || !geometry.CollidesCircleWithBlockingWalls(candidate, gs.Walls)
+	}
+	if valid(x, y) {
+		return x, y
+	}
+	for distance := radius * 2; distance <= radius*10; distance += radius * 2 {
+		for index := 0; index < 8; index++ {
+			angle := float64(index) * math.Pi / 4
+			candidateX, candidateY := x+math.Cos(angle)*distance, y+math.Sin(angle)*distance
+			if gs.Map != nil {
+				clamped := gs.Map.ClampCircle(&geometry.CircleBody{X: candidateX, Y: candidateY, Radius: radius})
+				candidateX, candidateY = clamped.X, clamped.Y
+			}
+			if valid(candidateX, candidateY) {
+				return candidateX, candidateY
+			}
+		}
+	}
+	if gs.Map != nil {
+		clamped := gs.Map.ClampCircle(&geometry.CircleBody{X: x, Y: y, Radius: radius})
+		return clamped.X, clamped.Y
+	}
+	return x, y
 }
 
 // canDamagePlayer is the final server-side friendly-fire gate. Individual
@@ -845,14 +931,14 @@ func (gs *GameState) recordLastContact(source, target *player.Player) {
 	if distance > 0 {
 		dx, dy = dx/distance, dy/distance
 	}
-	target.LastContactAt = time.Now().UnixMilli()
+	target.LastContactAt = gs.nowMs()
 	target.LastContactBy = source.PlayerId
 	target.LastContactX, target.LastContactY = target.X, target.Y
 	target.LastContactDirX, target.LastContactDirY = dx, dy
 }
 
 func (gs *GameState) updateDelayedEffects() {
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	kept := gs.DelayedEffects[:0]
 	for _, delayed := range gs.DelayedEffects {
 		if delayed == nil {
@@ -879,14 +965,14 @@ func (gs *GameState) updateDelayedEffects() {
 }
 
 func (gs *GameState) addEffect(kind string, x, y, toX, toY, radius, angle, reach, arc float64, color string, damage int, duration int64) *BattleEffect {
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	effect := &BattleEffect{Kind: kind, Phase: combatEffectPhase(kind), X: x, Y: y, ToX: toX, ToY: toY, Radius: radius, Angle: angle, Range: reach, Arc: arc, Color: color, Damage: damage, CreatedAt: now, ExpiresAt: now + duration}
 	gs.Effects = append(gs.Effects, effect)
 	return effect
 }
 
 func (gs *GameState) expireEffects() {
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	kept := gs.Effects[:0]
 	for _, effect := range gs.Effects {
 		if effect != nil && effect.ExpiresAt > now {
@@ -897,7 +983,7 @@ func (gs *GameState) expireEffects() {
 }
 
 func (gs *GameState) updateActiveAbilities() {
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	for _, source := range gs.Players {
 		if !source.IsAlive() || now-source.LastAbilityTick < 16 {
 			continue
@@ -915,7 +1001,8 @@ func (gs *GameState) updateActiveAbilities() {
 			}
 			gs.addEffect("vortex", source.X, source.Y, 0, 0, radius, 0, 0, 0, source.Color, damage, 100)
 			gs.radialDamage(source.PlayerId, source.X, source.Y, radius, damage)
-			gs.healPlayerAt(source, 1, now)
+			healed := gs.healPlayerAt(source, 1, now)
+			addSuperChargeForSupport(source, healed, source.MaxLives)
 		}
 		if source.VineUntil > now && (source.VineUntil-now)%500 < 20 {
 			gs.addEffect("vine", source.X, source.Y, 0, 0, 245, 0, 0, 0, source.Color, 0, 480)
@@ -1012,8 +1099,15 @@ func (gs *GameState) updateBullets() {
 		}
 
 		for _, p := range gs.Players {
-			if b.Kind == "mina_star" && p.IsAlive() && (p.PlayerId == b.PlayerId || (b.Team != "" && p.Team == b.Team)) && segmentHitsCircle(previousX, previousY, b.X, b.Y, p.X, p.Y, p.Radius+b.Radius) {
-				gs.healPlayerAt(p, 2, time.Now().UnixMilli())
+			ownerLaunchOverlap := false
+			if b.Kind == "mina_star" && p.PlayerId == b.PlayerId {
+				ownerLaunchOverlap = b.Travelled <= p.Radius+b.Radius+4
+			}
+			if b.Kind == "mina_star" && !ownerLaunchOverlap && p.IsAlive() && (p.PlayerId == b.PlayerId || (b.Team != "" && p.Team == b.Team)) && segmentHitsCircle(previousX, previousY, b.X, b.Y, p.X, p.Y, p.Radius+b.Radius) {
+				healed := gs.healPlayerAt(p, 2, gs.nowMs())
+				if source := gs.Players[b.PlayerId]; source != nil {
+					addSuperChargeForSupport(source, healed, source.MaxLives)
+				}
 				b.Active = false
 				continue
 			}
@@ -1070,17 +1164,18 @@ func (gs *GameState) updateBullets() {
 				p.X, p.Y = clamped.X, clamped.Y
 			}
 			if b.Poison {
-				p.PoisonUntil = time.Now().Add(4 * time.Second).UnixMilli()
-				p.PoisonTickAt = time.Now().Add(500 * time.Millisecond).UnixMilli()
+				p.PoisonUntil = gs.nowMs() + (4 * time.Second).Milliseconds()
+				p.PoisonTickAt = gs.nowMs() + (500 * time.Millisecond).Milliseconds()
 				p.PoisonBy = b.PlayerId
 			}
 			if b.Kind == "pellet" && p.Marks < 5 {
 				p.Marks++
 			}
 			if b.Kind == "mina_star" {
-				now := time.Now().UnixMilli()
+				now := gs.nowMs()
 				if attacker != nil {
-					gs.healPlayerAt(attacker, MinaStarSelfHeal, now)
+					healed := gs.healPlayerAt(attacker, MinaStarSelfHeal, now)
+					addSuperChargeForSupport(attacker, healed, attacker.MaxLives)
 				}
 				if gs.LightMarkedUntil[p.PlayerId] > now {
 					p.Marks++
@@ -1098,7 +1193,7 @@ func (gs *GameState) updateBullets() {
 				}
 			}
 			if b.Kind == "spore" {
-				now := time.Now().UnixMilli()
+				now := gs.nowMs()
 				slowUntil := now + cappedSkillDuration(NeedleSporeSlowDuration)
 				p.SlowUntil = slowUntil
 				p.SlowMultiplier = .60
@@ -1108,7 +1203,7 @@ func (gs *GameState) updateBullets() {
 				gs.addEffect("needle_anti_heal", p.X, p.Y, 0, 0, p.Radius+10, 0, 0, 0, "#b7ff75", 0, 420)
 			}
 			if b.Kind == "katty_paint" {
-				now := time.Now().UnixMilli()
+				now := gs.nowMs()
 				gs.applyKattyPaint(attacker, p, now, 1, false)
 			}
 			if b.Kind == "lumi_orb" {
@@ -1300,7 +1395,7 @@ func (gs *GameState) startWaiting() {
 
 func (gs *GameState) startLobby() {
 	gs.removeBots()
-	gs.LobbyEndsAt = time.Now().Add(LobbyDuration).UnixMilli()
+	gs.LobbyEndsAt = gs.nowMs() + LobbyDuration.Milliseconds()
 	gs.GameEndsAt = 0
 	gs.WinnerPlayerID = ""
 	gs.State = GameStateLobby
@@ -1313,6 +1408,7 @@ func (gs *GameState) startLobby() {
 }
 
 func (gs *GameState) startFinished() {
+	gs.flushBotAIMetrics()
 	gs.LobbyEndsAt = 0
 	gs.GameEndsAt = 0
 	gs.State = GameStateFinished
@@ -1327,8 +1423,8 @@ func (gs *GameState) startFinished() {
 
 func (gs *GameState) startGame() {
 	gs.LobbyEndsAt = 0
-	gs.GameEndsAt = time.Now().Add(gs.matchDuration()).UnixMilli()
-	gs.MatchStartedAt = time.Now().UnixMilli()
+	gs.MatchStartedAt = gs.nowMs()
+	gs.GameEndsAt = gs.MatchStartedAt + gs.matchDuration().Milliseconds()
 	gs.WinnerPlayerID = ""
 	gs.IslandPhase = ""
 	gs.PhaseStartedAt = 0
@@ -1354,14 +1450,10 @@ func (gs *GameState) startGame() {
 	}
 	gs.setBotsPositionAtFreeSpawns()
 	gs.setPlayersActive(true)
-	spawnProtectionUntil := time.Now().Add(SpawnProtectionDuration).UnixMilli()
+	spawnProtectionUntil := gs.nowMs() + SpawnProtectionDuration.Milliseconds()
 	for _, p := range gs.Players {
 		p.InvulnerableUntil = spawnProtectionUntil
 	}
-	if gs.Mode == ModeTeamDeathmatch {
-		gs.spawnAuthoredTeamPickups()
-	}
-	gs.healthCratesAdd(HealthCratesCount)
 	gs.monstersAdd(MonstersCount)
 	if gs.Mode != ModeTeamDeathmatch {
 		gs.IslandPhase = IslandPhaseHunt
@@ -1376,7 +1468,7 @@ func (gs *GameState) onGameEnd(event *ServerEvent) {
 	duration := int64(0)
 	if gs.GameEndsAt > 0 {
 		matchDuration := gs.matchDuration()
-		remaining := gs.GameEndsAt - time.Now().UnixMilli()
+		remaining := gs.GameEndsAt - gs.nowMs()
 		if remaining < 0 {
 			remaining = 0
 		}
@@ -1534,8 +1626,33 @@ func EffectiveMovementSpeed(p *player.Player, now int64) float64 {
 	return speed
 }
 
+// TerrainMovementMultiplier is the deterministic map-side movement modifier.
+// Vines are deliberately queried by the hero's centre point: the same simple
+// footprint is used by the server and client prediction, so entering and
+// leaving a clump never creates a hidden collision-sized buffer.
+func TerrainMovementMultiplier(mapValue *gamemap.GameMap, x, y float64) float64 {
+	if mapValue == nil {
+		return 1
+	}
+	for _, wall := range mapValue.Collisions {
+		if wall == nil || wall.Type != "vine" || x < wall.MinX || x > wall.MaxX || y < wall.MinY || y > wall.MaxY {
+			continue
+		}
+		return .68
+	}
+	return 1
+}
+
+func EffectiveMovementSpeedAt(p *player.Player, now int64, mapValue *gamemap.GameMap, x, y float64) float64 {
+	speed := EffectiveMovementSpeed(p, now)
+	if p == nil || isPlayerFlying(p, now) {
+		return speed
+	}
+	return speed * TerrainMovementMultiplier(mapValue, x, y)
+}
+
 func (gs *GameState) updatePlayerMovement(elapsed ...time.Duration) {
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	step := (time.Second / 60).Seconds()
 	if len(elapsed) > 0 && elapsed[0] > 0 {
 		// A long pause should not teleport players across the arena after a
@@ -1548,7 +1665,7 @@ func (gs *GameState) updatePlayerMovement(elapsed ...time.Duration) {
 		if !p.IsAlive() || p.StunUntil > now || p.ChannelUntil > now || (p.MoveX == 0 && p.MoveY == 0) {
 			continue
 		}
-		speed := EffectiveMovementSpeed(p, now) * step
+		speed := EffectiveMovementSpeedAt(p, now, gs.Map, p.X, p.Y) * step
 		if p.IsBot {
 			if memory := gs.BotMemory[p.PlayerId]; memory != nil && memory.MoveScale > 0 {
 				speed *= memory.MoveScale
@@ -1596,6 +1713,9 @@ type CombatEvent struct {
 	ID           uint64
 	Ts           int64
 	Kind         string
+	Phase        string
+	AbilitySlot  string
+	Reason       string
 	CommandID    string
 	SourceID     string
 	TargetType   string
@@ -1626,20 +1746,16 @@ func (gs *GameState) collectPickups(p *player.Player) {
 	if p == nil || !gs.CombatEnabled() {
 		return
 	}
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	for _, pr := range gs.Props {
-		if !pr.Active || !canCollectPickup(p, pr) {
+		if !pr.Active || pr.ExpiresAt > 0 && pr.ExpiresAt <= now || !canCollectPickup(p, pr) {
+			if pr.ExpiresAt > 0 && pr.ExpiresAt <= now {
+				pr.Active = false
+			}
 			continue
 		}
 		if geometry.CircleToCircle(&p.CircleBody, &pr.CircleBody) {
 			switch pr.Type {
-			case "potion-red":
-				if !p.IsFullLives() {
-					pr.Active = false
-					heal := int(math.Min(80, float64(p.MaxLives-p.Lives)))
-					gs.healPlayerAt(p, heal, now)
-					gs.addEffect("heal", p.X, p.Y, 0, 0, 0, 0, 0, 0, "#65ff9c", heal, 520)
-				}
 			case "power":
 				pr.Active = false
 				p.PowerCores++
@@ -1687,6 +1803,17 @@ func canCollectPickup(p *player.Player, pr *prop.Prop) bool {
 	return pr.VisibilityTeam == "" || pr.VisibilityTeam == p.Team
 }
 
+func (gs *GameState) expireProps(now int64) {
+	if gs == nil {
+		return
+	}
+	for _, pr := range gs.Props {
+		if pr != nil && pr.Active && pr.ExpiresAt > 0 && pr.ExpiresAt <= now {
+			pr.Active = false
+		}
+	}
+}
+
 func (gs *GameState) collectHealthBoost(collector *player.Player, reward *prop.Prop) bool {
 	if reward == nil || reward.HealthBoostKillerID == "" {
 		return collector.ApplyHealthBoost(HealthBoostFraction) > 0
@@ -1697,6 +1824,7 @@ func (gs *GameState) collectHealthBoost(collector *player.Player, reward *prop.P
 		return killer != nil && killer.PlayerId == collector.PlayerId && killer.ApplyHealthBoost(HealthBoostFraction) > 0
 	}
 
+	benefited := false
 	for _, teammate := range gs.Players {
 		if teammate == nil || teammate.Team != reward.VisibilityTeam {
 			continue
@@ -1705,9 +1833,14 @@ func (gs *GameState) collectHealthBoost(collector *player.Player, reward *prop.P
 		if teammate.PlayerId == reward.HealthBoostKillerID {
 			fraction = HealthBoostFraction
 		}
-		teammate.ApplyHealthBoost(fraction)
+		if teammate.ApplyHealthBoost(fraction) > 0 {
+			// Keep the pickup active when every eligible teammate is already at
+			// the stack cap. A contested resource must never disappear without
+			// producing an authoritative state change.
+			benefited = true
+		}
 	}
-	return true
+	return benefited
 }
 
 func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ...string) {
@@ -1719,11 +1852,21 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 	if len(clientID) > 1 {
 		gs.AbilityTargets[id] = clientID[1]
 	}
+	emitAbilityEvent := func(accepted bool, reason string) {
+		if ackID == "" {
+			return
+		}
+		gs.emitCombatEvent(CombatEvent{
+			Kind: "ability", AbilitySlot: slot, Reason: reason, CommandID: ackID,
+			SourceID: id, Accepted: accepted, Resolved: true,
+		})
+	}
 	if p != nil {
 		p.LastAbilityID = ackID
 		p.LastAbilityOK = false
 	}
 	if p == nil || !p.IsAlive() || p.StunUntil > ts || p.CastUntil > ts || !gs.CombatEnabled() {
+		emitAbilityEvent(false, "ability_unavailable")
 		return
 	}
 	primary := slot == "primary"
@@ -1733,6 +1876,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 		last, cooldown = p.LastPrimaryAt, AbilityCooldownMs(p.HeroName, "primary")
 	}
 	if last != 0 && ts-last < cooldown {
+		emitAbilityEvent(false, "ability_cooldown")
 		return
 	}
 	if !primary {
@@ -1742,11 +1886,17 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 			if p.LastAbilityOK {
 				p.GadgetPulse++
 			}
+			if p.LastAbilityOK {
+				emitAbilityEvent(true, "accepted")
+			} else {
+				emitAbilityEvent(false, "gadget_unavailable")
+			}
 			return
 		}
 	}
 	if p.HeroName == "Mandy" && !primary {
 		if p.GadgetCharges <= 0 || p.GadgetArmed {
+			emitAbilityEvent(false, "gadget_unavailable")
 			return
 		}
 		p.GadgetCharges--
@@ -1758,9 +1908,11 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 		gs.addEffect("mandy_stance", p.X, p.Y, 0, 0, 52, p.Rotation, 0, 0, p.Color, 0, 1800)
 		p.LastSecondaryAt = ts
 		p.LastAbilityOK = true
+		emitAbilityEvent(true, "accepted")
 		return
 	}
 	if primary && SuperChargePercent(p, ts) < 100 {
+		emitAbilityEvent(false, "super_not_ready")
 		return
 	}
 	if primary {
@@ -1770,6 +1922,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 				aimDistance = kit.AttackRange()
 			}
 			if !kit.Super(gs, p, ts, p.Rotation, aimDistance) {
+				emitAbilityEvent(false, "ability_rejected")
 				return
 			}
 			if p.HeroName == "Kaze" && p.KazeSuperReset {
@@ -1782,8 +1935,9 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 			if p.HeroName != "Mandy" {
 				p.SuperPulse++
 			}
-			p.RevealedUntil = time.Now().UnixMilli() + 2000
+			p.RevealedUntil = gs.nowMs() + 2000
 			p.LastAbilityOK = true
+			emitAbilityEvent(true, "accepted")
 			return
 		}
 	}
@@ -1795,6 +1949,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 		p.LastSecondaryAt = ts
 	}
 	p.LastAbilityOK = true
+	emitAbilityEvent(true, "accepted")
 
 	angle := p.Rotation
 	gs.addEffect("burst", p.X, p.Y, 0, 0, 95, angle, 0, 0, p.Color, 0, 420)
@@ -1894,6 +2049,9 @@ func (gs *GameState) playerShootWithMode(id string, ts int64, screenAngle float6
 	angle := quantizeAttackAngle(worldAngleFromScreen(screenAngle))
 	p.Rotation = angle
 	p.AttackPulse++
+	if p.IsBot {
+		gs.botMetrics.AttackAttempts++
+	}
 	if p.HeroName == "Kaze" && p.StealthUntil > ts {
 		p.KazeCritReady = true
 		p.KazeStealthCritReady = true
@@ -2068,7 +2226,7 @@ func (gs *GameState) damageMultiplier(p *player.Player) float64 {
 		return 1
 	}
 	multiplier := math.Max(1, p.DamageMultiplier)
-	if p.LunarDamageUntil > time.Now().UnixMilli() {
+	if p.LunarDamageUntil > gs.nowMs() {
 		multiplier *= 1.2
 	}
 	return multiplier
@@ -2121,35 +2279,69 @@ func (gs *GameState) damageMonster(id string, target *monster.Monster, damage in
 	if target == nil || !target.IsAlive() || damage <= 0 {
 		return false
 	}
+	livesBefore := target.Lives
 	target.Hurt(damage)
+	dealt := livesBefore - target.Lives
+	if source := gs.Players[gs.activeSourceID]; source != nil {
+		addSuperChargeForEffectiveDamage(source, target.MaxLives, dealt)
+	}
 	if gs.activeCommandID != "" {
 		gs.emitCombatEvent(CombatEvent{
 			Kind: "hit", CommandID: gs.activeCommandID, SourceID: gs.activeSourceID,
-			TargetType: "monsters", TargetID: id, ProjectileID: gs.activeProjectileID, Damage: damage,
+			TargetType: "monsters", TargetID: id, ProjectileID: gs.activeProjectileID, Damage: dealt,
 		})
 	}
 	if target.IsAlive() {
 		return false
 	}
-	gs.Props = append(gs.Props, prop.NewProp("potion-red", target.X, target.Y, FlaskSize/2))
-	if gs.shouldDropMonsterHealthBoost(id) {
-		reward := prop.NewProp("health_boost", target.X+8, target.Y, 14)
-		reward.LootType = "health_boost"
-		gs.Props = append(gs.Props, reward)
+	dropX, dropY := gs.safeHealthBoostDropPosition(target.X+8, target.Y, 14)
+	reward := prop.NewProp("health_boost", dropX, dropY, 14)
+	reward.LootType = "health_boost"
+	reward.ExpiresAt = gs.nowMs() + HealthBoostTTL.Milliseconds()
+	gs.Props = append(gs.Props, reward)
+	if gs.MonsterRespawns == nil {
+		gs.MonsterRespawns = make(map[string]MonsterRespawn)
+	}
+	gs.MonsterRespawns[id] = MonsterRespawn{
+		RespawnAt: gs.nowMs() + BatCampRespawnDuration.Milliseconds(),
+		X:         target.SpawnX, Y: target.SpawnY, Radius: target.Radius,
+		Tier: target.Tier, MaxLives: target.MaxLives,
 	}
 	delete(gs.Monsters, id)
 	return true
 }
 
-func shouldDropMonsterHealthBoost(roll int) bool {
-	return roll >= 1 && roll <= MonsterHealthBoostDropChancePercent
-}
-
-func (gs *GameState) shouldDropMonsterHealthBoost(_ string) bool {
-	if gs.randomHealthBoostDrop != nil {
-		return gs.randomHealthBoostDrop()
+func (gs *GameState) updateMonsterRespawns(now int64) {
+	if gs == nil || len(gs.MonsterRespawns) == 0 {
+		return
 	}
-	return shouldDropMonsterHealthBoost(rand.Intn(100) + 1)
+	if gs.Monsters == nil {
+		gs.Monsters = make(map[string]*monster.Monster)
+	}
+	for id, respawn := range gs.MonsterRespawns {
+		if now < respawn.RespawnAt {
+			continue
+		}
+		if _, occupied := gs.Monsters[id]; occupied {
+			delete(gs.MonsterRespawns, id)
+			continue
+		}
+		lives := respawn.MaxLives
+		if lives <= 0 {
+			lives = monster.MonsterLives
+		}
+		mapWidth, mapHeight := float64(512), float64(512)
+		if gs.Map != nil {
+			mapWidth, mapHeight = gs.Map.WidthInPixels, gs.Map.HeightInPixels
+		}
+		m := monster.NewMonsterAt(now, respawn.X, respawn.Y, respawn.Radius, mapWidth, mapHeight, lives)
+		m.Tier = respawn.Tier
+		if m.Tier <= 0 {
+			m.Tier = 1
+		}
+		gs.Monsters[id] = m
+		delete(gs.MonsterRespawns, id)
+	}
 }
 
 func (gs *GameState) hitSector(source *player.Player, angle, reach, halfArc float64, damage int, pull bool) int {
@@ -2224,7 +2416,7 @@ func (gs *GameState) hitSectorWithDamage(source *player.Player, angle, reach, ha
 }
 
 func isBreakableCrate(crate *prop.Prop) bool {
-	return crate != nil && (crate.Type == "lunar_crate" || crate.Type == "health_crate")
+	return crate != nil && crate.Type == "lunar_crate"
 }
 
 // movePlayerByCollision applies displacement caused by a control ability using
@@ -2235,7 +2427,7 @@ func (gs *GameState) movePlayerByCollision(p *player.Player, deltaX, deltaY floa
 	if gs == nil || p == nil || (deltaX == 0 && deltaY == 0) {
 		return
 	}
-	if isPlayerFlying(p, time.Now().UnixMilli()) {
+	if isPlayerFlying(p, gs.nowMs()) {
 		moveCircleDuringFlight(&p.CircleBody, gs.Walls, deltaX, deltaY)
 	} else {
 		geometry.MoveCircleWithBlockingWallsAndCircles(&p.CircleBody, gs.Walls, gs.activeCrateBodies(), deltaX, deltaY)
@@ -2253,35 +2445,18 @@ func (gs *GameState) damageLunarCrate(source *player.Player, crate *prop.Prop, d
 	return gs.damageCrate(source, crate, damage)
 }
 
-func (gs *GameState) damageHealthCrate(source *player.Player, crate *prop.Prop, damage int) bool {
-	if crate == nil || crate.Type != "health_crate" {
-		return false
-	}
-	return gs.damageCrate(source, crate, damage)
-}
-
 func (gs *GameState) damageCrate(source *player.Player, crate *prop.Prop, damage int) bool {
 	if !isBreakableCrate(crate) || !crate.Active || damage <= 0 {
 		return false
 	}
 	crate.Lives -= int(math.Max(1, float64(damage)))
 	crateColor := lunarLootColor(crate.LootType)
-	if crate.Type == "health_crate" {
-		crateColor = "#62d84e"
-	}
 	gs.addEffect("crate_hit", crate.X, crate.Y, 0, 0, crate.Radius, 0, 0, 0, crateColor, damage, 260)
 	if crate.Lives > 0 {
 		return true
 	}
 	crate.Lives = 0
 	crate.Active = false
-	if crate.Type == "health_crate" {
-		reward := prop.NewProp("health_boost", crate.X, crate.Y, 14)
-		reward.LootType = "health_boost"
-		gs.Props = append(gs.Props, reward)
-		gs.addEffect("crate_break", crate.X, crate.Y, 0, 0, 34, 0, 0, 0, "#62d84e", 0, 650)
-		return true
-	}
 	reward := prop.NewProp("lunar_"+crate.LootType, crate.X, crate.Y, 16)
 	reward.LootType = crate.LootType
 	gs.Props = append(gs.Props, reward)
@@ -2368,15 +2543,71 @@ func (gs *GameState) radialDamageOnce(owner string, x, y, radius float64, damage
 	return hits
 }
 
-func SuperChargePercent(p *player.Player, now int64) int {
-	if p == nil || p.LastPrimaryAt == 0 {
-		return 100
-	}
-	cooldown := AbilityCooldownMs(p.HeroName, "primary")
-	if now <= p.LastPrimaryAt {
+func SuperChargePercent(p *player.Player, _ int64) int {
+	if p == nil {
 		return 0
 	}
-	return int(math.Min(100, float64(now-p.LastPrimaryAt)*100/float64(cooldown)))
+	charge := p.SuperCharge
+	if charge < 0 {
+		return 0
+	}
+	if charge > 100 {
+		return 100
+	}
+	return charge
+}
+
+func addSuperChargeFromEffectiveDamage(source, target *player.Player, damage int) {
+	if target == nil {
+		return
+	}
+	addSuperChargeForEffectiveDamage(source, target.MaxLives, damage)
+}
+
+func addSuperChargeForEffectiveDamage(source *player.Player, maxLives, damage int) {
+	if source == nil || damage <= 0 || maxLives <= 0 {
+		return
+	}
+	charge := int(math.Round(float64(damage) * 100 / float64(maxLives)))
+	if charge < 1 {
+		charge = 1
+	}
+	addSuperChargePoints(source, charge)
+}
+
+// Control and support are deliberately smaller, bounded contributions than
+// damage. They reward a successful role action without making a safe loop of
+// short slows or self-heals the fastest way to a Super.
+func addSuperChargeForControl(source, target *player.Player, durationMs int64) {
+	if source == nil || target == nil || !target.IsAlive() || durationMs <= 0 {
+		return
+	}
+	charge := int(math.Round(float64(durationMs) / 200))
+	if charge < 1 {
+		charge = 1
+	}
+	addSuperChargePoints(source, charge)
+}
+
+func addSuperChargeForSupport(source *player.Player, effectiveValue, maxLives int) {
+	if source == nil || effectiveValue <= 0 || maxLives <= 0 {
+		return
+	}
+	charge := int(math.Round(float64(effectiveValue) * 50 / float64(maxLives)))
+	if charge < 1 {
+		charge = 1
+	}
+	addSuperChargePoints(source, charge)
+}
+
+func addSuperChargePoints(source *player.Player, points int) {
+	if source == nil || points <= 0 {
+		return
+	}
+	source.SuperCharge += points
+	if source.SuperCharge > 100 {
+		source.SuperCharge = 100
+	}
 }
 
 func (gs *GameState) destroyWallsInRadius(x, y, radius float64) int {
@@ -2463,7 +2694,7 @@ func (gs *GameState) updateTemporaryWalls() {
 	if len(gs.TemporaryWalls) == 0 {
 		return
 	}
-	now, changed := time.Now().UnixMilli(), false
+	now, changed := gs.nowMs(), false
 	for wall, expiresAt := range gs.TemporaryWalls {
 		if expiresAt <= now {
 			delete(gs.TemporaryWalls, wall)
@@ -2593,7 +2824,7 @@ func (gs *GameState) resetPlayerMatchState(p *player.Player) {
 	p.LastShootAt, p.MoveX, p.MoveY = 0, 0, 0
 	p.ShieldHP, p.ShieldStacks, p.ShieldStackUntil = 0, 0, 0
 	p.PoisonUntil, p.PoisonTickAt, p.PoisonBy = 0, 0, ""
-	p.Marks, p.SuperCharge, p.Heat, p.HeatUntil = 0, 100, 0, 0
+	p.Marks, p.SuperCharge, p.Heat, p.HeatUntil = 0, 0, 0, 0
 	p.AttackPulse, p.SuperPulse, p.GadgetPulse = 0, 0, 0
 	p.Aiming, p.AimDistance = false, 0
 	p.ShieldUntil, p.InvulnerableUntil, p.StealthUntil = 0, 0, 0
@@ -2641,6 +2872,7 @@ func (gs *GameState) resetMatchAbilityRuntime() {
 	gs.CombatEvents = make([]CombatEvent, 0)
 	gs.NextCombatEventID = 0
 	gs.BotMemory = make(map[string]*BotPerception)
+	gs.resetBotAIMetrics()
 	gs.activeCommandID, gs.activeSourceID = "", ""
 	gs.activeProjectileID, gs.commandHasProjectile = 0, false
 	gs.activeAutoAim, gs.hasAutoAimTarget = false, false
@@ -2801,7 +3033,7 @@ func (gs *GameState) finishBattleIfDecided() bool {
 	if gs.State != GameStateGame || len(gs.Players) == 0 {
 		return false
 	}
-	winner, decided := gs.matchRules().EvaluateWinner(gs, time.Now().UnixMilli())
+	winner, decided := gs.matchRules().EvaluateWinner(gs, gs.nowMs())
 	if !decided {
 		return false
 	}
@@ -2900,7 +3132,7 @@ func (gs *GameState) monstersAdd(count int) {
 		if tier == 2 {
 			lives = monster.EliteMonsterLives
 		}
-		m := monster.NewMonster(x, y, PlayerSize/2, gs.Map.WidthInPixels, gs.Map.HeightInPixels, lives)
+		m := monster.NewMonsterAt(gs.nowMs(), x, y, PlayerSize/2, gs.Map.WidthInPixels, gs.Map.HeightInPixels, lives)
 		m.Tier, m.MaxLives = tier, lives
 		monsterID := ""
 		for monsterID == "" {
@@ -2923,7 +3155,7 @@ func (gs *GameState) addAuthoredTeamMonsters(count int) {
 		if index%4 == 0 {
 			tier, lives = 2, monster.EliteMonsterLives
 		}
-		m := monster.NewMonster(spawn.X, spawn.Y, PlayerSize/2, gs.Map.WidthInPixels, gs.Map.HeightInPixels, lives)
+		m := monster.NewMonsterAt(gs.nowMs(), spawn.X, spawn.Y, PlayerSize/2, gs.Map.WidthInPixels, gs.Map.HeightInPixels, lives)
 		m.Tier, m.MaxLives = tier, lives
 		gs.Monsters[fmt.Sprintf("team-bat-%d", index)] = m
 	}
@@ -2995,71 +3227,7 @@ func (gs *GameState) isMonsterSpawnFree(x, y float64, placed [][2]float64) bool 
 
 func (gs *GameState) monstersClear() {
 	gs.Monsters = make(map[string]*monster.Monster)
-}
-
-func (gs *GameState) propsAdd(count int) {
-	for i := 0; i < count; i++ {
-		x := geometry.GetRandomFloat(float64(TileSize), gs.Map.WidthInPixels-float64(TileSize))
-		y := geometry.GetRandomFloat(float64(TileSize), gs.Map.HeightInPixels-float64(TileSize))
-		pr := prop.NewProp("potion-red", x, y, FlaskSize/2)
-		gs.Props = append(gs.Props, pr)
-	}
-}
-
-func (gs *GameState) healthCratesAdd(count int) {
-	if gs.Map == nil || count <= 0 {
-		return
-	}
-	const radius = 22.0
-	for i := 0; i < count; i++ {
-		placed := false
-		for attempt := 0; attempt < 80 && !placed; attempt++ {
-			x := geometry.GetRandomFloat(float64(TileSize)+radius, gs.Map.WidthInPixels-float64(TileSize)-radius)
-			y := geometry.GetRandomFloat(float64(TileSize)+radius, gs.Map.HeightInPixels-float64(TileSize)-radius)
-			candidate := &geometry.CircleBody{X: x, Y: y, Radius: radius}
-			if geometry.CollidesCircleWithBlockingWalls(candidate, gs.Walls) {
-				continue
-			}
-			tooClose := false
-			for _, p := range gs.Players {
-				if p != nil && math.Hypot(p.X-x, p.Y-y) < 100 {
-					tooClose = true
-					break
-				}
-			}
-			if tooClose {
-				continue
-			}
-			for _, existing := range gs.Props {
-				if existing != nil && existing.Active && math.Hypot(existing.X-x, existing.Y-y) < radius*3 {
-					tooClose = true
-					break
-				}
-			}
-			if tooClose {
-				continue
-			}
-			gs.Props = append(gs.Props, prop.NewHealthCrate(x, y))
-			placed = true
-		}
-	}
-}
-
-func (gs *GameState) spawnAuthoredTeamPickups() {
-	if gs.Map == nil {
-		return
-	}
-	for _, spawn := range gs.Map.PickupSpawns {
-		radius := spawn.Radius
-		if radius <= 0 {
-			radius = FlaskSize / 2
-		}
-		propType := spawn.Type
-		if propType == "" {
-			propType = "potion-red"
-		}
-		gs.Props = append(gs.Props, prop.NewProp(propType, spawn.X, spawn.Y, radius))
-	}
+	gs.MonsterRespawns = make(map[string]MonsterRespawn)
 }
 
 var lunarLootTypes = []string{"speed", "damage", "shield", "cooldown"}

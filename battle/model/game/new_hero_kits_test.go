@@ -192,7 +192,7 @@ func TestSkillDurationIsCappedAtFifteenSeconds(t *testing.T) {
 	}
 }
 
-func TestNeedleSuperRechargesByCooldownTimeWithoutHits(t *testing.T) {
+func TestNeedleSuperRequiresCombatChargeWithoutHits(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("needle", "Needle", "Needle")
@@ -214,8 +214,8 @@ func TestNeedleSuperRechargesByCooldownTimeWithoutHits(t *testing.T) {
 		t.Fatalf("root recast before cooldown zones=%d, want 1", len(gs.HeroZones))
 	}
 	gs.playerAbility(p.PlayerId, now+cooldown, "primary")
-	if len(gs.HeroZones) != 2 {
-		t.Fatalf("root recast after cooldown zones=%d, want 2", len(gs.HeroZones))
+	if len(gs.HeroZones) != 1 {
+		t.Fatalf("root recast after cooldown zones=%d, want 1 without combat charge", len(gs.HeroZones))
 	}
 }
 

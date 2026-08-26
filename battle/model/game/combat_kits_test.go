@@ -25,6 +25,22 @@ func TestCombatKitPolymorphismAndAimShapes(t *testing.T) {
 	}
 }
 
+func TestSpawnProtectionDoesNotBuildSuperCharge(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("source", "Source", "Brock Zeus")
+	gs.PlayerAdd("target", "Target", "Needle")
+	source, target := gs.Players["source"], gs.Players["target"]
+	target.InvulnerableUntil = time.Now().Add(time.Second).UnixMilli()
+
+	if dealt := gs.dealPlayerDamage(source, target, 100); dealt != 0 {
+		t.Fatalf("spawn-protected damage = %d, want 0", dealt)
+	}
+	if source.SuperCharge != 0 || target.Lives != target.MaxLives {
+		t.Fatalf("spawn-protected hit changed combat state: charge=%d lives=%d/%d", source.SuperCharge, target.Lives, target.MaxLives)
+	}
+}
+
 func TestTapAutoAimSelectsNearestEnemyInsideAttackRange(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
@@ -169,7 +185,7 @@ func TestManualAimDoesNotGainTheAutoAimArea(t *testing.T) {
 	}
 }
 
-func TestCoreCombatSuperChargeDoesNotUsePvPDamage(t *testing.T) {
+func TestCoreCombatSuperChargeUsesEffectivePvPDamage(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("source", "Source", "Brock Zeus")
@@ -183,8 +199,74 @@ func TestCoreCombatSuperChargeDoesNotUsePvPDamage(t *testing.T) {
 	gs.playerShoot("source", 1_000, 0)
 	gs.updateBullets()
 
+	if source.SuperCharge <= 0 {
+		t.Fatalf("Super charge = %d after PvP damage, want a positive combat contribution", source.SuperCharge)
+	}
+}
+
+func TestSuperChargeStartsEmptyAndUsesEffectivePlayerDamage(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("source", "Source", "Brock Zeus")
+	gs.PlayerAdd("target", "Target", "Needle")
+	source, target := gs.Players["source"], gs.Players["target"]
+
 	if source.SuperCharge != 0 {
-		t.Fatalf("Super charge = %d after PvP damage, want it to remain time-based", source.SuperCharge)
+		t.Fatalf("new player super charge = %d, want 0", source.SuperCharge)
+	}
+	gs.dealPlayerDamage(source, target, target.MaxLives/5)
+
+	if source.SuperCharge != 20 {
+		t.Fatalf("super charge after 20%% effective damage = %d, want 20", source.SuperCharge)
+	}
+}
+
+func TestSuperChargeCreditsControlAndSupportContribution(t *testing.T) {
+	controlSource := &player.Player{SuperCharge: 0}
+	controlTarget := &player.Player{Lives: 600, MaxLives: 600}
+	addSuperChargeForControl(controlSource, controlTarget, 1_000)
+	if controlSource.SuperCharge != 5 {
+		t.Fatalf("one second control charge = %d, want 5", controlSource.SuperCharge)
+	}
+
+	supportSource := &player.Player{SuperCharge: 0}
+	addSuperChargeForSupport(supportSource, 60, 600)
+	if supportSource.SuperCharge != 5 {
+		t.Fatalf("60 effective support on 600 max HP charge = %d, want 5", supportSource.SuperCharge)
+	}
+}
+
+func TestSuperChargeDoesNotAdvanceByTime(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("source", "Source", "Brock Zeus")
+	p := gs.Players["source"]
+	p.SuperCharge = 20
+	p.LastPrimaryAt = 1
+
+	gs.updateStatuses()
+
+	if p.SuperCharge != 20 {
+		t.Fatalf("super charge after status update = %d, want 20", p.SuperCharge)
+	}
+}
+
+func TestRejectedAbilityEmitsReasonedCombatEvent(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("source", "Source", "Needle")
+
+	gs.playerAbility("source", time.Now().UnixMilli(), "primary", "ability-1")
+
+	if len(gs.CombatEvents) != 1 {
+		t.Fatalf("combat events = %+v, want one rejected ability event", gs.CombatEvents)
+	}
+	event := gs.CombatEvents[0]
+	if event.Kind != "ability" || event.CommandID != "ability-1" || event.AbilitySlot != "primary" {
+		t.Fatalf("ability event identity = %+v", event)
+	}
+	if event.Accepted || !event.Resolved || event.Reason != "super_not_ready" {
+		t.Fatalf("ability rejection = %+v, want resolved super_not_ready", event)
 	}
 }
 
@@ -282,7 +364,7 @@ func TestMandyFocusIsSpentAndNextStrikeNeedsAnotherStillWindow(t *testing.T) {
 	}
 }
 
-func TestMandySuperChargeDoesNotUseSuccessfulSwings(t *testing.T) {
+func TestMandySuperChargeUsesSuccessfulSwings(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("mandy", "Mandy", "Mandy")
@@ -298,8 +380,8 @@ func TestMandySuperChargeDoesNotUseSuccessfulSwings(t *testing.T) {
 		target.Lives = target.MaxLives
 	}
 
-	if source.SuperCharge != 0 {
-		t.Fatalf("Mandy Super charge = %d after four hits, want it to remain time-based", source.SuperCharge)
+	if source.SuperCharge <= 0 {
+		t.Fatalf("Mandy Super charge = %d after four hits, want a positive combat contribution", source.SuperCharge)
 	}
 }
 

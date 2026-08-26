@@ -41,7 +41,7 @@ export const getHeroHealthBarSegments = state => {
 
 export const formatHeroHealthLabel = state => {
   const {current, maximum} = healthValues(state)
-  return `${current} / ${maximum}`
+  return current <= 0 ? "ПОВЕРЖЕН" : `${current} / ${maximum}`
 }
 
 export const formatHeroShieldLabel = state => {
@@ -93,6 +93,7 @@ export const createHealthBadge = ({
 export const updateHealthBadge = (sprite, state, options = {}) => {
   if (!sprite || !state) return
   const {canvas, texture, showName = true} = sprite.userData || {}
+  const {current} = healthValues(state)
   sprite.userData.state = state
   sprite.userData.options = options
   if (!canvas || !texture) return
@@ -128,8 +129,12 @@ export const updateHealthBadge = (sprite, state, options = {}) => {
   context.lineWidth = 6
   context.strokeStyle = "#17213b"
   context.strokeText(healthText, 128, 34)
-  context.fillStyle = "#fff"
+  context.fillStyle = current <= 0 ? "#ff7581" : "#fff"
   context.fillText(healthText, 128, 34)
+  if (current <= 0) {
+    texture.needsUpdate = true
+    return
+  }
   context.fillStyle = "#151d34"
   context.fillRect(38, 47, 180, 17)
   // Stack both resources in one track: green is current HP, amber is the

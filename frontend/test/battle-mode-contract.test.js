@@ -170,7 +170,7 @@ test("team death uses a respawn plate instead of the solo defeat popup", async (
   const source = await readSource(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url))
   assert.match(source, /team-respawn-overlay/)
   assert.match(source, /ВОЗРОЖДЕНИЕ НА БАЗЕ/)
-  assert.match(source, /view === "dead" && !isTeamBattle/)
+  assert.doesNotMatch(source, /view === "dead" && !isTeamBattle/)
 })
 
 test("room join binds the local player before the first state render", async () => {

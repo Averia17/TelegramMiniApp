@@ -68,7 +68,8 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			MoveX:              p.MoveX,
 			MoveY:              p.MoveY,
 			Speed:              p.Speed,
-			MovementSpeed:      game.EffectiveMovementSpeed(p, now),
+			MovementSpeed:      game.EffectiveMovementSpeedAt(p, now, r.State.Map, p.X, p.Y),
+			TerrainMultiplier:  game.TerrainMovementMultiplier(r.State.Map, p.X, p.Y),
 			AttackDamage:       p.AttackDmg,
 			AttackRate:         p.AttackRate,
 			AttackCooldown:     attackCooldownSeconds(p, now),
@@ -137,13 +138,15 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 		monsters = make(map[string]game.MonsterJSON, len(r.State.Monsters))
 		for id, m := range r.State.Monsters {
 			monsters[id] = game.MonsterJSON{
-				X:        m.X,
-				Y:        m.Y,
-				Radius:   m.Radius,
-				Rotation: m.Rotation,
-				Lives:    m.Lives,
-				MaxLives: m.MaxLives,
-				Tier:     m.Tier,
+				X:           m.X,
+				Y:           m.Y,
+				Radius:      m.Radius,
+				Rotation:    m.Rotation,
+				Lives:       m.Lives,
+				MaxLives:    m.MaxLives,
+				Tier:        m.Tier,
+				State:       string(m.State),
+				WindupUntil: m.AttackWindupUntil,
 			}
 		}
 	}

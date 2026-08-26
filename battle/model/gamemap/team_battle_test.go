@@ -205,7 +205,7 @@ func TestTeamBattleUsesGroupedCoverAndAPassableDiagonalBorder(t *testing.T) {
 	}
 	occupied := make(map[[2]int]bool)
 	for _, wall := range mapValue.Collisions {
-		if wall.Type == "objective" {
+		if wall.Type == "objective" || wall.Type == teamBattleCityObjectCollisionType {
 			continue
 		}
 		cell := [2]int{int(wall.MinX / 40), int(wall.MinY / 40)}
@@ -344,7 +344,7 @@ func TestTeamBattleOnlyBridgesConnectTheTwoRiverBanks(t *testing.T) {
 	type cell struct{ x, y int }
 	layout := make(map[cell]string, len(mapValue.Collisions))
 	for _, wall := range mapValue.Collisions {
-		if wall.Type == "objective" {
+		if wall.Type == "objective" || wall.Type == teamBattleCityObjectCollisionType {
 			continue
 		}
 		layout[cell{int(wall.MinX / 40), int(wall.MinY / 40)}] = wall.Type
@@ -441,7 +441,7 @@ func TestTeamBattleIsDenseAndMirroredAcrossMainDiagonal(t *testing.T) {
 	type cell struct{ x, y int }
 	layout := make(map[cell]string, len(mapValue.Collisions))
 	for _, wall := range mapValue.Collisions {
-		if wall.Type == "objective" {
+		if wall.Type == "objective" || wall.Type == teamBattleCityObjectCollisionType {
 			continue
 		}
 		key := cell{int(wall.MinX / 40), int(wall.MinY / 40)}
@@ -505,29 +505,14 @@ func TestTeamBattleHasFixedMirroredNeutralSpawns(t *testing.T) {
 	if len(mapValue.MonsterSpawns) != 8 {
 		t.Fatalf("monster spawns = %d, want 8", len(mapValue.MonsterSpawns))
 	}
-	if len(mapValue.PickupSpawns) != 4 {
-		t.Fatalf("pickup spawns = %d, want 4", len(mapValue.PickupSpawns))
-	}
-
-	centerX, centerY := mapValue.WidthInPixels/2, mapValue.HeightInPixels/2
 	for index := 0; index < 2; index++ {
 		monster, mirror := mapValue.MonsterSpawns[index], mapValue.MonsterSpawns[index+4]
 		if monster.X != mirror.Y || monster.Y != mirror.X {
 			t.Fatalf("monster pair %d is not mirrored across main diagonal: (%.0f,%.0f) / (%.0f,%.0f)", index, monster.X, monster.Y, mirror.X, mirror.Y)
 		}
-		pickup, pickupMirror := mapValue.PickupSpawns[index], mapValue.PickupSpawns[index+2]
-		if pickup.Type != "potion-red" || pickupMirror.Type != "potion-red" {
-			t.Fatalf("pickup pair %d types = %q / %q, want potion-red", index, pickup.Type, pickupMirror.Type)
-		}
-		if pickup.X+pickupMirror.X != 2*centerX || pickup.Y+pickupMirror.Y != 2*centerY {
-			t.Fatalf("pickup pair %d is not mirrored through map center: (%.0f,%.0f) / (%.0f,%.0f)", index, pickup.X, pickup.Y, pickupMirror.X, pickupMirror.Y)
-		}
 	}
 	for index, spawn := range mapValue.MonsterSpawns {
 		assertTeamSpawnIsPlayable(t, mapValue, spawn.X, spawn.Y, "monster", index)
-	}
-	for index, spawn := range mapValue.PickupSpawns {
-		assertTeamSpawnIsPlayable(t, mapValue, spawn.X, spawn.Y, "pickup", index)
 	}
 }
 
@@ -561,6 +546,23 @@ func TestTeamBattleAddsMirroredRuinsVinesAndNearbyBatLairs(t *testing.T) {
 		if !nearby {
 			t.Fatalf("bat spawn %d at (%.0f,%.0f) is not near a ruin lair", index, spawn.X, spawn.Y)
 		}
+	}
+}
+
+func TestTeamBattleAddsPassableSlowVineClumps(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	vines := 0
+	for _, wall := range mapValue.Collisions {
+		if wall == nil || wall.Type != "vine" {
+			continue
+		}
+		vines++
+		if geometry.IsBlockingWall(wall.Type) {
+			t.Fatalf("large vine clump at (%.0f,%.0f) must be passable", wall.MinX, wall.MinY)
+		}
+	}
+	if vines < 24 {
+		t.Fatalf("slow vine cells = %d, want at least 24 cells of mirrored clumps", vines)
 	}
 }
 
@@ -692,8 +694,14 @@ func TestTeamBattleCityKeepsDoorsBridgesAndSpawnsPlayable(t *testing.T) {
 		blocking[[2]int{int(wall.MinX / 40), int(wall.MinY / 40)}] = true
 	}
 	for _, door := range [][2]int{{12, 52}, {29, 47}, {43, 60}, {52, 12}, {47, 29}, {60, 43}} {
-		if blocking[door] {
-			t.Fatalf("city doorway at %v is blocked", door)
+		point := &geometry.CircleBody{X: (float64(door[0]) + .5) * 40, Y: (float64(door[1]) + .5) * 40, Radius: .1}
+		for _, wall := range mapValue.Collisions {
+			if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
+				continue
+			}
+			if geometry.CollidesCircleWithWall(point, wall) {
+				t.Fatalf("city doorway at %v is blocked by %s bounds=(%.1f,%.1f)-(%.1f,%.1f)", door, wall.Type, wall.MinX, wall.MinY, wall.MaxX, wall.MaxY)
+			}
 		}
 	}
 	for _, bridge := range [][2]int{{22, 22}, {39, 39}, {57, 57}} {
@@ -712,16 +720,69 @@ func TestTeamBattleCityKeepsDoorsBridgesAndSpawnsPlayable(t *testing.T) {
 
 func TestTeamBattleCityDistrictCoresStayEnterable(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
-	blocking := make(map[[2]int]bool)
+	for _, core := range [][2]int{{13, 52}, {52, 13}, {30, 47}, {47, 30}, {44, 60}, {60, 44}, {16, 31}, {31, 16}, {49, 64}, {64, 49}} {
+		point := &geometry.CircleBody{X: (float64(core[0]) + .5) * 40, Y: (float64(core[1]) + .5) * 40, Radius: .1}
+		for _, wall := range mapValue.Collisions {
+			if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
+				continue
+			}
+			if geometry.CollidesCircleWithWall(point, wall) {
+				t.Fatalf("city district core %v is sealed by %s bounds=(%.1f,%.1f)-(%.1f,%.1f); expected an enterable fighting courtyard", core, wall.Type, wall.MinX, wall.MinY, wall.MaxX, wall.MaxY)
+			}
+		}
+	}
+}
+
+func TestTeamBattleCityObjectCollidersAreTightAndBlocking(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	count := 0
 	for _, wall := range mapValue.Collisions {
-		if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
+		if wall == nil || wall.Type != teamBattleCityObjectCollisionType {
 			continue
 		}
-		blocking[[2]int{int(wall.MinX / 40), int(wall.MinY / 40)}] = true
+		count++
+		if !geometry.IsBlockingWall(wall.Type) {
+			t.Fatalf("city object collider is passable: %+v", wall)
+		}
+		if wall.MaxX-wall.MinX > 72 || wall.MaxY-wall.MinY > 72 {
+			t.Fatalf("city object collider has oversized footprint: %.1fx%.1f", wall.MaxX-wall.MinX, wall.MaxY-wall.MinY)
+		}
+		if wall.ColliderRadius > 0 && math.Abs((wall.MaxX-wall.MinX)/2-wall.ColliderRadius) > .001 {
+			t.Fatalf("city circle collider bounds do not match radius: %+v", wall)
+		}
 	}
-	for _, core := range [][2]int{{13, 52}, {52, 13}, {30, 47}, {47, 30}, {44, 60}, {60, 44}, {16, 31}, {31, 16}, {49, 64}, {64, 49}} {
-		if blocking[core] {
-			t.Fatalf("city district core %v is sealed; expected an enterable fighting courtyard", core)
+	if count != 42 {
+		t.Fatalf("city object colliders = %d, want 42 authored hard-prop and roof footprints", count)
+	}
+}
+
+func TestTeamBattleCityRoofFootprintsAreBlockingWithoutSealingCourtyards(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	for _, roof := range []struct {
+		label                   string
+		cx, cy, rotation, scale float64
+		x, y                    float64
+	}{
+		{label: "depot roof", cx: 13, cy: 52, rotation: -.08, scale: 1.05, x: -.78, y: .95},
+		{label: "apartments roof", cx: 44, cy: 60, rotation: -.18, scale: 1.12, x: -.86, y: .9},
+		{label: "forge roof", cx: 49, cy: 64, rotation: .14, scale: .96, x: -.62, y: .52},
+	} {
+		cos, sin := math.Cos(roof.rotation), math.Sin(roof.rotation)
+		worldX := (roof.cx + (roof.x*cos-roof.y*sin)*roof.scale) * 40
+		worldY := (roof.cy + (roof.x*sin+roof.y*cos)*roof.scale) * 40
+		point := &geometry.CircleBody{X: worldX, Y: worldY, Radius: .1}
+		blocked := false
+		for _, wall := range mapValue.Collisions {
+			if wall == nil || wall.Type != teamBattleCityObjectCollisionType {
+				continue
+			}
+			if geometry.CollidesCircleWithWall(point, wall) {
+				blocked = true
+				break
+			}
+		}
+		if !blocked {
+			t.Fatalf("%s center (%.0f,%.0f) is visually covered but walkable", roof.label, worldX, worldY)
 		}
 	}
 }

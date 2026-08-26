@@ -6,6 +6,9 @@ const expectedClips = new Set([
   "idle", "run", "hit", "death", "super", "Aim", "AimSuper", "Attack", "Gadget", "Spawn", "Victory",
 ])
 const extraClipsByHero = Object.freeze({"brock-zeus": ["AimGadget"], "fairy-mina": ["AimGadget"], kaze: ["AimGadget"], mandy: ["AimGadget"], needle: ["AimGadget"]})
+// Brock Zeus is the one canonical companion-cloud exception: its body and
+// cloud are versioned together instead of using the legacy <slug>_base name.
+const runtimeFileBySlug = Object.freeze({"brock-zeus": "brock-zeus-rebuild-v10_base.glb"})
 const heldRoles = new Set(["held-weapon", "throwable-weapon"])
 const readGlbJson = async file => {
   const buffer = await readFile(file)
@@ -16,7 +19,7 @@ const readGlbJson = async file => {
 }
 
 const validateHero = async (directory, slug) => {
-  const file = path.join(directory, "output_heroes", `${slug}_base.glb`)
+  const file = path.join(directory, "output_heroes", runtimeFileBySlug[slug] || `${slug}_base.glb`)
   const document = await readGlbJson(file)
   const nodes = document.nodes || []
   const parentByNode = new Map()

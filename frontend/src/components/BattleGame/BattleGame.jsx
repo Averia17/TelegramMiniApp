@@ -10,6 +10,7 @@ import {AbilityButton, ActiveStatusEffects, BattleMatchTimer, BattleMiniMap, Bat
 import {getAttackCooldownVisual} from "./attackCooldownVisual.js"
 import {getActiveStatusEffects} from "./statusEffects.js"
 import {formatBattleMessage} from "./battleMessages.js"
+import {collectNewCombatAbilityRejections} from "./combatEventFeedback.js"
 import {chooseTauntTarget} from "./tauntTarget.js"
 import {releaseAllPreviewContexts} from "./rendering/shared/previewContextRegistry.js"
 import {getBattlePerformanceSnapshot, recordBattleMetric} from "./rendering/shared/performance.js"
@@ -67,6 +68,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
   const [tauntCooldown, setTauntCooldown] = useState(0)
   const tauntTimerRef = useRef(null)
   const tauntPendingRef = useRef(false)
+  const combatEventNoticeIdsRef = useRef(new Set())
 
   const [gameState, setGameState] = useState(null)
   const [connected, setConnected] = useState(false)
@@ -76,6 +78,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
   const [islandVoice, setIslandVoice] = useState(null)
   const [view, setViewState] = useState("connecting")
   const [battleResult, setBattleResult] = useState(null)
+  const [deathPresentation, setDeathPresentation] = useState(false)
   const [sceneReady, setSceneReady] = useState(false)
   const [assetsReady, setAssetsReady] = useState(false)
   const [assetLoadError, setAssetLoadError] = useState(false)
@@ -149,10 +152,12 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
   const revealPresentedDeath = useCallback(result => {
     if (!result || deathRevealStartedRef.current) return
     deathRevealStartedRef.current = true
-    // Keep the arena and authored death pose visible long enough for the
-    // player to register the elimination before covering it with results.
+    // Keep the arena and authored death pose visible while an explicit
+    // feedback layer tells the player why control has ended.
+    setDeathPresentation(true)
     deathRevealTimerRef.current = window.setTimeout(() => {
       deathRevealTimerRef.current = null
+      setDeathPresentation(false)
       finishBattle({...result, ...pendingDeathInfoRef.current})
     }, DEATH_RESULT_DELAY_MS)
   }, [finishBattle])
@@ -229,6 +234,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
         return
       }
       if (disposed) return
+      combatEventNoticeIdsRef.current = new Set()
       setAssetsReady(true)
       releaseAllPreviewContexts()
       renderer = new Renderer(canvas)
@@ -250,6 +256,18 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
             simulation.setLocalPlayerId(client.playerId)
           }
           simulation.ingest(state, client.clockOffset, receivedAt)
+          if (client.playerId) {
+            const rejectionFeedback = collectNewCombatAbilityRejections(
+              state.combatEvents,
+              client.playerId,
+              combatEventNoticeIdsRef.current,
+            )
+            combatEventNoticeIdsRef.current = rejectionFeedback.seenIds
+            rejectionFeedback.events.forEach(event => addMessage({
+              type: "combat_ability_rejected",
+              params: {reason: event.reason, slot: event.abilitySlot},
+            }))
+          }
           setNetworkQuality(client.getNetworkQuality(receivedAt))
           const now = performance.now()
           const shouldUpdateUi = !lastUiUpdateRef.current || now - lastUiUpdateRef.current >= 100
@@ -509,6 +527,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
       clearConnectionTimer()
       if (deathRevealTimerRef.current) window.clearTimeout(deathRevealTimerRef.current)
       deathRevealTimerRef.current = null
+      setDeathPresentation(false)
       if (tauntTimerRef.current) window.clearInterval(tauntTimerRef.current)
       tauntTimerRef.current = null
       cancelAnimationFrame(animFrameRef.current)
@@ -577,7 +596,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
       if (mode === "team" && partyId) clientRef.current.joinParty(partyId, MAX_PARTY_SIZE, partyTicket)
       clientRef.current.findMatch(playerName, heroName, mode === "team"
         ? {mode: "team deathmatch", mapName: "team-battle", maxPlayers: 6, partyId, partySize: partyId ? MAX_PARTY_SIZE : 1, partyTicket}
-        : {})
+        : {mode: "deathmatch", mapName: "battle-royale", maxPlayers: 8})
     }
   }, [connected, recoveryAction, playerName, heroName, effectivePlayerId, mode, partyId, partyTicket])
 
@@ -585,6 +604,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
     if (suppressDisconnectRef.current) return
     suppressDisconnectRef.current = true
     joinedRef.current = false
+    setDeathPresentation(false)
     setView("connecting")
     setRoomInfo(null)
     setGameState(null)
@@ -768,7 +788,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
               <IslandVoiceNotice voice={islandVoice}/>
             )}
             {localPlayer && (
-              <div className="battle-player-card">
+              <div className={`battle-player-card${deathPresentation ? " battle-player-card--dead" : ""}`}>
                 <div className="player-avatar">{String(localPlayer.hero || heroName || "H").slice(0, 1).toUpperCase()}</div>
                 <div className="player-vitals">
                   <strong>{localPlayer.name || playerName}</strong>

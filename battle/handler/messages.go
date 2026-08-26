@@ -311,6 +311,7 @@ func HandleJoin(c *mroom.Client, data []byte) {
 
 	r := mroom.GetOrCreateRoomFor(req.RoomName, req.RoomName, profile)
 	c.Profile = profile
+	c.AssignedTeam = ""
 	c.Name = req.PlayerName
 	c.HeroName = req.HeroName
 	teamParties.Leave(c.Id)
@@ -368,6 +369,11 @@ func HandleJoinById(c *mroom.Client, data []byte) {
 		return
 	}
 	c.PendingRoomID = ""
+	if r.Mode != string(game.ModeTeamDeathmatch) {
+		// A manually joined solo room must not inherit an assignment from a
+		// previous team match on the same websocket.
+		c.AssignedTeam = ""
+	}
 
 	c.Name = req.PlayerName
 	c.HeroName = req.HeroName
@@ -497,6 +503,10 @@ func HandleFindMatch(c *mroom.Client, data []byte) {
 	c.Name = req.PlayerName
 	c.HeroName = req.HeroName
 	c.Profile = mroom.NormalizeMatchProfile(req.Mode, req.RoomMap, req.MaxPlayers)
+	// A websocket client can issue another match request before it is
+	// disconnected. Team matchmaking writes AssignedTeam onto that client;
+	// never let the assignment leak into the next solo room.
+	c.AssignedTeam = ""
 	c.PartyID = ""
 	c.PartySize = 0
 	if c.Profile.Mode == game.ModeTeamDeathmatch {
@@ -583,6 +593,7 @@ func HandleLeaveBattle(c *mroom.Client) {
 	c.PendingRoomID = ""
 	c.PartyID = ""
 	c.PartySize = 0
+	c.AssignedTeam = ""
 	data, _ := json.Marshal(game.NewServerMessage("battle_left", map[string]string{"status": string(leaveStatus)}))
 	c.TrySend(data)
 }

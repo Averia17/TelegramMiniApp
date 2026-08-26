@@ -44,6 +44,25 @@ const createHealthBar = () => {
   return {group, fill: null, label}
 }
 
+const createWindupTelegraph = () => {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(.82, 1.02, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0xff486f,
+      transparent: true,
+      opacity: .85,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  )
+  ring.rotation.x = -Math.PI / 2
+  ring.position.y = -BAT_HEIGHT * WORLD_SCALE + .04
+  ring.renderOrder = 17
+  ring.visible = false
+  ring.userData.role = "bat-windup-telegraph"
+  return ring
+}
+
 const createBat = state => {
   const group = new THREE.Group()
   group.userData.kind = "bat"
@@ -94,9 +113,10 @@ const createBat = state => {
 
   const shadow = createContactShadow(.72)
   shadow.position.y = -BAT_HEIGHT * WORLD_SCALE + .02
+  const windupTelegraph = createWindupTelegraph()
   const health = createHealthBar()
   updateHealthBadge(health.label, state, {healthColor: "#ff4657"})
-  group.add(shadow, leftWing, rightWing, body, head, leftEar, rightEar, health.group)
+  group.add(shadow, windupTelegraph, leftWing, rightWing, body, head, leftEar, rightEar, health.group)
 
   const visualScale = Math.max(.82, Number(state.radius) * WORLD_SCALE / 1.45)
   group.scale.setScalar(visualScale)
@@ -110,6 +130,7 @@ const createBat = state => {
     healthFill: null,
     healthLabel: health.label,
     healthFraction: getHealthBarFraction(state.lives, state.maxLives),
+    windupTelegraph,
     targetX: state.x,
     targetY: state.y,
   }
@@ -154,6 +175,13 @@ export class MonsterRenderer {
   updateView(view, state) {
     view.group.position.copy(worldToScene(state.x, state.y, BAT_HEIGHT))
     view.group.rotation.y = Math.PI / 2 - (Number(state.rotation) || 0)
+    const windingUp = state.state === "windup"
+    view.windupTelegraph.visible = windingUp
+    if (windingUp) {
+      const remaining = Math.max(0, Number(state.windupUntil) - Date.now())
+      const pulse = .9 + Math.sin(remaining / 60) * .08
+      view.windupTelegraph.scale.setScalar(pulse)
+    }
   }
 
   setDisplayState(monsters = {}) {

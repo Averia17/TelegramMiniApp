@@ -7,9 +7,10 @@ import (
 	"battle/service/geometry"
 )
 
-// The collision follows the platform's black outer rim while leaving a small
-// margin inside the 135px capture radius for the largest 15px hero.
-const battleRoyaleBeaconCollisionRadius = 118.0
+// Keep the blocking volume on the visible black rim. The larger gray-white
+// approach platform is walkable, so heroes can enter it before colliding with
+// the beacon itself.
+const battleRoyaleBeaconCollisionRadius = 60.0
 
 // Keep the whole approach to the beacon open. Terrain props are authored on a
 // 40px grid, so a circular 11.5-cell plaza removes the invisible cover ring

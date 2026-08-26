@@ -25,6 +25,14 @@ BLENDER_EXPORT_FAST = os.environ.get("BLENDER_EXPORT_FAST") == "1"
 EXPORT_WINDOW = getattr(bpy.context, "window", None)
 
 
+def resolve_master_path(hero: str) -> Path:
+    """Resolve the configured master, retaining the canonical filename fallback."""
+    configured = master_path(hero)
+    if configured.exists():
+        return configured
+    return SOURCE / hero / f"{hero}.blend"
+
+
 def export_gltf(**kwargs):
     """Run glTF export with an explicit Blender context."""
     window = getattr(bpy.context, "window", None) or EXPORT_WINDOW
@@ -159,12 +167,12 @@ def configure_cloud_nla() -> tuple[object, object]:
 
 
 def export_brock(hero_dir: Path) -> None:
-    master = master_path("brock-zeus")
+    master = resolve_master_path("brock-zeus")
     bpy.ops.wm.open_mainfile(filepath=os.fspath(master))
     require_body_actions("brock-zeus")
     select_body_for_brock()
     atomic_export(
-        OUTPUT / "brock-zeus-rebuild_base.glb",
+        OUTPUT / "brock-zeus-rebuild-v11_base.glb",
         use_selection=True,
         export_animation_mode="ACTIONS",
         export_skins=True,
@@ -173,7 +181,7 @@ def export_brock(hero_dir: Path) -> None:
     bpy.ops.wm.open_mainfile(filepath=os.fspath(master))
     configure_cloud_nla()
     atomic_export(
-        OUTPUT / "brock-zeus-rebuild_cloud.glb",
+        OUTPUT / "brock-zeus-rebuild-v11_cloud.glb",
         use_selection=True,
         export_animation_mode="NLA_TRACKS",
         export_skins=False,
@@ -182,7 +190,7 @@ def export_brock(hero_dir: Path) -> None:
 
 def export_hero(hero: str) -> None:
     hero_dir = SOURCE / hero
-    master = master_path(hero)
+    master = resolve_master_path(hero)
     if not master.exists():
         raise RuntimeError(f"{hero}: missing master source {master}")
     if hero == "brock-zeus":

@@ -84,6 +84,7 @@ func (gs *GameState) damageObjective(source *player.Player, objective *Objective
 	livesBefore := objective.Lives
 	objective.Lives = int(math.Max(0, float64(objective.Lives-amount)))
 	dealt := livesBefore - objective.Lives
+	addSuperChargeForEffectiveDamage(source, objective.MaxLives, dealt)
 	if objective.Type == "tower" {
 		source.TowerDamage += dealt
 		if livesBefore > 0 && objective.Lives == 0 {
@@ -95,7 +96,7 @@ func (gs *GameState) damageObjective(source *player.Player, objective *Objective
 			source.TownHallsDestroyed++
 		}
 	}
-	objective.LastDamagedAt = time.Now().UnixMilli()
+	objective.LastDamagedAt = gs.nowMs()
 	objective.LastDamagedBy = source.Team
 	gs.addEffect("objective_hit", objective.X, objective.Y, 0, 0, objective.Radius, 0, 0, 0, source.Color, amount, 300)
 	if gs.activeCommandID != "" {
@@ -192,7 +193,7 @@ func (gs *GameState) spawnTowerShotAt(objective *ObjectiveState, targetID string
 	shot.MaxRange = teamTowerRange + objective.Radius + 32
 	shot.TargetID = targetID
 	shot.TargetX, shot.TargetY = targetX, targetY
-	shot.SpawnedAt = time.Now().UnixMilli()
+	shot.SpawnedAt = gs.nowMs()
 	return shot
 }
 
@@ -214,11 +215,39 @@ func (gs *GameState) updateTeamRespawns(now int64) {
 		p.MoveX, p.MoveY, p.Aiming, p.Ack = 0, 0, false, 0
 		p.HitImpulseX, p.HitImpulseY = 0, 0
 		p.Lives, p.RespawnAt = p.MaxLives, 0
+		resetPlayerRespawnCombatState(p)
 		p.FlyingUntil, p.FlightSpeedMultiplier = 0, 0
 		p.Ammo, p.NextAmmoAt = p.MaxAmmo, 0
 		p.InvulnerableUntil = now + SpawnProtectionDuration.Milliseconds()
 		gs.Broadcast("respawn", map[string]interface{}{"playerId": p.PlayerId, "team": p.Team})
 	}
+}
+
+func resetPlayerRespawnCombatState(p *player.Player) {
+	if p == nil {
+		return
+	}
+	p.SuperCharge = 0
+	p.ShieldHP, p.ShieldStacks, p.ShieldStackUntil = 0, 0, 0
+	p.PoisonUntil, p.PoisonTickAt, p.PoisonBy = 0, 0, ""
+	p.Marks, p.Heat, p.HeatUntil = 0, 0, 0
+	p.ShieldUntil, p.InvulnerableUntil, p.StealthUntil = 0, 0, 0
+	p.StunUntil, p.CastUntil, p.ChannelUntil = 0, 0, 0
+	p.VineUntil, p.VortexUntil, p.VortexTickAt = 0, 0, 0
+	p.BlindUntil, p.HasteUntil = 0, 0
+	p.LunarSpeedUntil, p.LunarDamageUntil, p.LunarShield = 0, 0, false
+	p.SlowUntil, p.SlowMultiplier = 0, 1
+	p.AntiHealUntil, p.AntiHealMultiplier = 0, 1
+	p.SporeStacks, p.SporeStackUntil = 0, 0
+	p.FocusStartedAt, p.FocusCharge = 0, 0
+	p.SuppressedRage, p.MicoRage, p.LumiFlowers = 0, 0, 0
+	p.VortexRadius, p.VortexDamage = 0, 0
+	p.StoneArmorUntil, p.MandySuperShieldUntil = 0, 0
+	p.MicoArmorDetonation, p.GadgetArmed = false, false
+	p.KazeCritReady, p.KazeStealthCritReady, p.KazeSuperReset = false, false, false
+	p.KazeCombo, p.KazeComboUntil = 0, 0
+	p.LastPrimaryAt, p.LastSecondaryAt = 0, 0
+	p.LastAbilityTick, p.LastAbilityID, p.LastAbilityOK = 0, "", false
 }
 
 func (gs *GameState) teamRespawnDelayAt(now int64) time.Duration {

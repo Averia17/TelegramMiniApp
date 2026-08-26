@@ -52,3 +52,66 @@ func TestGetAttackConfigUsesCatalogValues(t *testing.T) {
 		t.Fatalf("unknown attack config = %#v, want zero value", unknown)
 	}
 }
+
+func TestStateUpdateIncludesCombatContractVersion(t *testing.T) {
+	state := NewStateUpdate(
+		&GameStateJSON{},
+		&MapJSON{},
+		map[string]PlayerJSON{},
+		map[string]MonsterJSON{},
+		nil,
+		nil,
+		nil,
+	)
+
+	if state.CombatProfileID != CombatProfileID {
+		t.Fatalf("state combat profile id = %q, want %q", state.CombatProfileID, CombatProfileID)
+	}
+	if state.CombatRulesVersion != CombatRulesVersion {
+		t.Fatalf("state combat rules version = %q, want %q", state.CombatRulesVersion, CombatRulesVersion)
+	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal state update: %v", err)
+	}
+	var wire struct {
+		CombatProfileID    string `json:"combatProfileId"`
+		CombatRulesVersion string `json:"combatRulesVersion"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		t.Fatalf("decode state update contract fields: %v", err)
+	}
+	if wire.CombatProfileID != CombatProfileID || wire.CombatRulesVersion != CombatRulesVersion {
+		t.Fatalf("wire combat contract = %#v, want profile=%q version=%q", wire, CombatProfileID, CombatRulesVersion)
+	}
+}
+
+func TestRejectedCombatEventKeepsExplicitOutcomeFields(t *testing.T) {
+	data, err := json.Marshal(CombatEventJSON{
+		ID: 1, Ts: 100, Kind: "ability", AbilitySlot: "primary",
+		Reason: "super_not_ready", Phase: "rejected", Accepted: false, Resolved: true,
+		EventSchemaVersion: CombatEventSchemaVersion,
+	})
+	if err != nil {
+		t.Fatalf("marshal rejected combat event: %v", err)
+	}
+	var wire map[string]interface{}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		t.Fatalf("decode rejected combat event: %v", err)
+	}
+	if accepted, ok := wire["accepted"].(bool); !ok || accepted {
+		t.Fatalf("rejected event accepted field = %#v, want explicit false", wire["accepted"])
+	}
+	if resolved, ok := wire["resolved"].(bool); !ok || !resolved {
+		t.Fatalf("rejected event resolved field = %#v, want explicit true", wire["resolved"])
+	}
+	if wire["reason"] != "super_not_ready" {
+		t.Fatalf("rejected event reason = %#v, want super_not_ready", wire["reason"])
+	}
+	if wire["phase"] != "rejected" {
+		t.Fatalf("rejected event phase = %#v, want rejected", wire["phase"])
+	}
+	if version, ok := wire["eventSchemaVersion"].(float64); !ok || int(version) != CombatEventSchemaVersion {
+		t.Fatalf("combat event schema version = %#v, want %d", wire["eventSchemaVersion"], CombatEventSchemaVersion)
+	}
+}

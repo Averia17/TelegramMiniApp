@@ -13,6 +13,7 @@ const (
 	MonsterIdle   MonsterState = "idle"
 	MonsterPatrol MonsterState = "patrol"
 	MonsterChase  MonsterState = "chase"
+	MonsterWindup MonsterState = "windup"
 )
 
 const (
@@ -36,6 +37,7 @@ const (
 	MonsterPatrolDurationMin  = 1000
 	MonsterPatrolDurationMax  = 3000
 	MonsterAttackBackoff      = 3000
+	MonsterAttackWindup       = 450
 )
 
 type Monster struct {
@@ -61,10 +63,17 @@ type Monster struct {
 	MoveX              float64
 	MoveY              float64
 	MoveScale          float64
+	AttackWindupUntil  int64
 }
 
 func NewMonster(x, y, radius, mapWidth, mapHeight float64, lives int) *Monster {
-	now := NowMillis()
+	return NewMonsterAt(NowMillis(), x, y, radius, mapWidth, mapHeight, lives)
+}
+
+// NewMonsterAt keeps monster lifecycle timestamps on the same authoritative
+// clock as the battle state. NewMonster remains the wall-clock convenience
+// constructor for standalone callers and legacy tests.
+func NewMonsterAt(now int64, x, y, radius, mapWidth, mapHeight float64, lives int) *Monster {
 	return &Monster{
 		CircleBody:   geometry.CircleBody{X: x, Y: y, Radius: radius},
 		MapWidth:     mapWidth,

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schemaVersion": 1,
+  "profileRevision": "2026-08-26-phase-0",
+  "purpose": "Executable-facing contract cards for the first two vertical combat slices.",
+  "heroes": {
+    "kaze": {
+      "role": "Assassin",
+      "fantasy": "Short-window execution assassin with a readable entry and a costly miss.",
+      "winCondition": "Reach an isolated or weakened target, convert the dash into a combo finisher, then disengage before the reset window closes.",
+      "counterplay": "Hold spacing, punish the missed dash, survive the first combo and deny the low-health execution.",
+      "soloAcceptance": "A correct dash against a 30% HP target creates a kill window; a missed dash does not grant a free reset or immunity.",
+      "teamAcceptance": "Kaze creates a focused pick without replacing a frontliner; the team can follow the entry but must cover the retreat.",
+      "abilities": {
+        "basic": {
+          "abilityId": "cross_slash",
+          "target": "directional_enemy",
+          "castMs": 80,
+          "telegraphMs": 120,
+          "activeWindowMs": 160,
+          "impact": "Two short slashes advance the combo; the third combo hit is the only empowered basic hit.",
+          "status": ["combo_progress", "low_health_bonus_on_finisher"],
+          "resourceCost": {"ammo": 1},
+          "missOutcome": "Ammo is spent, no combo progress is granted, and no reset is created.",
+          "interrupt": "Stun or cast lock before the active window cancels the slash.",
+          "telemetryEvent": "combat.kaze.basic.impact"
+        },
+        "super": {
+          "abilityId": "piercing_dash",
+          "target": "directional_enemy_line",
+          "castMs": 180,
+          "telegraphMs": 250,
+          "activeWindowMs": 220,
+          "impact": "One hit per target during the dash; hit applies stun and primes the follow-up. Kill resets the super cooldown only.",
+          "status": ["stun", "combo_prime", "post_dash_haste"],
+          "resourceCost": {"superChargePercent": 100},
+          "missOutcome": "The dash travels and the Super is consumed; no stun, prime or reset is awarded.",
+          "interrupt": "Stun before dash activation cancels the cast; after activation the dash resolves once.",
+          "telemetryEvent": "combat.kaze.super.impact"
+        },
+        "gadget": {
+          "abilityId": "vanish",
+          "target": "self",
+          "castMs": 120,
+          "telegraphMs": 160,
+          "activeWindowMs": 3000,
+          "impact": "Kaze becomes hidden and prepares one guaranteed critical first hit.",
+          "status": ["stealth", "first_hit_critical"],
+          "resourceCost": {"gadgetCharges": 1},
+          "missOutcome": "Charge is spent and stealth expires normally even if no target is found.",
+          "interrupt": "Stun before activation rejects the cast; damage does not cancel the active stealth early.",
+          "telemetryEvent": "combat.kaze.gadget.activated"
+        }
+      }
+    },
+    "katty": {
+      "role": "Controller",
+      "fantasy": "Paint-based space controller who converts setup into zones and safe movement.",
+      "winCondition": "Layer paint in a contested route, force an enemy response, then use the zone or flight trail to close or escape.",
+      "counterplay": "Leave the painted zone during telegraph, avoid the third layer, and punish Katty when flight ends or a trail is wasted.",
+      "soloAcceptance": "Katty wins space through visible setup and a fair exit window; direct basic trading alone does not delete a full-health target.",
+      "teamAcceptance": "Katty creates a choke and enables a teammate's engage, but her zone does not replace allied damage or become unavoidable cover.",
+      "abilities": {
+        "basic": {
+          "abilityId": "paint_spray",
+          "target": "directional_cone",
+          "castMs": 100,
+          "telegraphMs": 140,
+          "activeWindowMs": 180,
+          "impact": "Short spray applies one paint layer; the third layer adds the stun and damage conversion.",
+          "status": ["paint_stack", "third_stack_stun"],
+          "resourceCost": {"ammo": 1},
+          "missOutcome": "Ammo is spent and no paint layer is created outside the cone.",
+          "interrupt": "Stun or cast lock before active cancels the spray.",
+          "telemetryEvent": "combat.katty.basic.impact"
+        },
+        "super": {
+          "abilityId": "paint_grenade",
+          "target": "point_zone",
+          "castMs": 220,
+          "telegraphMs": 350,
+          "activeWindowMs": 1800,
+          "impact": "The marked area applies a visible pull/slow and one paint conversion; damage starts after telegraph completion.",
+          "status": ["slow", "blind", "paint_stack"],
+          "resourceCost": {"superChargePercent": 100},
+          "missOutcome": "The zone is consumed at the selected point and can be left before impact; no target receives damage or status outside the area.",
+          "interrupt": "Stun before deployment cancels the throw; after deployment the zone remains until expiry.",
+          "telemetryEvent": "combat.katty.super.impact"
+        },
+        "gadget": {
+          "abilityId": "paint_flight",
+          "target": "self",
+          "castMs": 120,
+          "telegraphMs": 160,
+          "activeWindowMs": 2200,
+          "impact": "Katty gains flight speed and leaves a readable trail; touching the trail detonates it once.",
+          "status": ["flight", "trail_zone", "paint_stack_on_contact"],
+          "resourceCost": {"gadgetCharges": 1},
+          "missOutcome": "Charge is spent and flight ends without trail detonation if no enemy touches the trail.",
+          "interrupt": "Stun before activation rejects the gadget; active flight ends at its timer and does not grant immunity.",
+          "telemetryEvent": "combat.katty.gadget.activated"
+        }
+      }
+    }
+  }
+}

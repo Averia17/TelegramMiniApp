@@ -159,7 +159,7 @@ func (h Hero) CreatePlayer(id, name string, x, y float64) *player.Player {
 		RegenRate:        h.RegenRate,
 		DamageMultiplier: 1,
 		SlowMultiplier:   1,
-		SuperCharge:      100,
+		SuperCharge:      0,
 		GadgetCharges:    3,
 	}
 	return p

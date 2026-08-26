@@ -10,7 +10,7 @@ runWithBrowser(
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
     const pageErrors = []
     page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
-    await page.goto(`${baseUrl}/test/glb-hero-harness.html?hero=Brock+Zeus`, { waitUntil: "networkidle", timeout: 30000 })
+    await page.goto(`${baseUrl}/test/glb-hero-harness.html?hero=Brock+Zeus`, { waitUntil: "domcontentloaded", timeout: 30000 })
     const result = await page.evaluate(async () => {
       const { GLTFLoader } = await import("/node_modules/three/examples/jsm/loaders/GLTFLoader.js")
       const load = async url => {
@@ -28,8 +28,8 @@ runWithBrowser(
         })
       }
       return {
-        hero: await load("/assets/heroes/output_heroes/brock-zeus-rebuild_base.glb"),
-        cloud: await load("/assets/heroes/output_heroes/brock-zeus-rebuild_cloud.glb"),
+        hero: await load("/assets/heroes/output_heroes/brock-zeus-rebuild-v10_base.glb"),
+        cloud: await load("/assets/heroes/output_heroes/brock-zeus-rebuild-v10_cloud.glb"),
         harness: window.render_game_to_text(),
       }
     })

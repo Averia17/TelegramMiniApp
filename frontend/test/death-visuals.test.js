@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import {readFile} from "node:fs/promises"
 import test from "node:test"
 
 import {
@@ -7,6 +8,8 @@ import {
   getDeathPulseState,
   getHeroDeathPalette,
 } from "../src/components/BattleGame/rendering/heroes/deathVisuals.js"
+
+const heroViewSource = await readFile(new URL("../src/components/BattleGame/rendering/heroes/HeroView.js", import.meta.url), "utf8")
 
 test("death effects use a recognizable palette for every playable hero", () => {
   const heroes = [
@@ -46,4 +49,10 @@ test("death shake is emitted only on the lethal transition and scales by perspec
   assert.equal(getDeathShakeAmount({lives: 120}, {lives: 0}, false), .11)
   assert.equal(getDeathShakeAmount({lives: 0}, {lives: 0}, false), 0)
   assert.equal(getDeathShakeAmount({lives: 120}, {lives: 20}, false), 0)
+})
+
+test("dead heroes keep a compact red ground marker after the burst fades", () => {
+  assert.match(heroViewSource, /death-marker/)
+  assert.match(heroViewSource, /this\.deathMarker\.visible = this\.state\?\.lives <= 0/)
+  assert.match(heroViewSource, /this\.state\.lives <= 0 \? 2\.9 : 4\.5/)
 })

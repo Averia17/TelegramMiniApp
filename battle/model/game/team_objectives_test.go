@@ -166,6 +166,19 @@ func TestTeamObjectiveDamageEmitsACombatHitForTheAttackingTower(t *testing.T) {
 	}
 }
 
+func TestTeamObjectiveDamageBuildsSuperChargeForItsAttacker(t *testing.T) {
+	state := newTeamObjectiveState()
+	source := state.Players["blue"]
+	tower := state.Objectives["red-tower-west"]
+
+	if !state.damageObjective(source, tower, 150) {
+		t.Fatal("enemy tower should take damage from a valid attack")
+	}
+	if source.SuperCharge != 15 {
+		t.Fatalf("objective damage super charge = %d, want 15", source.SuperCharge)
+	}
+}
+
 func TestMandyCanBreakAnEnemyTowerWithHerMeleeBasicAttack(t *testing.T) {
 	state := newTeamObjectiveState()
 	source := state.Players["blue"]
@@ -296,4 +309,49 @@ func activeTowerShots(state *GameState) []*bullet.Bullet {
 		}
 	}
 	return shots
+}
+
+func TestTeamRespawnResetsSuperChargeButPreservesGadgetCharges(t *testing.T) {
+	state := newTeamObjectiveState()
+	respawning := state.Players["blue"]
+	respawning.Lives = 0
+	respawning.SuperCharge = 64
+	respawning.GadgetCharges = 1
+	respawning.RespawnAt = time.Now().UnixMilli() - 1
+
+	state.updateTeamRespawns(time.Now().UnixMilli())
+
+	if respawning.Lives != respawning.MaxLives {
+		t.Fatalf("respawn lives = %d, want %d", respawning.Lives, respawning.MaxLives)
+	}
+	if respawning.SuperCharge != 0 {
+		t.Fatalf("respawn super charge = %d, want 0", respawning.SuperCharge)
+	}
+	if respawning.GadgetCharges != 1 {
+		t.Fatalf("respawn gadget charges = %d, want preserved 1", respawning.GadgetCharges)
+	}
+}
+
+func TestTeamRespawnClearsTemporaryCombatState(t *testing.T) {
+	state := newTeamObjectiveState()
+	respawning := state.Players["blue"]
+	respawning.Lives = 0
+	respawning.RespawnAt = time.Now().UnixMilli() - 1
+	respawning.ShieldHP, respawning.ShieldStacks = 120, 2
+	respawning.PoisonUntil, respawning.StunUntil = 9_000, 9_000
+	respawning.Marks, respawning.Heat = 3, 2
+	respawning.GadgetArmed, respawning.KazeCritReady = true, true
+	respawning.LastPrimaryAt, respawning.LastSecondaryAt = 8_000, 8_000
+
+	state.updateTeamRespawns(time.Now().UnixMilli())
+
+	if respawning.ShieldHP != 0 || respawning.ShieldStacks != 0 || respawning.PoisonUntil != 0 || respawning.StunUntil != 0 {
+		t.Fatalf("respawn temporary defenses/statuses survived: shield=%d/%d poison=%d stun=%d", respawning.ShieldHP, respawning.ShieldStacks, respawning.PoisonUntil, respawning.StunUntil)
+	}
+	if respawning.Marks != 0 || respawning.Heat != 0 || respawning.GadgetArmed || respawning.KazeCritReady {
+		t.Fatalf("respawn combat setup survived: marks=%d heat=%d gadget=%v crit=%v", respawning.Marks, respawning.Heat, respawning.GadgetArmed, respawning.KazeCritReady)
+	}
+	if respawning.LastPrimaryAt != 0 || respawning.LastSecondaryAt != 0 {
+		t.Fatalf("respawn cooldown timestamps survived: primary=%d secondary=%d", respawning.LastPrimaryAt, respawning.LastSecondaryAt)
+	}
 }

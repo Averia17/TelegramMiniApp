@@ -3,35 +3,10 @@ package game
 import (
 	"battle/model/monster"
 	"battle/model/prop"
+	"battle/service/geometry"
 	"testing"
+	"time"
 )
-
-func TestHealthCrateUses500LivesAndDropsGreenHealthBoost(t *testing.T) {
-	gs := newTestGameState()
-	gs.PlayerAdd("attacker", "Attacker", "Needle")
-	gs.State = GameStateGame
-	attacker := gs.Players["attacker"]
-	crate := prop.NewHealthCrate(160, 100)
-	gs.Props = append(gs.Props, crate)
-
-	if crate.Lives != 500 || crate.MaxLives != 500 {
-		t.Fatalf("health crate lives=%d/%d, want 500/500", crate.Lives, crate.MaxLives)
-	}
-	if !gs.damageHealthCrate(attacker, crate, 500) {
-		t.Fatal("health crate damage was not accepted")
-	}
-
-	var reward *prop.Prop
-	for _, candidate := range gs.Props {
-		if candidate.Type == "health_boost" {
-			reward = candidate
-			break
-		}
-	}
-	if crate.Active || reward == nil || !reward.Active {
-		t.Fatalf("crate/reward state = crate active %v, reward %#v", crate.Active, reward)
-	}
-}
 
 func TestCollectingHealthBoostAddsFivePercentOfOriginalHealth(t *testing.T) {
 	gs := newTestGameState()
@@ -47,24 +22,65 @@ func TestCollectingHealthBoostAddsFivePercentOfOriginalHealth(t *testing.T) {
 	gs.collectPickups(collector)
 
 	wantBonus := int(float64(baseMaxLives)*.05 + .5)
-	if collector.MaxLives != baseMaxLives+wantBonus || collector.Lives != baseLives+wantBonus {
-		t.Fatalf("collector lives=%d/%d, want %d/%d", collector.Lives, collector.MaxLives, baseLives+wantBonus, baseMaxLives+wantBonus)
+	if collector.MaxLives != baseMaxLives+wantBonus || collector.Lives != baseLives {
+		t.Fatalf("collector lives=%d/%d, want %d/%d", collector.Lives, collector.MaxLives, baseLives, baseMaxLives+wantBonus)
 	}
 	if reward.Active {
 		t.Fatal("health boost remained active after collection")
 	}
 }
 
-func TestMonsterHealthBoostDropChanceBoundaries(t *testing.T) {
-	if !shouldDropMonsterHealthBoost(1) || !shouldDropMonsterHealthBoost(MonsterHealthBoostDropChancePercent) {
-		t.Fatal("health boost should drop inside the configured chance")
+func TestCappedTeamHealthBoostRemainsAvailable(t *testing.T) {
+	gs := newTestGameState()
+	gs.Mode = ModeTeamDeathmatch
+	gs.State = GameStateGame
+	gs.PlayerAdd("killer", "Killer", "Needle")
+	gs.PlayerAdd("ally", "Ally", "Mina")
+	killer := gs.Players["killer"]
+	ally := gs.Players["ally"]
+	killer.Team, ally.Team = "red", "red"
+	killer.HealthBoosts, ally.HealthBoosts = 5, 5
+	reward := prop.NewProp("health_boost", killer.X, killer.Y, 12)
+	reward.HealthBoostKillerID = killer.PlayerId
+	reward.VisibilityTeam = "red"
+	gs.Props = append(gs.Props, reward)
+
+	gs.collectPickups(killer)
+
+	if !reward.Active {
+		t.Fatal("capped team health boost was consumed without benefiting a teammate")
 	}
-	if shouldDropMonsterHealthBoost(MonsterHealthBoostDropChancePercent + 1) {
-		t.Fatal("health boost should not drop above the configured chance")
+	if killer.HealthBoosts != 5 || ally.HealthBoosts != 5 {
+		t.Fatalf("capped team health boost changed stacks: killer=%d ally=%d", killer.HealthBoosts, ally.HealthBoosts)
 	}
 }
 
-func TestMonsterDeathCanAppendHealthBoostDrop(t *testing.T) {
+func TestTeamHealthBoostIsConsumedWhenAnyTeammateCanBenefit(t *testing.T) {
+	gs := newTestGameState()
+	gs.Mode = ModeTeamDeathmatch
+	gs.State = GameStateGame
+	gs.PlayerAdd("killer", "Killer", "Needle")
+	gs.PlayerAdd("ally", "Ally", "Mina")
+	killer := gs.Players["killer"]
+	ally := gs.Players["ally"]
+	killer.Team, ally.Team = "red", "red"
+	killer.HealthBoosts, ally.HealthBoosts = 5, 4
+	reward := prop.NewProp("health_boost", killer.X, killer.Y, 12)
+	reward.HealthBoostKillerID = killer.PlayerId
+	reward.VisibilityTeam = "red"
+	gs.Props = append(gs.Props, reward)
+
+	gs.collectPickups(killer)
+
+	if reward.Active {
+		t.Fatal("team health boost stayed active despite benefiting a teammate")
+	}
+	if ally.HealthBoosts != 5 || killer.HealthBoosts != 5 {
+		t.Fatalf("team health boost stacks = killer=%d ally=%d, want 5/5", killer.HealthBoosts, ally.HealthBoosts)
+	}
+}
+
+func TestMonsterDeathAlwaysAppendsOneHealthBoostDrop(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("attacker", "Attacker", "Needle")
 	gs.State = GameStateGame
@@ -73,7 +89,6 @@ func TestMonsterDeathCanAppendHealthBoostDrop(t *testing.T) {
 	target.Tier = 1
 	gs.Monsters["bat"] = target
 
-	gs.randomHealthBoostDrop = func() bool { return true }
 	if !gs.damageMonster("bat", target, 10) {
 		t.Fatal("monster was not killed")
 	}
@@ -87,5 +102,100 @@ func TestMonsterDeathCanAppendHealthBoostDrop(t *testing.T) {
 	}
 	if reward == nil {
 		t.Fatal("monster kill did not append a health boost")
+	}
+}
+
+func TestMonsterDeathSchedulesOneRewardPerDeterministicCampCycle(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.MonsterRespawns = make(map[string]MonsterRespawn)
+	target := monster.NewMonster(140, 100, 16, 512, 512, 1)
+	gs.Monsters["bat"] = target
+
+	if !gs.damageMonster("bat", target, 1) {
+		t.Fatal("monster was not defeated")
+	}
+	if len(gs.Props) != 1 || gs.Props[0].Type != "health_boost" {
+		t.Fatalf("first camp cycle drops = %#v, want one health boost", gs.Props)
+	}
+	respawn, ok := gs.MonsterRespawns["bat"]
+	if !ok {
+		t.Fatal("monster death did not schedule a respawn")
+	}
+	respawn.RespawnAt = time.Now().Add(-time.Millisecond).UnixMilli()
+	gs.MonsterRespawns["bat"] = respawn
+	gs.updateMonsters()
+	if gs.Monsters["bat"] == nil || !gs.Monsters["bat"].IsAlive() {
+		t.Fatal("deterministic camp respawn did not restore the bat")
+	}
+
+	respawned := gs.Monsters["bat"]
+	if !gs.damageMonster("bat", respawned, 1) {
+		t.Fatal("respawned monster was not defeated")
+	}
+	if len(gs.Props) != 2 {
+		t.Fatalf("second camp cycle drops = %#v, want one additional health boost", gs.Props)
+	}
+}
+
+func TestHealthBoostDropExpiresAfterItsContestWindow(t *testing.T) {
+	gs := newTestGameState()
+	reward := prop.NewProp("health_boost", 120, 120, 14)
+	reward.ExpiresAt = time.Now().Add(-time.Millisecond).UnixMilli()
+	gs.Props = append(gs.Props, reward)
+
+	gs.expireProps(time.Now().UnixMilli())
+
+	if reward.Active {
+		t.Fatal("expired health boost remained active")
+	}
+}
+
+func TestHealthBoostDropMovesOutOfBlockingWall(t *testing.T) {
+	gs := newTestGameState()
+	wall := &geometry.WallTile{MinX: 90, MinY: 90, MaxX: 130, MaxY: 130, Type: "wall"}
+	gs.Map.Collisions = []*geometry.WallTile{wall}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.Walls.Insert(wall)
+	gs.PlayerAdd("killer", "Killer", "Needle")
+	target := gs.Players["killer"]
+	target.X, target.Y = 110, 110
+	gs.dropHeroHealthBoost(target, target)
+
+	if len(gs.Props) != 1 || geometry.CollidesCircleWithBlockingWalls(&gs.Props[0].CircleBody, gs.Walls) {
+		t.Fatalf("health boost spawned in blocking wall: %#v", gs.Props)
+	}
+}
+
+func TestDamageToMonsterBuildsSuperChargeForItsAttacker(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("attacker", "Attacker", "Needle")
+	gs.State = GameStateGame
+	attacker := gs.Players["attacker"]
+	target := monster.NewMonster(140, 100, 16, 512, 512, 512)
+	gs.Monsters["bat"] = target
+	gs.activeSourceID = attacker.PlayerId
+
+	gs.damageMonster("bat", target, 128)
+
+	if attacker.SuperCharge != 25 {
+		t.Fatalf("monster damage super charge = %d, want 25", attacker.SuperCharge)
+	}
+}
+
+func TestMonsterOverkillOnlyChargesSuperForEffectiveDamage(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("attacker", "Attacker", "Needle")
+	gs.State = GameStateGame
+	attacker := gs.Players["attacker"]
+	target := monster.NewMonster(140, 100, 16, 512, 512, 512)
+	target.Lives = 50
+	gs.Monsters["bat"] = target
+	gs.activeSourceID = attacker.PlayerId
+
+	gs.damageMonster("bat", target, 128)
+
+	if attacker.SuperCharge != 10 {
+		t.Fatalf("monster overkill super charge = %d, want 10 for 50 effective damage", attacker.SuperCharge)
 	}
 }

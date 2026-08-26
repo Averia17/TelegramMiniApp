@@ -1,84 +1,121 @@
 # Чек-лист глобальной переработки боя
 
-## Phase 0 — baseline
+> В начале файла находится фазовый summary. Исполняемым источником являются
+> task cards T0–T17 ниже; summary-чекбоксы не должны расходиться с их статусами.
 
-- [ ] Починить catalog fingerprint и canonical master asset Brock Zeus.
-- [ ] Разобрать 3 frontend test failures и module import failure.
-- [ ] Прогнать Go tests из `battle/` и зафиксировать текущие результаты.
-- [ ] Пересчитать balance matrix с runtime cadence/reload и skill metrics.
-- [ ] Добавить deterministic scenario report до/после.
-- [ ] Добавить authoritative combat telemetry для shots, abilities, hits,
-      status, cubes и bats.
+## Канонический порядок выполнения
 
-## Phase 1 — combat loop
+```text
+T0 decisions
+  ↓
+T14a schema/validator → T14b generated views/fingerprint → T1 protocol/profile
+  ↓                         ↓
+T12 map topology       T2 resources ─┬─ T3 mobile feedback
+                                     ├─ T11 ability budget
+                                     ├─ T15 scenario runner
+                                     └─ T16 hero contracts
+                                             ↓
+                               T4 Kaze ─┬─ T5 Katty
+                                         ↓
+                                   T6 cube/bats → T7 remaining roster
+                                                        ↓
+                                             T8 AI ─── T9 role/pacing
+                                                        ↓
+                                             T13 playtest → T17 regression
+                                                        ↓
+                                                   T10 rollout
+```
 
-- [ ] Заменить скрытые `AttackRateScale`/`ReloadTimeScale` на versioned
-      `CombatProfile`.
-- [ ] Сократить downtime basic attacks и сохранить per-shell reload.
-- [ ] Перевести Super charge с чистого timer на combat contribution; убрать
-      зависимость готовности от `LastPrimaryAt`.
-- [ ] Зафиксировать charge credit для damage/control/support/objective,
-      target cap, diminishing return и запрет charge по spawn-protected цели.
-- [ ] Зафиксировать death/respawn policy для Super, Gadget, ammo, marks,
-      shield, combo и временных статусов.
-- [ ] Сделать Gadget charges/cooldown частью hero kit profile.
-- [ ] Обновить HUD ready/cooldown/counterplay information.
+T3, T11, T12, T15 и T16 можно выполнять параллельно после необходимого
+контракта. T4 и T5 можно выполнять параллельно только после T2/T3/T11/T15/T16;
+общий schema/protocol не меняется внутри hero slice.
 
-## Phase 2 — hero vertical slices
+## Phase 0 — decisions, schema и baseline
 
-- [ ] Kaze: entry risk, combo payoff, reset и punish window.
-- [ ] Katty: paint 1/2/3, zone/flight readability и direct-trade floor.
-- [ ] Needle/Lumi/Mina: control, setup, support и team value.
-- [ ] Mandy/Brock/Mico: fighter, sharpshooter и tank counterplay.
-- [ ] Добавить balance + scenario + visual phase test на каждый slice.
+- [x] T0: зафиксировать default profile, solo/team contract и scope guard.
+- [x] T14a: описать CombatProfile schema и validator.
+- [x] T14b: построить generated Go/JS views и fingerprint report.
+- [x] Починить canonical master asset Brock Zeus, stale fingerprint и текущие
+      frontend failures.
+- [ ] Прогнать baseline tests и снять balance/topology/pacing reports.
 
-## Phase 3 — pickups и bats
+Текущий baseline на 2026-08-26: `go test ./...` проходит; frontend — 580
+тестов, 576 pass, 0 fail, 4 skipped. `validate_hero_catalog.py`, profile
+validator, generated-view check, ESLint и production build проходят.
 
-- [ ] Удалить `health_crate` из match spawn pipeline.
-- [ ] Удалить `potion-red` из боевого режима и monster drops.
-- [ ] Оставить один зелёный health cube с процентным MaxHP bonus.
-- [ ] Добавить soft cap/diminishing return и единый ownership contract;
-      сравнить `killer-only` и одноразовый `team-claim`.
-- [ ] Убрать автоматическую раздачу HP bonus всей команде при одном kill.
-- [ ] Сделать bats camps/lairs: patrol, notice, chase, wind-up, strike,
-      retreat/leash, defeat и понятный reward.
-- [ ] Определить respawn waves/timer и contest-time budget для bat camps.
-- [ ] Добавить bat/cube minimap и feedback.
+## Phase 1 — общий combat contract
 
-## Phase 4 — bots
+- [x] T1: versioned CombatProfile, snapshot/event schema и compatibility fields.
+- [x] T2: Super/resource lifecycle, Gadget policy и death/respawn rules.
+- [ ] T3: mobile input, cast cancel/reject и минимальный hit feedback.
+- [ ] T11: ability power budget, sustain policy и kit counterplay contracts.
+- [ ] T15: deterministic scenario runner, input log и state hash; runner,
+      time-injected execution, Super/respawn/cube/bat pack и replayable 3v3
+      team-bot matrix готовы. Полные accuracy/direct-trade/role-mode reports
+      и before/after diff ещё не закрыты.
+- [x] T16: hero contract cards для Kaze/Katty.
 
-- [ ] Ввести perception blackboard без map-wide omniscience.
-- [ ] Разделить decide → intent → steering/path.
-- [ ] Перевести выбор действий на utility scores с hysteresis.
-- [ ] Добавить hero-role policies для ranged/melee/controller/support/tank/assassin.
-- [ ] Добавить farm/contest cube и bat-camp decisions.
-- [ ] Добавить team assignments, focus-fire, regroup и defend/push logic.
-- [ ] Добавить bot debug telemetry и deterministic scenarios.
+## Phase 2 — первые вертикальные срезы
 
-## Phase 5 — visuals
+- [ ] T4: Kaze — entry, execution, reset и punish window.
+- [ ] T5: Katty — paint setup, zone/flight readability и direct-trade floor.
+- [ ] Для обоих slices закрыть server, catalog, HUD, input, VFX, bot policy,
+      solo/team report и human clarity check.
 
-- [ ] Унифицировать `intent → cast → telegraph → active → impact → status`.
-- [ ] Привязать GLB skill action к authoritative phase, а не только pulse.
-- [ ] Пересобрать ambiguous Super/Gadget effects и zone states.
-- [ ] Согласовать telegraph geometry с authoritative hitbox.
-- [ ] Проверить mobile readability, safe areas и reduced-flash/reduced-shake.
+## Phase 3 — карта и единая HP-экономика
+
+- [ ] T12: topology report, spawn safety, LOS, camps и resource routes.
+- [x] T6: удалить health crates/potion-red/auto-team HP reward.
+- [ ] T6: оставить зелёный cube, который меняет только MaxHP, с cap/TTL/ownership.
+      MaxHP-only, cap, TTL и hero/team ownership реализованы; safe-position,
+      no-benefit consumption guard реализованы; active-budget и contest
+      telemetry остаются.
+- [ ] T6: сделать bats camps с patrol, telegraph, leash, contest и reward.
+      Patrol, wind-up/strike, leash/return, deterministic respawn и reward
+      cycle реализованы; notice-state и contest telemetry остаются.
+
+## Phase 4 — полный roster
+
+- [ ] T7: Needle/Lumi/Mina — control, setup, support и team value.
+- [ ] T7: Mandy/Brock/Mico — fighter, sharpshooter и tank counterplay.
+- [ ] Для каждого героя пройти power budget, benchmark matchups и solo/team
+      acceptance, не меняя общий protocol/schema.
+
+## Phase 5 — AI, metrics и понимание игрока
+
+- [ ] T8: perception → utility decision → intent → steering, team roles и
+      situation matrix.
+- [ ] T9: role contribution, skill centrality и pacing telemetry.
+- [ ] T13: scripted human playtest с пятью clarity-вопросами.
+- [ ] Визуальный polish выполнять сквозным gate каждого slice, а не только
+      после AI.
+
+## Phase 6 — regression и rollout
+
+- [ ] T17: regression suite по семи пунктам исходного промпта.
+- [ ] T10: handshake, staged rollout, mixed-version rejection и rollback drill.
+- [ ] Финальная browser QA для ranged, melee, support, zone, bat и team fight.
 
 ## Final gates
 
-- [ ] `python tools/validate_hero_catalog.py`
-- [ ] `cd battle; go test ./...`
-- [ ] `cd frontend; npm test`
-- [ ] `cd frontend; npm run build`
+- [x] `python tools/validate_hero_catalog.py`
+- [x] `cd battle; go test ./...`
+- [x] `cd frontend; npm test`
+- [x] `cd frontend; npm run build`
 - [ ] Deterministic combat/bot scenarios pass.
 - [ ] Focused browser QA for ranged, melee, support, zone, bat and team fight.
-- [ ] `git diff --check`.
+- [x] `git diff --check`.
 
 ## Второй проход — обязательные артефакты до Phase 1
 
 - [ ] Balance power-budget matrix: Threat, Safety, Control, Mobility, Sustain,
       Conversion для всех восьми героев.
 - [ ] Scenario pack на 100/60/30% accuracy, direct trade, counter-role,
-      cube/bat contest и 3v3.
+      cube/bat contest и 3v3. Сейчас закрыты Super/respawn/cube/bat и
+      replayable 3v3 utility/peel с bot accuracy metric; Kaze smoke matrix
+      теперь закрывает accuracy tiers и direct trade с валидируемым
+      attempts/hits ratio, roster basic smoke закрывает readable hit path для
+      8 героев, полный balance/counter matrix остаётся.
 - [ ] Before/after report с TTK, basic downtime, full-ammo deletion rate,
       skill conversion и counterplay window.
 - [ ] Combat event schema с `matchId`, `phase`, `hero`, `source`, `target`,
@@ -86,7 +123,10 @@
       `resourceBefore/resourceAfter`.
 - [ ] Версия правил и rollbackable profile для каждого playtest build.
 - [ ] AI utility report: hard interrupt count, action score, target switches,
-      idle/stuck time, retreat, skill use и resource contest.
+      retreat, skill use, resource contest и basic attack accuracy уже
+      экспортируются; idle decision ticks и mean score по action теперь тоже
+      экспортируются, но накопление по полной role/mode matrix и time-based
+      idle/stuck report ещё открыто.
 - [ ] Visual timeline test: intent → cast → telegraph → active → impact →
       status, включая отсутствие эффекта при промахе.
 
@@ -100,16 +140,16 @@
 **Depends on:** none. **Likely files:** `tasks/*combat*.md`,
 `tasks/hero-rework-2026-08-plan.md`.
 
-- [ ] Объявить audit-plan canonical и пометить конфликтующие старые решения.
-- [ ] Зафиксировать solo/team mode contract, resource ownership и respawn
+- [x] Объявить audit-plan canonical и пометить конфликтующие старые решения.
+- [x] Зафиксировать solo/team mode contract, resource ownership и respawn
       policy.
-- [ ] Принять Phase-1 default profile или явно заменить отдельные значения.
-- [ ] Составить decision log: вариант, причина, метрика, regression test.
+- [x] Принять Phase-1 default profile или явно заменить отдельные значения.
+- [x] Составить decision log: вариант, причина, метрика, regression test.
 
 **Acceptance:** любой спорный пункт имеет ровно один выбранный вариант или
 явный эксперимент A/B; старые TODO не противоречат каноническому плану.
 
-**Verification:** review документов и `git diff --check`.
+**Verification:** `tasks/combat-decisions-2026-08.md`, review документов и `git diff --check`.
 
 ### T1 — Combat profile и сетевой контракт
 
@@ -117,10 +157,13 @@
 `battle/model/game/protocol.go`, `battle/model/room/room_snapshot.go`,
 `frontend/src/components/BattleGame/NetworkSimulation.js`.
 
-- [ ] Ввести versioned `CombatProfileId`/`CombatRulesVersion`.
-- [ ] Добавить phase/event schema с accepted/rejected/reason и dedupe ID.
-- [ ] Убрать двусмысленность `omitempty` у результативных событий.
-- [ ] Описать snapshot/event budgets и не отправлять phase как поток тиков.
+- [x] Ввести versioned `CombatProfileId`/`CombatRulesVersion` в snapshot и
+      combat event wire-контракт.
+- [x] Добавить phase/event schema с accepted/rejected/reason и dedupe ID.
+- [x] Убрать двусмысленность `omitempty` у результативных событий.
+- [x] Описать snapshot/event budgets и не отправлять phase как поток тиков.
+      Snapshot отправляет максимум 24 наиболее свежих combat events на
+      клиента; phase остаётся событием intent/cast/impact, а не tick-stream.
 
 **Acceptance:** клиент понимает версию правил, один event даёт одну реакцию,
 rejected ability содержит причину, snapshot остаётся компактным.
@@ -133,9 +176,11 @@ report и повторная доставка одного snapshot/event.
 **Depends on:** T1. **Likely files:** `battle/model/game/game.go`,
 `battle/model/game/team_objectives.go`, `battle/model/player/*`, combat tests.
 
-- [ ] Перевести Super на authoritative contribution resource.
-- [ ] Реализовать charge credit/cap/diminishing return.
-- [ ] Закрыть death/respawn lifecycle для Super, Gadget, ammo, marks, shield,
+- [x] Перевести Super на authoritative contribution resource для effective
+      player, objective и neutral damage; initial control/support paths тоже
+      кредитуют ресурс, а полный coverage и tuning остаются T11.
+- [x] Реализовать charge credit и cap; diminishing return остаётся A/B в T11.
+- [x] Закрыть death/respawn lifecycle для Super, Gadget, ammo, marks, shield,
       combo и временных статусов.
 
 **Acceptance:** Super не зависит от `LastPrimaryAt`, spawn-protected hit не
@@ -153,7 +198,9 @@ respawn и resource reset/preserve matrix.
 `frontend/src/components/BattleGame/rendering/combat/*`.
 
 - [ ] Описать directional/point/self/targeted input contract для скиллов.
-- [ ] Показывать cast cancel/reject/miss с понятной причиной.
+- [x] Показывать authoritative ability reject с понятной причиной и
+      dedupe по combat event ID.
+- [ ] Показывать cast cancel/miss с понятной причиной.
 - [ ] Реализовать deduplicated contact feedback и базовый telegraph/impact
       timeline хотя бы для одного ranged и одного melee slice.
 
@@ -166,7 +213,7 @@ errors, включая повтор snapshot.
 
 ### T4 — Kaze vertical slice
 
-**Depends on:** T2, T3. **Likely files:** Kaze kit/config/catalog/HUD/VFX/tests.
+**Depends on:** T2, T3, T11, T15, T16. **Likely files:** Kaze kit/config/catalog/HUD/VFX/tests.
 
 - [ ] Закрыть entry, combo, dash hit-once, reset-only-on-kill и punish window.
 - [ ] Проверить direct trade без Super, Super entry и неудачный disengage.
@@ -180,7 +227,7 @@ before/after matrix.
 
 ### T5 — Katty vertical slice
 
-**Depends on:** T2, T3. **Likely files:** Katty kit/config/catalog/HUD/VFX/tests.
+**Depends on:** T2, T3, T11, T15, T16. **Likely files:** Katty kit/config/catalog/HUD/VFX/tests.
 
 - [ ] Закрыть paint 1/2/3, zone/flight phases и direct-trade floor.
 - [ ] Проверить, что зона читается как armed/active/expired и не наносит урон
@@ -194,13 +241,33 @@ before/after matrix.
 
 ### T6 — Green cube и bat camp
 
-**Depends on:** T0, T4, T5. **Likely files:**
+**Depends on:** T0, T4, T5, T12. **Likely files:**
 `battle/model/game/game.go`, `battle/model/gamemap/team_battle.go`,
 `battle/model/monster/*`, map protocol, minimap/renderer/tests.
 
-- [ ] Удалить health crate/potion-red из выбранного combat profile.
+- [x] Удалить health crate/potion-red из выбранного combat profile.
+- [x] Удалить все legacy entry points: `healthCratesAdd`, authored
+      `spawnAuthoredTeamPickups`, `propsAdd`, monster `potion-red` drop и
+      `collectPickups` heal branch.
+      Runtime/map/frontend now ignore or omit legacy health pickups; hero
+      ability/passive healing remains intentionally available to Support kits.
 - [ ] Ввести cube budget, TTL, cap, ownership и безопасный drop position.
+      Сейчас закрыты profile TTL (30s), snapshot/expiry loop, 5-stack cap,
+      hero-team ownership, safe-position fallback и deterministic bat
+      reward-per-cycle; общий active-budget/contest telemetry остаётся. Если
+      команда полностью на cap, cube не потребляется без state change.
+- [x] Обновить `ApplyHealthBoost`/tests: `MaxLives` растёт, текущие `Lives`
+      при подборе не растут.
+      Реализовано: лимит — 5 стаков; после cap подбор не меняет состояние.
 - [ ] Перевести bats на patrol/notice/chase/wind-up/strike/leash/reward.
+      Выполнено первым runtime-срезом: patrol вместо простоя, server-side
+      wind-up/strike с отменой при потере цели, leash/return и deterministic
+      respawn с одним reward за цикл camp. Notice-state и contest metrics
+      остаются отдельным следующим срезом.
+- [x] Явно оставить lunar non-HP loot вне Phase-1 HP profile или выключить его
+      отдельным flag; не смешивать его с зелёным cube.
+      Профиль объявляет healthPickupIds=[health_boost] и отделяет lunar loot
+      как optional_bonus без влияния на currentLives.
 - [ ] Добавить map/minimap/telemetry contract.
 
 **Acceptance:** на карте один понятный зелёный cube; bat создаёт решение
@@ -211,7 +278,7 @@ before/after matrix.
 
 ### T7 — Remaining roster slices
 
-**Depends on:** T4, T5, T6. **Likely files:** one hero kit/config/catalog/VFX
+**Depends on:** T4, T5, T6, T11. **Likely files:** one hero kit/config/catalog/VFX
 and tests per slice.
 
 - [ ] Провести Needle/Lumi/Mina как control/setup/support slice.
@@ -229,9 +296,24 @@ scenario report and review before next hero.
 **Depends on:** T2, T6, T7. **Likely files:** `battle/model/game/game_bots.go`,
 `battle/model/game/bot_ai.go`, `battle/model/game/game_types.go`, bot tests.
 
-- [ ] Добавить hard interrupts, blackboard и utility scorers с hysteresis.
+- [x] Добавить первый utility-срез поверх blackboard: отдельные
+      `engage/retreat/collect_pickup/roam` scores, role-aware weights и
+      короткий hysteresis/commitment window. Hard interrupts уже остаются выше
+      utility (снаряд, bat wind-up, storm).
 - [ ] Ввести role-aware engage/retreat/skill/cube/bat/objective policies.
+      Первый decision-срез закрыт для engage/retreat/green cube; добавлен
+      expected-value выбор Super против Gadget по роли и боевой ситуации.
+      Bat/objective policies пока используют существующие seams и требуют
+      отдельного contest/assignment слоя.
 - [ ] Добавить team assignments, focus fire, regroup и revive/respawn awareness.
+      Role-to-assignment слой уже добавлен для team bots (`support`, `flank`,
+      `anchor`, `frontline`) и меняет порядок tactical policies; focus fire
+      закреплён через recent ally contact, peel теперь реагирует на recent
+      ally damage, а spawn-protected targets исключаются. Resource contest
+      scoring добавлен для публичного зелёного cube; bat contest учитывается
+      через contested-target utility, respawn awareness ведёт team bot к
+      ближайшему союзному spawn перед возрождением. Остались полная scenario
+      matrix и accuracy/idle reports.
 
 **Acceptance:** bot не idle/stuck, не игнорирует безопасный ресурс без причины,
 не убегает без угрозы, применяет skill по ожидаемой ценности и объясняет
@@ -262,7 +344,7 @@ before/after report и review метрик по каждой роли.
 
 ### T10 — Versioned rollout и client compatibility
 
-**Depends on:** T1, T2, T9. **Likely files:** battle room handshake/snapshot,
+**Depends on:** T1, T2, T9, T13, T17. **Likely files:** battle room handshake/snapshot,
 frontend network capability handling, deployment/config docs and rollout tests.
 
 - [ ] Передавать `CombatRulesVersion`, `CombatProfileId` и schema capability.
@@ -282,7 +364,7 @@ comparison и rollback drill.
 **Depends on:** T0, T1. **Likely files:** hero catalog/balance source,
 `battle/model/game/combat_balance.go`, kit tests, HUD skill contract.
 
-- [ ] Добавить power-budget rows по Threat, Control, Safety, Mobility, Sustain,
+- [x] Добавить power-budget rows по Threat, Control, Safety, Mobility, Sustain,
       Information и ObjectiveValue.
 - [ ] Зафиксировать cast cost, interrupt, miss outcome, recovery и counterplay
       для каждого Basic/Super/Gadget.
@@ -297,7 +379,7 @@ hard CC, immunity, escape и sustain без явной цены; role signature 
 
 ### T12 — Map topology и resource placement
 
-**Depends on:** T0, T6. **Likely files:** `battle/model/gamemap/*`, map protocol,
+**Depends on:** T0. **Likely files:** `battle/model/gamemap/*`, map protocol,
 minimap/pickup renderer, map tests and deterministic scenario runner.
 
 - [ ] Снять topology report: spawn safety, cover, LOS, choke, route count,
@@ -315,7 +397,7 @@ representation совпадают.
 
 ### T13 — Human playtest gate
 
-**Depends on:** T4, T5, T6, T7, T9, T11, T12. **Likely files:**
+**Depends on:** T4, T5, T6, T7, T8, T9, T11, T12. **Likely files:**
 `tasks/playtest/*`, scenario reports, QA scripts and release checklist.
 
 - [ ] Провести scripted tests для каждого role в solo и team mode.
@@ -331,12 +413,13 @@ console/page errors и approval перед staged rollout.
 
 ### T14a — CombatProfile schema и validator
 
-**Depends on:** T0. **Likely files:** новый schema/profile file,
+**Depends on:** T0. **Likely files:** `docs/combat-profile.json`, новый
+schema/profile file,
 `docs/hero-catalog.json`, validator tests.
 
-- [ ] Описать schema для basic, Super, Gadget, pickup, bats, telegraph и AI.
-- [ ] Разделить balance data, runtime state, presentation и telemetry contracts.
-- [ ] Зафиксировать documented defaults и запрет неизвестных legacy fields.
+- [x] Описать schema для basic, Super, Gadget, pickup, bats, telegraph и AI.
+- [x] Разделить balance data, runtime state, presentation и telemetry contracts.
+- [x] Зафиксировать documented defaults и запрет неизвестных legacy fields.
 
 **Acceptance:** profile можно проверить без запуска боя; отсутствующее поле имеет
 явный default; невалидное значение сообщает путь и причину ошибки.
@@ -349,9 +432,9 @@ review.
 **Depends on:** T14a. **Likely files:** `battle/model/game/*catalog*`,
 frontend generated/fallback config, catalog validator and fingerprint manifest.
 
-- [ ] Сгенерировать Go/JS views из editable profile.
-- [ ] Добавить report расхождений между source и derived views.
-- [ ] Учитывать profile ID/schema version в fingerprint.
+- [x] Сгенерировать Go/JS views из editable profile.
+- [x] Добавить report расхождений между source и derived views.
+- [x] Учитывать profile ID/schema version в fingerprint.
 
 **Acceptance:** balance value редактируется в одном источнике, derived views
 перестраиваются воспроизводимо, а намеренное presentation-only отличие помечено.
@@ -364,10 +447,18 @@ tests и stale fingerprint test.
 **Depends on:** T1, T2. **Likely files:** `battle/model/game/*scenario*`,
 deterministic tests, report scripts and `tasks/scenarios/*`.
 
-- [ ] Поддержать seed, profile ID, players, props, bats, objectives и input log.
-- [ ] Сохранять event log, state hash, metrics и before/after diff.
+- [x] Сохранить seed/profile ID и валидируемый, монотонный input log в
+      checkpoint report foundation; `ApplyInput` и time-injected simulation
+      теперь доступны runner-у с simulation-sized шагами.
+- [x] Сохранять event IDs, стабильный state hash и именованные metrics в
+      checkpoint report; before/after diff остаётся pending.
+- [x] Добавить стабильный authoritative state hash и versioned checkpoint
+      report foundation.
 - [ ] Добавить сценарии Super charge, respawn, cube ownership, bat contest,
-      Kaze/Katty и solo/team mode.
+      Kaze/Katty и solo/team mode. Сейчас есть replayable Kaze basic и Katty
+      paint-setup smoke tests, а также deterministic Super/respawn/cube/bat
+      scenario pack; полный solo/team matrix, 3v3 reports и before/after diff
+      остаются.
 
 **Acceptance:** повтор одного сценария даёт одинаковый state hash и event
 timeline; изменение profile даёт читаемый diff, а не перезаписывает baseline.
@@ -380,10 +471,10 @@ serialized JSON report review.
 **Depends on:** T14b. **Likely files:** `tasks/hero-contracts/*`,
 `docs/hero-catalog.json`, hero tests and HUD skill descriptions.
 
-- [ ] Заполнить contract rows для Kaze/Katty до начала их implementation.
-- [ ] Добавить target/cast/telegraph/impact/status/resource/miss/interrupt
+- [x] Заполнить contract rows для Kaze/Katty до начала их implementation.
+- [x] Добавить target/cast/telegraph/impact/status/resource/miss/interrupt
       поля для каждого skill.
-- [ ] Согласовать role, win condition, counterplay, solo и team acceptance.
+- [x] Согласовать role, win condition, counterplay, solo и team acceptance.
 
 **Acceptance:** Go, catalog, HUD и VFX используют одинаковые имена и смысл
 каждой ability phase; отсутствие поля не скрывает legacy behavior.

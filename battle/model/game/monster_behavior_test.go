@@ -5,6 +5,7 @@ import (
 	"battle/model/monster"
 	"battle/model/player"
 	"battle/service/geometry"
+	"math"
 	"testing"
 )
 
@@ -50,6 +51,28 @@ func TestMonsterDoesNotAcquirePlayerOutsideItsSight(t *testing.T) {
 
 	if m.State == monster.MonsterChase || m.TargetPlayerId != "" {
 		t.Fatalf("monster acquired a player outside sight range: state=%s target=%q", m.State, m.TargetPlayerId)
+	}
+}
+
+func TestUnalertedBatPatrolsInsteadOfStandingStill(t *testing.T) {
+	gs := &GameState{
+		State:    GameStateGame,
+		Map:      &gamemap.GameMap{WidthInPixels: 800, HeightInPixels: 800},
+		Walls:    geometry.NewSpatialHash(TileSize),
+		Players:  map[string]*player.Player{},
+		Monsters: map[string]*monster.Monster{},
+	}
+	m := monster.NewMonster(300, 300, 16, 800, 800, monster.MonsterLives)
+	gs.Monsters["m1"] = m
+	beforeX, beforeY := m.X, m.Y
+
+	gs.updateMonsters()
+
+	if m.State != monster.MonsterPatrol {
+		t.Fatalf("unalerted bat state=%s, want patrol", m.State)
+	}
+	if math.Hypot(m.X-beforeX, m.Y-beforeY) <= 0 {
+		t.Fatalf("unalerted bat did not move during patrol: (%.2f, %.2f)", m.X, m.Y)
 	}
 }
 

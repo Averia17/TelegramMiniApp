@@ -29,6 +29,11 @@ test("combat hit collection is idempotent across repeated snapshots", () => {
   assert.deepEqual(repeated.hits.map(event => event.id), [8])
 })
 
+test("combat feedback does not render a non-impact lifecycle event as a hit", () => {
+  assert.equal(isConfirmedHitEvent({...hit(), phase: "accepted"}), false)
+  assert.equal(isConfirmedHitEvent({...hit(), phase: "impact"}), true)
+})
+
 test("combat feedback follows the authoritative target and expires", () => {
   const root = new THREE.Group()
   const renderer = new CombatFeedbackRenderer(root)

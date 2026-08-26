@@ -63,12 +63,12 @@ func TestProjectileCannotDamageHeroThroughBlockingWall(t *testing.T) {
 	}
 }
 
-func TestPlayerMovementCannotEnterActiveHealthCrate(t *testing.T) {
+func TestPlayerMovementCannotEnterActiveLunarCrate(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.Map = &gamemap.GameMap{WidthInPixels: 400, HeightInPixels: 240}
 	gs.Walls = geometry.NewSpatialHash(float64(TileSize))
-	crate := prop.NewHealthCrate(140, 100)
+	crate := prop.NewLunarCrate(140, 100, "speed")
 	gs.Props = []*prop.Prop{crate}
 
 	p := &player.Player{
@@ -84,7 +84,7 @@ func TestPlayerMovementCannotEnterActiveHealthCrate(t *testing.T) {
 	gs.updatePlayerMovement(time.Second)
 
 	if geometry.CircleToCircle(&p.CircleBody, &crate.CircleBody) {
-		t.Fatalf("player entered active health crate: player=(%.1f,%.1f), crate=(%.1f,%.1f)", p.X, p.Y, crate.X, crate.Y)
+		t.Fatalf("player entered active lunar crate: player=(%.1f,%.1f), crate=(%.1f,%.1f)", p.X, p.Y, crate.X, crate.Y)
 	}
 }
 
@@ -528,23 +528,6 @@ func TestCombatAttackDamagesLunarCrate(t *testing.T) {
 
 	if crate.Lives >= crate.MaxLives {
 		t.Fatalf("attack did not damage lunar crate: %d/%d", crate.Lives, crate.MaxLives)
-	}
-}
-
-func TestCombatAttackDamagesHealthCrate(t *testing.T) {
-	gs := newTestGameState()
-	gs.PlayerAdd("attacker", "Attacker", "Wukong Mico")
-	gs.State = GameStateGame
-	gs.IslandPhase = IslandPhaseHunt
-	attacker := gs.Players["attacker"]
-	attacker.X, attacker.Y, attacker.Ammo = 100, 100, 1
-	crate := prop.NewHealthCrate(160, 100)
-	gs.Props = append(gs.Props, crate)
-
-	gs.playerShootWithCommand(attacker.PlayerId, time.Now().UnixMilli(), 0, "health-crate-hit", 120)
-
-	if crate.Lives >= crate.MaxLives {
-		t.Fatalf("attack did not damage health crate: %d/%d", crate.Lives, crate.MaxLives)
 	}
 }
 
@@ -1104,6 +1087,20 @@ func TestEffectiveMovementSpeedUsesEachModifierOnce(t *testing.T) {
 	}
 }
 
+func TestEffectiveMovementSpeedSlowsInsidePassableVineZone(t *testing.T) {
+	now := time.Now().UnixMilli()
+	p := &player.Player{Speed: 120}
+	mapValue := &gamemap.GameMap{Collisions: []*geometry.WallTile{
+		{MinX: 100, MinY: 100, MaxX: 140, MaxY: 140, Type: "vine"},
+	}}
+	if got := EffectiveMovementSpeedAt(p, now, mapValue, 120, 120); math.Abs(got-81.6) > .001 {
+		t.Fatalf("vine speed = %.2f, want 81.60", got)
+	}
+	if got := EffectiveMovementSpeedAt(p, now, mapValue, 80, 120); math.Abs(got-120) > .001 {
+		t.Fatalf("outside vine speed = %.2f, want 120", got)
+	}
+}
+
 func TestAbilityAppliesCooldownAndShield(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
@@ -1502,7 +1499,7 @@ func TestSetPlayersActiveStartsEveryPlayerWithFreshMatchAbilityState(t *testing.
 	if p.Speed != 168 || p.PowerCores != 0 || p.DamageMultiplier != 1 {
 		t.Fatalf("power-up stats survived match reset: speed=%.1f cores=%d damage=%.2f", p.Speed, p.PowerCores, p.DamageMultiplier)
 	}
-	if p.ShieldHP != 0 || p.ShieldStacks != 0 || p.Marks != 0 || p.SuperCharge != 100 || p.Heat != 0 {
+	if p.ShieldHP != 0 || p.ShieldStacks != 0 || p.Marks != 0 || p.SuperCharge != 0 || p.Heat != 0 {
 		t.Fatalf("combat stacks survived match reset: shield=%d stacks=%d marks=%d super=%d heat=%d", p.ShieldHP, p.ShieldStacks, p.Marks, p.SuperCharge, p.Heat)
 	}
 	if p.AttackPulse != 0 || p.SuperPulse != 0 || p.GadgetPulse != 0 || p.Souls != 0 || p.Evolution != 0 || p.LumiFlowers != 0 || p.KazeCombo != 0 {
@@ -1650,26 +1647,9 @@ func TestGetWinningTeam(t *testing.T) {
 	}
 }
 
-func TestPropsAdd(t *testing.T) {
-	gs := newTestGameState()
-	gs.propsAdd(5)
-
-	if len(gs.Props) != 5 {
-		t.Errorf("Props count = %v, want 5", len(gs.Props))
-	}
-	for _, p := range gs.Props {
-		if !p.Active {
-			t.Error("new prop should be active")
-		}
-		if p.Type != "potion-red" {
-			t.Errorf("Prop type = %v, want potion-red", p.Type)
-		}
-	}
-}
-
 func TestPropsClear(t *testing.T) {
 	gs := newTestGameState()
-	gs.propsAdd(3)
+	gs.Props = []*prop.Prop{prop.NewProp("health_boost", 100, 100, 12)}
 	gs.propsClear()
 
 	if len(gs.Props) != 0 {
@@ -1764,7 +1744,7 @@ func TestGameStartLobby(t *testing.T) {
 	}
 }
 
-func TestLobbyDoesNotSpawnHealthCratesAndMatchDoes(t *testing.T) {
+func TestMatchDoesNotSpawnLegacyHealthPickups(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateWaiting
 	gs.PlayerAdd("p1", "Alice", "")
@@ -1776,14 +1756,14 @@ func TestLobbyDoesNotSpawnHealthCratesAndMatchDoes(t *testing.T) {
 	}
 
 	gs.startGame()
-	crateCount := 0
+	legacyCount := 0
 	for _, prop := range gs.Props {
-		if prop.Type == "health_crate" {
-			crateCount++
+		if prop.Type == "health_crate" || prop.Type == "potion-red" {
+			legacyCount++
 		}
 	}
-	if crateCount != HealthCratesCount {
-		t.Fatalf("match health crates = %d, want %d", crateCount, HealthCratesCount)
+	if legacyCount != 0 {
+		t.Fatalf("match spawned %d legacy health pickups", legacyCount)
 	}
 }
 
@@ -1800,8 +1780,8 @@ func TestGameStartGame(t *testing.T) {
 	if gs.GameEndsAt == 0 {
 		t.Error("GameEndsAt should be set")
 	}
-	if len(gs.Props) != HealthCratesCount {
-		t.Errorf("Props = %v, want %d health crates", len(gs.Props), HealthCratesCount)
+	if len(gs.Props) != 0 {
+		t.Errorf("Props = %v, want no authored health pickups", len(gs.Props))
 	}
 	if len(gs.Monsters) != MonstersCount {
 		t.Errorf("Monsters = %v, want %v", len(gs.Monsters), MonstersCount)
@@ -2121,7 +2101,7 @@ func TestBulletVsPlayer(t *testing.T) {
 	}
 }
 
-func TestPlayerHitDoesNotBuildSuperCharge(t *testing.T) {
+func TestPlayerHitBuildsSuperCharge(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("p1", "Alice", "Brock Zeus")
 	gs.PlayerAdd("p2", "Bob", "Kaze")
@@ -2134,8 +2114,8 @@ func TestPlayerHitDoesNotBuildSuperCharge(t *testing.T) {
 	gs.Bullets = append(gs.Bullets, bullet.NewBullet(attacker.PlayerId, "", target.X, target.Y, 4, 0, "#FFF"))
 	gs.updateBullets()
 
-	if attacker.SuperCharge != beforeCharge {
-		t.Fatalf("super charge before=%d after=%d, want no hit-based gain", beforeCharge, attacker.SuperCharge)
+	if attacker.SuperCharge <= beforeCharge {
+		t.Fatalf("super charge before=%d after=%d, want hit-based gain", beforeCharge, attacker.SuperCharge)
 	}
 }
 
@@ -2223,7 +2203,6 @@ func TestEveryMonsterDamagePathRemovesKilledMonsterAndDropsHealth(t *testing.T) 
 			source := gs.Players["source"]
 			source.X, source.Y = 100, 100
 			source.AttackDmg = 2000
-			gs.randomHealthBoostDrop = func() bool { return false }
 			gs.Monsters["bat"] = monster.NewMonster(160, 100, 16, 512, 512, 1000)
 
 			tc.attack(gs, source)
@@ -2231,8 +2210,8 @@ func TestEveryMonsterDamagePathRemovesKilledMonsterAndDropsHealth(t *testing.T) 
 			if _, alive := gs.Monsters["bat"]; alive {
 				t.Fatal("killed monster remained in the authoritative state")
 			}
-			if len(gs.Props) != 1 || gs.Props[0].Type != "potion-red" {
-				t.Fatalf("health drop = %#v, want one red health potion", gs.Props)
+			if len(gs.Props) != 1 || gs.Props[0].Type != "health_boost" {
+				t.Fatalf("health drop = %#v, want one green health boost", gs.Props)
 			}
 		})
 	}
@@ -2281,6 +2260,15 @@ func TestMonsterVsPlayer(t *testing.T) {
 	m.LastAttackAt = 0
 	gs.Monsters["m1"] = m
 
+	gs.updateMonsters()
+	if m.State != monster.MonsterWindup {
+		t.Fatalf("monster attack state = %s, want windup", m.State)
+	}
+	if p1.Lives != startLives {
+		t.Fatalf("wind-up should not deal damage before telegraph ends: start=%d after=%d", startLives, p1.Lives)
+	}
+
+	m.AttackWindupUntil = time.Now().Add(-time.Millisecond).UnixMilli()
 	gs.updateMonsters()
 
 	if p1.Lives >= startLives {
@@ -2366,22 +2354,10 @@ func TestTeamDeathmatchStartUsesAuthoredNeutralSpawns(t *testing.T) {
 	if len(gs.Monsters) != len(gs.Map.MonsterSpawns) {
 		t.Fatalf("team monsters = %d, want %d authored spawns", len(gs.Monsters), len(gs.Map.MonsterSpawns))
 	}
-	if len(gs.Props) != len(gs.Map.PickupSpawns)+HealthCratesCount {
-		t.Fatalf("team pickups = %d, want %d authored spawns plus health crates", len(gs.Props), len(gs.Map.PickupSpawns)+HealthCratesCount)
+	if len(gs.Props) != 0 {
+		t.Fatalf("team pickups = %d, want no authored health pickups", len(gs.Props))
 	}
 	if gs.Monsters["team-bat-0"].Tier != gs.Monsters["team-bat-4"].Tier {
 		t.Fatalf("mirrored monster tiers = %d/%d, want equal", gs.Monsters["team-bat-0"].Tier, gs.Monsters["team-bat-4"].Tier)
-	}
-	for _, spawn := range gs.Map.PickupSpawns {
-		found := false
-		for _, pickup := range gs.Props {
-			if pickup.X == spawn.X && pickup.Y == spawn.Y && pickup.Type == spawn.Type {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("authored pickup at (%.0f,%.0f) was not spawned", spawn.X, spawn.Y)
-		}
 	}
 }

@@ -66,6 +66,9 @@ func TestGenerateBattleRoyalePublishesBlockingBeaconCollider(t *testing.T) {
 	gameMap := GenerateBattleRoyale(CanonicalBattleRoyaleSeed)
 	const center = 1200.0
 	const beaconRadius = battleRoyaleBeaconCollisionRadius
+	if beaconRadius != 60 {
+		t.Fatalf("beacon collider radius = %.0f, want 60", beaconRadius)
+	}
 
 	var beacon *geometry.WallTile
 	for _, wall := range gameMap.Collisions {

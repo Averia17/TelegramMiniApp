@@ -12,7 +12,7 @@ const CanonicalBattleRoyaleSeed int64 = 20260810
 
 // CanonicalBattleRoyaleID is the stable identity published by every transport
 // that exposes the generated battle-royale arena.
-const CanonicalBattleRoyaleID = "battle-royale@20260810"
+const CanonicalBattleRoyaleID = "battle-royale@20260827"
 
 //go:embed assets/maps/small.json
 var smallMapJSON []byte
@@ -85,7 +85,6 @@ type GameMap struct {
 	Spawners       []*geometry.RectangleBody
 	TeamSpawners   map[string][]*geometry.RectangleBody
 	MonsterSpawns  []MapMonsterSpawn
-	PickupSpawns   []MapPickupSpawn
 	Objectives     []MapObjective
 	Features       []MapFeature
 	Tileset        map[int]TilesetEntry
@@ -95,15 +94,6 @@ type GameMap struct {
 // these instead of sampling a random arena region at match start.
 type MapMonsterSpawn struct {
 	X, Y float64
-}
-
-// MapPickupSpawn is an authored pickup position published by the map. Keeping
-// the type here leaves room for future map-specific pickup layouts while the
-// current team map uses health potions.
-type MapPickupSpawn struct {
-	X, Y   float64
-	Radius float64
-	Type   string
 }
 
 type MapObjective struct {

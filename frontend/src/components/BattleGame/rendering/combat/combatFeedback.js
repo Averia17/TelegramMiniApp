@@ -3,6 +3,7 @@ const asId = value => String(value ?? "")
 export const isConfirmedHitEvent = event => Boolean(
   event &&
   event.kind === "hit" &&
+  (!event.phase || event.phase === "impact") &&
   Number(event.damage) > 0 &&
   asId(event.id),
 )

@@ -140,6 +140,56 @@ func TestHandleFindMatchAllowsDisconnectedPlayerToStartANewBattle(t *testing.T) 
 	}
 }
 
+func TestHandleFindMatchClearsPreviousTeamAssignmentForSoloRematch(t *testing.T) {
+	teamParties = sroom.NewPartyRegistry()
+	mroom.ResetRooms()
+	defer mroom.ResetRooms()
+
+	client := &mroom.Client{
+		Id: "player-1", Name: "Solo fighter", HeroName: "Needle", AssignedTeam: "Blue",
+		Send: make(chan []byte, 8), State: make(chan []byte, 1),
+	}
+	HandleFindMatch(client, []byte(`{"type":"find_match","playerName":"Solo fighter","heroName":"Needle","mode":"deathmatch","roomMap":"small","maxPlayers":4}`))
+	sroom.RemoveFromMatchQueue(client.Id)
+
+	var matchFound struct {
+		Type   string `json:"type"`
+		Params struct {
+			RoomID string `json:"roomId"`
+		} `json:"params"`
+	}
+	select {
+	case message := <-client.Send:
+		if err := json.Unmarshal(message, &matchFound); err != nil {
+			t.Fatalf("decode match result: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("solo matchmaking did not return a room")
+	}
+	if matchFound.Type != "match_found" || matchFound.Params.RoomID == "" {
+		t.Fatalf("match result = %+v, want match_found with a room", matchFound)
+	}
+
+	join, _ := json.Marshal(map[string]any{
+		"type": "join_by_id", "roomId": matchFound.Params.RoomID,
+		"playerName": "Solo fighter", "heroName": "Needle",
+	})
+	HandleJoinById(client, join)
+	room := mroom.FindRoom(matchFound.Params.RoomID)
+	deadline := time.Now().Add(time.Second)
+	for room == nil || !room.HasPlayer(client.Id) {
+		if time.Now().After(deadline) {
+			t.Fatal("solo player was not registered in the matched room")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	player := room.State.Players[client.Id]
+	if player.Team != "" || player.TeamLocked {
+		t.Fatalf("solo rematch retained team assignment: team=%q locked=%v", player.Team, player.TeamLocked)
+	}
+}
+
 func TestHandleJoinByIdAllowsNewBattleAfterIntentionalLeave(t *testing.T) {
 	teamParties = sroom.NewPartyRegistry()
 	mroom.ResetRooms()
@@ -286,13 +336,13 @@ func TestHandleLeaveBattleRemovesOnlyBattleSessionMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &mroom.Client{Id: "player-1", PendingRoomID: "old-room", PartyID: "party-leave", PartySize: 3, Send: make(chan []byte, 1)}
+	client := &mroom.Client{Id: "player-1", PendingRoomID: "old-room", PartyID: "party-leave", PartySize: 3, AssignedTeam: "Red", Send: make(chan []byte, 1)}
 	HandleLeaveBattle(client)
 
 	if _, ok := teamParties.Snapshot("party-leave"); ok {
 		t.Fatal("intentional leave kept the player in the battle party session")
 	}
-	if client.PendingRoomID != "" || client.PartyID != "" || client.PartySize != 0 {
+	if client.PendingRoomID != "" || client.PartyID != "" || client.PartySize != 0 || client.AssignedTeam != "" {
 		t.Fatalf("client battle session fields = %+v, want cleared", client)
 	}
 	select {

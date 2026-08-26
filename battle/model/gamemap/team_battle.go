@@ -24,6 +24,104 @@ const (
 	teamBattleRiverMouth = 70.0
 )
 
+const teamBattleCityObjectCollisionType = "city_object"
+
+// teamBattleCityColliderSpec is expressed in the local tile-space of a city
+// feature. Keeping the source dimensions beside the feature composition makes
+// it hard to accidentally grow a prop's collision into an invisible building
+// sized blocker.
+type teamBattleCityColliderSpec struct {
+	X, Y          float64
+	Width, Height float64
+	Radius        float64
+}
+
+func teamBattleCityObjectCollider(cx, cy, rotation, scale float64, spec teamBattleCityColliderSpec) *geometry.WallTile {
+	const tile = 40.0
+	cos, sin := math.Cos(rotation), math.Sin(rotation)
+	centerX, centerY := cx*tile, cy*tile
+	if spec.Radius > 0 {
+		centerLocalX, centerLocalY := spec.X*scale*tile, spec.Y*scale*tile
+		worldX := centerX + centerLocalX*cos - centerLocalY*sin
+		worldY := centerY + centerLocalX*sin + centerLocalY*cos
+		radius := spec.Radius * scale * tile
+		return &geometry.WallTile{
+			MinX: worldX - radius, MinY: worldY - radius,
+			MaxX: worldX + radius, MaxY: worldY + radius,
+			Type: teamBattleCityObjectCollisionType, ColliderRadius: radius,
+		}
+	}
+
+	minX, minY := math.MaxFloat64, math.MaxFloat64
+	maxX, maxY := -math.MaxFloat64, -math.MaxFloat64
+	for _, corner := range [][2]float64{
+		{spec.X - spec.Width/2, spec.Y - spec.Height/2},
+		{spec.X + spec.Width/2, spec.Y - spec.Height/2},
+		{spec.X - spec.Width/2, spec.Y + spec.Height/2},
+		{spec.X + spec.Width/2, spec.Y + spec.Height/2},
+	} {
+		localX, localY := corner[0]*scale*tile, corner[1]*scale*tile
+		worldX := centerX + localX*cos - localY*sin
+		worldY := centerY + localX*sin + localY*cos
+		minX, minY = math.Min(minX, worldX), math.Min(minY, worldY)
+		maxX, maxY = math.Max(maxX, worldX), math.Max(maxY, worldY)
+	}
+	return &geometry.WallTile{MinX: minX, MinY: minY, MaxX: maxX, MaxY: maxY, Type: teamBattleCityObjectCollisionType}
+}
+
+func teamBattleCityColliderSpecs(archetype string) []teamBattleCityColliderSpec {
+	// Elevated balconies, open gate spans, and small visual eaves intentionally
+	// do not appear here. Opaque roof footprints do: otherwise a hero can walk
+	// under an apparently solid roof and disappear into its texture. Roof
+	// colliders are inset slightly so the eave remains a visual overhang rather
+	// than an invisible extra wall.
+	switch archetype {
+	case "depot":
+		return []teamBattleCityColliderSpec{
+			{X: -1.35, Y: -.2, Radius: .32}, // left barrel
+			{X: -.82, Y: -.2, Radius: .22},  // loose sack
+			// The right barrel and wheel form one small ground cluster.
+			{X: 1.55, Y: -.2, Width: .82, Height: .82},
+			{X: -.78, Y: .95, Width: .7, Height: .34}, // opaque rear roof
+		}
+	case "market":
+		return []teamBattleCityColliderSpec{
+			{X: -1.35, Y: -.45, Width: 1.58, Height: .74},
+			{X: 1.7, Y: -.35, Width: 1.58, Height: .74},
+			{X: .8, Y: 1.6, Width: 1.58, Height: .74},
+			// Offset from the court centre so the landmark does not occupy the
+			// principal entry cell while remaining a readable market anchor.
+			{X: 1.4, Y: .42, Radius: .72},
+		}
+	case "apartments":
+		return []teamBattleCityColliderSpec{
+			{X: -1.22, Y: .05, Width: .2, Height: 1.36}, // side wall
+			{X: 1.35, Y: .75, Width: .9, Height: 1.2},   // annex body
+			{X: 1.72, Y: .48, Width: .16, Height: .16},  // ladder feet
+			{X: -.86, Y: .9, Width: .86, Height: .64},   // main opaque roof
+			{X: 1.0, Y: .52, Width: .58, Height: .52},   // annex roof
+		}
+	case "north_gate":
+		return []teamBattleCityColliderSpec{
+			{X: -1.35, Y: 0, Width: .95, Height: 1.12},
+			{X: 1.35, Y: 0, Width: .95, Height: 1.12},
+		}
+	case "south_ward":
+		return []teamBattleCityColliderSpec{
+			{X: -.48, Y: .52, Width: 1.55, Height: .2},  // forge wall
+			{X: -.62, Y: -.58, Width: .46, Height: .46}, // hearth
+			{X: .15, Y: -.72, Width: .52, Height: .28},  // anvil base
+			// Moved to the right side of the yard in the visual composition;
+			// this keeps the forge's central fighting cell open.
+			{X: 1.65, Y: .72, Width: .9, Height: .34},
+			{X: -.62, Y: .52, Width: .82, Height: .58}, // house roof
+			{X: 1.0, Y: -.35, Width: 1.2, Height: .96}, // opaque forge canopy
+		}
+	default:
+		return nil
+	}
+}
+
 // GenerateTeamBattle builds an authored 3v3 arena. The two bases sit on
 // opposite sides of the main diagonal, and every authored cell is reflected
 // across that diagonal so both teams get the same readable combat language.
@@ -115,6 +213,13 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	addFeature("team-bridge-north", "river_bridge", 22, 22, -math.Pi/4, 1)
 	addFeature("team-bridge-center", "river_bridge", 39.5, 39.5, -math.Pi/4, 1)
 	addFeature("team-bridge-south", "river_bridge", 57, 57, -math.Pi/4, 1)
+	var cityObjectColliders []*geometry.WallTile
+	addCityObjectColliders := func(cx, cy int, rotation, scale float64, archetype string) {
+		for _, spec := range teamBattleCityColliderSpecs(archetype) {
+			cityObjectColliders = append(cityObjectColliders,
+				teamBattleCityObjectCollider(float64(cx), float64(cy), rotation, scale, spec))
+		}
+	}
 
 	// Cluster primitives keep the arena dressed with connected silhouettes.
 	// The mirror wrapper is used at the primitive boundary so a future layout
@@ -149,7 +254,7 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	}
 	addPond := func(cx, cy int) {
 		for y := cy - 3; y <= cy+3; y++ {
-			for x := cx - 4; x <= cx+4; x++ {
+			for x := cx - 3; x <= cx+3; x++ {
 				dx := float64(x-cx) / 4.1
 				dy := float64(y-cy) / 2.7
 				if dx*dx+dy*dy <= 1 {
@@ -211,8 +316,8 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	// centre and approach lanes remain usable fighting space. The authored half
 	// is mirrored across the main diagonal for team fairness.
 	clearCityFootprint := func(cx, cy int) {
-		for y := cy - 3; y <= cy+3; y++ {
-			for x := cx - 3; x <= cx+3; x++ {
+		for y := cy - 4; y <= cy+4; y++ {
+			for x := cx - 4; x <= cx+4; x++ {
 				clearMirrored(x, y)
 			}
 		}
@@ -228,12 +333,25 @@ func GenerateTeamBattle(seed int64) *GameMap {
 		addFeature(id, "city_building", float64(cx), float64(cy), rotation, scale)
 		mx, my := mirror(cx, cy)
 		addFeature(id+"-mirror", "city_building", float64(mx), float64(my), -rotation, scale)
+		archetype := "depot"
+		switch id {
+		case "city-market":
+			archetype = "market"
+		case "city-apartments":
+			archetype = "apartments"
+		case "city-north-gate":
+			archetype = "north_gate"
+		case "city-south-ward":
+			archetype = "south_ward"
+		}
+		addCityObjectColliders(cx, cy, rotation, scale, archetype)
+		addCityObjectColliders(mx, my, -rotation, scale, archetype)
 	}
 	// District footprints intentionally differ and leave a broad playable core:
 	// the market is almost entirely open, the depot has a loading-yard gap, and
 	// the homes form two offset cover wings instead of a closed ring.
 	addCityBlock("city-depot", 13, 52, -.08, 1.05,
-		[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}, {2, -1}, {2, 0}, {-2, 0}, {0, -1}},
+		[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}, {2, -1}, {2, 0}, {-2, 0}},
 		[][2]int{{-3, -2}, {3, 0}, {-2, 1}, {2, 1}})
 	addCityBlock("city-market", 30, 47, .16, .92,
 		[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}},
@@ -460,6 +578,24 @@ func GenerateTeamBattle(seed int64) *GameMap {
 		}
 	}
 
+	// Broad vine clumps are passable soft terrain: they add a readable medieval
+	// overgrowth route without turning into another wall. Their cells are
+	// mirrored exactly, and the gameplay package applies the movement penalty
+	// while a hero's feet are inside one of these cells.
+	addVineClump := func(cx, cy int) {
+		for _, offset := range [][2]int{
+			{-1, -1}, {0, -1}, {1, -1},
+			{-1, 0}, {0, 0}, {1, 0},
+			{-1, 1}, {0, 1}, {1, 1},
+			{-2, 0}, {2, 0},
+		} {
+			addMirrored(cx+offset[0], cy+offset[1], "vine")
+		}
+	}
+	for _, clump := range [][2]int{{10, 47}, {25, 65}, {36, 52}, {56, 67}} {
+		addVineClump(clump[0], clump[1])
+	}
+
 	// Neutral resources are authored in four positions and mirrored through the
 	// map center. The order is intentional: each first-half
 	// entry has its exact counterpart at index+4, which makes balance checks and
@@ -475,21 +611,6 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	for _, point := range monsterPoints {
 		addMonster(point[1], point[0])
 	}
-	addPickup := func(tileX, tileY float64) {
-		x, y := tileX*tile, tileY*tile
-		gm.PickupSpawns = append(gm.PickupSpawns, MapPickupSpawn{X: x, Y: y, Radius: 12, Type: "potion-red"})
-	}
-	// Keep only two authored pickup pairs. The general match health crates still
-	// provide occasional sustain, while these fixed points mark the two most
-	// important rotations instead of covering every route with healing.
-	pickupPoints := [][2]float64{{31.5, 42.5}, {40.5, 34.5}}
-	for _, point := range pickupPoints {
-		addPickup(point[0], point[1])
-	}
-	for _, point := range pickupPoints {
-		addPickup(80-point[0], 80-point[1])
-	}
-
 	addSpawnPair := func(team string, x, y int) {
 		spawner := &geometry.RectangleBody{X: float64(x) * tile, Y: float64(y) * tile, Width: tile, Height: tile}
 		gm.Spawners = append(gm.Spawners, spawner)
@@ -522,6 +643,11 @@ func GenerateTeamBattle(seed int64) *GameMap {
 		{ID: "red-tower-west", Type: "tower", Team: "Red", X: 60.5 * tile, Y: 19.5 * tile, Radius: 52},
 		{ID: "red-tower-east", Type: "tower", Team: "Red", X: 58.5 * tile, Y: 15.5 * tile, Radius: 52},
 	}
+	// Feature colliders are appended only after the authored cell pass. This is
+	// deliberate: their sub-cell footprints must not be rounded up or removed
+	// by the tile occupancy filters above.
+	gm.Collisions = append(gm.Collisions, cityObjectColliders...)
+
 	for _, objective := range gm.Objectives {
 		collisionRadius := teamBattleObjectiveCollisionRadius(objective)
 		gm.Collisions = append(gm.Collisions, &geometry.WallTile{

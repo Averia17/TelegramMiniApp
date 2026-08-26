@@ -25,7 +25,7 @@ runWithBrowser(
       const snapshot = await page.evaluate(() => JSON.parse(window.render_game_to_text()))
       assert.equal(snapshot.renderer, "ThreeBattleRenderer")
       assert.equal(snapshot.map.seed, 20260810)
-      assert.equal(snapshot.map.id, "battle-royale@20260810")
+      assert.equal(snapshot.map.id, "battle-royale@20260827")
       canonicalMap = snapshot.map
       assert.equal(snapshot.environment.ready, true)
       const zoomBefore = await page.locator("#zoom-value").innerText()

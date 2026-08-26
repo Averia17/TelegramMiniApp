@@ -241,6 +241,37 @@ test("local prediction sweeps through the same blocking wall geometry as the bac
   assert.equal(next.y, 80)
 })
 
+test("passable vine clumps slow local prediction without becoming collision walls", () => {
+  const map = {
+    width: 400,
+    height: 200,
+    walls: [{minX: 100, minY: 80, maxX: 140, maxY: 120, type: "vine", blocking: false}],
+  }
+  const player = {x: 80, y: 100, radius: 10, speed: 100, movementSpeed: 100, lives: 100}
+  const index = createCollisionIndex(map.walls)
+  const outside = movePosition({x: 80, y: 100}, {x: 1, y: 0}, player, .1, map, index)
+  const inside = movePosition({x: 110, y: 100}, {x: 1, y: 0}, player, .1, map, index)
+  assert.ok(outside.x > 89)
+  assert.ok(inside.x < 119)
+  assert.ok(Math.abs(inside.x - 116.8) < 0.000001)
+})
+
+test("local prediction stops a hero at an opaque city roof footprint without over-padding it", () => {
+  const roof = {minX: 100, minY: 60, maxX: 140, maxY: 100, type: "city_object"}
+  const map = {width: 500, height: 500, walls: [roof]}
+  const next = movePosition(
+    {x: 50, y: 80},
+    {x: 1, y: 0},
+    {radius: 14, movementSpeed: 320},
+    1,
+    map,
+    createCollisionIndex(map.walls),
+  )
+
+  assert.equal(next.x, 86)
+  assert.equal(next.y, 80)
+})
+
 test("local prediction treats the beacon collider as circular on diagonal approaches", () => {
   const center = 500
   const wall = {
@@ -349,8 +380,8 @@ test("local flight prediction still respects the authored water boundary", () =>
   assert.equal(next.y, 80)
 })
 
-test("local prediction cannot enter an active health crate", () => {
-  const crate = {type: "health_crate", active: true, x: 140, y: 80, radius: 22}
+test("local prediction cannot enter an active lunar crate", () => {
+  const crate = {type: "lunar_crate", active: true, x: 140, y: 80, radius: 22}
   const map = {width: 500, height: 500, walls: []}
 
   const next = movePosition(

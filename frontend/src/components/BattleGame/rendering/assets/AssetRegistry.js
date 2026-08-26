@@ -212,7 +212,7 @@ const attachCompanionCloud = (heroRoot, cloudScene) => {
   // The hero is normalized after import and carries the gameplay scale on
   // the armature parent. Use a larger authoring-space extent so the cloud
   // remains readable above the hero instead of shrinking to a tiny mote.
-  if (Number.isFinite(extent) && extent > .001) cloud.scale.multiplyScalar(1.65 / extent)
+  if (Number.isFinite(extent) && extent > .001) cloud.scale.multiplyScalar(2.4 / extent)
   target.add(cloud)
   // Compute the center after parenting, but convert it back through the
   // actual target bone. This avoids mixing the detached GLTF scene matrix
@@ -228,6 +228,7 @@ const attachCompanionCloud = (heroRoot, cloudScene) => {
   cloud.position.copy(targetLocal.sub(centerLocal))
   cloud.updateMatrixWorld(true)
   cloud.userData.attachmentRole = "companion-cloud"
+  cloud.userData.companionPrepared = true
   return cloud
 }
 

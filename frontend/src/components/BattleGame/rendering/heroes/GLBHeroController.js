@@ -273,6 +273,31 @@ export class GLBHeroController {
         this.throwableWeapon.userData.attachmentRole = "throwable-weapon"
       }
     })
+    // The companion GLB has a non-animated Cloud_Root wrapper and an
+    // animated Cloud child.  Bind authored companion clips to the child;
+    // selecting the wrapper makes Cloud_Attack play without moving the
+    // visible cloud because its tracks target Cloud.position/scale/rotation.
+    if (this.heroName === "Brock Zeus") {
+      const authoredCloud = root.getObjectByName("Cloud")
+      if (authoredCloud) {
+        this.cloud = authoredCloud
+        this.cloud.userData.attachmentRole = "attack-cloud"
+      }
+    }
+    if (this.cloud && this.heroName === "Brock Zeus" && !this.cloud.userData.companionPrepared) {
+      // Keep direct preview/test roots readable as well. Production companions
+      // are prepared by AssetRegistry before they reach this controller; this
+      // fallback only normalizes an unparented authored cloud once.
+      const bounds = new THREE.Box3().setFromObject(this.cloud, true)
+      const size = bounds.getSize(new THREE.Vector3())
+      const extent = Math.max(size.x, size.y, size.z)
+      if (Number.isFinite(extent) && extent > .001) this.cloud.scale.multiplyScalar(.64 / extent)
+      this.cloud.updateMatrixWorld(true)
+      const center = new THREE.Box3().setFromObject(this.cloud, true).getCenter(new THREE.Vector3())
+      const desired = root.worldToLocal(new THREE.Vector3(.90, 1.82, -.10))
+      this.cloud.position.add(desired.sub(center))
+      this.cloud.userData.companionPrepared = true
+    }
     if (this.cloud) {
       this.cloud.traverse(node => {
         if (!node.isMesh) return
@@ -424,7 +449,16 @@ export class GLBHeroController {
         this.restoreLocomotion()
       }
     })
-    if ((this.actions.has("spawn") || this.spawnCactus) && options.spawnOnLoad !== false) this.playSpawn()
+    if ((this.actions.has("spawn") || this.spawnCactus) && options.spawnOnLoad !== false) {
+      this.playSpawn()
+    } else if (options.spawnOnLoad === false && this.actions.has("idle")) {
+      // Preview canvases deliberately skip spawn. Start them on the authored
+      // idle pose before the first render; otherwise the GLB bind pose can be
+      // visible for one frame with both hands folded across the torso.
+      this.transitionLocomotion("idle", 0)
+      this.mixer.update(0)
+      this.cloudMixer?.update(0)
+    }
   }
 
   transitionLocomotion(name, fadeSeconds = LOCOMOTION_FADE) {
@@ -478,9 +512,10 @@ export class GLBHeroController {
     if (this.cloudState === "idle") {
       strike = Math.pow(Math.max(0, Math.sin(this.elapsed * 4.2)), 14) * .7
     } else if (this.cloudState === "attack") {
-      // Brock's authored attack is 27 frames: the cloud compresses on the
-      // wind-up, then discharges with the glove at frames 8-10.
-      strike = pulse(8.5 / 27, .07)
+      // Brock's authored attack is 30 frames: the cloud flows into the
+      // glove, stays compressed while it charges, then discharges at the
+      // release on frames 13-15.
+      strike = pulse(14 / 30, .07)
     } else if (this.cloudState === "super") {
       // Three authored strikes at frames 18-20, 28-30 and 38-40 of 54.
       strike = Math.max(pulse(19 / 54, .055), pulse(29 / 54, .055), pulse(39 / 54, .055))

@@ -154,3 +154,29 @@ test("authoritative projectile hit reconciles by command id and server damage", 
   ]})
   assert.equal(simulation.getDisplayState(1050).players.local.lives, 82)
 })
+
+test("confirmed lethal hit immediately reaches the local presentation despite interpolation", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 220})
+  const base = {
+    type: "state",
+    game: {state: "game"},
+    map: {width: 1000, height: 1000, walls: []},
+    monsters: {},
+    bullets: [],
+  }
+  const players = {
+    local: {playerId: "local", x: 60, y: 0, radius: 14, lives: 100, maxLives: 100, team: "b"},
+    enemy: {playerId: "enemy", x: 120, y: 0, radius: 14, lives: 100, maxLives: 100, team: "a"},
+  }
+
+  simulation.ingest({...base, ts: 1000, players}, 0, 1000)
+  simulation.setLocalPlayerId("local")
+  simulation.ingest({...base, ts: 1033, players: {
+    ...players,
+    local: {...players.local, lives: 0},
+  }, combatEvents: [
+    {id: 1, kind: "hit", sourceId: "enemy", targetType: "players", targetId: "local", damage: 100},
+  ]}, 0, 1033)
+
+  assert.equal(simulation.getDisplayState(1033).players.local.lives, 0)
+})

@@ -1,7 +1,9 @@
 const canonicalHero = hero => String(hero || "").trim().toLowerCase()
 
-export const getBattleModeAfterPartyState = (currentMode, partyState) =>
-  partyState?.partyId ? "team" : currentMode === "team" ? "team" : "solo"
+export const getBattleModeAfterPartyState = (currentMode, partyState, explicitlySelectedMode = "") =>
+  explicitlySelectedMode === "solo"
+    ? "solo"
+    : partyState?.partyId ? "team" : currentMode === "team" ? "team" : "solo"
 
 export const normalizePartyMembers = members => (Array.isArray(members) ? members : [])
   .filter(member => member && member.playerId)

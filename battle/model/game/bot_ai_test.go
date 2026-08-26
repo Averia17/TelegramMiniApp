@@ -1,8 +1,10 @@
 package game
 
 import (
+	"battle/model/gamemap"
 	"battle/model/monster"
 	"battle/model/player"
+	"battle/model/prop"
 	"battle/service/geometry"
 	"math"
 	"testing"
@@ -15,6 +17,38 @@ func TestBotStrategyIsSelectedByMode(t *testing.T) {
 	}
 	if _, ok := newBotAIStrategy(ModeTeamDeathmatch).(*teamBattleBotStrategy); !ok {
 		t.Fatal("team deathmatch must use the team strategy")
+	}
+}
+
+func TestTeamBotAssignmentsFollowHeroRoles(t *testing.T) {
+	cases := []struct {
+		hero       string
+		assignment teamBotAssignment
+	}{
+		{hero: "Fairy Mina", assignment: teamAssignmentSupport},
+		{hero: "Kaze", assignment: teamAssignmentFlank},
+		{hero: "Brock Zeus", assignment: teamAssignmentAnchor},
+		{hero: "Wukong Mico", assignment: teamAssignmentFrontline},
+	}
+	for _, test := range cases {
+		bot := GetHeroByName(test.hero).CreatePlayer("bot", "Bot", 0, 0)
+		if got := teamBotAssignmentFor(bot, 0); got != test.assignment {
+			t.Fatalf("%s assignment=%q, want %q", test.hero, got, test.assignment)
+		}
+	}
+}
+
+func TestTeamBotRegroupsNearRespawningAlly(t *testing.T) {
+	state := &GameState{Map: &gamemap.GameMap{TeamSpawners: map[string][]*geometry.RectangleBody{
+		"Blue": {{X: 420, Y: 420, Width: 40, Height: 40}},
+	}}}
+	bot := &player.Player{CircleBody: geometry.CircleBody{X: 100, Y: 100}, PlayerId: "bot", Team: "Blue", Lives: 100, MaxLives: 100}
+	ally := &player.Player{CircleBody: geometry.CircleBody{X: 430, Y: 430}, PlayerId: "ally", Team: "Blue", Lives: 0, MaxLives: 100, RespawnAt: 11_500}
+	state.Players = map[string]*player.Player{bot.PlayerId: bot, ally.PlayerId: ally}
+	ctx := &teamBotContext{gs: state, bot: bot, now: 10_000}
+	intent, ok := (respawnAwarenessBehavior{}).Decide(ctx)
+	if !ok || intent.kind != teamIntentRegroup || intent.x != 440 || intent.y != 440 {
+		t.Fatalf("respawn awareness intent=%#v ok=%v", intent, ok)
 	}
 }
 
@@ -94,6 +128,29 @@ func TestTeamBotFarmsVisibleMonsterBeforePushingBase(t *testing.T) {
 	intent, ok := (attackObjectiveBehavior{}).Decide(ctx)
 	if ok {
 		t.Fatalf("bot pushed the base while a visible monster was available: intent=%#v", intent)
+	}
+}
+
+func TestTeamBotRoutesToVisibleHealthBoostWhenNoImmediateThreatExists(t *testing.T) {
+	state := newTestGameState()
+	state.Mode = ModeTeamDeathmatch
+	// Add the fixture before entering the game state so PlayerAdd does not
+	// auto-fill unrelated opponents; this test is specifically about the
+	// pickup-vs-no-threat decision.
+	state.State = GameStateWaiting
+	state.botAI = newTeamBattleBotStrategy()
+	state.PlayerAdd("bot", "Bot", "Needle")
+	state.State = GameStateGame
+	bot := state.Players["bot"]
+	bot.IsBot = true
+	bot.SetTeam("Blue")
+	bot.X, bot.Y = 100, 100
+	state.Props = append(state.Props, prop.NewProp("health_boost", 180, 100, 12))
+
+	state.updateBots()
+
+	if bot.MoveX <= 0 || math.Abs(bot.MoveY) > .35 {
+		t.Fatalf("team bot ignored safe health boost: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
 	}
 }
 

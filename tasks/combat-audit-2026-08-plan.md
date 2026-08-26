@@ -110,9 +110,9 @@ progression. Переносим только проверяемые принци
 | Gadget | Для большинства героев используется один глобальный cooldown `6500 ms` | Сила и частота разных гаджетов не оплачиваются одинаково |
 | Balance matrix | `combat_balance.go` считает только basic burst/DPS/range/HP/speed | В таблице отсутствуют control, mobility, sustain, setup и skill payoff; «сильный» hero может выглядеть слабым или наоборот |
 | Ростер | Номинальный full-ammo burst: Needle 180, Mandy 300, Mina 495, Brock 255, Kaze 255, Mico 300, Lumi 180, Katty 165 | Одно и то же число попаданий не означает одинаковый бой; Mina имеет огромный theoretical burst, а Katty/Lumi/Needle должны зарабатывать силу через setup |
-| Pickup economy | На старте создаются `health_crate`, при убийстве героя падает `health_boost`, при убийстве bats сейчас могут падать и `potion-red`, и health boost | На карте несколько конкурирующих HP-экономик; игроку непонятно, какой ресурс главный |
+| Pickup economy | Legacy `health_crate`/`potion-red` pipeline удалён; hero и bat defeat создают только `health_boost` | Новый профиль имеет один HP-ресурс; осталось проверить budget/contest metrics и safe drop positions |
 | Боты | `updateBattleRoyaleBots` и team strategy используют приоритетную цепочку условий, а не общую utility-модель | Ситуация «низкое HP + видимый враг + рядом зелёный куб» не сравнивается как единый выбор |
-| Боты и HP-ресурс | `botPickupTarget` знает `health_boost`, но `botShouldCollectPickup` почти всегда уступает видимому бою; отдельный приоритет есть только для `potion-red` при очень низком HP | Боты не понимают смысл главного snowball/камбэк-ресурса |
+| Боты и HP-ресурс | `botPickupTarget` учитывает незаполненный cap `health_boost`; team и solo policies умеют идти к cube, а bat wind-up даёт hard retreat interrupt | Нужны role-aware action scores, hysteresis, assignments и contest metrics |
 | Командный AI | Приоритеты team AI: defend → support → attack base → attack player → regroup → roam | Нет распределения ролей, фланга, фокус-фаера, contest ресурса и решения «сначала убить / отступить / удерживать choke» |
 | Анимация | `GLBHeroController` запускает basic по `attackPulse`, а визуальное окно атаки фиксировано в `.42 s`; skill запускаются по pulse отдельно | Animation timing не связан с authoritative cast/impact; skill может выглядеть как обычный overlay или ударить до визуального payoff |
 | Контракты | В каталоге и master-animation pipeline сейчас есть stale fingerprint/отсутствующий Brock master asset; frontend имеет 3 failing named tests и один module import failure | Нельзя честно балансировать или оценивать читаемость, пока источники данных и runtime assets не проходят базовую валидацию |
@@ -214,9 +214,15 @@ sentence counterplay. Если их нельзя показать во врем�
 - в team mode сохраняет явное правило ownership: killer/team visibility должны
   быть понятны по HUD и minimap.
 
-На первом балансовом срезе сохранить текущую идею `HealthBoostFraction` от
-`BaseMaxLives`, но заменить все дополнительные HP-источники и проверить
-snowball на сценариях «ранняя победа», «камбэк» и «командный обмен».
+В `CombatProfile` это зафиксировано явно: `healthPickupIds` содержит только
+`health_boost`. Лунные `nonHpPickupIds` остаются отдельным optional-бонусом:
+они не являются HP-ресурсом, не лечат текущие `Lives` и не должны попадать в
+метрики HP-экономики или менять её бюджет.
+
+На первом балансовом срезе сохранить только формулу `HealthBoostFraction` от
+`BaseMaxLives`, но не её текущий side effect на `Lives`. Заменить все остальные
+HP-источники и проверить snowball на сценариях «ранняя победа», «камбэк» и
+«командный обмен».
 
 ### Новая роль bats
 
@@ -231,8 +237,8 @@ Bats должны стать нейтральным contested resource, а не 
    а не случайную красную хилку.
 6. Camp должен быть причиной занять позицию и вступить в конфликт: награда
    видна, но сбор требует времени и создаёт риск.
-7. Elite bat может давать больший cube/reward, но не должен быть обязательным
-   для выживания.
+7. Elite bat не входит в первый срез: его можно добавлять только после того,
+   как обычный camp loop докажет ценность и не создаёт обязательную PvE-ферму.
 
 Так bats получают ясную функцию: темп, риск и повод для столкновения за ресурс.
 
@@ -727,6 +733,12 @@ snapshot или match-start payload. Presentation не должен угадыв
 frame-time на среднем мобильном устройстве. Если эффект важен для gameplay,
 он должен иметь одну authoritative запись и одну визуальную реакцию.
 
+Первый зафиксированный сетевой budget: snapshot отдаёт не более 24 последних
+релевантных `combatEvents` на клиента; это лимит окна доставки, а не разрешение
+превращать серверный тик в поток событий. Остальные поля budget-а (TTL,
+размер snapshot, duplicate rate и frame-time) закрываются отдельными
+measurement reports.
+
 ### 6. Readability начинается до финального visual pass
 
 Phase 5 не должна быть первым моментом, когда мы проверяем телеграфы. Для
@@ -956,6 +968,57 @@ scenario report и помечается по роли, режиму и уров�
 повторяемый scenario report, role/mode matrix, human notes, отсутствие
 десинхронизации и отсутствие новых console/page errors.
 
+## Текущий статус исполнения (2026-08-26)
+
+Закрыты следующие foundation-gates:
+
+- versioned `CombatProfile`, fingerprint, generated Go/JS views и validators;
+- authoritative Super/resource и respawn policy, включая reset статусов;
+- единый `health_boost`, TTL/expiry, cap, ownership/no-benefit guard и safe-drop;
+- deterministic bat patrol/wind-up/leash/respawn loop с гарантированным reward;
+- snapshot/event schema, rejection feedback и лимит 24 событий на snapshot;
+- scenario runner со synthetic clock, simulation-sized steps, stable hash,
+  checkpoint event IDs и именованными metrics; добавлены replayable Kaze basic
+  и Katty paint-setup smoke scenarios;
+- первый bot-срез для ownership-aware cube routing и реакции на bat wind-up;
+- utility-AI decision-срез: role-aware `engage/retreat/collect_pickup/roam`
+  scoring и короткий hysteresis, при этом hard interrupts остаются
+  приоритетнее обычного выбора;
+- expected-value выбор Super/Gadget у ботов по роли, дистанции, HP, боезапасу,
+  численному давлению и типу цели;
+- role-to-assignment слой для team bots (`support`, `flank`, `anchor`,
+  `frontline`) с разным порядком tactical policies;
+- peel по recent ally damage, исключение spawn-protected targets и contest-aware
+  scoring публичного зелёного cube;
+- contested bat target scoring, respawn-aware regroup к союзному spawn и
+  match-only AI counters, экспортируемые в observability только при завершении
+  матча;
+- scenario runner получил `RecordBotAIMetrics` и replayable 3v3 team-bot
+  matrix с проверкой peel и bot basic accuracy; в report добавлены
+  target-switch, conservative idle-tick и per-action mean utility-score;
+- добавлены replayable Kaze smoke trials для accuracy 100/60/30% и direct
+  trade без/с готовым Super с проверкой фактического hit rate и damage delta;
+  runner валидирует attempts/hits и сохраняет ratio как отдельные metrics;
+- добавлен roster basic smoke для всех 8 героев; он выявил и исправил Mina
+  launch-overlap collision, из-за которой звёзды гасли на первом тике;
+- базовые catalog/frontend/build/lint/Go gates и browser checks для combat
+  feedback и melee range.
+
+Открыты и не должны считаться выполненными до evidence:
+
+- deterministic time-injected Kaze/Katty solo и 3v3 reports;
+- scenario pack уже покрывает Super contribution, respawn reset/preserve,
+  cube ownership и bat telegraph/reward/respawn, но это ещё не заменяет полную
+  solo/team matrix и before/after reports;
+- полный role-aware utility AI с expected-value objective policy, полной
+  accuracy/direct-trade scenario matrix для всего ростера, idle/stuck/
+  action-score reports по role/mode и полноценные counter-role outcomes;
+  расширенными human playtest evidence;
+- bat notice-state и contest telemetry, topology reports карт и human playtest;
+- полный visual contract для всего ростера и staged rollout/rollback;
+- backend-backed mobile/team browser QA: локальный QA без party WebSocket не
+  подтверждает сетевой сценарий.
+
 ## Definition of Done
 
 - У каждого героя есть измеримая сила, цена, win condition и counterplay.
@@ -963,11 +1026,15 @@ scenario report и помечается по роли, режиму и уров�
 - Super готовится боевыми действиями и имеет читаемое punish window.
 - Нет скрытых глобальных multipliers, не отражённых в balance source.
 - На карте остаётся один понятный зелёный health cube.
+- Зелёный cube увеличивает только `MaxLives`; подбор не лечит текущие `Lives`.
+- В combat profile отсутствуют health crates, `potion-red` и дублирующие HP drops.
 - Bats имеют ясную цель, telegraph, leash, reward и contest value.
 - Боты принимают решение из perception + utility, умеют атаковать/отступать/
   использовать skills/фармить resource и делают это в solo/team.
 - Для каждого skill существует authoritative phase contract и визуальный
   counterpart.
+- Для каждого героя доказано, что skill decision меняет хотя бы один исход,
+  а Basic-only путь не остаётся единственным оптимальным решением.
 - Catalog validator, focused/full Go tests, frontend tests/build,
   deterministic scenarios и browser QA проходят.
 - Есть metrics до/после: first meaningful hit, damage by source, skill usage,
@@ -1020,24 +1087,13 @@ scenario report и помечается по роли, режиму и уров�
 CombatProfile {
   id, schemaVersion,
   modes: {solo, team},
-  basic: {
-    ammo, cadenceMs, reloadPerShellMs, range, spread, movementLockMs
-  },
-  super: {
-    startCharge, maxCharge, safetyCooldownMs,
-    chargeSources: {damage, control, support, objective},
-    targetCap, diminishingReturn, respawnPolicy
-  },
-  gadget: {charges, cooldownMs, rechargePolicy},
-  pickup: {cubeFraction, softCapStacks, ttlMs, ownership},
-  bats: {campCount, aggroRadius, leashRadius, respawnPolicy, reward},
-  telegraph: {priority, castMs, activeMs, impactMs},
-  ai: {reactionMs, riskTolerance, planningDepth}
+  defaults: {basic, super, gadget, pickup, bats, telegraph, ai},
+  heroes: {heroId: {role, basic, super, gadget, powerBudget}}
 }
 ```
 
-Hero-specific values находятся в hero entry и переопределяют только явно
-разрешённые поля. Общие mode rules находятся в `modes`, а не копируются в
+Hero-specific values находятся в `heroes[heroId]` и переопределяют только явно
+разрешённые поля из `defaults`. Общие mode rules находятся в `modes`, а не копируются в
 каждый kit. Любое отсутствие поля означает documented default, а не случайное
 значение из старого кода.
 
@@ -1084,15 +1140,17 @@ snapshot/visual review. Это дешевле, чем после кода выя
 Рекомендуемый pipeline:
 
 ```text
-docs/hero-catalog.json + combat-profile.json
+docs/hero-catalog.json + docs/combat-profile.json
                   │
                   ├── validator/schema checks
                   ├── generated Go balance view
                   └── generated frontend presentation/fallback view
 ```
 
-Go остаётся единственным источником истины для расчёта текущего боя, но
-редактируемый balance contract не должен жить одновременно в трёх вручную
+`docs/hero-catalog.json` хранит identity, visual/animation metadata и тексты,
+а `docs/combat-profile.json` является единственным редактируемым balance
+source. Go остаётся единственным источником истины для расчёта текущего боя,
+но balance contract не должен жить одновременно в трёх вручную
 синхронизируемых местах. Генерируемые представления нельзя править руками;
 fingerprint должен учитывать profile ID и schema version.
 

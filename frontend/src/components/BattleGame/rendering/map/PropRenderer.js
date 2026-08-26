@@ -1,4 +1,5 @@
 import * as THREE from "three"
+import {createBushField} from "./BushRenderer.js"
 import {WORLD_SCALE} from "../shared/coordinates.js"
 import {createColoredBox, createContactShadow, flatMaterial} from "../shared/materials.js"
 import {createStoneBlockGeometry} from "./StoneBlockGeometry.js"
@@ -593,6 +594,94 @@ const createThornVineVisual = (width, height, depth, variant = 0) => {
   return group
 }
 
+// Soft overgrowth uses a separate, low silhouette from the thorn barricades.
+// The broad leaves and exposed ground bed communicate “walkable slow terrain”
+// at the same top-down scale where a tall thorn bundle reads as a wall.
+const createVineClumpVisual = (width, height, depth, variant = 0) => {
+  const group = new THREE.Group()
+  const shortSide = Math.min(width, depth)
+  const stem = standardMaterial(variant % 2 ? 0x416d37 : 0x355d32, {roughness: 1})
+  const leaf = standardMaterial(variant % 2 ? 0x6d9f4b : 0x5d9144, {roughness: 1})
+  const leafLight = standardMaterial(variant % 3 ? 0x8db95a : 0x79aa52, {roughness: .98})
+  const bed = addVisualPart(
+    group,
+    new THREE.CylinderGeometry(1, 1.08, .08, 12),
+    standardMaterial(variant % 2 ? 0x4f8747 : 0x5b914b, {roughness: 1}),
+    "vine-bed",
+    new THREE.Vector3(0, .035, 0),
+  )
+  bed.scale.set(width * .48, height * .45, depth * .44)
+
+  const stemSpecs = [
+    [[-.42, .08, -.16], [-.28, .32, -.1], [-.12, .56, -.02]],
+    [[-.18, .08, .12], [-.06, .38, .1], [.12, .68, .04]],
+    [[.16, .08, -.1], [.28, .3, -.02], [.34, .52, .12]],
+    [[.4, .08, .14], [.32, .34, .18], [.16, .58, .12]],
+    [[-.02, .08, .22], [-.26, .28, .25], [-.36, .48, .18]],
+  ]
+  stemSpecs.forEach((points, index) => {
+    const vectors = points.map(([x, y, z]) => new THREE.Vector3(x * width, y * height, z * depth))
+    for (let segment = 0; segment < vectors.length - 1; segment++) {
+      createBranchSegment(group, vectors[segment], vectors[segment + 1], shortSide * (.035 - segment * .004), stem, "vine-stem")
+    }
+    const tip = vectors[vectors.length - 1]
+    const leafMesh = addVisualPart(group, new THREE.IcosahedronGeometry(shortSide * .13, 0), index % 2 ? leaf : leafLight, "vine-leaf", tip.clone())
+    leafMesh.scale.set(1.55, .62, .9)
+    leafMesh.rotation.set(.12, index * .7, -.18 + index * .1)
+  })
+
+  const leafClusters = [
+    [-.34, .28, -.12, .9], [-.18, .5, .02, 1.08], [.02, .3, .1, .88],
+    [.2, .52, .04, 1.12], [.36, .28, .14, .82], [-.04, .68, .02, .9],
+    [.28, .64, .12, .74],
+  ]
+  leafClusters.forEach(([x, y, z, scale], clusterIndex) => {
+    for (let petal = 0; petal < 2; petal++) {
+      const angle = clusterIndex * .58 + petal * Math.PI
+      const offset = shortSide * .075 * (petal ? 1 : -.72)
+      const leafMesh = addVisualPart(
+        group,
+        new THREE.DodecahedronGeometry(shortSide * .1, 0),
+        petal ? leaf : leafLight,
+        "vine-leaf-cluster",
+        new THREE.Vector3(x * width + Math.cos(angle) * offset, y * height, z * depth + Math.sin(angle) * offset),
+      )
+      leafMesh.scale.set(scale * 1.35, .58, scale * .7)
+      leafMesh.rotation.set(.16, angle, -.2 + petal * .15)
+    }
+  })
+  group.userData.softTerrain = true
+  return group
+}
+
+export const createVineField = (walls, variant = 0) => {
+  const field = createBushField(walls, "vine")
+  field.name = "vine-field"
+  field.userData.visualType = "vine"
+  field.userData.softTerrain = true
+  delete field.userData.bushWalls
+  delete field.userData.bushTiles
+  delete field.userData.bushOpacityMeshes
+
+  const stems = standardMaterial(variant % 2 ? 0x416d37 : 0x355d32, {roughness: 1})
+  const sortedWalls = [...walls].sort((left, right) => (left.minY - right.minY) || (left.minX - right.minX))
+  sortedWalls.forEach((wall, index) => {
+    if (index % 3 !== variant % 3) return
+    const x = (Number(wall.minX) + Number(wall.maxX)) * .5 * WORLD_SCALE
+    const z = (Number(wall.minY) + Number(wall.maxY)) * .5 * WORLD_SCALE
+    const size = Math.min(Number(wall.maxX) - Number(wall.minX), Number(wall.maxY) - Number(wall.minY)) * WORLD_SCALE
+    createBranchSegment(
+      field,
+      new THREE.Vector3(x - size * .25, .08, z + size * .12),
+      new THREE.Vector3(x + size * .12, .58, z - size * .08),
+      Math.max(.018, size * .045),
+      stems,
+      "vine-field-stem",
+    )
+  })
+  return field
+}
+
 const createBuildingWallVisual = (width, height, depth, variant = 0) => {
   const group = new THREE.Group()
   const masonry = standardMaterial(variant % 2 ? 0x82786b : 0x746c62, {roughness: .98})
@@ -601,18 +690,17 @@ const createBuildingWallVisual = (width, height, depth, variant = 0) => {
   const glass = standardMaterial(0x202c2b, {roughness: .82, metalness: 0})
   const frame = standardMaterial(variant % 2 ? 0x4f392d : 0x634532, {roughness: .97, metalness: 0})
 
-  // These cells are the collision footprint of a ruined house. They should
-  // read as a low, broken foundation under the authored roof, not as a row
-  // of identical intact facades. Keep the semantic roles for QA and tooling,
-  // but make the silhouette irregular and much lower than a standing wall.
+  // These cells are the collision footprint of a ruined house. Render them as
+  // offset fragments rather than full squares: the collision remains a solid
+  // tactical cover cell, while the eye still sees a broken, enterable ruin.
   addVisualPart(
     group,
-    new THREE.BoxGeometry(width * .94, height * .46, depth * .94),
+    new THREE.BoxGeometry(width * .72, height * .32, depth * .28),
     masonry,
     "building-masonry",
-    new THREE.Vector3(0, height * .23, 0),
+    new THREE.Vector3(-width * .08, height * .16, -depth * .22),
   )
-  addVisualPart(group, new THREE.BoxGeometry(width * .72, height * .07, depth * .9), exposed, "building-broken-cap", new THREE.Vector3(-width * .08, height * .46, 0))
+  addVisualPart(group, new THREE.BoxGeometry(width * .3, height * .44, depth * .42), exposed, "building-broken-cap", new THREE.Vector3(width * .25, height * .22, depth * .16))
   for (const [x, z, size, y] of [
     [-.28, -.2, .2, .52], [.18, .16, .24, .58], [.36, -.25, .15, .46],
   ]) {
@@ -670,6 +758,7 @@ const createDecorativeVisual = (wall, width, height, depth, variant = 0) => {
   if (wall.type === "altar_three_moons") return createAltarVisual(width, height)
   if (wall.type === "ruin_wall") return createRuinWallVisual(width, height, depth, variant)
   if (wall.type === "thorn_vine") return createThornVineVisual(width, height, depth, variant)
+  if (wall.type === "vine") return createVineClumpVisual(width, height, depth, variant)
   if (wall.type === "building_wall") return createBuildingWallVisual(width, height, depth, variant)
   if (wall.type === "building_rubble") return createBuildingRubbleVisual(width, height, depth, variant)
   return createColoredBox(width, height, depth, propColors[wall.type] || 0x536060)
@@ -687,20 +776,21 @@ const groundingColors = {
   menhir: 0x626c59,
   ruin_wall: 0x596156,
   thorn_vine: 0x456344,
+  vine: 0x4f8248,
   fortress_wall: 0x4f5a54,
   building_wall: 0x5b635a,
   building_rubble: 0x66705d,
 }
 
 const createGroundingBed = (wall, width, depth, variant = 0) => {
-  if (wall.type === "thorn_vine") {
+  if (wall.type === "thorn_vine" || wall.type === "vine") {
     const group = new THREE.Group()
     group.name = "prop-grounding-bed"
     group.userData.role = "grounding-bed"
     const base = addVisualPart(
       group,
       new THREE.IcosahedronGeometry(1, 0),
-      standardMaterial(variant % 2 ? 0x37693b : 0x416f3f, {
+      standardMaterial(wall.type === "vine" ? (variant % 2 ? 0x508b49 : 0x5d944e) : (variant % 2 ? 0x37693b : 0x416f3f), {
         roughness: 1,
         transparent: true,
         opacity: .55,
@@ -757,6 +847,7 @@ export const createProp = (wall, index, waterTexture) => {
   const depth = Math.max(2, wall.maxY - wall.minY) * WORLD_SCALE
   const group = new THREE.Group()
   group.userData.visualType = wall.type
+  if (wall.type === "vine") group.userData.softTerrain = true
   group.position.set(
     (wall.minX + wall.maxX) * 0.5 * WORLD_SCALE,
     0,
@@ -785,7 +876,7 @@ export const createProp = (wall, index, waterTexture) => {
     return group
   }
 
-  const height = wall.type === "fence" ? 0.9 : wall.type === "thorn_vine" ? 2.05 : wall.type === "crates" ? 1.65 : wall.type === "tree" ? 3.9 : wall.type === "dead_tree" ? 3.9 : wall.type === "shipwreck" ? 1.9 : wall.type === "menhir" ? 1.45 : wall.type === "ruin_wall" ? 3.25 : wall.type === "fortress_wall" ? 2.8 : wall.type === "building_wall" ? 1.15 : wall.type === "building_rubble" ? .8 : 2.15
+  const height = wall.type === "fence" ? 0.9 : wall.type === "thorn_vine" ? 2.05 : wall.type === "vine" ? 1.7 : wall.type === "crates" ? 1.65 : wall.type === "tree" ? 3.9 : wall.type === "dead_tree" ? 3.9 : wall.type === "shipwreck" ? 1.9 : wall.type === "menhir" ? 1.45 : wall.type === "ruin_wall" ? 3.25 : wall.type === "fortress_wall" ? 2.8 : wall.type === "building_wall" ? 1.15 : wall.type === "building_rubble" ? .8 : 2.15
   const block = STONE_PROP_TYPES.has(wall.type)
     ? new THREE.Mesh(
       createStoneBlockGeometry(index + wall.minX * 13 + wall.minY * 7).scale(width, height, depth),

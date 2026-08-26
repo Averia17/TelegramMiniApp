@@ -75,8 +75,27 @@ func TestCombatEventsForClientFiltersWithoutEmptyAllocation(t *testing.T) {
 	if len(visible) != 2 || visible[0].ID != 1 || visible[1].ID != 3 {
 		t.Fatalf("visible combat events = %#v, want events 1 and 3", visible)
 	}
+	if visible[0].CombatProfileID != game.CombatProfileID || visible[0].CombatRulesVersion != game.CombatRulesVersion {
+		t.Fatalf("combat event version = %#v, want profile=%q version=%q", visible[0], game.CombatProfileID, game.CombatRulesVersion)
+	}
 	if empty := combatEventsForClient(nil, "viewer", 1_000); empty != nil {
 		t.Fatalf("empty combat events = %#v, want nil", empty)
+	}
+}
+
+func TestCombatEventsForClientCapsSnapshotBudgetAtNewestEvents(t *testing.T) {
+	now := int64(10_000)
+	events := make([]game.CombatEvent, 0, game.MaxCombatEventsPerSnapshot+3)
+	for id := uint64(1); id <= game.MaxCombatEventsPerSnapshot+3; id++ {
+		events = append(events, game.CombatEvent{ID: id, Ts: now, SourceID: "local", Kind: "hit", Accepted: true, Resolved: true})
+	}
+
+	got := combatEventsForClient(events, "local", now)
+	if len(got) != game.MaxCombatEventsPerSnapshot {
+		t.Fatalf("combat event snapshot size = %d, want %d", len(got), game.MaxCombatEventsPerSnapshot)
+	}
+	if got[0].ID != 4 || got[len(got)-1].ID != game.MaxCombatEventsPerSnapshot+3 {
+		t.Fatalf("combat event ids = (%d, %d), want newest range 4..%d", got[0].ID, got[len(got)-1].ID, game.MaxCombatEventsPerSnapshot+3)
 	}
 }
 

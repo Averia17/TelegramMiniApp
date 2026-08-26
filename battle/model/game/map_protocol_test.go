@@ -46,8 +46,8 @@ func TestNewMapJSONPublishesPassableTeamFeatures(t *testing.T) {
 	if got.ID != "team-battle@20260816" {
 		t.Fatalf("team map identity = %q", got.ID)
 	}
-	if len(got.Features) != len(canonical.Features) || len(got.Features) != 4 {
-		t.Fatalf("features = %d, want exactly 4", len(got.Features))
+	if len(got.Features) != len(canonical.Features) || len(got.Features) < 4 {
+		t.Fatalf("features = %d, want all authored features and at least 4", len(got.Features))
 	}
 	if got.Features[0].Type != "river" {
 		t.Fatalf("first team feature = %#v", got.Features[0])

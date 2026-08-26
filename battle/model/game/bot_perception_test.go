@@ -185,6 +185,46 @@ func TestBotJoinsAnAllyAlreadyDamagingTheSameTarget(t *testing.T) {
 	}
 }
 
+func TestSupportBotPeelsForAllyUnderRecentDamage(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	bot := perceptionPlayer("bot", 100, 100)
+	bot.HeroName = "Fairy Mina"
+	bot.Team = "Blue"
+	ally := perceptionPlayer("ally", 260, 100)
+	ally.Team = "Blue"
+	ally.Lives, ally.MaxLives, ally.LastDamageAt = 220, 640, 9_900
+	enemy := perceptionPlayer("enemy", 315, 100)
+	enemy.Team = "Red"
+	gs.Players = map[string]*player.Player{bot.PlayerId: bot, ally.PlayerId: ally, enemy.PlayerId: enemy}
+
+	ctx := &teamBotContext{gs: gs, bot: bot, now: 10_000, assignment: teamAssignmentSupport}
+	intent, ok := (supportAllyBehavior{}).Decide(ctx)
+	if !ok || intent.kind != teamIntentSupport || intent.target == nil || intent.target.player != enemy {
+		t.Fatalf("support bot did not peel for damaged ally: intent=%#v ok=%v", intent, ok)
+	}
+}
+
+func TestBotIgnoresRespawnProtectedEnemyAsCombatTarget(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	bot := perceptionPlayer("bot", 100, 100)
+	bot.Team = "Blue"
+	enemy := perceptionPlayer("enemy", 180, 100)
+	enemy.Team = "Red"
+	enemy.InvulnerableUntil = 10_500
+	gs.Players = map[string]*player.Player{bot.PlayerId: bot, enemy.PlayerId: enemy}
+
+	if target := gs.botSelectTarget(bot, 10_000); target != nil {
+		t.Fatalf("bot selected spawn-protected enemy: %#v", target)
+	}
+	if target := gs.nearestVisibleEnemyNear(bot, bot.X, bot.Y, 300, 10_000); target != nil {
+		t.Fatalf("defense policy selected spawn-protected enemy: %#v", target)
+	}
+}
+
 func TestBotDisengagesWhenLowHealthAndOutnumbered(t *testing.T) {
 	gs := newTestGameState()
 	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
@@ -479,7 +519,7 @@ func TestBotUsesReadyPrimaryAgainstVisibleTarget(t *testing.T) {
 	gs.State = GameStateGame
 	gs.GameEndsAt = time.Now().Add(GameDuration + 10*time.Second).UnixMilli()
 	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
-	bot.IsBot, bot.X, bot.Y = true, 100, 100
+	bot.IsBot, bot.X, bot.Y, bot.SuperCharge = true, 100, 100, 100
 	enemy.X, enemy.Y = 180, 100
 
 	gs.updateBots()
@@ -624,21 +664,54 @@ func TestBotPrioritizesProjectileDodgeOverVisibleMonster(t *testing.T) {
 	}
 }
 
-func TestWoundedBotSelectsVisibleHealthPickup(t *testing.T) {
+func TestBotSelectsVisibleHealthBoostPickup(t *testing.T) {
 	gs := newTestGameState()
 	gs.Map = &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480}
 	gs.Walls = geometry.NewSpatialHash(TileSize)
 	bot := perceptionPlayer("bot", 100, 100)
 	bot.Lives, bot.MaxLives = 20, 100
-	gs.Props = append(gs.Props, prop.NewProp("potion-red", 180, 100, 12))
+	gs.Props = append(gs.Props, prop.NewProp("health_boost", 180, 100, 12))
 
-	if got := gs.botPickupTarget(bot); got == nil || got.Type != "potion-red" {
-		t.Fatalf("wounded bot did not choose visible healing pickup: %#v", got)
+	if got := gs.botPickupTarget(bot); got == nil || got.Type != "health_boost" {
+		t.Fatalf("wounded bot did not choose visible health boost: %#v", got)
 	}
 
 	bot.Lives = bot.MaxLives
+	if got := gs.botPickupTarget(bot); got == nil || got.Type != "health_boost" {
+		t.Fatalf("healthy bot should still value permanent max-health pickup: %#v", got)
+	}
+}
+
+func TestBotIgnoresHealthBoostOwnedByAnotherTeam(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 480, HeightInPixels: 480}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	bot := perceptionPlayer("bot", 100, 100)
+	bot.Team = "Blue"
+	reward := prop.NewProp("health_boost", 180, 100, 12)
+	reward.VisibilityTeam = "Red"
+	gs.Props = append(gs.Props, reward)
+
 	if got := gs.botPickupTarget(bot); got != nil {
-		t.Fatalf("healthy bot should not reserve healing pickup: %#v", got)
+		t.Fatalf("bot targeted another team's health boost: %#v", got)
+	}
+}
+
+func TestBotTreatsBatWindupAsAnImmediateThreat(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	bot := perceptionPlayer("bot", 100, 100)
+	bat := monster.NewMonster(150, 100, 16, 480, 480, monster.MonsterLives)
+	bat.State = monster.MonsterWindup
+	bat.TargetPlayerId = bot.PlayerId
+	bat.AttackWindupUntil = time.Now().Add(300 * time.Millisecond).UnixMilli()
+	gs.Players[bot.PlayerId] = bot
+	gs.Monsters["bat"] = bat
+
+	threat, flee := gs.botMonsterThreat(bot)
+
+	if threat != bat || !flee {
+		t.Fatalf("bat wind-up threat=(%v, %v), want immediate flee", threat, flee)
 	}
 }
 

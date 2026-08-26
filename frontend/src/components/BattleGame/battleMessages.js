@@ -1,3 +1,5 @@
+import {formatCombatAbilityReason} from "./combatEventFeedback.js"
+
 const paramsOf = message => (message?.params && typeof message.params === "object" ? message.params : {})
 
 export const formatBattleMessage = message => {
@@ -29,6 +31,8 @@ export const formatBattleMessage = message => {
     return params.message || "Battle connection error"
   case "you_died":
     return params.killerName ? `You died — ${params.killerName} got you` : "You died"
+  case "combat_ability_rejected":
+    return formatCombatAbilityReason(params.reason, params.slot)
   case "island_phase":
     return params.phase ? `Island phase: ${params.phase}` : "Island phase changed"
   case "taunt":

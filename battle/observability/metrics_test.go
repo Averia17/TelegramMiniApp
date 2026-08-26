@@ -85,3 +85,39 @@ func TestRecordBattleTickPublishesOperationalSignals(t *testing.T) {
 		}
 	}
 }
+
+func TestRecordBotAIMetricsPublishesBoundedDecisionSignals(t *testing.T) {
+	registry := NewRegistry()
+	RecordBotAIMetrics(registry, BotAIMetricSample{
+		Mode:             "team deathmatch",
+		ActionSelections: map[string]uint64{"engage": 4, "collect_pickup": 2, "player-123": 99},
+		ActionScoreMeans: map[string]float64{"engage": 42, "player-123": 99},
+		ActionSwitches:   3, HardInterrupts: 2, RetreatDecisions: 1,
+		AbilityUses: 5, PeelDecisions: 2, ResourceContestDecisions: 3,
+		AttackAttempts: 8, AttackHits: 5,
+		SpawnProtectionAvoidances: 4, StuckReplans: 1,
+	})
+
+	metrics := httptest.NewRecorder()
+	registry.ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := metrics.Body.String()
+	for _, want := range []string{
+		`battle_bot_action_selections_total{action="engage",mode="team deathmatch"} 4`,
+		`battle_bot_action_selections_total{action="collect_pickup",mode="team deathmatch"} 2`,
+		`battle_bot_action_switches_total{mode="team deathmatch"} 3`,
+		`battle_bot_resource_contest_decisions_total{mode="team deathmatch"} 3`,
+		`battle_bot_attack_attempts_total{mode="team deathmatch"} 8`,
+		`battle_bot_attack_hits_total{mode="team deathmatch"} 5`,
+		`battle_bot_spawn_protection_avoids_total{mode="team deathmatch"} 4`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("bot metric missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "player-123") {
+		t.Fatalf("unbounded action label leaked into bot metrics:\n%s", body)
+	}
+	if !strings.Contains(body, "battle_bot_action_score") || !strings.Contains(body, `action="engage"`) {
+		t.Fatalf("bounded action score gauge missing:\n%s", body)
+	}
+}

@@ -2,8 +2,8 @@ package game
 
 import (
 	"battle/model/player"
+	"battle/service/geometry"
 	"math"
-	"time"
 )
 
 // BotAIStrategy is the mode-level seam for bot decision making. Keeping the
@@ -17,10 +17,12 @@ type botStrategyBase struct{}
 
 func (botStrategyBase) emergency(gs *GameState, bot *player.Player, now int64) bool {
 	if dodgeX, dodgeY, threatened := gs.botProjectileDodge(bot); threatened {
+		gs.recordBotHardInterrupt()
 		gs.playerMove(bot.PlayerId, now, dodgeX, dodgeY)
 		return true
 	}
 	if threat, flee := gs.botMonsterThreat(bot); threat != nil {
+		gs.recordBotHardInterrupt()
 		if flee {
 			gs.botRetreatFrom(bot.PlayerId, bot, threat.X, threat.Y, now)
 		} else {
@@ -36,6 +38,15 @@ type battleRoyaleBotStrategy struct{ botStrategyBase }
 func (battleRoyaleBotStrategy) Update(gs *GameState) { gs.updateBattleRoyaleBots() }
 
 type teamBotIntentKind string
+
+type teamBotAssignment string
+
+const (
+	teamAssignmentFrontline teamBotAssignment = "frontline"
+	teamAssignmentSupport   teamBotAssignment = "support"
+	teamAssignmentFlank     teamBotAssignment = "flank"
+	teamAssignmentAnchor    teamBotAssignment = "anchor"
+)
 
 const (
 	teamIntentDefend       teamBotIntentKind = "defend"
@@ -57,6 +68,7 @@ type teamBotContext struct {
 	bot            *player.Player
 	now            int64
 	index          int
+	assignment     teamBotAssignment
 	visibleTarget  *botTarget
 	ownObjective   *ObjectiveState
 	enemyObjective *ObjectiveState
@@ -89,7 +101,7 @@ func (defendObjectiveBehavior) Decide(ctx *teamBotContext) (teamBotIntent, bool)
 type supportAllyBehavior struct{}
 
 func (supportAllyBehavior) Decide(ctx *teamBotContext) (teamBotIntent, bool) {
-	ally := ctx.gs.combatAllyFor(ctx.bot, ctx.now)
+	ally := ctx.gs.allyNeedingSupport(ctx.bot, ctx.now)
 	if ally == nil {
 		return teamBotIntent{}, false
 	}
@@ -101,6 +113,43 @@ func (supportAllyBehavior) Decide(ctx *teamBotContext) (teamBotIntent, bool) {
 		return teamBotIntent{kind: teamIntentSupport, x: ally.X, y: ally.Y}, true
 	}
 	return teamBotIntent{}, false
+}
+
+// allyNeedingSupport is perception-limited and deterministic. Recent damage
+// is a stronger peel signal than recent shooting: a support bot must react to
+// an ally being focused even when that ally is stunned, reloading, or fleeing.
+func (gs *GameState) allyNeedingSupport(bot *player.Player, now int64) *player.Player {
+	if gs == nil || bot == nil {
+		return nil
+	}
+	var best *player.Player
+	bestScore := math.Inf(-1)
+	for _, candidate := range gs.Players {
+		if candidate == nil || candidate.PlayerId == bot.PlayerId || !candidate.IsAlive() || candidate.Team != bot.Team {
+			continue
+		}
+		health := float64(candidate.Lives) / math.Max(1, float64(candidate.MaxLives))
+		recentDamage := candidate.LastDamageAt > 0 && now-candidate.LastDamageAt <= 1800
+		recentFire := candidate.LastShootAt > 0 && now-candidate.LastShootAt <= 2200
+		if !recentDamage && !recentFire && health >= .45 {
+			continue
+		}
+		distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
+		if distance > BotVisionRange*1.15 {
+			continue
+		}
+		score := (1-health)*90 + math.Max(0, 1-distance/(BotVisionRange*1.15))*12
+		if recentDamage {
+			score += 42
+		}
+		if recentFire {
+			score += 18
+		}
+		if score > bestScore || score == bestScore && candidate.PlayerId < best.PlayerId {
+			best, bestScore = candidate, score
+		}
+	}
+	return best
 }
 
 type attackObjectiveBehavior struct{}
@@ -140,6 +189,42 @@ func (regroupBehavior) Decide(ctx *teamBotContext) (teamBotIntent, bool) {
 	return teamBotIntent{kind: teamIntentRegroup, x: ally.X + offset, y: ally.Y - offset}, true
 }
 
+type respawnAwarenessBehavior struct{}
+
+func (respawnAwarenessBehavior) Decide(ctx *teamBotContext) (teamBotIntent, bool) {
+	if ctx == nil || ctx.visibleTarget != nil || ctx.gs == nil || ctx.gs.Map == nil || ctx.bot == nil {
+		return teamBotIntent{}, false
+	}
+	if ctx.bot.Team == "" || len(ctx.gs.Map.TeamSpawners[ctx.bot.Team]) == 0 {
+		return teamBotIntent{}, false
+	}
+	respawning := false
+	for _, ally := range ctx.gs.Players {
+		if ally != nil && ally.PlayerId != ctx.bot.PlayerId && ally.Team == ctx.bot.Team && !ally.IsAlive() && ally.RespawnAt > ctx.now && ally.RespawnAt-ctx.now <= 2500 {
+			respawning = true
+			break
+		}
+	}
+	if !respawning {
+		return teamBotIntent{}, false
+	}
+	var spawn *geometry.RectangleBody
+	bestDistance := math.Inf(1)
+	for _, candidate := range ctx.gs.Map.TeamSpawners[ctx.bot.Team] {
+		if candidate == nil {
+			continue
+		}
+		distance := math.Hypot(candidate.CenterX()-ctx.bot.X, candidate.CenterY()-ctx.bot.Y)
+		if distance < bestDistance {
+			spawn, bestDistance = candidate, distance
+		}
+	}
+	if spawn == nil || bestDistance <= 180 {
+		return teamBotIntent{}, false
+	}
+	return teamBotIntent{kind: teamIntentRegroup, x: spawn.CenterX(), y: spawn.CenterY()}, true
+}
+
 type roamBehavior struct{}
 
 func (roamBehavior) Decide(*teamBotContext) (teamBotIntent, bool) {
@@ -153,8 +238,45 @@ type teamBattleBotStrategy struct {
 
 func newTeamBattleBotStrategy() *teamBattleBotStrategy {
 	return &teamBattleBotStrategy{behaviors: []teamBotBehavior{
-		defendObjectiveBehavior{}, supportAllyBehavior{}, attackObjectiveBehavior{}, attackPlayerBehavior{}, regroupBehavior{}, roamBehavior{},
+		defendObjectiveBehavior{}, supportAllyBehavior{}, respawnAwarenessBehavior{}, attackObjectiveBehavior{}, attackPlayerBehavior{}, regroupBehavior{}, roamBehavior{},
 	}}
+}
+
+func teamBotAssignmentFor(bot *player.Player, index int) teamBotAssignment {
+	if bot == nil {
+		return teamAssignmentFrontline
+	}
+	switch botRoleFor(bot) {
+	case "Support":
+		return teamAssignmentSupport
+	case "Assassin":
+		return teamAssignmentFlank
+	case "Sharpshooter", "Controller":
+		return teamAssignmentAnchor
+	case "Tank", "Fighter":
+		return teamAssignmentFrontline
+	default:
+		if index%3 == 1 {
+			return teamAssignmentSupport
+		}
+		if index%3 == 2 {
+			return teamAssignmentFlank
+		}
+		return teamAssignmentFrontline
+	}
+}
+
+func (s *teamBattleBotStrategy) behaviorsFor(assignment teamBotAssignment) []teamBotBehavior {
+	if assignment == teamAssignmentSupport {
+		return []teamBotBehavior{supportAllyBehavior{}, defendObjectiveBehavior{}, respawnAwarenessBehavior{}, attackPlayerBehavior{}, attackObjectiveBehavior{}, regroupBehavior{}, roamBehavior{}}
+	}
+	if assignment == teamAssignmentFlank {
+		return []teamBotBehavior{attackPlayerBehavior{}, supportAllyBehavior{}, defendObjectiveBehavior{}, respawnAwarenessBehavior{}, attackObjectiveBehavior{}, regroupBehavior{}, roamBehavior{}}
+	}
+	if assignment == teamAssignmentAnchor {
+		return []teamBotBehavior{defendObjectiveBehavior{}, supportAllyBehavior{}, respawnAwarenessBehavior{}, attackPlayerBehavior{}, attackObjectiveBehavior{}, regroupBehavior{}, roamBehavior{}}
+	}
+	return s.behaviors
 }
 
 func newBotAIStrategy(mode GameMode) BotAIStrategy {
@@ -175,7 +297,7 @@ func (s *teamBattleBotStrategy) Update(gs *GameState) {
 	if gs.State != GameStateGame {
 		return
 	}
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	index := 0
 	for _, id := range sortedBotIDs(gs.Players) {
 		bot := gs.Players[id]
@@ -189,15 +311,31 @@ func (s *teamBattleBotStrategy) Update(gs *GameState) {
 			continue
 		}
 		visible := gs.botSelectTarget(bot, now)
+		gs.recordBotTargetSelection(bot.PlayerId, visible)
 		if visible == nil && gs.botTryAbility(id, bot, nil, now) {
 			index++
 			continue
 		}
-		ctx := &teamBotContext{gs: gs, bot: bot, now: now, index: index, visibleTarget: visible, ownObjective: gs.teamObjective(bot.Team, true), enemyObjective: gs.teamObjective(bot.Team, false)}
+		pickup := gs.botPickupTarget(bot)
+		utility := gs.botUtilityActionFor(bot.PlayerId, bot, visible, pickup, now)
+		if utility == botUtilityRetreat && visible != nil && visible.player != nil {
+			gs.botRetreatFrom(bot.PlayerId, bot, visible.x, visible.y, now)
+			index++
+			continue
+		}
+		if utility == botUtilityCollect && pickup != nil {
+			gs.moveBotTo(bot.PlayerId, bot, pickup.X, pickup.Y, now)
+			index++
+			continue
+		}
+		ctx := &teamBotContext{gs: gs, bot: bot, now: now, index: index, assignment: teamBotAssignmentFor(bot, index), visibleTarget: visible, ownObjective: gs.teamObjective(bot.Team, true), enemyObjective: gs.teamObjective(bot.Team, false)}
 		intent := teamBotIntent{}
-		for _, behavior := range s.behaviors {
+		for _, behavior := range s.behaviorsFor(ctx.assignment) {
 			if candidate, ok := behavior.Decide(ctx); ok {
 				intent = candidate
+				if candidate.kind == teamIntentSupport && candidate.target != nil {
+					gs.botMetrics.PeelDecisions++
+				}
 				break
 			}
 		}
@@ -266,7 +404,7 @@ func (gs *GameState) nearestVisibleEnemyNear(observer *player.Player, x, y, radi
 	var best *player.Player
 	bestDistance := math.Inf(1)
 	for _, candidate := range gs.Players {
-		if candidate == nil || !candidate.IsAlive() || candidate.Team == observer.Team || !gs.botCanSee(observer, candidate, now) {
+		if candidate == nil || !candidate.IsAlive() || candidate.InvulnerableUntil > now || candidate.Team == observer.Team || !gs.botCanSee(observer, candidate, now) {
 			continue
 		}
 		distance := math.Hypot(candidate.X-x, candidate.Y-y)

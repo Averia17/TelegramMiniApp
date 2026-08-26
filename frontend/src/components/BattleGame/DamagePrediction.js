@@ -18,6 +18,7 @@ const ingestEntity = (prediction, targetType, id, entity, now, seen) => {
     prediction.rollbackStarts.set(key, now)
   }
   if (lives <= 0) prediction.pending.delete(key)
+  if (lives > 0) prediction.confirmedDeaths.delete(key)
   prediction.authoritativeLives.set(key, lives)
   seen.add(key)
 }
@@ -59,6 +60,7 @@ export class DamagePrediction {
     this.pending = new Map()
     this.authoritativeLives = new Map()
     this.presentationLives = new Map()
+    this.confirmedDeaths = new Map()
     this.rollbackStarts = new Map()
     this.processedEvents = new Map()
     this.lastExpireAt = null
@@ -79,6 +81,7 @@ export class DamagePrediction {
         this.authoritativeLives.delete(key)
         this.pending.delete(key)
         this.presentationLives.delete(key)
+        this.confirmedDeaths.delete(key)
         this.rollbackStarts.delete(key)
       }
     })
@@ -92,17 +95,21 @@ export class DamagePrediction {
       this.processedEvents.set(eventId, now)
 
       const commandId = String(event?.commandId || "")
-      if (event?.kind === "hit" && commandId) {
-        this.removePending(entry => entry.commandId === commandId &&
-          entry.targetType === event.targetType &&
-          String(entry.targetId) === String(event.targetId), now)
-        const key = entityKey(event.targetType, event.targetId)
+      if (event?.kind === "hit") {
+        const targetType = event.targetType || "players"
+        const key = entityKey(targetType, event.targetId)
+        if (commandId) {
+          this.removePending(entry => entry.commandId === commandId &&
+            entry.targetType === targetType &&
+            String(entry.targetId) === String(event.targetId), now)
+        }
         const damage = Math.max(0, finite(event.damage))
         if (damage > 0) {
           const entries = this.pending.get(key) || []
           entries.forEach(entry => {
             entry.baseLives = Math.max(0, Math.min(entry.baseLives, entry.baseLives - damage))
           })
+          if (this.authoritativeLives.get(key) <= 0) this.confirmedDeaths.set(key, now)
         }
       }
       if (event?.kind === "attack" && commandId && (!event.accepted || event.resolved)) {
@@ -192,7 +199,8 @@ export class DamagePrediction {
     const speculative = this.pendingDamage(key, authoritative, now)
     const desired = authoritative <= 0
       ? 0
-      // Never predict death. Death/visibility must be server-confirmed.
+      // Speculative damage never predicts death; a confirmed server hit may
+      // reveal a lethal local transition immediately.
       : Math.max(1, Math.min(maximum, authoritative - speculative))
     const previous = this.presentationLives.get(key)
     if (!previous) {
@@ -229,17 +237,23 @@ export class DamagePrediction {
     return Math.round(previous.value)
   }
 
-  applyToState(state, now = Date.now(), {mutateEntities = false, smoothAuthoritativeDamage = false} = {}) {
+  applyToState(state, now = Date.now(), {
+    mutateEntities = false,
+    smoothAuthoritativeDamage = false,
+    immediateDeathPlayerId = null,
+  } = {}) {
     this.expire(now)
     const players = mutateEntities ? (state?.players || {}) : Object.fromEntries(Object.entries(state?.players || {}).map(([id, entity]) => [id, {...entity}]))
     const monsters = mutateEntities ? (state?.monsters || {}) : Object.fromEntries(Object.entries(state?.monsters || {}).map(([id, entity]) => [id, {...entity}]))
     Object.entries(players).forEach(([id, entity]) => {
       const key = entityKey("players", id)
       const authoritativeLives = this.authoritativeLives.get(key) ?? entity?.lives
+      const immediateDeath = String(id) === String(immediateDeathPlayerId) && this.confirmedDeaths.has(key)
       // A lethal packet can already be authoritative while the interpolated
       // entity is still on its older, alive snapshot. Keep that presentation
-      // frame alive until the timeline reaches the lethal snapshot.
-      const presentationLives = Number(entity?.lives) > 0 && Number(authoritativeLives) <= 0
+      // frame alive until the timeline reaches the lethal snapshot unless the
+      // packet also carries a confirmed lethal hit for the local player.
+      const presentationLives = !immediateDeath && Number(entity?.lives) > 0 && Number(authoritativeLives) <= 0
         ? entity.lives
         : authoritativeLives
       entity.lives = this.displayLives("players", id, presentationLives, entity?.maxLives, now, smoothAuthoritativeDamage)

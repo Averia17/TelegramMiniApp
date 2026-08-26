@@ -323,12 +323,12 @@ func TestKattyFlightLandingUsesWallDestroyedDuringCurrentMatch(t *testing.T) {
 	}
 }
 
-func TestKattyFlightLandingResolvesGroundPropOverlap(t *testing.T) {
+func TestKattyFlightLandingResolvesLunarCrateOverlap(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.Map = &gamemap.GameMap{WidthInPixels: 1200, HeightInPixels: 800}
 	gs.Walls = geometry.NewSpatialHash(TileSize)
-	crate := prop.NewHealthCrate(500, 400)
+	crate := prop.NewLunarCrate(500, 400, "speed")
 	gs.Props = []*prop.Prop{crate}
 	gs.PlayerAdd("katty", "Katty", "Katty")
 	source := gs.Players["katty"]

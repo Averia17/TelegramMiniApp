@@ -156,6 +156,26 @@ const createDeathBurst = heroName => {
   return group
 }
 
+const createDeathMarker = () => {
+  const marker = new THREE.Mesh(
+    new THREE.TorusGeometry(.82, .055, 8, 40),
+    new THREE.MeshBasicMaterial({
+      color: "#ff4657",
+      transparent: true,
+      opacity: .68,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  )
+  marker.rotation.x = Math.PI / 2
+  marker.position.y = .065
+  marker.renderOrder = 13
+  marker.visible = false
+  marker.userData.role = "death-marker"
+  return marker
+}
+
 const createSpawnProtectionAura = () => {
   const group = new THREE.Group()
   group.visible = false
@@ -216,12 +236,13 @@ export class HeroView {
     this.teamMarker.userData.role = "team-marker"
     this.spawnProtectionAura = createSpawnProtectionAura()
     this.deathBurst = createDeathBurst(state.hero)
+    this.deathMarker = createDeathMarker()
     this.taunt = createClownTaunt()
     this.tauntRemaining = 0
     this.bushConcealmentMix = 0
     this.deathTime = 0
     this.deathElapsed = 0
-    this.group.add(this.teamMarker, this.spawnProtectionAura, this.model, this.deathBurst, this.taunt)
+    this.group.add(this.teamMarker, this.deathMarker, this.spawnProtectionAura, this.model, this.deathBurst, this.taunt)
     if (this.shadow) this.group.add(this.shadow)
     if (this.label) this.group.add(this.label)
     this.x = this.targetX = state.x
@@ -362,6 +383,7 @@ export class HeroView {
     this.teamMarker.visible = this.teamBattle && Boolean(this.state?.team)
     if (this.teamMarker.material) this.teamMarker.material.color.set(presentation.ring)
     this.teamMarker.scale.setScalar(this.state?.lives > 0 ? 1 : .86)
+    this.deathMarker.visible = this.state?.lives <= 0
     const protectionColor = presentation.ring || "#7ce8ff"
     this.spawnProtectionAura.traverse(child => {
       if (child.material?.color) child.material.color.set(protectionColor)
@@ -434,7 +456,7 @@ export class HeroView {
     this.flightVisualHeight = advanceFlightVisualHeight(this.flightVisualHeight, this.state, delta)
     const flightMix = clamp(this.flightVisualHeight / FLIGHT_HOVER_HEIGHT, 0, 1)
     const flightBodyHeight = getFlightBodyHeight(this.flightVisualHeight, time)
-    if (this.label) this.label.position.y = 4.5 + this.flightVisualHeight
+    if (this.label) this.label.position.y = (this.state.lives <= 0 ? 2.9 : 4.5) + this.flightVisualHeight
     if (this.taunt) this.taunt.position.y = TAUNT_BASE_HEIGHT + this.flightVisualHeight + Math.sin((Number(time) || 0) * 6) * .12
     if (this.shadow) {
       const shadowScale = 1 - flightMix * .32
@@ -508,6 +530,11 @@ export class HeroView {
       if (flash?.material) flash.material.opacity = pulse.flashOpacity
       flash?.scale.setScalar(.65 + pulse.ringScale * .28)
       this.deathBurst.visible = this.deathTime > 0
+    }
+    if (this.deathMarker.visible) {
+      const pulse = .5 + .5 * Math.sin((Number(time) || 0) * 5.5)
+      this.deathMarker.scale.setScalar(1 + pulse * .06)
+      this.deathMarker.material.opacity = .5 + pulse * .2
     }
     if (this.tauntRemaining > 0) {
       this.tauntRemaining = Math.max(0, this.tauntRemaining - delta)

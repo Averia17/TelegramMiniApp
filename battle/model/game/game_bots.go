@@ -487,7 +487,7 @@ func (gs *GameState) botSelectTarget(bot *player.Player, now int64) *botTarget {
 		}
 	}
 	for id, candidate := range gs.Players {
-		if id == bot.PlayerId || candidate == nil || !candidate.CanBulletHurt(bot.PlayerId, bot.Team) || !gs.botCanSee(bot, candidate, now) {
+		if id == bot.PlayerId || candidate == nil || candidate.InvulnerableUntil > now || !candidate.CanBulletHurt(bot.PlayerId, bot.Team) || !gs.botCanSee(bot, candidate, now) {
 			continue
 		}
 		distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
@@ -604,19 +604,18 @@ func (gs *GameState) botPickupTarget(bot *player.Player) *prop.Prop {
 	if bot == nil || !bot.IsAlive() {
 		return nil
 	}
-	healthRatio := float64(bot.Lives) / math.Max(1, float64(bot.MaxLives))
 	var best *prop.Prop
 	bestScore := math.Inf(-1)
 	for _, candidate := range gs.Props {
-		if candidate == nil || !candidate.Active {
+		if candidate == nil || !candidate.Active || !canCollectPickup(bot, candidate) {
 			continue
 		}
 		switch candidate.Type {
-		case "potion-red":
-			if healthRatio >= .8 {
+		case "health_boost":
+			if bot.HealthBoosts >= 5 {
 				continue
 			}
-		case "power", "health_boost", "lunar_speed", "lunar_damage", "lunar_shield", "lunar_cooldown":
+		case "power", "lunar_speed", "lunar_damage", "lunar_shield", "lunar_cooldown":
 		default:
 			continue
 		}
@@ -625,8 +624,8 @@ func (gs *GameState) botPickupTarget(bot *player.Player) *prop.Prop {
 			continue
 		}
 		score := -distance
-		if candidate.Type == "potion-red" {
-			score += 260 + (1-healthRatio)*180
+		if candidate.Type == "health_boost" {
+			score += 260 + float64(5-bot.HealthBoosts)*70
 		}
 		if score > bestScore {
 			best, bestScore = candidate, score
@@ -642,10 +641,8 @@ func (gs *GameState) botShouldCollectPickup(bot *player.Player, pickup *prop.Pro
 	if target == nil {
 		return true
 	}
-	if pickup.Type == "potion-red" {
-		healthRatio := float64(bot.Lives) / math.Max(1, float64(bot.MaxLives))
-		attackDistance := botAttackRange(bot) + target.radius()
-		return healthRatio < .35 && target.distance > math.Max(180, attackDistance*1.15)
+	if pickup.Type == "health_boost" {
+		return bot.HealthBoosts < 5 && target.distance > BotVisionRange*.45
 	}
 	return target.distance > BotVisionRange*.72 &&
 		math.Hypot(pickup.X-bot.X, pickup.Y-bot.Y) < BotVisionRange*.35
@@ -694,18 +691,20 @@ func (gs *GameState) updateBattleRoyaleBots() {
 	if gs.State != GameStateGame {
 		return
 	}
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	startedAt := gs.GameEndsAt - GameDuration.Milliseconds()
 	opening := gs.IslandPhase == IslandPhaseLanding || (startedAt > 0 && now-startedAt < BotCombatGraceDuration.Milliseconds())
 	botIndex := 0
 	for _, id := range sortedBotIDs(gs.Players) {
 		bot := gs.Players[id]
 		if dodgeX, dodgeY, threatened := gs.botProjectileDodge(bot); threatened {
+			gs.recordBotHardInterrupt()
 			gs.playerMove(id, now, dodgeX, dodgeY)
 			botIndex++
 			continue
 		}
 		if centerX, centerY, seekCenter := gs.botStormCenterTarget(bot); seekCenter {
+			gs.recordBotHardInterrupt()
 			angle := math.Atan2(centerY-bot.Y, centerX-bot.X)
 			gs.botRotateToward(id, bot, angle)
 			dx, dy := gs.botTravelDirection(id, &bot.CircleBody, centerX, centerY, now)
@@ -714,6 +713,7 @@ func (gs *GameState) updateBattleRoyaleBots() {
 			continue
 		}
 		if threat, flee := gs.botMonsterThreat(bot); threat != nil {
+			gs.recordBotHardInterrupt()
 			if flee {
 				gs.botRetreatFrom(id, bot, threat.X, threat.Y, now)
 			} else {
@@ -723,11 +723,19 @@ func (gs *GameState) updateBattleRoyaleBots() {
 			continue
 		}
 		visibleTarget := gs.botSelectTarget(bot, now)
+		gs.recordBotTargetSelection(id, visibleTarget)
 		if visibleTarget == nil && gs.botTryAbility(id, bot, nil, now) {
 			botIndex++
 			continue
 		}
-		if pickup := gs.botPickupTarget(bot); gs.botShouldCollectPickup(bot, pickup, visibleTarget) {
+		pickup := gs.botPickupTarget(bot)
+		utility := gs.botUtilityActionFor(id, bot, visibleTarget, pickup, now)
+		if utility == botUtilityRetreat && visibleTarget != nil && visibleTarget.player != nil {
+			gs.botRetreatFrom(id, bot, visibleTarget.x, visibleTarget.y, now)
+			botIndex++
+			continue
+		}
+		if utility == botUtilityCollect && pickup != nil {
 			angle := math.Atan2(pickup.Y-bot.Y, pickup.X-bot.X)
 			gs.botRotateToward(id, bot, angle)
 			distance := math.Hypot(pickup.X-bot.X, pickup.Y-bot.Y)
@@ -911,7 +919,7 @@ func (gs *GameState) botHasLineOfSight(bot *player.Player, target *botTarget) bo
 		return false
 	}
 	if target.player != nil {
-		return gs.botCanSee(bot, target.player, time.Now().UnixMilli())
+		return gs.botCanSee(bot, target.player, gs.nowMs())
 	}
 	if target.objective != nil {
 		if math.Hypot(target.objective.X-bot.X, target.objective.Y-bot.Y) > BotVisionRange {
@@ -982,13 +990,22 @@ func (gs *GameState) botTryAbility(id string, bot *player.Player, target *botTar
 		// useful objective damage for most heroes.
 		return false
 	}
+	primaryTarget := target
+	if primaryTarget == nil && minaTarget != nil {
+		primaryTarget = &botTarget{kind: "player", id: minaTarget.PlayerId, player: minaTarget, x: minaTarget.X, y: minaTarget.Y}
+	}
 	primaryUseful := minaTarget != nil || target != nil && botPrimaryUseful(bot, target)
-	if SuperChargePercent(bot, now) >= 100 && primaryUseful {
-		if target != nil {
-			bot.AimDistance = target.distance
-		} else {
-			bot.AimDistance = math.Hypot(minaTarget.X-bot.X, minaTarget.Y-bot.Y)
-		}
+	ctx := gs.botUtilityContextFor(bot, primaryTarget, nil, now)
+	primaryScore := scoreBotAbility(ctx, botAbilitySuper)
+	secondaryScore := math.Inf(-1)
+	secondaryReady := target != nil && bot.GadgetCharges > 0 && now-bot.LastSecondaryAt >= AbilityCooldownMs(bot.HeroName, "secondary") && botSecondaryUseful(bot, target)
+	if secondaryReady {
+		secondaryScore = scoreBotAbility(gs.botUtilityContextFor(bot, target, nil, now), botAbilityGadget)
+	}
+	primaryReady := SuperChargePercent(bot, now) >= 100 && primaryUseful
+	usePrimary := primaryReady && (secondaryScore == math.Inf(-1) || primaryScore >= secondaryScore)
+	if usePrimary {
+		bot.AimDistance = primaryTarget.distance
 		if minaTarget != nil {
 			if gs.AbilityTargets == nil {
 				gs.AbilityTargets = make(map[string]string)
@@ -1000,17 +1017,21 @@ func (gs *GameState) botTryAbility(id string, bot *player.Player, target *botTar
 			delete(gs.AbilityTargets, id)
 		}
 		if bot.LastAbilityOK {
+			gs.recordBotAbilityUse()
 			return true
 		}
 	}
-	if target == nil {
+	if !secondaryReady {
 		return false
 	}
-	if bot.GadgetCharges <= 0 || now-bot.LastSecondaryAt < AbilityCooldownMs(bot.HeroName, "secondary") || !botSecondaryUseful(bot, target) {
+	if secondaryScore < 18 {
 		return false
 	}
 	bot.AimDistance = target.distance
 	gs.playerAbility(id, now, "secondary")
+	if bot.LastAbilityOK {
+		gs.recordBotAbilityUse()
+	}
 	return bot.LastAbilityOK
 }
 
@@ -1153,6 +1174,9 @@ func (gs *GameState) botMonsterThreat(bot *player.Player) (*monster.Monster, boo
 		if !gs.botCanSeeMonster(bot, candidate) {
 			continue
 		}
+		if candidate.State == monster.MonsterWindup && candidate.AttackWindupUntil > gs.nowMs() && distance <= 110 {
+			return candidate, true
+		}
 		if distance < closest {
 			closest, threat = distance, candidate
 		}
@@ -1224,7 +1248,7 @@ func (gs *GameState) botTravelDirection(agentID string, body *geometry.CircleBod
 	if body == nil || gs.Map == nil {
 		return 0, 0
 	}
-	now := time.Now().UnixMilli()
+	now := gs.nowMs()
 	if len(nowValue) > 0 {
 		now = nowValue[0]
 	}
@@ -1253,6 +1277,7 @@ func (gs *GameState) botTravelDirection(agentID string, body *geometry.CircleBod
 		memory.PathRefreshAt = 0
 		memory.PathStuckSince = 0
 		memory.PathReplanCount++
+		gs.botMetrics.StuckReplans++
 		stuckReplanned = true
 	}
 	directX, directY := targetX-body.X, targetY-body.Y

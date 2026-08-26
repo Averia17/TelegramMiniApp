@@ -7,7 +7,7 @@ test("canonical map loader returns the map contract used by QA", async () => {
   const payload = {
     seed: 20260810,
     spawners: [{x: 10, y: 20, width: 40, height: 40}],
-    map: {id: "battle-royale@20260810", name: "battle-royale", seed: 20260810, revision: 0, width: 2400, height: 2400, tileSize: 40, walls: []},
+    map: {id: "battle-royale@20260827", name: "battle-royale", seed: 20260810, revision: 0, width: 2400, height: 2400, tileSize: 40, walls: []},
   }
   const fetchImpl = async (url, options) => {
     assert.equal(url, "/api/battle/map-preview")
@@ -19,7 +19,7 @@ test("canonical map loader returns the map contract used by QA", async () => {
 
   assert.equal(map, payload.map)
   assert.deepEqual(map.spawners, payload.spawners)
-  assert.equal(map.id, "battle-royale@20260810")
+  assert.equal(map.id, "battle-royale@20260827")
 })
 
 test("canonical map loader preserves passable team features", async () => {

@@ -68,3 +68,8 @@ test("leaving a party keeps the selected team battle mode", () => {
   assert.equal(getBattleModeAfterPartyState("team", null), "team")
   assert.equal(getBattleModeAfterPartyState("solo", null), "solo")
 })
+
+test("manual solo selection is not overwritten by a stale party refresh", () => {
+  const party = {partyId: "party-1", members: [{playerId: "owner"}]}
+  assert.equal(getBattleModeAfterPartyState("team", party, "solo"), "solo")
+})

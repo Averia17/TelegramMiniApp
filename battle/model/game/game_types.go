@@ -23,14 +23,14 @@ const (
 	// enough for sudden death to reduce the field to one survivor.
 	GameDuration = OpeningCombatDuration + ChallengeDuration + CollapseDuration + FinalPhaseDuration
 
-	FlasksCount       = 8
-	LunarCratesCount  = 12
-	HealthCratesCount = 6
-	MonstersCount     = 8
+	FlasksCount      = 8
+	LunarCratesCount = 12
+	MonstersCount    = 8
 
-	HealthBoostFraction                 = .05
-	TeamHealthBoostFraction             = .02
-	MonsterHealthBoostDropChancePercent = 20
+	HealthBoostFraction     = .05
+	TeamHealthBoostFraction = .02
+	BatCampRespawnDuration  = 20 * time.Second
+	HealthBoostTTL          = 30 * time.Second
 
 	PlayerSize = 32.0
 
@@ -106,6 +106,7 @@ type GameState struct {
 	Players                 map[string]*player.Player
 	Objectives              map[string]*ObjectiveState
 	Monsters                map[string]*monster.Monster
+	MonsterRespawns         map[string]MonsterRespawn
 	Bullets                 []*bullet.Bullet
 	Props                   []*prop.Prop
 	Actions                 []Action
@@ -134,11 +135,12 @@ type GameState struct {
 	Skyfalls                []*Skyfall
 	TemporaryWalls          map[*geometry.WallTile]int64
 	BotMemory               map[string]*BotPerception
+	botMetrics              BotAIMetrics
+	botMetricsFlushed       bool
 	botAI                   BotAIStrategy
 	IslandVoiceNextAt       map[string]int64
 	IslandVoiceKillClaimed  map[string]bool
 	CombatEvents            []CombatEvent
-	randomHealthBoostDrop   func() bool
 	NextCombatEventID       uint64
 	activeCommandID         string
 	activeSourceID          string
@@ -157,6 +159,74 @@ type GameState struct {
 	botPathVisited          []uint32
 	botPathParents          []botPathCell
 	botPathSearchID         uint32
+	// clockNow is nil in production and can be injected by deterministic
+	// scenario runners. Keeping it on the authoritative state avoids a global
+	// test clock that would make concurrent simulations interfere with each
+	// other.
+	clockNow func() int64
+}
+
+// MonsterRespawn is the deterministic lifecycle record for one neutral bat
+// camp. The id is preserved across cycles so snapshots and telemetry can
+// correlate a camp's contest and reward history.
+type MonsterRespawn struct {
+	RespawnAt int64
+	X, Y      float64
+	Radius    float64
+	Tier      int
+	MaxLives  int
+}
+
+// BotAIMetrics are match-local counters. They are deliberately kept out of
+// the wire snapshot and exported only as an aggregate at match end, so AI
+// diagnostics cannot become a per-frame network payload.
+type BotAIMetrics struct {
+	Decisions                 uint64
+	ActionSelections          map[string]uint64
+	ActionScoreSums           map[string]float64
+	ActionScoreSamples        map[string]uint64
+	ActionSwitches            uint64
+	TargetSwitches            uint64
+	HardInterrupts            uint64
+	RetreatDecisions          uint64
+	AbilityUses               uint64
+	AttackAttempts            uint64
+	AttackHits                uint64
+	PeelDecisions             uint64
+	ResourceContestDecisions  uint64
+	SpawnProtectionAvoidances uint64
+	StuckReplans              uint64
+	IdleDecisionTicks         uint64
+}
+
+func newBotAIMetrics() BotAIMetrics {
+	return BotAIMetrics{
+		ActionSelections:   make(map[string]uint64),
+		ActionScoreSums:    make(map[string]float64),
+		ActionScoreSamples: make(map[string]uint64),
+	}
+}
+
+// BotAIMetricsSnapshot returns a copy safe for scenario reports and telemetry
+// exporters. The internal maps remain owned by the simulation goroutine.
+func (gs *GameState) BotAIMetricsSnapshot() BotAIMetrics {
+	if gs == nil {
+		return BotAIMetrics{}
+	}
+	snapshot := gs.botMetrics
+	snapshot.ActionSelections = make(map[string]uint64, len(gs.botMetrics.ActionSelections))
+	for action, count := range gs.botMetrics.ActionSelections {
+		snapshot.ActionSelections[action] = count
+	}
+	snapshot.ActionScoreSums = make(map[string]float64, len(gs.botMetrics.ActionScoreSums))
+	for action, sum := range gs.botMetrics.ActionScoreSums {
+		snapshot.ActionScoreSums[action] = sum
+	}
+	snapshot.ActionScoreSamples = make(map[string]uint64, len(gs.botMetrics.ActionScoreSamples))
+	for action, count := range gs.botMetrics.ActionScoreSamples {
+		snapshot.ActionScoreSamples[action] = count
+	}
+	return snapshot
 }
 
 type ObjectiveState struct {
@@ -194,6 +264,9 @@ type BotPerception struct {
 	PathStuckSince           int64
 	PathReplanCount          int
 	DecisionUntil            int64
+	UtilityAction            string
+	UtilityActionUntil       int64
+	UtilityScore             float64
 	IntentMoveX, IntentMoveY float64
 	StrafeSign               float64
 	StrafeUntil              int64

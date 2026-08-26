@@ -9,6 +9,7 @@
     "test": "node --test --test-concurrency=24",
     "validate:heroes": "node scripts/validate-hero-glb.mjs",
     "validate:hero-catalog": "python ../tools/validate_hero_catalog.py",
+    "validate:combat-profile": "python ../tools/validate_combat_profile.py && python ../tools/validate_hero_combat_contracts.py && python ../tools/generate_combat_profile.py --check",
     "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },

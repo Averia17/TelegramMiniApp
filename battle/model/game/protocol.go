@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+const (
+	CombatEventSchemaVersion   = 1
+	MaxCombatEventsPerSnapshot = 24
+)
+
 type ClientMessage struct {
 	Type  string          `json:"type"`
 	Ts    int64           `json:"ts,omitempty"`
@@ -63,31 +68,39 @@ type GameStateJSON struct {
 }
 
 type StateUpdate struct {
-	Type         string                 `json:"type"`
-	Ts           int64                  `json:"ts"`
-	Game         GameStateJSON          `json:"game"`
-	Map          MapJSON                `json:"map"`
-	Players      map[string]PlayerJSON  `json:"players"`
-	Monsters     map[string]MonsterJSON `json:"monsters"`
-	Bullets      []BulletJSON           `json:"bullets"`
-	Props        []PropJSON             `json:"props"`
-	Effects      []EffectJSON           `json:"effects,omitempty"`
-	CombatEvents []CombatEventJSON      `json:"combatEvents,omitempty"`
-	Objectives   []ObjectiveStateJSON   `json:"objectives,omitempty"`
+	Type               string                 `json:"type"`
+	Ts                 int64                  `json:"ts"`
+	CombatProfileID    string                 `json:"combatProfileId"`
+	CombatRulesVersion string                 `json:"combatRulesVersion"`
+	Game               GameStateJSON          `json:"game"`
+	Map                MapJSON                `json:"map"`
+	Players            map[string]PlayerJSON  `json:"players"`
+	Monsters           map[string]MonsterJSON `json:"monsters"`
+	Bullets            []BulletJSON           `json:"bullets"`
+	Props              []PropJSON             `json:"props"`
+	Effects            []EffectJSON           `json:"effects,omitempty"`
+	CombatEvents       []CombatEventJSON      `json:"combatEvents,omitempty"`
+	Objectives         []ObjectiveStateJSON   `json:"objectives,omitempty"`
 }
 
 type CombatEventJSON struct {
-	ID           uint64 `json:"id"`
-	Ts           int64  `json:"ts"`
-	Kind         string `json:"kind"`
-	CommandID    string `json:"commandId,omitempty"`
-	SourceID     string `json:"sourceId,omitempty"`
-	TargetType   string `json:"targetType,omitempty"`
-	TargetID     string `json:"targetId,omitempty"`
-	ProjectileID uint64 `json:"projectileId,omitempty"`
-	Damage       int    `json:"damage,omitempty"`
-	Accepted     bool   `json:"accepted,omitempty"`
-	Resolved     bool   `json:"resolved,omitempty"`
+	ID                 uint64 `json:"id"`
+	Ts                 int64  `json:"ts"`
+	Kind               string `json:"kind"`
+	Phase              string `json:"phase,omitempty"`
+	AbilitySlot        string `json:"abilitySlot,omitempty"`
+	Reason             string `json:"reason,omitempty"`
+	EventSchemaVersion int    `json:"eventSchemaVersion"`
+	CombatProfileID    string `json:"combatProfileId"`
+	CombatRulesVersion string `json:"combatRulesVersion"`
+	CommandID          string `json:"commandId,omitempty"`
+	SourceID           string `json:"sourceId,omitempty"`
+	TargetType         string `json:"targetType,omitempty"`
+	TargetID           string `json:"targetId,omitempty"`
+	ProjectileID       uint64 `json:"projectileId,omitempty"`
+	Damage             int    `json:"damage,omitempty"`
+	Accepted           bool   `json:"accepted"`
+	Resolved           bool   `json:"resolved"`
 }
 
 type EffectJSON struct {
@@ -130,6 +143,7 @@ type PlayerJSON struct {
 	MoveY              float64          `json:"moveY"`
 	Speed              float64          `json:"speed"`
 	MovementSpeed      float64          `json:"movementSpeed"`
+	TerrainMultiplier  float64          `json:"terrainMultiplier,omitempty"`
 	AttackDamage       int              `json:"attackDamage"`
 	AttackRate         int64            `json:"attackRateMs"`
 	AttackCooldown     float64          `json:"attackCooldown,omitempty"`
@@ -221,13 +235,15 @@ type CooldownsJSON struct {
 }
 
 type MonsterJSON struct {
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	Radius   float64 `json:"radius"`
-	Rotation float64 `json:"rotation"`
-	Lives    int     `json:"lives"`
-	MaxLives int     `json:"maxLives"`
-	Tier     int     `json:"tier,omitempty"`
+	X           float64 `json:"x"`
+	Y           float64 `json:"y"`
+	Radius      float64 `json:"radius"`
+	Rotation    float64 `json:"rotation"`
+	Lives       int     `json:"lives"`
+	MaxLives    int     `json:"maxLives"`
+	Tier        int     `json:"tier,omitempty"`
+	State       string  `json:"state,omitempty"`
+	WindupUntil int64   `json:"windupUntil,omitempty"`
 }
 
 type BulletJSON struct {
@@ -256,14 +272,15 @@ type BulletJSON struct {
 }
 
 type PropJSON struct {
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
-	Radius   float64 `json:"radius"`
-	Type     string  `json:"type"`
-	LootType string  `json:"lootType,omitempty"`
-	Lives    int     `json:"lives,omitempty"`
-	MaxLives int     `json:"maxLives,omitempty"`
-	Active   bool    `json:"active"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Radius    float64 `json:"radius"`
+	Type      string  `json:"type"`
+	LootType  string  `json:"lootType,omitempty"`
+	Lives     int     `json:"lives,omitempty"`
+	MaxLives  int     `json:"maxLives,omitempty"`
+	Active    bool    `json:"active"`
+	ExpiresAt int64   `json:"expiresAt,omitempty"`
 }
 
 type MapJSON struct {
@@ -354,15 +371,17 @@ func NewServerMessage(msgType string, params interface{}) *ServerMessage {
 
 func NewStateUpdate(g *GameStateJSON, m *MapJSON, players map[string]PlayerJSON, monsters map[string]MonsterJSON, bullets []BulletJSON, props []PropJSON, effects []EffectJSON, combatEvents ...[]CombatEventJSON) *StateUpdate {
 	state := &StateUpdate{
-		Type:     "state",
-		Ts:       time.Now().UnixMilli(),
-		Game:     *g,
-		Map:      *m,
-		Players:  players,
-		Monsters: monsters,
-		Bullets:  bullets,
-		Props:    props,
-		Effects:  effects,
+		Type:               "state",
+		Ts:                 time.Now().UnixMilli(),
+		CombatProfileID:    CombatProfileID,
+		CombatRulesVersion: CombatRulesVersion,
+		Game:               *g,
+		Map:                *m,
+		Players:            players,
+		Monsters:           monsters,
+		Bullets:            bullets,
+		Props:              props,
+		Effects:            effects,
 	}
 	if len(combatEvents) > 0 {
 		state.CombatEvents = combatEvents[0]

@@ -316,7 +316,7 @@ export const createHealthBoost = () => {
   const group = new THREE.Group()
   group.userData.type = "health_boost"
   group.userData.healthBoost = true
-  group.userData.palette = "purple"
+  group.userData.palette = "green"
   group.userData.rarity = "hero"
   group.userData.spin = true
   group.userData.pulse = true
@@ -436,11 +436,10 @@ const createLunarReward = pickup => {
 }
 
 const createPickup = pickup => {
-  if (pickup.type === "health_crate") return createHealthCrate(pickup)
   if (pickup.type === "health_boost") return createHealthBoost(pickup)
   if (pickup.type === "lunar_crate") return createLunarCrate(pickup)
   if (String(pickup.type).startsWith("lunar_")) return createLunarReward(pickup)
-  return createHealthPotion(pickup)
+  return null
 }
 
 export class PickupRenderer {
@@ -459,16 +458,12 @@ export class PickupRenderer {
       let view = this.pickups.get(key)
       if (!view) {
         view = createPickup(pickup)
+        if (!view) continue
         view.userData.phase = this.pickups.size * 1.7
         this.pickups.set(key, view)
         this.root.add(view)
       }
-      if (view.userData.type === "health_crate") {
-        const healthFraction = getPropHealthFraction(pickup.lives, pickup.maxLives)
-        view.userData.healthFraction = healthFraction
-        view.userData.healthFill.scale.x = view.userData.healthFill.userData.fullWidth * healthFraction
-        updatePropHealthLabel(view.userData.healthBar, pickup)
-      }
+      if (view.userData.type === "health_boost") view.userData.stacks = Number(pickup.healthBoosts) || 0
       view.position.copy(worldToScene(pickup.x, pickup.y, 0))
       view.userData.baseY = view.position.y
     }

@@ -13,6 +13,17 @@ test("formats actionable server errors and death notifications", () => {
   assert.equal(formatBattleMessage({type: "you_died", params: {killerName: "Mandy"}}), "You died — Mandy got you")
 })
 
+test("formats authoritative ability rejection feedback", () => {
+  assert.equal(
+    formatBattleMessage({type: "combat_ability_rejected", params: {reason: "super_not_ready", slot: "primary"}}),
+    "Super is not ready",
+  )
+  assert.equal(
+    formatBattleMessage({type: "combat_ability_rejected", params: {reason: "gadget_unavailable", slot: "secondary"}}),
+    "No gadget charges",
+  )
+})
+
 test("formats a targeted clown taunt", () => {
   assert.equal(
     formatBattleMessage({type: "taunt", params: {playerName: "Alice", targetName: "Bob"}}),

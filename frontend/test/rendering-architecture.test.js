@@ -338,16 +338,11 @@ test("monster health badge is one shared canvas instead of separate bar sprites"
   monsters.dispose()
 })
 
-test("monster health drops are visible until the player collects them", () => {
+test("unknown legacy health drops are ignored by the pickup renderer", () => {
   const root = new THREE.Group()
   const renderer = new PickupRenderer(root)
 
   renderer.sync([{x: 120, y: 220, radius: 9, type: "potion-red", active: true}])
-  assert.equal(root.children.length, 1)
-  assert.equal(root.children[0].userData.type, "potion-red")
-  assert.deepEqual(root.children[0].position.toArray(), worldToScene(120, 220, 0).toArray())
-
-  renderer.sync([])
   assert.equal(root.children.length, 0)
   renderer.dispose()
 })
@@ -377,6 +372,7 @@ test("the phase HUD no longer advertises a landing phase", async () => {
 
 test("hero health badges format current/max HP and clamp the progress fraction", () => {
   assert.equal(formatHeroHealthLabel({lives: 3708, maxLives: 6700}), "3708 / 6700")
+  assert.equal(formatHeroHealthLabel({lives: 0, maxLives: 720}), "ПОВЕРЖЕН")
   assert.equal(getHeroHealthFraction({lives: 3350, maxLives: 6700}), .5)
   assert.equal(getHeroHealthFraction({lives: 8000, maxLives: 6700}), 1)
   assert.equal(getHeroHealthFraction({lives: -10, maxLives: 6700}), 0)
@@ -596,6 +592,19 @@ test("team map mounts natural diagonal river features without adding collision o
 	mapRenderer.dispose()
 })
 
+test("bat wind-up exposes a readable danger telegraph", () => {
+  const root = new THREE.Group()
+  const monsters = new MonsterRenderer(root)
+  monsters.sync({
+    bat_1: {x: 120, y: 220, radius: 24, lives: 184, maxLives: 260, rotation: 0, state: "windup", windupUntil: Date.now() + 300},
+  })
+
+  const view = monsters.views.get("bat_1")
+  assert.equal(view.windupTelegraph.visible, true)
+  assert.equal(view.windupTelegraph.userData.role, "bat-windup-telegraph")
+  monsters.dispose()
+})
+
 test("abandoned city features render as lightweight building, street, and plaza landmarks", () => {
   const root = new THREE.Group()
   const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
@@ -619,18 +628,12 @@ test("abandoned city features render as lightweight building, street, and plaza 
   assert.equal(buildingRoles.has("city-facade-overlay"), false, "blocking cells own the building silhouette")
   assert.equal(buildingRoles.has("city-wall"), false, "the feature must not duplicate the blocking wall volumes")
   assert.equal(buildingRoles.has("city-roof"), true)
-  assert.equal(buildingRoles.has("city-window"), true)
   assert.equal(buildingRoles.has("city-rubble"), true)
-  assert.equal(buildingRoles.has("city-door"), true)
-  assert.equal(buildingRoles.has("city-window-frame"), true)
-  assert.equal(buildingRoles.has("city-awning"), true)
-  assert.equal(buildingRoles.has("city-chimney"), true)
-  assert.equal(buildingRoles.has("city-hanging-sign"), true)
-  assert.equal(buildingRoles.has("city-roof-debris"), true)
-  assert.equal(buildingRoles.has("city-ivy-leaf"), true)
-  assert.equal(buildingRoles.has("city-wood-beam"), true)
-  assert.equal(buildingRoles.has("city-courtyard-well"), true)
-  assert.equal(buildingRoles.has("city-courtyard-weed"), true)
+  assert.equal(buildingRoles.has("city-depot-loading-dock"), true)
+  assert.equal(buildingRoles.has("city-depot-double-door"), true)
+  assert.equal(buildingRoles.has("city-depot-barrel"), true)
+  assert.equal(buildingRoles.has("city-depot-sack"), true)
+  assert.equal(buildingRoles.has("city-depot-wheel"), true)
   const tower = root.children.find(object => object.userData.featureId === "city-watchtower")
   assert.ok(tower)
   const towerRoles = new Set()
@@ -686,20 +689,35 @@ test("authored city buildings use distinct silhouettes and unique lived-in prop 
     "city-north-gate": "city-gate-portcullis",
     "city-south-ward": "city-forge-anvil",
   }
+  const signatureRoles = {
+    "city-depot": "city-depot-roof-beam",
+    "city-market": "city-market-hanging-sign",
+    "city-apartments": "city-apartment-shutter",
+    "city-north-gate": "city-gate-rope",
+    "city-south-ward": "city-forge-ember",
+  }
   Object.entries(uniqueRoles).forEach(([id, requiredRole]) => {
     const building = root.children.find(object => object.userData.featureId === id)
     assert.ok(building, `missing ${id}`)
     const roles = []
     building.traverse(child => { if (child.userData?.role) roles.push(child.userData.role) })
     assert.equal(roles.includes(requiredRole), true, `${id} lacks its authored prop signature`)
+    assert.equal(roles.includes(signatureRoles[id]), true, `${id} lacks layered authored detail ${signatureRoles[id]}`)
     signatures.set(id, roles.filter(role => role.startsWith("city-")).join("|"))
   })
   assert.equal(new Set(signatures.values()).size, 5, "city buildings should not be duplicated templates")
   const depot = root.children.find(object => object.userData.featureId === "city-depot")
   const depotRoles = new Set()
   depot.traverse(child => { if (child.userData?.role) depotRoles.add(child.userData.role) })
+  assert.equal(depotRoles.has("city-depot-yard"), true)
   assert.equal(depotRoles.has("city-depot-double-door"), true)
   assert.equal(depotRoles.has("city-depot-signboard"), true)
+  for (const [id, role] of [["city-market", "city-market-court"], ["city-apartments", "city-apartment-floor"], ["city-south-ward", "city-forge-yard"]]) {
+    const building = root.children.find(object => object.userData.featureId === id)
+    const roles = new Set()
+    building.traverse(child => { if (child.userData?.role) roles.add(child.userData.role) })
+    assert.equal(roles.has(role), true, `${id} lacks an enterable floor space`)
+  }
   mapRenderer.dispose()
 })
 
@@ -2055,6 +2073,26 @@ test("decorative props stay at authored cell size instead of merging into slabs"
   mapRenderer.dispose()
 })
 
+test("adjacent vine cells compose into one readable overgrowth clump", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  mapRenderer.sync({
+    width: 320,
+    height: 240,
+    walls: [
+      {minX: 40, minY: 40, maxX: 80, maxY: 80, type: "vine", blocking: false},
+      {minX: 80, minY: 40, maxX: 120, maxY: 80, type: "vine", blocking: false},
+      {minX: 40, minY: 80, maxX: 80, maxY: 120, type: "vine", blocking: false},
+      {minX: 200, minY: 160, maxX: 240, maxY: 200, type: "vine", blocking: false},
+    ],
+  })
+
+  const vines = [...mapRenderer.objects.values()].filter(object => object.userData.visualType === "vine")
+  assert.equal(vines.length, 2)
+  assert.ok(vines.some(object => new THREE.Box3().setFromObject(object, true).getSize(new THREE.Vector3()).x > .75))
+  mapRenderer.dispose()
+})
+
 test("map crate cells render as natural log piles instead of default box planks", () => {
   const prop = createProp(
     {minX: 20, minY: 20, maxX: 60, maxY: 60, type: "crates"},
@@ -2502,6 +2540,15 @@ test("team structures mount world-space HP bars and protect the town hall visual
   for (const role of ["team-town-hall-timber", "team-town-hall-door", "team-town-hall-window", "team-town-hall-banner"]) {
     assert.ok(hall.getObjectByName(role), `town hall lacks ${role}`)
   }
+  for (const role of ["team-town-hall-keep", "team-town-hall-gate", "team-town-hall-bell-tower", "team-town-hall-bell", "team-town-hall-turret", "team-town-hall-rubble", "team-town-hall-courtyard"]) {
+    assert.ok(hall.getObjectByName(role), `town hall lacks authored landmark detail ${role}`)
+  }
+  const townHallBounds = new THREE.Box3().setFromObject(hall.getObjectByName("team-town-hall-house"))
+  assert.ok(townHallBounds.getSize(new THREE.Vector3()).x >= 5.4, "town hall silhouette should read larger than the base towers")
+  assert.ok(townHallBounds.getSize(new THREE.Vector3()).y >= 4.8, "town hall should have a visibly tall landmark silhouette")
+  assert.ok(hall.getObjectByName("team-town-hall-house").scale.x >= 1.1)
+  assert.ok(hall.getObjectByName("team-town-hall-roof").scale.x >= 1.08)
+  assert.ok(hall.getObjectByName("team-town-hall-roof-finial"))
   for (const role of ["team-tower-battlement", "team-tower-window", "team-tower-banner", "team-tower-balcony"]) {
     assert.ok(tower.getObjectByName(role), `tower lacks ${role}`)
   }
@@ -2825,7 +2872,29 @@ test("first-trial beacon is a layered faceted landmark with animated energy deta
 
 test("first-trial beacon collision is not rendered as a duplicate map prop", async () => {
   const source = await readFile(projectFile("src/components/BattleGame/rendering/map/MapRenderer.js"), "utf8")
-  assert.match(source, /const COLLISION_ONLY_TYPES = new Set\(\["objective", "beacon"\]\)/)
+  assert.match(source, /const COLLISION_ONLY_TYPES = new Set\(\["objective", "beacon", "city_object"\]\)/)
+})
+
+test("team battle vine cells render as dense soft overgrowth", () => {
+  const vine = createProp(
+    {minX: 60, minY: 20, maxX: 100, maxY: 60, type: "vine", blocking: false},
+    7,
+    new THREE.Texture(),
+  )
+  const roles = new Set()
+  vine.traverse(child => { if (child.userData?.role) roles.add(child.userData.role) })
+
+  assert.equal(vine.userData.visualType, "vine")
+  assert.equal(vine.userData.softTerrain, true)
+  assert.equal(roles.has("vine-stem"), true)
+  assert.equal(roles.has("vine-leaf-cluster"), true)
+  assert.equal(roles.has("vine-bed"), true)
+  assert.equal([...vine.children].some(child => child.userData?.role === "vine-spike" && child.visible), false)
+
+  vine.traverse(node => {
+    node.geometry?.dispose?.()
+    node.material?.dispose?.()
+  })
 })
 
 test("map atmosphere changes with every playable island phase", () => {

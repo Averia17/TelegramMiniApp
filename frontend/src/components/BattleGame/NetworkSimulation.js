@@ -212,7 +212,7 @@ const resolveWalls = (position, radius, walls) => {
 }
 
 const isBlockingDynamicProp = prop => prop?.active !== false &&
-  (prop?.type === "health_crate" || prop?.type === "lunar_crate")
+  prop?.type === "lunar_crate"
 
 const resolveDynamicProps = (position, radius, props) => {
   let {x, y} = position
@@ -235,15 +235,29 @@ const resolveDynamicProps = (position, radius, props) => {
   return {x, y}
 }
 
-const movementSpeed = player => {
+const vineSpeedMultiplierAt = (position, map) => {
+  if (!position || !Array.isArray(map?.walls)) return 1
+  return map.walls.some(wall => wall?.type === "vine" &&
+    position.x >= Number(wall.minX) && position.x <= Number(wall.maxX) &&
+    position.y >= Number(wall.minY) && position.y <= Number(wall.maxY)) ? .68 : 1
+}
+
+const movementSpeed = (player, position = null, map = null) => {
   const authoritativeSpeed = Number(player?.movementSpeed)
-  if (Number.isFinite(authoritativeSpeed)) return Math.max(0, authoritativeSpeed)
-  let speed = Number(player?.speed) || 0
-  if (Number(player?.haste) > 0) speed *= 1.22
-  if (Number(player?.lunarSpeed) > 0) speed *= 1.15
-  if (Number(player?.slow) > 0) speed *= .45
-  if (Number(player?.stun) > 0 || Number(player?.channel) > 0) speed = 0
-  return speed
+  let speed = Number.isFinite(authoritativeSpeed) ? Math.max(0, authoritativeSpeed) : Number(player?.speed) || 0
+  // The server's snapshot speed already includes the terrain under the
+  // player's current feet. Remove that part before applying the predicted
+  // position's terrain multiplier on each sub-step.
+  const snapshotTerrain = clamp(Number(player?.terrainMultiplier) || 1, .1, 1)
+  if (Number.isFinite(authoritativeSpeed)) speed /= snapshotTerrain
+  else {
+    if (Number(player?.haste) > 0) speed *= 1.22
+    if (Number(player?.lunarSpeed) > 0) speed *= 1.15
+    if (Number(player?.slow) > 0) speed *= .45
+    if (Number(player?.stun) > 0 || Number(player?.channel) > 0) speed = 0
+  }
+  if (Number(player?.flying) > 0) return speed
+  return speed * vineSpeedMultiplierAt(position, map)
 }
 
 const constrainPosition = (position, player, map, collisionIndex = null, collisionResult = null, blockingProps = null) => {
@@ -270,17 +284,20 @@ const constrainFlightPosition = (position, player, map, collisionIndex = null) =
 export const movePosition = (position, input, player, delta, map, collisionIndex = null, collisionResult = null, blockingProps = null) => {
   const magnitude = Math.hypot(input.x, input.y)
   if (magnitude <= .001 || delta <= 0) return position
-  const distance = movementSpeed(player) * delta
+  const startingTerrainMultiplier = Number(player?.flying) > 0 ? 1 : vineSpeedMultiplierAt(position, map)
+  const distance = movementSpeed(player, position, map) * delta
+  const unscaledDistance = distance / Math.max(.1, startingTerrainMultiplier)
   const radius = Number(player.radius) || 14
   const maxStep = Math.max(1, radius * .5)
   const steps = Math.max(1, Math.ceil(distance / maxStep))
-  const stepDistance = distance / steps
   const flying = Number(player?.flying) > 0
   let next = {...position}
   for (let step = 0; step < steps; step += 1) {
+    const terrainMultiplier = Number(player?.flying) > 0 ? 1 : vineSpeedMultiplierAt(next, map)
+    const terrainStepDistance = unscaledDistance / steps * terrainMultiplier
     next = {
-      x: next.x + input.x / magnitude * stepDistance,
-      y: next.y + input.y / magnitude * stepDistance,
+      x: next.x + input.x / magnitude * terrainStepDistance,
+      y: next.y + input.y / magnitude * terrainStepDistance,
     }
     next = flying
       ? constrainFlightPosition(next, player, map, collisionIndex)
@@ -912,7 +929,11 @@ export class NetworkSimulation {
     const displayState = this.damagePrediction.applyToState(
       {...this.latestState, players, monsters, bullets, networkSmoothed: true},
       now,
-      {mutateEntities: !copyEntities, smoothAuthoritativeDamage: true},
+      {
+        mutateEntities: !copyEntities,
+        smoothAuthoritativeDamage: true,
+        immediateDeathPlayerId: this.playerId,
+      },
     )
     endBattlePerformance(perfToken)
     return displayState

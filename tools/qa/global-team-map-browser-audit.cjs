@@ -23,6 +23,10 @@ const cityViews = [
   ["city-north-gate-detail", 16, 31],
   ["city-south-ward-detail", 49, 64],
 ]
+const vineViews = [
+  ["vine-clump-west", 10, 47],
+  ["vine-clump-grove", 25, 65],
+]
 
 runWithBrowser(
   () => launchHeadlessChromium(chromium, {headless: true}),
@@ -55,7 +59,11 @@ runWithBrowser(
       for (const wall of map.walls) {
         const [x, y] = cellOf(wall)
         const cellKey = key(x, y)
-        if (occupied.has(cellKey)) duplicateCells.add(cellKey)
+        // Sub-cell prop colliders may legitimately share a tile bucket (for
+        // example a barrel and a sack). They are checked by their exact
+        // geometry in the Go contract tests, so only conflicting authored
+        // tile obstacles count as duplicate cells here.
+        if (occupied.has(cellKey) && wall.type !== "city_object" && occupied.get(cellKey).type !== "city_object") duplicateCells.add(cellKey)
         occupied.set(cellKey, wall)
         wallTypes.set(wall.type, (wallTypes.get(wall.type) || 0) + 1)
       }
@@ -87,6 +95,8 @@ runWithBrowser(
         })}]
       }))
       const bridgeCells = [...occupied].filter(([, wall]) => wall.type === "river_bridge").map(([cell]) => cell)
+      const vineCells = [...occupied].filter(([, wall]) => wall.type === "vine").map(([cell]) => cell)
+      const vineBlockingCells = [...occupied].filter(([, wall]) => wall.type === "vine" && isBlocking(wall)).map(([cell]) => cell)
       const featureSummary = map.features.reduce((summary, feature) => {
         summary[feature.type] = (summary[feature.type] || 0) + 1
         return summary
@@ -106,6 +116,8 @@ runWithBrowser(
         wallTypes: Object.fromEntries(wallTypes),
         duplicateCollisionCells: [...duplicateCells],
         bridgeCells: bridgeCells.length,
+        vineCells: vineCells.length,
+        vineBlockingCells,
         spawners,
         reachability,
         featureSummary,
@@ -120,9 +132,43 @@ runWithBrowser(
       }
     })
 
+    const collisionProbe = await page.evaluate(async () => {
+      const {createCollisionIndex, movePosition} = await import("/src/components/BattleGame/NetworkSimulation.js")
+      const target = window.qa.map.walls.find(wall => wall.type === "city_object" && Number(wall.colliderRadius) > 0)
+      const roofTarget = window.qa.map.walls
+        .filter(wall => wall.type === "city_object" && !(Number(wall.colliderRadius) > 0))
+        .sort((left, right) => (Number(right.maxX) - Number(right.minX)) * (Number(right.maxY) - Number(right.minY)) -
+          (Number(left.maxX) - Number(left.minX)) * (Number(left.maxY) - Number(left.minY)))[0]
+      const index = createCollisionIndex(window.qa.map.walls)
+      const radius = Number(target.colliderRadius)
+      const center = {x: (Number(target.minX) + Number(target.maxX)) / 2, y: (Number(target.minY) + Number(target.maxY)) / 2}
+      const player = {movementSpeed: 40, radius: 14, flying: 0}
+      const start = {x: center.x - radius - player.radius - 60, y: center.y}
+      const next = movePosition(start, {x: 1, y: 0}, player, 1.5, window.qa.map, index)
+      const roofCenterY = (Number(roofTarget.minY) + Number(roofTarget.maxY)) / 2
+      const roofStart = {x: Number(roofTarget.minX) - player.radius - 60, y: roofCenterY}
+      const roofNext = movePosition(roofStart, {x: 1, y: 0}, player, 1.5, window.qa.map, index)
+      return {
+        cityObjectBlockingCount: index.blockingWalls.filter(wall => wall.type === "city_object").length,
+        startX: start.x,
+        endX: next.x,
+        expectedContactX: center.x - radius - player.radius,
+        roofStartX: roofStart.x,
+        roofEndX: roofNext.x,
+        expectedRoofContactX: Number(roofTarget.minX) - player.radius,
+      }
+    })
+
     assert.equal(metrics.map.id, "team-battle@20260816")
     assert.equal(metrics.duplicateCollisionCells.length, 0, `duplicate collision cells: ${metrics.duplicateCollisionCells.join(", ")}`)
+    assert.equal(collisionProbe.cityObjectBlockingCount, 42)
+    assert.equal(collisionProbe.endX <= collisionProbe.expectedContactX + .5, true, `city object probe crossed collider: ${JSON.stringify(collisionProbe)}`)
+    assert.equal(collisionProbe.endX > collisionProbe.startX + 1, true, `city object probe did not approach collider: ${JSON.stringify(collisionProbe)}`)
+    assert.equal(collisionProbe.roofEndX <= collisionProbe.expectedRoofContactX + .5, true, `roof probe crossed collider: ${JSON.stringify(collisionProbe)}`)
+    assert.equal(collisionProbe.roofEndX > collisionProbe.roofStartX + 1, true, `roof probe did not approach collider: ${JSON.stringify(collisionProbe)}`)
     assert.equal(metrics.bridgeCells > 0, true)
+    assert.equal(metrics.vineCells >= 24, true)
+    assert.deepEqual(metrics.vineBlockingCells, [])
     assert.equal(metrics.cityFeatures >= 11, true)
     assert.equal(metrics.baseFeatures, 6)
     assert.deepEqual(metrics.baseFeatureSummary, {base_well: 2, base_workshop: 2, base_wagon: 2})
@@ -180,8 +226,19 @@ runWithBrowser(
       await page.waitForTimeout(220)
       await page.screenshot({path: path.join(output, `${name}.png`), fullPage: true})
     }
+    for (const [name, x, y] of vineViews) {
+      await page.evaluate(({name, x, y}) => {
+        const target = {x: x * 40, y: y * 40}
+        window.qa.updatePosition(target.x, target.y, name)
+        window.qa.battleRenderer.cameraRig.follow(target, {width: window.qa.map.width, height: window.qa.map.height}, 1)
+        window.qa.battleRenderer.cameraRig.preferredVertical = 14
+        window.qa.battleRenderer.render()
+      }, {name, x, y})
+      await page.waitForTimeout(220)
+      await page.screenshot({path: path.join(output, `${name}.png`), fullPage: true})
+    }
 
-    process.stdout.write(JSON.stringify({metrics, screenshots: sectors.map(([name]) => path.join(output, `${name}.png`)).concat(path.join(output, "overview.png"), baseViews.map(([name]) => path.join(output, `${name}.png`)), cityViews.map(([name]) => path.join(output, `${name}.png`))), consoleErrors, pageErrors}, null, 2))
+    process.stdout.write(JSON.stringify({metrics, screenshots: sectors.map(([name]) => path.join(output, `${name}.png`)).concat(path.join(output, "overview.png"), baseViews.map(([name]) => path.join(output, `${name}.png`)), cityViews.map(([name]) => path.join(output, `${name}.png`)), vineViews.map(([name]) => path.join(output, `${name}.png`))), consoleErrors, pageErrors}, null, 2))
   },
 ).catch(error => {
   console.error(error)

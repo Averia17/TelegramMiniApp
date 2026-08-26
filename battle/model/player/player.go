@@ -141,10 +141,18 @@ func (p *Player) Hurt() {
 }
 
 func (p *Player) TakeDamage(amount int) {
+	p.TakeDamageAt(amount, time.Now().UnixMilli())
+}
+
+// TakeDamageAt is the authoritative, clock-injected variant used by the
+// battle simulation. Keeping the wall-clock wrapper preserves the small
+// player package API for non-simulation callers while deterministic replays
+// can own every timestamp that affects combat state.
+func (p *Player) TakeDamageAt(amount int, now int64) {
 	if amount <= 0 || !p.IsAlive() {
 		return
 	}
-	p.InterruptRegenerationAt(time.Now().UnixMilli())
+	p.InterruptRegenerationAt(now)
 	if p.LunarShield {
 		p.LunarShield = false
 		p.ShieldHP = 0
@@ -171,11 +179,18 @@ func (p *Player) Heal() {
 	p.Lives++
 }
 
+const maxHealthBoostStacks = 5
+
 // ApplyHealthBoost permanently adds a fraction of the hero's original max
-// health. Keeping BaseMaxLives separate prevents stacked boosts from
-// compounding unexpectedly as the current max health grows.
+// health. The pickup is not a heal: current Lives stay unchanged, so the
+// player must still create a safe recovery window after taking the upgrade.
+// Keeping BaseMaxLives separate prevents stacked boosts from compounding
+// unexpectedly as the current max health grows.
 func (p *Player) ApplyHealthBoost(fraction float64) int {
 	if p == nil || fraction <= 0 {
+		return 0
+	}
+	if p.HealthBoosts >= maxHealthBoostStacks {
 		return 0
 	}
 	if p.BaseMaxLives <= 0 {
@@ -185,11 +200,7 @@ func (p *Player) ApplyHealthBoost(fraction float64) int {
 	if bonus <= 0 {
 		return 0
 	}
-	wasAlive := p.IsAlive()
 	p.MaxLives += bonus
-	if wasAlive {
-		p.Lives += bonus
-	}
 	p.HealthBoosts++
 	return bonus
 }

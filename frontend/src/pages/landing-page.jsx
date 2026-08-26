@@ -40,6 +40,7 @@ const LandingPage = ({id}) => {
   const [outgoingInvites, setOutgoingInvites] = useState([])
   const [incomingInviteStatuses, setIncomingInviteStatuses] = useState([])
   const [partyOpen, setPartyOpen] = useState(false)
+  const explicitlySelectedBattleModeRef = useRef("")
   const handledPartyBattles = useRef(new Set())
   const latestPartyState = useRef(null)
   const outgoingInvitesRef = useRef([])
@@ -85,6 +86,7 @@ const LandingPage = ({id}) => {
   }, [id])
   const changeBattleMode = useCallback(mode => {
     const nextMode = mode === "team" ? "team" : "solo"
+    explicitlySelectedBattleModeRef.current = nextMode
     setBattleMode(nextMode)
     saveBattleMode(id, nextMode)
     setPlayError("")
@@ -124,7 +126,7 @@ const LandingPage = ({id}) => {
           latestPartyState.current = null
           setPartyState(null)
           setPartyId("")
-          const nextMode = getBattleModeAfterPartyState(battleMode, null)
+          const nextMode = getBattleModeAfterPartyState(battleMode, null, explicitlySelectedBattleModeRef.current)
           if (nextMode !== battleMode) setBattleMode(nextMode)
           saveBattleMode(id, nextMode)
         }, OUTGOING_DECLINED_DISPLAY_MS)
@@ -140,7 +142,7 @@ const LandingPage = ({id}) => {
     latestPartyState.current = nextParty
     setPartyState(nextParty)
     setPartyId(nextParty?.partyId || "")
-    const nextMode = getBattleModeAfterPartyState(battleMode, nextParty)
+    const nextMode = getBattleModeAfterPartyState(battleMode, nextParty, explicitlySelectedBattleModeRef.current)
     if (nextMode !== battleMode) setBattleMode(nextMode)
     saveBattleMode(id, nextMode)
   }, [battleMode, id])

@@ -62,6 +62,123 @@ def reset_to_neutral(armature, pose):
         bone.scale = reference["scale"]
 
 
+def refine_idle_pose():
+    """Open the legacy idle arm fold while keeping its secondary motion."""
+    action = bpy.data.actions.get("idle")
+    if action is None:
+        raise RuntimeError("Brock Zeus master has no idle Action")
+    if action.get("idle_pose_revision") == "zeus-natural-arms-v5":
+        return
+    for curve in get_fcurves(action):
+        if not curve.data_path.endswith("rotation_euler"):
+            continue
+        delta = None
+        if curve.array_index == 0 and '"R_Shoulder"' in curve.data_path:
+            delta = math.radians(26.0)
+        elif curve.array_index == 0 and '"L_Shoulder"' in curve.data_path:
+            delta = math.radians(26.0)
+        elif curve.array_index == 2 and '"R_Shoulder"' in curve.data_path:
+            delta = -math.radians(14.0)
+        elif curve.array_index == 2 and '"L_Shoulder"' in curve.data_path:
+            delta = math.radians(14.0)
+        elif curve.array_index == 0 and ('"R_Elbow"' in curve.data_path or '"L_Elbow"' in curve.data_path):
+            delta = math.radians(40.0)
+        if delta is None:
+            continue
+        for key in curve.keyframe_points:
+            key.co.y += delta
+            key.handle_left[1] += delta
+            key.handle_right[1] += delta
+        curve.update()
+    action["idle_pose_revision"] = "zeus-natural-arms-v5"
+    action["semantic_revision"] = "zeus-natural-arms-v5"
+
+
+def repair_wrist_seams():
+    """Overlap each rigid hand piece slightly into its matching cuff."""
+    repairs = {
+        # v1 was a bad sign choice; v2 closed the seam in Attack. v3 is the
+        # smallest correction that also closes the idle silhouette.
+        "ZeusPart_R_Hand": (0.012, -0.012, -0.008),
+        "ZeusPart_L_Hand": (0.0, 0.0, 0.0),
+    }
+    v4_repairs = {
+        "ZeusPart_R_Hand": (0.015, -0.015, 0.015),
+        "ZeusPart_L_Hand": (0.004, 0.010, 0.010),
+    }
+    for name, offset in repairs.items():
+        hand = bpy.data.objects.get(name)
+        if hand is None:
+            raise RuntimeError(f"Brock Zeus master has no hand mesh {name}")
+        if hand.get("wrist_seam_revision") == "zeus-wrist-seam-v4":
+            # The v4 trial moved the seam farther apart. Restore the master
+            # to the proven v3 geometry before applying no further delta.
+            rollback = v4_repairs[name]
+            for vertex in hand.data.vertices:
+                vertex.co.x -= rollback[0]
+                vertex.co.y -= rollback[1]
+                vertex.co.z -= rollback[2]
+            hand.data.update()
+            hand["wrist_seam_revision"] = "zeus-wrist-seam-v3"
+        if hand.get("wrist_seam_revision") == "zeus-wrist-seam-v3":
+            continue
+        for vertex in hand.data.vertices:
+            vertex.co.x += offset[0]
+            vertex.co.y += offset[1]
+            vertex.co.z += offset[2]
+        hand.data.update()
+        hand["wrist_seam_revision"] = "zeus-wrist-seam-v3"
+
+
+def repair_wrist_bone_pivots(armature):
+    """Put the elbow/hand joint at the real cuff-to-skin seam.
+
+    The imported rig placed the hand-bone pivot well outside the visible
+    wrist. That is harmless in the bind pose, but any wrist rotation makes
+    the rigid hand mesh swing away from the cuff. Re-anchor both bones to the
+    midpoint of their closest authored vertices so the hand rotates around
+    the actual joint while retaining the authored bone lengths.
+    """
+    if armature.data.get("wrist_pivot_revision") == "zeus-wrist-pivot-v1":
+        return
+
+    pairs = (
+        ("R_Elbow", "R_Hand", "ZeusPart_R_Elbow", "ZeusPart_R_Hand"),
+        ("L_Elbow", "L_Hand", "ZeusPart_L_Elbow", "ZeusPart_L_Hand"),
+    )
+    seams = {}
+    for elbow_bone, hand_bone, elbow_mesh_name, hand_mesh_name in pairs:
+        elbow_mesh = bpy.data.objects.get(elbow_mesh_name)
+        hand_mesh = bpy.data.objects.get(hand_mesh_name)
+        if elbow_mesh is None or hand_mesh is None:
+            raise RuntimeError(f"Brock Zeus wrist parts missing for {hand_bone}")
+        closest = None
+        for elbow_vertex in elbow_mesh.data.vertices:
+            for hand_vertex in hand_mesh.data.vertices:
+                distance = (elbow_vertex.co - hand_vertex.co).length
+                if closest is None or distance < closest[0]:
+                    closest = (distance, elbow_vertex.co.copy(), hand_vertex.co.copy())
+        seams[elbow_bone] = (closest[1] + closest[2]) * 0.5
+        seams[hand_bone] = seams[elbow_bone]
+
+    bpy.context.view_layer.objects.active = armature
+    armature.select_set(True)
+    previous_mode = armature.mode
+    if previous_mode != "EDIT":
+        bpy.ops.object.mode_set(mode="EDIT")
+    for elbow_bone, hand_bone, _, _ in pairs:
+        elbow = armature.data.edit_bones[elbow_bone]
+        hand = armature.data.edit_bones[hand_bone]
+        seam = seams[elbow_bone]
+        delta = seam - hand.head
+        elbow.tail = seam
+        hand.head = seam
+        hand.tail += delta
+        hand.use_connect = True
+    bpy.ops.object.mode_set(mode="OBJECT")
+    armature.data["wrist_pivot_revision"] = "zeus-wrist-pivot-v1"
+
+
 def apply_pose(armature, pose):
     for name, values in pose.items():
         bone = armature.pose.bones.get(name)
@@ -120,10 +237,10 @@ def author_character_attack(armature):
     # settles with Bezier recovery from frame 15 onward.
     neutral = {
         "Chest": {"rot": (0, 0, 0)},
-        "R_Shoulder": {"rot": (-22, 0, -12)},
+        "R_Shoulder": {"rot": (-30, 0, -4)},
         "R_Elbow": {"rot": (0, 0, -14)},
         "R_Hand": {"rot": (0, 0, 0)},
-        "L_Shoulder": {"rot": (-22, 0, 12)},
+        "L_Shoulder": {"rot": (-30, 0, 4)},
         "L_Elbow": {"rot": (0, 0, 12)},
         "L_Hand": {"rot": (0, 0, 0)},
         "Head": {"rot": (0, 0, 0)},
@@ -222,9 +339,9 @@ def author_character_attack(armature):
         "Pelvis": {"rot": (0, 0, 0)},
         "Spine": {"rot": (0, 0, 0)},
         "Chest": {"rot": (0, 0, 0)},
-        "R_Shoulder": {"rot": (-20, 0, -6)},
+        "R_Shoulder": {"rot": (-28, 0, 2)},
         "R_Elbow": {"rot": (0, 0, -8)},
-        "L_Shoulder": {"rot": (-20, 0, 8)},
+        "L_Shoulder": {"rot": (-28, 0, -2)},
         "L_Elbow": {"rot": (0, 0, 8)},
         "Head": {"rot": (0, 0, 0)},
     }
@@ -277,11 +394,14 @@ def author_cloud_attack(cloud):
     cloud.rotation_mode = "XYZ"
     frames = [
         (1, (0.08, 0.06, 0.25), (1.0, 1.0, 1.0), 0),
-        (4, (0.22, -3.80, 0.58), (0.82, 0.82, 0.82), -8),
-        (8, (0.78, -11.10, 2.15), (0.10, 0.10, 0.10), -16),
-        (9, (0.78, -11.10, 2.15), (0.08, 0.08, 0.08), -16),
-        (12, (0.78, -11.10, 2.15), (0.06, 0.06, 0.06), -16),
-        (13, (0.78, -11.10, 2.15), (0.06, 0.06, 0.06), -16),
+        # Blender and glTF use different up/forward conventions.  These
+        # values are deliberately authored in Blender space so the exported
+        # Cloud.position lands on the open right glove in the game runtime.
+        (4, (-0.264, -0.022, -7.982), (0.82, 0.82, 0.82), -8),
+        (8, (1.672, -0.234, -3.640), (0.10, 0.10, 0.10), -16),
+        (9, (1.708, 0.041, -3.743), (0.08, 0.08, 0.08), -16),
+        (12, (1.261, 0.993, -4.272), (0.06, 0.06, 0.06), -16),
+        (13, (0.320, 1.424, -4.720), (0.06, 0.06, 0.06), -16),
         (15, (0.34, 0.30, -0.10), (0.08, 0.08, 0.08), 12),
         (16, (0.34, 0.30, -0.10), (0.90, 0.90, 0.90), 12),
         (18, (0.30, 0.18, -0.02), (1.50, 1.50, 1.50), 18),
@@ -331,6 +451,9 @@ def main():
     bpy.ops.wm.open_mainfile(filepath=os.fspath(MASTER))
     armature = bpy.data.objects["BrockZeus_Rig"]
     cloud = bpy.data.objects["Cloud"]
+    refine_idle_pose()
+    repair_wrist_seams()
+    repair_wrist_bone_pivots(armature)
     author_character_attack(armature)
     author_cloud_attack(cloud)
     update_report()

@@ -18,7 +18,7 @@ func propsForClient(viewer *player.Player, all []*prop.Prop) []game.PropJSON {
 		visible = append(visible, game.PropJSON{
 			X: candidate.X, Y: candidate.Y, Radius: candidate.Radius,
 			Type: candidate.Type, LootType: candidate.LootType,
-			Lives: candidate.Lives, MaxLives: candidate.MaxLives, Active: true,
+			Lives: candidate.Lives, MaxLives: candidate.MaxLives, Active: true, ExpiresAt: candidate.ExpiresAt,
 		})
 	}
 	if len(visible) == 0 {
@@ -58,15 +58,37 @@ func combatEventsForClient(events []game.CombatEvent, playerID string, now int64
 	if count == 0 {
 		return nil
 	}
+	start := 0
+	if count > game.MaxCombatEventsPerSnapshot {
+		skip := count - game.MaxCombatEventsPerSnapshot
+		for index, event := range events {
+			if now-event.Ts > 2000 || (event.SourceID != playerID && event.TargetID != playerID) {
+				continue
+			}
+			if skip > 0 {
+				skip--
+				continue
+			}
+			start = index
+			break
+		}
+	}
 
-	result := make([]game.CombatEventJSON, 0, count)
-	for _, event := range events {
+	result := make([]game.CombatEventJSON, 0, min(count, game.MaxCombatEventsPerSnapshot))
+	for index, event := range events {
+		if index < start {
+			continue
+		}
 		if now-event.Ts > 2000 || (event.SourceID != playerID && event.TargetID != playerID) {
 			continue
 		}
 		result = append(result, game.CombatEventJSON{
-			ID: event.ID, Ts: event.Ts, Kind: event.Kind, CommandID: event.CommandID,
-			SourceID: event.SourceID, TargetType: event.TargetType, TargetID: event.TargetID,
+			ID: event.ID, Ts: event.Ts, Kind: event.Kind, Phase: event.Phase,
+			AbilitySlot: event.AbilitySlot, Reason: event.Reason,
+			EventSchemaVersion: game.CombatEventSchemaVersion,
+			CombatProfileID:    game.CombatProfileID, CombatRulesVersion: game.CombatRulesVersion,
+			CommandID: event.CommandID,
+			SourceID:  event.SourceID, TargetType: event.TargetType, TargetID: event.TargetID,
 			ProjectileID: event.ProjectileID, Damage: event.Damage, Accepted: event.Accepted, Resolved: event.Resolved,
 		})
 	}

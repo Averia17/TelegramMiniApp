@@ -26,3 +26,15 @@ test("BattleGame keeps the arena visible before opening the battle result", () =
   assert.match(deathReveal, /finishBattle\(\{\.\.\.result, \.\.\.pendingDeathInfoRef\.current\}\)/)
   assert.match(deathReveal, /\}, DEATH_RESULT_DELAY_MS\)/)
 })
+
+test("BattleGame shows compact death feedback during the result delay", () => {
+  const deathReveal = battleGameSource.slice(
+    battleGameSource.indexOf("const revealPresentedDeath"),
+    battleGameSource.indexOf("const addMessage"),
+  )
+
+  assert.match(battleGameSource, /const \[deathPresentation, setDeathPresentation\] = useState\(false\)/)
+  assert.match(deathReveal, /setDeathPresentation\(true\)/)
+  assert.match(battleGameSource, /battle-player-card--dead/)
+  assert.doesNotMatch(battleGameSource, /className="battle-death-impact"/)
+})
