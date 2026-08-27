@@ -5,9 +5,12 @@ import {
   getBattleHeroKey,
   getBattleRoute,
   getBattleModeKey,
+  getBattleMapKey,
   loadBattleHero,
+  loadBattleMap,
   loadBattleMode,
   saveBattleHero,
+  saveBattleMap,
   saveBattleMode,
 } from "../src/utils/battlePreferences.js"
 
@@ -57,6 +60,17 @@ test("battle mode preference ignores unsupported values", () => {
 })
 
 test("team mode keeps a team battle route after leaving a party", () => {
-  assert.equal(getBattleRoute("team"), "/battle?mode=team")
-  assert.equal(getBattleRoute("team", "party-42"), "/battle?mode=team&party=party-42")
+  assert.equal(getBattleRoute("team"), "/battle?mode=team&map=team-battle-northern")
+  assert.equal(getBattleRoute("team", "party-42", "team-battle"), "/battle?mode=team&party=party-42&map=team-battle")
+})
+
+test("team map preference keeps both canonical maps selectable per player", () => {
+  globalThis.window = {localStorage: createStorage()}
+
+  assert.equal(getBattleMapKey("42"), "battle_map:42")
+  assert.equal(loadBattleMap("42"), "team-battle-northern")
+  saveBattleMap("42", "team-battle")
+  assert.equal(loadBattleMap("42"), "team-battle")
+  saveBattleMap("42", "unsupported-map")
+  assert.equal(loadBattleMap("42"), "team-battle-northern")
 })

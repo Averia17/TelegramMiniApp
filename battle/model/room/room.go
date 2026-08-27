@@ -274,6 +274,11 @@ func (r *Room) HandleMessage(client *Client, data []byte) {
 		if err := json.Unmarshal(msg.Value, &v); err == nil {
 			r.State.PlayerPushAction(game.Action{PlayerId: client.Id, Type: "ability", Ts: msg.Ts, Value: &v})
 		}
+	case "ability_cancel":
+		var v game.AbilityCancelValue
+		if err := json.Unmarshal(msg.Value, &v); err == nil {
+			r.State.PlayerPushAction(game.Action{PlayerId: client.Id, Type: "ability_cancel", Ts: msg.Ts, Value: &v})
+		}
 	case "aiming":
 		var v game.AimingValue
 		if err := json.Unmarshal(msg.Value, &v); err == nil {

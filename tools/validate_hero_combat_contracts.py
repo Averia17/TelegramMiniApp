@@ -10,9 +10,20 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS_PATH = ROOT / "docs" / "hero-combat-contracts.json"
 PROFILE_PATH = ROOT / "docs" / "combat-profile.json"
+HERO_DISPLAY_NAMES = {
+    "needle": "Needle",
+    "mandy": "Mandy",
+    "fairy-mina": "Fairy Mina",
+    "brock-zeus": "Brock Zeus",
+    "wukong-mico": "Wukong Mico",
+    "persephone-lumi": "Persephone Lumi",
+    "kaze": "Kaze",
+    "katty": "Katty",
+}
 
 REQUIRED_ABILITY_KEYS = (
     "abilityId", "target", "castMs", "telegraphMs", "activeWindowMs",
+    "recoveryMs", "counterplayWindowMs",
     "impact", "status", "resourceCost", "missOutcome", "interrupt",
     "telemetryEvent",
 )
@@ -26,8 +37,21 @@ def validate_contracts(contracts: dict[str, Any], profile: dict[str, Any]) -> li
     errors: list[str] = []
     heroes = contracts.get("heroes")
     profile_heroes = profile.get("heroes", {})
+    if contracts.get("profileRevision") != profile.get("profileRevision"):
+        errors.append(
+            "contracts.profileRevision must match profile.profileRevision "
+            f"({contracts.get('profileRevision')!r} != {profile.get('profileRevision')!r})"
+        )
     if not isinstance(heroes, dict) or not heroes:
         return ["contracts.heroes must be a non-empty object"]
+
+    expected_hero_ids = set(profile_heroes)
+    missing_hero_ids = sorted(expected_hero_ids - set(heroes))
+    if missing_hero_ids:
+        errors.append(f"contracts.heroes is missing active heroes: {', '.join(missing_hero_ids)}")
+    extra_hero_ids = sorted(set(heroes) - expected_hero_ids)
+    if extra_hero_ids:
+        errors.append(f"contracts.heroes contains inactive heroes: {', '.join(extra_hero_ids)}")
 
     for hero_id, contract in heroes.items():
         path = f"contracts.heroes.{hero_id}"
@@ -36,14 +60,42 @@ def validate_contracts(contracts: dict[str, Any], profile: dict[str, Any]) -> li
         if not isinstance(contract, dict):
             errors.append(f"{path} must be an object")
             continue
+        profile_hero = profile_heroes.get(hero_id, {})
+        if contract.get("role") != profile_hero.get("role"):
+            errors.append(
+                f"{path}.role differs from combat profile "
+                f"({contract.get('role')!r} != {profile_hero.get('role')!r})"
+            )
         for key in ("role", "fantasy", "winCondition", "counterplay", "soloAcceptance", "teamAcceptance"):
             if not isinstance(contract.get(key), str) or not contract[key].strip():
                 errors.append(f"{path}.{key} must be a non-empty string")
+        matchups = contract.get("benchmarkMatchups")
+        if not isinstance(matchups, list) or not 2 <= len(matchups) <= 3:
+            errors.append(f"{path}.benchmarkMatchups must contain 2 or 3 entries")
+        else:
+            seen_opponents: set[str] = set()
+            active_names = set(HERO_DISPLAY_NAMES.values())
+            for index, matchup in enumerate(matchups):
+                matchup_path = f"{path}.benchmarkMatchups[{index}]"
+                if not isinstance(matchup, dict):
+                    errors.append(f"{matchup_path} must be an object")
+                    continue
+                for key in ("opponent", "scenario", "expectedAdvantage", "counterplayMetric"):
+                    if not isinstance(matchup.get(key), str) or not matchup[key].strip():
+                        errors.append(f"{matchup_path}.{key} must be a non-empty string")
+                opponent = matchup.get("opponent")
+                if isinstance(opponent, str):
+                    if opponent in seen_opponents:
+                        errors.append(f"{matchup_path}.opponent must be unique")
+                    seen_opponents.add(opponent)
+                    if opponent not in active_names:
+                        errors.append(f"{matchup_path}.opponent must be an active hero name")
+                    if opponent == HERO_DISPLAY_NAMES.get(hero_id):
+                        errors.append(f"{matchup_path}.opponent cannot be the same hero")
         abilities = contract.get("abilities")
         if not isinstance(abilities, dict) or set(abilities) != {"basic", "super", "gadget"}:
             errors.append(f"{path}.abilities must contain basic, super and gadget")
             continue
-        profile_hero = profile_heroes.get(hero_id, {})
         for slot, ability in abilities.items():
             ability_path = f"{path}.abilities.{slot}"
             if not isinstance(ability, dict):
@@ -55,7 +107,7 @@ def validate_contracts(contracts: dict[str, Any], profile: dict[str, Any]) -> li
             expected_id = profile_hero.get(slot, {}).get("abilityId")
             if ability.get("abilityId") != expected_id:
                 errors.append(f"{ability_path}.abilityId differs from combat profile")
-            for key in ("castMs", "telegraphMs", "activeWindowMs"):
+            for key in ("castMs", "telegraphMs", "activeWindowMs", "recoveryMs", "counterplayWindowMs"):
                 value = ability.get(key)
                 if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
                     errors.append(f"{ability_path}.{key} must be a non-negative number")

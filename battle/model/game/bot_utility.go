@@ -158,8 +158,8 @@ func scoreBotUtility(ctx botUtilityContext) map[botUtilityAction]float64 {
 			}
 		}
 		if ctx.PickupType == "health_boost" {
-			collect += float64(math.Max(0, float64(5-ctx.HealthStacks))) * 9
-			if health < .55 {
+			collect += float64(math.Max(0, float64(HealthBoostMaxStacks-ctx.HealthStacks))) * 9
+			if health < BotPickupContestHealthFraction {
 				collect += 16
 			}
 		}
@@ -233,7 +233,7 @@ func scoreBotAbility(ctx botUtilityContext, slot botAbilitySlot) float64 {
 				score += 20
 			}
 		}
-		if targetHealth <= .2 {
+		if targetHealth <= BotSuperUseAdvantageFraction {
 			score += 14
 		}
 		return score

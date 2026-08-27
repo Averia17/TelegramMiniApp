@@ -30,6 +30,39 @@ class CombatProfileValidationTests(unittest.TestCase):
         self.assertIn("lunar_speed", loot["nonHpPickupIds"])
         self.assertFalse(loot["nonHpAffectsCurrentLives"])
 
+    def test_health_boost_runtime_budget_is_explicit(self):
+        health_boost = read_profile()["defaults"]["healthBoost"]
+        self.assertEqual(health_boost["fraction"], 0.05)
+        self.assertEqual(health_boost["teamFraction"], 0.02)
+        self.assertEqual(health_boost["maxStacks"], 5)
+        self.assertEqual(health_boost["maxActivePickups"], 12)
+        self.assertEqual(health_boost["ttlMs"], 30000)
+        self.assertFalse(health_boost["healsCurrentLives"])
+
+    def test_validator_rejects_health_boost_that_heals_current_lives(self):
+        profile = copy.deepcopy(read_profile())
+        profile["defaults"]["healthBoost"]["healsCurrentLives"] = True
+
+        errors = validate_profile(profile, read_catalog())
+
+        self.assertTrue(any("healsCurrentLives" in error for error in errors))
+
+    def test_validator_rejects_team_health_bonus_larger_than_personal_bonus(self):
+        profile = copy.deepcopy(read_profile())
+        profile["defaults"]["healthBoost"]["teamFraction"] = 0.06
+
+        errors = validate_profile(profile, read_catalog())
+
+        self.assertTrue(any("teamFraction must be <= fraction" in error for error in errors))
+
+    def test_validator_rejects_ai_fraction_outside_normalized_range(self):
+        profile = copy.deepcopy(read_profile())
+        profile["defaults"]["ai"]["criticalHealthRetreatFraction"] = 1.2
+
+        errors = validate_profile(profile, read_catalog())
+
+        self.assertTrue(any("criticalHealthRetreatFraction" in error for error in errors))
+
     def test_validator_rejects_a_second_health_pickup_type(self):
         profile = copy.deepcopy(read_profile())
         profile["defaults"]["loot"]["healthPickupIds"].append("potion-red")

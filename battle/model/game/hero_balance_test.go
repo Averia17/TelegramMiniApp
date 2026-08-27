@@ -5,7 +5,7 @@ import "testing"
 func TestRangedHeroesTradeSafetyForLowerBaseDamage(t *testing.T) {
 	wantDamage := map[string]int{
 		"Needle":     60,
-		"Fairy Mina": 55,
+		"Fairy Mina": 40,
 		"Brock Zeus": 85,
 	}
 
@@ -32,7 +32,7 @@ func TestHeroConfigsUseCompactCombatValues(t *testing.T) {
 	}{
 		"Needle":          {600, 60, 13, 23},
 		"Mandy":           {700, 100, 15, 0},
-		"Fairy Mina":      {650, 55, 14, 30},
+		"Fairy Mina":      {650, 40, 14, 30},
 		"Brock Zeus":      {600, 85, 12, 36},
 		"Kaze":            {650, 85, 16, 0},
 		"Wukong Mico":     {900, 100, 14, 0},

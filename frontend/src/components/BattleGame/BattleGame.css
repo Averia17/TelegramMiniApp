@@ -451,6 +451,8 @@
 .battle-ability > b,.battle-ability > span { position: relative; z-index: 2; pointer-events: none; }
 .battle-ability__charge { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(to top,rgba(255,218,44,.95) var(--charge),rgba(40,31,83,.72) var(--charge)); }
 .battle-ability--ready { animation: super-ready .72s ease-in-out infinite alternate; filter: none!important; opacity: 1!important; }
+.battle-ability--casting { background: radial-gradient(circle at 35% 25%,#ff9a66,#c52f58 70%); border-color: #ffe4c7; filter: none!important; opacity: 1!important; animation: cast-cancel-pulse .72s ease-in-out infinite alternate; }
+@keyframes cast-cancel-pulse { from { box-shadow: 0 6px 0 #7f203d,0 10px 20px rgba(27,28,65,.28); } to { box-shadow: 0 6px 0 #7f203d,0 10px 28px rgba(255,91,111,.52); } }
 @keyframes super-ready { to { box-shadow: 0 6px 0 #8e2935,0 0 28px #ffe44d; } }
 .battle-overlay h2 { margin: 4px 0 10px; font-size: clamp(38px, 11vw, 72px); text-shadow: 0 6px 0 #351942; }
 .battle-overlay small { display: block; margin-top: 16px; color: rgba(255, 255, 255, 0.55); font: 700 11px system-ui, sans-serif; }
@@ -772,7 +774,7 @@
     --battle-team-topbar-stack: 44px;
     --battle-team-score-height: 24px;
     --battle-team-objective-height: 26px;
-    --battle-team-stack-gap: 4px;
+    --battle-team-stack-gap: 8px;
   }
 
   .battle-topbar {

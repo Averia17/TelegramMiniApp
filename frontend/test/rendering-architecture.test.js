@@ -347,6 +347,11 @@ test("unknown legacy health drops are ignored by the pickup renderer", () => {
   renderer.dispose()
 })
 
+test("pickup renderer has no legacy health crate implementation", async () => {
+  const source = await readFile(projectFile("src/components/BattleGame/rendering/map/PickupRenderer.js"), "utf8")
+  assert.doesNotMatch(source, /createHealthCrate|createHealthPotion|health_crate|potion-red/)
+})
+
 test("lunar crates and their reward colors render as distinct pickups", () => {
   const root = new THREE.Group()
   const renderer = new PickupRenderer(root)
@@ -688,6 +693,94 @@ test("abandoned city features render as lightweight building, street, and plaza 
   assert.equal(plazaRoles.has("city-plaza-basket"), true)
   assert.equal(plazaRoles.has("city-plaza-cart-wheel"), true)
   assert.equal(plazaRoles.has("city-plaza-lamp"), false)
+  mapRenderer.dispose()
+})
+
+test("classic team map keeps the previous commit palette and skips northern atmosphere", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  const feature = {id: "city-depot", type: "city_building", x: 520, y: 2080, rotation: 0, scale: 1}
+  const baseMap = {width: 3200, height: 3200, tileSize: 40, walls: [], features: [feature]}
+
+  mapRenderer.sync({...baseMap, id: "team-battle@20260816", name: "team-battle"})
+  mapRenderer.syncIsland({mode: "team deathmatch"}, 3200, 3200)
+  const classic = root.children.find(object => object.userData.featureId === "city-depot")
+  const findRole = (object, role) => {
+    let match = null
+    object.traverse(child => { if (!match && child.userData?.role === role) match = child })
+    return match
+  }
+  const classicBody = findRole(classic, "city-house-body")
+  assert.equal(classic.userData.visualTheme, "classic")
+  assert.equal(mapRenderer.ground.theme, "default")
+  assert.equal(Boolean(mapRenderer.phaseAtmosphere?.visible), false)
+
+  mapRenderer.sync({...baseMap, id: "team-battle-northern@20260827", name: "team-battle-northern"})
+  mapRenderer.syncIsland({mode: "team deathmatch"}, 3200, 3200)
+  const northern = root.children.find(object => object.userData.featureId === "city-depot")
+  const northernBody = findRole(northern, "city-house-body")
+  assert.equal(northern.userData.visualTheme, "northern")
+  assert.equal(mapRenderer.ground.theme, "team")
+  assert.equal(mapRenderer.phaseAtmosphere?.visible, true)
+  assert.equal(mapRenderer.phaseAtmosphere.material.opacity > .05, true)
+  assert.notEqual(classicBody.material.color.getHex(), northernBody.material.color.getHex())
+
+  mapRenderer.dispose()
+})
+
+test("northern castle features render as a cohesive keep, gate, and enterable court", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  mapRenderer.sync({
+    width: 3200, height: 3200, tileSize: 40, walls: [], features: [
+      {id: "castle-ashen-keep", type: "castle_keep", x: 1200, y: 1880, rotation: -.12, scale: 1.08},
+      {id: "castle-ashen-keep-gate", type: "castle_gate", x: 1200, y: 2080, rotation: -.12, scale: 1.08},
+      {id: "castle-ashen-keep-courtyard", type: "castle_courtyard", x: 1200, y: 1960, rotation: -.12, scale: 1.08},
+      {id: "castle-ashen-keep-armory", type: "castle_detail", x: 1080, y: 1960, rotation: -.12, scale: .88},
+      {id: "castle-ashen-keep-chapel", type: "castle_detail", x: 1320, y: 1960, rotation: -.12, scale: .88},
+      {id: "castle-ashen-ward-house-0", type: "castle_house", x: 920, y: 1640, rotation: -.12, scale: .86},
+      {id: "castle-ashen-ward-market", type: "castle_market", x: 1200, y: 1600, rotation: -.12, scale: .9},
+      {id: "castle-ashen-ward-street", type: "castle_street", x: 1200, y: 2120, rotation: -.12, scale: 1},
+      {id: "castle-ashen-ward-bastion-0", type: "castle_bastion", x: 800, y: 1520, rotation: -.12, scale: .88},
+    ],
+  })
+  const object = id => root.children.find(child => child.userData.featureId === id)
+  const keep = object("castle-ashen-keep")
+  const gate = object("castle-ashen-keep-gate")
+  const courtyard = object("castle-ashen-keep-courtyard")
+  const house = object("castle-ashen-ward-house-0")
+  const market = object("castle-ashen-ward-market")
+  const street = object("castle-ashen-ward-street")
+  const bastion = object("castle-ashen-ward-bastion-0")
+  assert.ok(keep)
+  assert.ok(gate)
+  assert.ok(courtyard)
+  assert.ok(house)
+  assert.ok(market)
+  assert.ok(street)
+  assert.ok(bastion)
+  const roles = target => {
+    const result = new Set()
+    target.traverse(child => { if (child.userData?.role) result.add(child.userData.role) })
+    return result
+  }
+  const keepRoles = roles(keep)
+  assert.equal(keepRoles.has("castle-keep-body"), true)
+  assert.equal(keepRoles.has("castle-keep-corner-tower"), true)
+  assert.equal(keepRoles.has("castle-keep-battlement"), true)
+  assert.equal(keepRoles.has("castle-keep-banner"), true)
+  const gateRoles = roles(gate)
+  assert.equal(gateRoles.has("castle-gate-arch"), true)
+  assert.equal(gateRoles.has("castle-gate-portcullis"), true)
+  assert.equal(gateRoles.has("castle-gate-torch"), true)
+  const courtyardRoles = roles(courtyard)
+  assert.equal(courtyardRoles.has("castle-courtyard-floor"), true)
+  assert.equal(courtyardRoles.has("castle-courtyard-well"), true)
+  assert.equal(courtyardRoles.has("castle-courtyard-brazier"), true)
+  assert.equal(roles(house).has("castle-house-roof"), true)
+  assert.equal(roles(market).has("castle-market-fountain"), true)
+  assert.equal(roles(street).has("castle-street-lantern"), true)
+  assert.equal(roles(bastion).has("castle-bastion-merlon"), true)
   mapRenderer.dispose()
 })
 

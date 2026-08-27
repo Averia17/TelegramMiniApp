@@ -27,6 +27,7 @@ const BattlePage = ({id}) => {
   })
   const mode = query.get("mode") === "team" ? "team" : "solo"
   const partyId = query.get("party") || ""
+  const mapName = query.get("map") || ""
   const partyTicket = location.state?.battleTicket || ""
   const playerName = location.state?.playerName || ""
   const [tauntActive, setTauntActive] = useState(Boolean(location.state?.tauntActive))
@@ -53,7 +54,7 @@ const BattlePage = ({id}) => {
   }, [])
   return (
     <Suspense fallback={<BattleLoading progress={32} status="Загружаем арену..." />}>
-      <BattleGame playerId={id} playerName={playerName} roomId={roomId} heroName={hero} mode={mode} partyId={partyId} partyTicket={partyTicket} tauntActive={tauntActive} startNewBattle={startNewBattle}/>
+      <BattleGame playerId={id} playerName={playerName} roomId={roomId} heroName={hero} mode={mode} mapName={mapName} partyId={partyId} partyTicket={partyTicket} tauntActive={tauntActive} startNewBattle={startNewBattle}/>
     </Suspense>
   )
 }

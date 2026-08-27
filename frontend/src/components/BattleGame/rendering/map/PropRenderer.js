@@ -654,8 +654,8 @@ const createVineClumpVisual = (width, height, depth, variant = 0) => {
   return group
 }
 
-export const createVineField = walls => {
-  const field = createBushField(walls, "vine")
+export const createVineField = (walls, palette = "default") => {
+  const field = createBushField(walls, "vine", palette)
   field.name = "vine-field"
   field.userData.visualType = "vine"
   field.userData.softTerrain = true

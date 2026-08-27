@@ -27,6 +27,7 @@ import {isTeamBattleMode} from "./battleMode.js"
 import {BATTLE_RECOVERY_TIMEOUT_MS, getBattleRecoveryDecision, getBattleRecoveryTimeoutDecision} from "./battleRecovery.js"
 import {clearActiveBattle, saveActiveBattle, saveBattleHistoryRecord} from "../../utils/battleHistory.js"
 import {shouldSpendBattleEnergy} from "./battleEnergy.js"
+import {getTeamBattleMap, normalizeBattleMap} from "../../utils/battlePreferences.js"
 import "./BattleGame.css"
 
 const DEATH_RESULT_DELAY_MS = 2000
@@ -43,7 +44,7 @@ const profileBattleUi = (_id, phase, actualDuration) => {
   if (import.meta.env.DEV) recordBattleMetric("ui.commit", actualDuration, {phase})
 }
 
-export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roomId, heroName, mode = "solo", partyId = "", partyTicket = "", tauntActive = false, startNewBattle = false}) => {
+export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roomId, heroName, mode = "solo", mapName = "", partyId = "", partyTicket = "", tauntActive = false, startNewBattle = false}) => {
   const navigate = useNavigate()
   const canvasRef = useRef(null)
   const clientRef = useRef(null)
@@ -62,7 +63,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
   const battleErrorHandledRef = useRef(false)
   const battleEnergySpentRef = useRef(false)
   const suppressDisconnectRef = useRef(false)
-  const battleContextRef = useRef({mode, partyId, mapName: "battle-royale", mapId: ""})
+  const battleContextRef = useRef({mode, partyId, mapName: mode === "team" ? normalizeBattleMap(mapName) : "battle-royale", mapId: ""})
   const [mobileMode, setMobileMode] = useState(() => window.matchMedia(MOBILE_INPUT_MEDIA_QUERY).matches)
   const [touchControls, setTouchControls] = useState({move: null, aim: null})
   const [tauntCooldown, setTauntCooldown] = useState(0)
@@ -595,10 +596,10 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
       joinedRef.current = true
       if (mode === "team" && partyId) clientRef.current.joinParty(partyId, MAX_PARTY_SIZE, partyTicket)
       clientRef.current.findMatch(playerName, heroName, mode === "team"
-        ? {mode: "team deathmatch", mapName: "team-battle", maxPlayers: 6, partyId, partySize: partyId ? MAX_PARTY_SIZE : 1, partyTicket}
+        ? {mode: "team deathmatch", mapName: normalizeBattleMap(mapName), maxPlayers: 6, partyId, partySize: partyId ? MAX_PARTY_SIZE : 1, partyTicket}
         : {mode: "deathmatch", mapName: "battle-royale", maxPlayers: 8})
     }
-  }, [connected, recoveryAction, playerName, heroName, effectivePlayerId, mode, partyId, partyTicket])
+  }, [connected, recoveryAction, playerName, heroName, effectivePlayerId, mode, mapName, partyId, partyTicket])
 
   const handleBackToMenu = async () => {
     if (suppressDisconnectRef.current) return
@@ -722,7 +723,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
                 <span className="lobby-mode-icon" aria-hidden="true">⚔</span>
                 <div>
                   <h3 id="battle-lobby-title">{roomInfo.roomName}</h3>
-                  <p className="lobby-mode">{roomInfo.mode} · {roomInfo.mapName === "battle-royale" ? "Остров Первого Испытания" : roomInfo.mapName}</p>
+                  <p className="lobby-mode">{roomInfo.mode} · {roomInfo.mapName === "battle-royale" ? "Остров Первого Испытания" : getTeamBattleMap(roomInfo.mapName).label}</p>
                 </div>
               </div>
 
@@ -825,8 +826,8 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
             )}
             {localPlayer && (
               <div className="battle-abilities">
-                <AbilityButton slot="primary" keyName="Q" label={getHeroSkill(localPlayer.hero, "primary").name} description={getHeroSkill(localPlayer.hero, "primary").description} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper onUse={() => clientRef.current?.ability?.("primary")}/>
-                <AbilityButton slot="secondary" keyName="E" label={`${getHeroSkill(localPlayer.hero, "secondary").name} · ${localPlayer.gadgetCharges || 0}`} description={getHeroSkill(localPlayer.hero, "secondary").description} cooldown={localPlayer.cooldowns?.secondary} disabled={!localPlayer.gadgetCharges || localPlayer.gadgetArmed} onUse={() => clientRef.current?.ability?.("secondary")}/>
+                <AbilityButton slot="primary" keyName="Q" label={getHeroSkill(localPlayer.hero, "primary").name} description={getHeroSkill(localPlayer.hero, "primary").description} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper casting={Number(localPlayer.channel) > 0} onUse={() => Number(localPlayer.channel) > 0 ? clientRef.current?.cancelAbility?.() : (inputRef.current?.useAbility?.("primary") || clientRef.current?.ability?.("primary"))}/>
+                <AbilityButton slot="secondary" keyName="E" label={`${getHeroSkill(localPlayer.hero, "secondary").name} · ${localPlayer.gadgetCharges || 0}`} description={getHeroSkill(localPlayer.hero, "secondary").description} cooldown={localPlayer.cooldowns?.secondary} disabled={!localPlayer.gadgetCharges || localPlayer.gadgetArmed} onUse={() => inputRef.current?.useAbility?.("secondary") || clientRef.current?.ability?.("secondary")}/>
               </div>
             )}
             {localPlayer && tauntActive && (

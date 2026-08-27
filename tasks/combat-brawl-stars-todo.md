@@ -1,5 +1,11 @@
 # Combat Brawl Stars — todo
 
+> Архивный исследовательский checklist. Его пункты синхронизированы с
+> каноническим планом в `tasks/combat-audit-2026-08-plan.md` и не являются
+> отдельным backlog. Текущие статусы и remaining gates фиксируются в
+> `tasks/combat-audit-2026-08-todo.md` и
+> `tasks/combat-automated-gate-2026-08.md`.
+
 ## Этап 0 — аудит
 
 - [x] Снять browser baseline полного боя.

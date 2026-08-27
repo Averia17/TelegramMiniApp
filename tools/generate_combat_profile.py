@@ -7,7 +7,7 @@ import hashlib
 import json
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from validate_combat_profile import (
     ROOT,
@@ -103,6 +103,44 @@ def expected_artifacts() -> dict[Path, str]:
         FRONTEND_OUTPUT: render_frontend(profile, fingerprint),
         FINGERPRINT_OUTPUT: render_fingerprint_report(profile, fingerprint),
     }
+
+
+def expected_generated_views(profile: Mapping[str, Any]) -> dict[str, str]:
+    """Render only the runtime views for a supplied (possibly historical) profile."""
+    profile_dict = dict(profile)
+    fingerprint = profile_fingerprint(profile_dict)
+    return {
+        "battle/model/game/combat_profile_generated.go": render_go(
+            profile_dict, fingerprint
+        ),
+        "frontend/src/components/BattleGame/combatProfile.generated.js": render_frontend(
+            profile_dict, fingerprint
+        ),
+    }
+
+
+def validate_generated_artifact_blobs(
+    profile: Mapping[str, Any], artifacts: Mapping[str, bytes]
+) -> list[str]:
+    """Validate generated Go/JS views without reading the current working tree."""
+    try:
+        expected_views = expected_generated_views(profile)
+    except (KeyError, OSError, TypeError, ValueError, subprocess.SubprocessError) as exc:
+        return [f"generated views cannot be rendered: {exc}"]
+    errors: list[str] = []
+    for relative, expected in expected_views.items():
+        blob = artifacts.get(relative)
+        if blob is None:
+            errors.append(f"generated artifact is missing: {relative}")
+            continue
+        try:
+            actual = blob.decode("utf-8")
+        except UnicodeDecodeError:
+            errors.append(f"generated artifact is not valid UTF-8: {relative}")
+            continue
+        if actual != expected:
+            errors.append(f"generated artifact is stale: {relative}")
+    return errors
 
 
 def validate_generated_artifacts() -> list[str]:

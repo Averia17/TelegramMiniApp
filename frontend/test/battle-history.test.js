@@ -112,3 +112,10 @@ test("active battle link targets the existing room and preserves team context", 
     "/battle/room%2F7?mode=team&party=party-2",
   )
 })
+
+test("active team battle link preserves its selected map", () => {
+  assert.equal(
+    getBattleResumeRoute({roomId: "room-8", mode: "team deathmatch", mapName: "team-battle"}),
+    "/battle/room-8?mode=team&map=team-battle",
+  )
+})

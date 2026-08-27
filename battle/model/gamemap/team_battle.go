@@ -10,6 +10,18 @@ import (
 const CanonicalTeamBattleSeed int64 = 20260816
 
 const (
+	CanonicalTeamBattleClassicID          = "team-battle@20260816"
+	CanonicalTeamBattleNorthernID         = "team-battle-northern@20260827"
+	CanonicalTeamBattleNorthernSeed int64 = 20260827
+)
+
+const (
+	teamBattleDesignGridSize = 80
+	teamBattleCompactSize    = 70
+	teamBattleCropTiles      = 5
+)
+
+const (
 	teamBattleRiverCenter    = 0.0
 	teamBattleRiverHalfWidth = 2.2
 	// Objective visuals are smaller than their gameplay target radius. Keep a
@@ -69,7 +81,7 @@ func teamBattleCityObjectCollider(cx, cy, rotation, scale float64, spec teamBatt
 	return &geometry.WallTile{MinX: minX, MinY: minY, MaxX: maxX, MaxY: maxY, Type: teamBattleCityObjectCollisionType}
 }
 
-func teamBattleCityColliderSpecs(archetype string) []teamBattleCityColliderSpec {
+func teamBattleCityColliderSpecs(archetype string, includeStructuralBodies bool) []teamBattleCityColliderSpec {
 	// Elevated balconies, open gate spans, and small visual eaves intentionally
 	// do not appear here. Opaque roof footprints do: otherwise a hero can walk
 	// under an apparently solid roof and disappear into its texture. Roof
@@ -117,6 +129,77 @@ func teamBattleCityColliderSpecs(archetype string) []teamBattleCityColliderSpec 
 			{X: -.62, Y: .52, Width: .82, Height: .58}, // house roof
 			{X: 1.0, Y: -.35, Width: 1.2, Height: .96}, // opaque forge canopy
 		}
+	case "inn":
+		specs := []teamBattleCityColliderSpec{
+			{X: -.54, Y: .66, Width: 1.08, Height: .76}, // left gable roof
+			{X: .54, Y: .66, Width: 1.08, Height: .76},  // right gable roof
+			{X: -.86, Y: .76, Width: .32, Height: .32},  // chimney base
+			{X: -1.45, Y: -.78, Radius: .3},             // left barrel
+			{X: 1.42, Y: -.72, Radius: .3},              // right barrel
+		}
+		if includeStructuralBodies {
+			// The inn's rear wall is wider than one safe collider. Three
+			// contacts preserve the complete silhouette without making a giant
+			// square blocker in front of the veranda.
+			specs = append([]teamBattleCityColliderSpec{
+				{X: -.73, Y: .62, Width: .82, Height: .24},
+				{X: 0, Y: .62, Width: .82, Height: .24},
+				{X: .73, Y: .62, Width: .82, Height: .24},
+			}, specs...)
+		}
+		return specs
+	case "castle_keep":
+		// The keep is assembled from several tight footprints rather than one
+		// giant invisible rectangle. The courtyard and gate remain walkable.
+		specs := []teamBattleCityColliderSpec{
+			{X: 0, Y: -1.9, Width: 1.42, Height: .78},
+			{X: -1.62, Y: -1.72, Radius: .42},
+			{X: 1.62, Y: -1.72, Radius: .42},
+			{X: 0, Y: -.62, Width: .72, Height: .34},
+		}
+		if includeStructuralBodies {
+			// Close the visible keep body in three columns and two depth bands.
+			// The short bands stay under the collider-size budget even after the
+			// keep rotation is converted to an axis-aligned world rectangle.
+			body := make([]teamBattleCityColliderSpec, 0, 6)
+			for bandIndex, y := range []float64{-1.65, -.65} {
+				for _, x := range []float64{-1.0, 0, 1.0} {
+					// The courtyard-facing band keeps a central gate notch. The
+					// rear band is fully closed, so entering the doorway does not
+					// turn into walking through the keep.
+					if bandIndex == 1 && x == 0 {
+						continue
+					}
+					body = append(body, teamBattleCityColliderSpec{X: x, Y: y, Width: 1.05, Height: 1.0})
+				}
+			}
+			specs = append(body, specs...)
+		}
+		return specs
+	case "castle_house":
+		// Compact ward houses have a doorway notch on the lane-facing edge,
+		// with the body and rear wall covered by small overlapping contacts.
+		// This keeps the alley readable without letting a hero cross the house
+		// diagonally as if the whole model were ground.
+		specs := []teamBattleCityColliderSpec{}
+		if includeStructuralBodies {
+			specs = append(specs,
+				teamBattleCityColliderSpec{X: -.82, Y: -.22, Width: 1.0, Height: 1.0},
+				teamBattleCityColliderSpec{X: .82, Y: -.22, Width: 1.0, Height: 1.0},
+				teamBattleCityColliderSpec{X: -.72, Y: .65, Width: 1.1, Height: .65},
+				teamBattleCityColliderSpec{X: 0, Y: .65, Width: .35, Height: .65},
+				teamBattleCityColliderSpec{X: .72, Y: .65, Width: 1.1, Height: .65},
+			)
+		}
+		// The classic map keeps its original prop-only contacts; Northern Ash
+		// opts into the complete house shell above.
+		return specs
+	case "castle_market":
+		return []teamBattleCityColliderSpec{
+			{X: -1.2, Y: .25, Width: .72, Height: .48},
+			{X: .15, Y: .32, Width: .72, Height: .48},
+			{X: 1.35, Y: .25, Width: .72, Height: .48},
+		}
 	default:
 		return nil
 	}
@@ -148,17 +231,32 @@ func teamBattleBaseColliderSpecs(archetype string) []teamBattleCityColliderSpec 
 	}
 }
 
-// GenerateTeamBattle builds an authored 3v3 arena. The two bases sit on
-// opposite sides of the main diagonal, and every authored cell is reflected
-// across that diagonal so both teams get the same readable combat language.
+// GenerateTeamBattle builds the current northern variant of the authored 3v3
+// arena. The two bases sit on opposite sides of the main diagonal, and every
+// authored cell is reflected across that diagonal so both teams get the same
+// readable combat language.
 func GenerateTeamBattle(seed int64) *GameMap {
-	const size, tile = 80, 40.0
+	return generateTeamBattle(seed, true)
+}
+
+// GenerateTeamBattleClassic is the stable map snapshot from the previous
+// revision. Keep this branch deliberately free of the northern additions so
+// selecting the classic map really returns the old map, not a darkened subset
+// of the current one.
+func GenerateTeamBattleClassic(seed int64) *GameMap {
+	return generateTeamBattle(seed, false)
+}
+
+func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
+	const tile = 40.0
+	const size = teamBattleDesignGridSize
 	gm := &GameMap{
-		WidthInPixels: size * tile, HeightInPixels: size * tile,
+		WidthInPixels: teamBattleCompactSize * tile, HeightInPixels: teamBattleCompactSize * tile,
 		Tileset: make(map[int]TilesetEntry), TeamSpawners: map[string][]*geometry.RectangleBody{},
 	}
 
 	occupied := make(map[[2]int]bool)
+	liquidCells := make(map[[2]int]bool)
 	add := func(x, y int, kind string) {
 		if x < 0 || y < 0 || x >= size || y >= size {
 			return
@@ -167,10 +265,16 @@ func GenerateTeamBattle(seed int64) *GameMap {
 			return
 		}
 		cell := [2]int{x, y}
+		if liquidCells[cell] && kind != "water" && kind != "pond" && kind != "river" && kind != "river_bridge" {
+			return
+		}
 		if occupied[cell] {
 			return
 		}
 		occupied[cell] = true
+		if kind == "water" || kind == "pond" || kind == "river" {
+			liquidCells[cell] = true
+		}
 		gm.Collisions = append(gm.Collisions, &geometry.WallTile{
 			MinX: float64(x) * tile, MinY: float64(y) * tile,
 			MaxX: float64(x+1) * tile, MaxY: float64(y+1) * tile, Type: kind,
@@ -200,7 +304,13 @@ func GenerateTeamBattle(seed int64) *GameMap {
 			}
 		}
 	}
-	clear := func(x, y int) { delete(occupied, [2]int{x, y}) }
+	clear := func(x, y int) {
+		if liquidCells[[2]int{x, y}] {
+			return
+		}
+		delete(occupied, [2]int{x, y})
+	}
+	clearLiquid := func(x, y int) { delete(occupied, [2]int{x, y}) }
 	clearMirrored := func(x, y int) {
 		clear(x, y)
 		mx, my := mirror(x, y)
@@ -241,7 +351,7 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	addFeature("team-bridge-south", "river_bridge", 57, 57, -math.Pi/4, 1)
 	var cityObjectColliders []*geometry.WallTile
 	addCityObjectColliders := func(cx, cy int, rotation, scale float64, archetype string) {
-		for _, spec := range teamBattleCityColliderSpecs(archetype) {
+		for _, spec := range teamBattleCityColliderSpecs(archetype, northernVariant) {
 			cityObjectColliders = append(cityObjectColliders,
 				teamBattleCityObjectCollider(float64(cx), float64(cy), rotation, scale, spec))
 		}
@@ -284,6 +394,13 @@ func GenerateTeamBattle(seed int64) *GameMap {
 				dx := float64(x-cx) / 4.1
 				dy := float64(y-cy) / 2.7
 				if dx*dx+dy*dy <= 1 {
+					// Ponds own their footprint. Earlier meadow dressing may have
+					// occupied one of these cells, but water must win over a bush,
+					// ruin, or loose prop instead of leaving it stranded in the pool.
+					for _, cell := range [][2]int{{x, y}, {y, x}} {
+						clearLiquid(cell[0], cell[1])
+						liquidCells[[2]int{cell[0], cell[1]}] = true
+					}
 					addMirrored(x, y, "pond")
 				}
 			}
@@ -316,8 +433,11 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	addBarricade(65, 28)
 	// Keep the base courtyard dry. This pond belongs to the outer approach,
 	// where it can enrich the landscape without touching the town hall or spawns.
-	addPond(28, 68)
-	addPond(35, 52)
+	addPond(34, 57)
+	// Keep the second pond on the open side lane. The former (35,52) anchor
+	// sat under the Northern castle ward after the castle was introduced, so
+	// its water surface visually cut through the gate houses.
+	addPond(38, 16)
 	// The upper bank gets three distinct ruin lairs instead of another broad
 	// bush field: each has a broken wall, a thorn perimeter, and a nearby bat
 	// route. Their diagonal twins keep both teams' approaches equivalent.
@@ -369,9 +489,18 @@ func GenerateTeamBattle(seed int64) *GameMap {
 			archetype = "north_gate"
 		case "city-south-ward":
 			archetype = "south_ward"
+		case "city-inn":
+			archetype = "inn"
 		}
 		addCityObjectColliders(cx, cy, rotation, scale, archetype)
 		addCityObjectColliders(mx, my, -rotation, scale, archetype)
+	}
+	addCityShrine := func(id string, cx, cy int, rotation, scale float64) {
+		// These are visual waypoints, not new blockers: the small shrine keeps
+		// the town readable from a distance without narrowing a combat lane.
+		addFeature(id, "city_shrine", float64(cx), float64(cy), rotation, scale)
+		mx, my := mirror(cx, cy)
+		addFeature(id+"-mirror", "city_shrine", float64(mx), float64(my), -rotation, scale)
 	}
 	// District footprints intentionally differ and leave a broad playable core:
 	// the market is almost entirely open, the depot has a loading-yard gap, and
@@ -379,9 +508,11 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	addCityBlock("city-depot", 13, 52, -.08, 1.05,
 		[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}, {2, -1}, {2, 0}, {-2, 0}},
 		[][2]int{{-3, -2}, {3, 0}, {-2, 1}, {2, 1}})
-	addCityBlock("city-market", 30, 47, .16, .92,
-		[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}},
-		[][2]int{{-3, -2}, {3, -2}, {-2, -1}, {2, -1}})
+	if !northernVariant {
+		addCityBlock("city-market", 30, 47, .16, .92,
+			[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}},
+			[][2]int{{-3, -2}, {3, -2}, {-2, -1}, {2, -1}})
+	}
 	addCityBlock("city-apartments", 44, 60, -.18, 1.12,
 		[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {-2, -1}, {1, -1}, {-2, 0}, {1, 0}},
 		[][2]int{{-3, -2}, {2, -2}, {-3, 0}, {2, -1}})
@@ -394,6 +525,100 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	addCityBlock("city-south-ward", 49, 64, .14, .96,
 		[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}, {-2, -1}, {2, -1}, {-2, 0}},
 		[][2]int{{-3, -2}, {3, -2}, {-3, -1}, {3, -1}})
+	addCityDetail := func(id string, cx, cy int, rotation, scale float64) {
+		// Small yards add settlement density while remaining passable scenery.
+		addFeature(id, "city_detail", float64(cx), float64(cy), rotation, scale)
+		mx, my := mirror(cx, cy)
+		addFeature(id+"-mirror", "city_detail", float64(mx), float64(my), -rotation, scale)
+	}
+	if northernVariant {
+		addCityBlock("city-inn", 31, 55, .1, .92,
+			[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}, {-2, -1}, {2, -1}, {-2, 0}, {2, 0}},
+			[][2]int{{-3, -2}, {3, -2}, {-3, 0}, {3, 0}})
+		addCityShrine("city-shrine-crossroads", 25, 38, -.12, .82)
+		addCityShrine("city-shrine-east-road", 54, 28, .12, .78)
+		addCityDetail("city-detail-palisade", 23, 34, -.1, .72)
+		addCityDetail("city-detail-wagon-yard", 37, 28, .08, .68)
+		addCityDetail("city-detail-ruined-cottage", 55, 49, -.14, .76)
+	}
+	// Northern Ash is built around a real destination instead of a loose
+	// collection of city props: a broken castle court guards the approach to
+	// the centre. Its diagonal twin preserves the team-readable combat lanes.
+	addCastleCompound := func(id string, cx, cy int, rotation, scale float64) {
+		clearAreaMirrored(cx, cy, 6)
+		for x := -5; x <= 5; x++ {
+			if x < -1 || x > 1 {
+				addMirrored(cx+x, cy+5, "fortress_wall")
+			}
+			addMirrored(cx+x, cy-5, "fortress_wall")
+		}
+		for y := -4; y <= 4; y++ {
+			addMirrored(cx-5, cy+y, "fortress_wall")
+			addMirrored(cx+5, cy+y, "fortress_wall")
+		}
+		for _, offset := range [][2]int{{-6, 5}, {6, 5}, {-6, -5}, {6, -5}, {-4, 6}, {4, 6}, {-5, -6}, {5, -6}} {
+			addMirrored(cx+offset[0], cy+offset[1], "building_rubble")
+		}
+		addFeature(id, "castle_keep", float64(cx), float64(cy), rotation, scale)
+		addFeature(id+"-mirror", "castle_keep", float64(cy), float64(cx), -rotation, scale)
+		addFeature(id+"-gate", "castle_gate", float64(cx), float64(cy+5), rotation, scale)
+		addFeature(id+"-gate-mirror", "castle_gate", float64(cy+5), float64(cx), -rotation, scale)
+		addFeature(id+"-courtyard", "castle_courtyard", float64(cx), float64(cy+2), rotation, scale)
+		addFeature(id+"-courtyard-mirror", "castle_courtyard", float64(cy+2), float64(cx), -rotation, scale)
+		addFeature(id+"-armory", "castle_detail", float64(cx-3), float64(cy+2), rotation, scale*.82)
+		addFeature(id+"-armory-mirror", "castle_detail", float64(cy+2), float64(cx-3), -rotation, scale*.82)
+		addFeature(id+"-chapel", "castle_detail", float64(cx+3), float64(cy+2), rotation, scale*.82)
+		addFeature(id+"-chapel-mirror", "castle_detail", float64(cy+2), float64(cx+3), -rotation, scale*.82)
+		mx, my := mirror(cx, cy)
+		addCityObjectColliders(cx, cy, rotation, scale, "castle_keep")
+		addCityObjectColliders(mx, my, -rotation, scale, "castle_keep")
+	}
+	if northernVariant {
+		// The keep is the second defensive layer. The outer ward makes the
+		// Northern variant read as a compact castle town rather than a lone
+		// prop in a clearing; the south/east gate points toward each team's
+		// approach and is mirrored for fair access.
+		addCastleWard := func(id string, cx, cy int, rotation, scale float64) {
+			clearAreaMirrored(cx, cy, 10)
+			for x := -10; x <= 10; x++ {
+				if x < -2 || x > 2 {
+					addMirrored(cx+x, cy+9, "fortress_wall")
+				}
+				addMirrored(cx+x, cy-9, "fortress_wall")
+			}
+			for y := -8; y <= 8; y++ {
+				addMirrored(cx-10, cy+y, "fortress_wall")
+				addMirrored(cx+10, cy+y, "fortress_wall")
+			}
+			for _, offset := range [][2]int{{-10, -9}, {10, -9}, {-10, 9}, {10, 9}} {
+				addMirrored(cx+offset[0], cy+offset[1], "fortress_wall")
+			}
+			addFeature(id+"-gate", "castle_gate", float64(cx), float64(cy+9), rotation, scale*1.08)
+			addFeature(id+"-gate-mirror", "castle_gate", float64(cy+9), float64(cx), -rotation, scale*1.08)
+			for index, offset := range [][2]int{{-7, -6}, {7, -1}, {-7, 3}, {7, 3}} {
+				houseID := fmt.Sprintf("%s-house-%d", id, index)
+				x, y := cx+offset[0], cy+offset[1]
+				addFeature(houseID, "castle_house", float64(x), float64(y), rotation+float64(index%2)*.08, .86)
+				addFeature(houseID+"-mirror", "castle_house", float64(y), float64(x), -rotation-float64(index%2)*.08, .86)
+				addCityObjectColliders(x, y, rotation+float64(index%2)*.08, .86, "castle_house")
+				addCityObjectColliders(y, x, -rotation-float64(index%2)*.08, .86, "castle_house")
+			}
+			addFeature(id+"-market", "castle_market", float64(cx), float64(cy-7), rotation, .9)
+			addFeature(id+"-market-mirror", "castle_market", float64(cy-7), float64(cx), -rotation, .9)
+			// Market stalls are low, open dressing. They must not claim bridge
+			// approach cells as hard blockers in the combat topology.
+			addFeature(id+"-street", "castle_street", float64(cx), float64(cy+6), rotation, 1)
+			addFeature(id+"-street-mirror", "castle_street", float64(cy+6), float64(cx), -rotation, 1)
+			for index, offset := range [][2]int{{-10, -9}, {10, -9}, {-10, 9}, {10, 9}} {
+				bastionID := fmt.Sprintf("%s-bastion-%d", id, index)
+				x, y := cx+offset[0], cy+offset[1]
+				addFeature(bastionID, "castle_bastion", float64(x), float64(y), rotation, .88)
+				addFeature(bastionID+"-mirror", "castle_bastion", float64(y), float64(x), -rotation, .88)
+			}
+		}
+		addCastleWard("castle-ashen-ward", 30, 47, -.12, 1.08)
+		addCastleCompound("castle-ashen-keep", 30, 47, -.12, 1.08)
+	}
 	addCityTower := func(id string, cx, cy int, rotation, scale float64) {
 		clearAreaMirrored(cx, cy, 2)
 		addMirroredRect(cx-1, cy-1, cx+1, cy+1, "building_wall")
@@ -453,6 +678,19 @@ func GenerateTeamBattle(seed int64) *GameMap {
 					continue
 				}
 				addMirrored(x, y, "fortress_wall")
+			}
+		}
+	}
+	// The compact crop brings the old base courtyard close to the island
+	// shoreline. Turn that approach into a dry fortified promontory so the
+	// retained well, chapel, and stone arc never stand in the sea.
+	for y := 16 - 11; y <= 63+11; y++ {
+		for x := 16 - 11; x <= 16+11; x++ {
+			if math.Hypot(float64(x-16), float64(y-63)) <= 10.75 {
+				delete(liquidCells, [2]int{x, y})
+				delete(liquidCells, [2]int{y, x})
+				clearLiquid(x, y)
+				clearLiquid(y, x)
 			}
 		}
 	}
@@ -535,7 +773,7 @@ func GenerateTeamBattle(seed int64) *GameMap {
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
 			if isRiverCell(x, y) && x >= 1 && y >= 1 && x < size-1 && y < size-1 {
-				clear(x, y)
+				clearLiquid(x, y)
 			}
 		}
 	}
@@ -696,6 +934,48 @@ func GenerateTeamBattle(seed int64) *GameMap {
 			MaxY: objective.Y + collisionRadius,
 			Type: "objective",
 		})
+	}
+	// The authored layout is kept in its original 80x80 design grid so all
+	// props, routes, and mirrored placements remain intact. Publish the compact
+	// 70x70 canvas by cropping five empty design tiles from every side. This is
+	// a translation, not a scale: houses, cover spacing, and collider sizes keep
+	// their gameplay metrics while the unused outer water/field is removed.
+	compactOffset := float64(teamBattleCropTiles) * tile
+	for _, wall := range gm.Collisions {
+		wall.MinX -= compactOffset
+		wall.MinY -= compactOffset
+		wall.MaxX -= compactOffset
+		wall.MaxY -= compactOffset
+	}
+	clippedCollisions := gm.Collisions[:0]
+	for _, wall := range gm.Collisions {
+		if wall.MaxX <= 0 || wall.MaxY <= 0 || wall.MinX >= gm.WidthInPixels || wall.MinY >= gm.HeightInPixels {
+			continue
+		}
+		wall.MinX = math.Max(0, wall.MinX)
+		wall.MinY = math.Max(0, wall.MinY)
+		wall.MaxX = math.Min(gm.WidthInPixels, wall.MaxX)
+		wall.MaxY = math.Min(gm.HeightInPixels, wall.MaxY)
+		if wall.MinX < wall.MaxX && wall.MinY < wall.MaxY {
+			clippedCollisions = append(clippedCollisions, wall)
+		}
+	}
+	gm.Collisions = clippedCollisions
+	for index := range gm.Features {
+		gm.Features[index].X -= compactOffset
+		gm.Features[index].Y -= compactOffset
+	}
+	for index := range gm.MonsterSpawns {
+		gm.MonsterSpawns[index].X -= compactOffset
+		gm.MonsterSpawns[index].Y -= compactOffset
+	}
+	for _, spawn := range gm.Spawners {
+		spawn.X -= compactOffset
+		spawn.Y -= compactOffset
+	}
+	for index := range gm.Objectives {
+		gm.Objectives[index].X -= compactOffset
+		gm.Objectives[index].Y -= compactOffset
 	}
 	_ = seed
 	return gm

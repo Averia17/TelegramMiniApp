@@ -118,6 +118,7 @@ func cappedSkillDuration(duration time.Duration) int64 {
 
 type HeroZone struct {
 	Owner, Kind                                 string
+	CommandID                                   string
 	Target                                      string
 	X, Y, Radius                                float64
 	ToX, ToY, Width                             float64
@@ -128,10 +129,13 @@ type HeroZone struct {
 }
 
 type LightningStrike struct {
-	Owner     string
-	X, Y      float64
-	TriggerAt int64
-	Impact    int
+	Owner        string
+	CommandID    string
+	X, Y         float64
+	TriggerAt    int64
+	Impact       int
+	Visual       *BattleEffect
+	TargetVisual *BattleEffect
 }
 
 type Skyfall struct {
@@ -166,11 +170,11 @@ func (KattyKit) Super(gs *GameState, p *player.Player, ts int64, _, _ float64) b
 	x, y := p.X, p.Y
 	duration := KattySuperDuration.Milliseconds()
 	gs.HeroZones = append(gs.HeroZones, &HeroZone{
-		Owner: p.PlayerId, Kind: "katty_paint_puddle", X: x, Y: y, Radius: KattySuperRadius,
+		Owner: p.PlayerId, CommandID: gs.activeCommandID, Kind: "katty_paint_puddle", X: x, Y: y, Radius: KattySuperRadius,
 		CreatedAt: ts, TriggerAt: ts + 500, ExpiresAt: ts + duration, NextTickAt: ts, Triggered: map[string]bool{},
 	})
 	gs.DamageZones = append(gs.DamageZones, &DamageZone{
-		Owner: p.PlayerId, Kind: "katty_paint_puddle", X: x, Y: y, Radius: KattySuperRadius,
+		Owner: p.PlayerId, CommandID: gs.activeCommandID, Kind: "katty_paint_puddle", X: x, Y: y, Radius: KattySuperRadius,
 		Damage: KattySuperPuddleDamage, TicksLeft: KattySuperPuddleTicks,
 		NextTickAt: ts + 650, Interval: KattySuperPuddleTick.Milliseconds(), ExpiresAt: ts + duration,
 		Color: p.Color,
@@ -390,6 +394,7 @@ func (MinaKit) Basic(gs *GameState, p *player.Player, _ int64, angle, _ float64)
 func (MinaKit) Super(gs *GameState, p *player.Player, ts int64, _, _ float64) bool {
 	target := p
 	target.ShieldHP = MinaSuperShield
+	target.ShieldProvided += MinaSuperShield
 	duration := cappedSkillDuration(4 * time.Second)
 	target.ShieldUntil = ts + duration
 	visual := gs.addEffect("mina_healing_aura", target.X, target.Y, 0, 0, MinaHealingAuraRadius, 0, 0, 0, "#ff9bea", MinaHealingAuraDamage, duration)
@@ -437,15 +442,17 @@ func (BrockZeusKit) Super(gs *GameState, p *player.Player, ts int64, angle, dist
 	p.ChannelUntil = ts + 700
 	for i := 0; i < 3; i++ {
 		a := float64(i) * math.Pi * 2 / 3
-		strike := &LightningStrike{Owner: p.PlayerId, X: cx + math.Cos(a)*75, Y: cy + math.Sin(a)*75, TriggerAt: ts + 700 + int64(i)*400, Impact: i}
-		gs.LightningStrikes = append(gs.LightningStrikes, strike)
+		strike := &LightningStrike{Owner: p.PlayerId, CommandID: gs.activeCommandID, X: cx + math.Cos(a)*75, Y: cy + math.Sin(a)*75, TriggerAt: ts + 700 + int64(i)*400, Impact: i}
 		warningRadius := ZeusSuperFirstRadius
 		if i == 2 {
 			warningRadius = ZeusSuperFinalRadius
 		}
-		gs.addEffect("zeus_strike_warning", strike.X, strike.Y, 0, 0, warningRadius, 0, 0, 0, "#b9efff", 0, strike.TriggerAt-ts)
+		strike.Visual = gs.addEffect("zeus_strike_warning", strike.X, strike.Y, 0, 0, warningRadius, 0, 0, 0, "#b9efff", 0, strike.TriggerAt-ts)
+		if i == 0 {
+			strike.TargetVisual = gs.addEffect("zeus_storm_target", cx, cy, 0, 0, 150, 0, 0, 0, "#75d8ff", 0, 1900)
+		}
+		gs.LightningStrikes = append(gs.LightningStrikes, strike)
 	}
-	gs.addEffect("zeus_storm_target", cx, cy, 0, 0, 150, 0, 0, 0, "#75d8ff", 0, 1900)
 	return true
 }
 
@@ -570,7 +577,7 @@ func (PersephoneLumiKit) Super(gs *GameState, p *player.Player, ts int64, angle,
 	distance = math.Max(80, math.Min(520, distance))
 	x, y := p.X+math.Cos(angle)*distance, p.Y+math.Sin(angle)*distance
 	duration := cappedSkillDuration(6600 * time.Millisecond)
-	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Kind: "lumi_roots", X: x, Y: y, Radius: 200, CreatedAt: ts, TriggerAt: ts + 600, ExpiresAt: ts + duration, NextTickAt: ts + 600, Triggered: map[string]bool{}})
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, CommandID: gs.activeCommandID, Kind: "lumi_roots", X: x, Y: y, Radius: 200, CreatedAt: ts, TriggerAt: ts + 600, ExpiresAt: ts + duration, NextTickAt: ts + 600, Triggered: map[string]bool{}})
 	gs.addEffect("lumi_roots", x, y, 0, 0, 200, 0, 0, 0, p.Color, 0, 6000)
 	return true
 }
@@ -617,12 +624,12 @@ func (NeedleKit) Super(gs *GameState, p *player.Player, ts int64, angle, distanc
 	impactAt := ts + NeedleRootTelegraph.Milliseconds()
 	expiresAt := impactAt + NeedleRootDuration.Milliseconds()
 	gs.HeroZones = append(gs.HeroZones, &HeroZone{
-		Owner: p.PlayerId, Kind: "needle_roots", X: x, Y: y, Radius: NeedleRootRadius,
+		Owner: p.PlayerId, CommandID: gs.activeCommandID, Kind: "needle_roots", X: x, Y: y, Radius: NeedleRootRadius,
 		CreatedAt: ts, TriggerAt: impactAt, ExpiresAt: expiresAt, NextTickAt: impactAt,
 		Triggered: map[string]bool{},
 	})
 	gs.DamageZones = append(gs.DamageZones, &DamageZone{
-		Owner: p.PlayerId, Kind: "needle_root", X: x, Y: y, Radius: NeedleRootRadius,
+		Owner: p.PlayerId, CommandID: gs.activeCommandID, Kind: "needle_root", X: x, Y: y, Radius: NeedleRootRadius,
 		Damage: NeedleRootTickDamage, TicksLeft: int(NeedleRootDuration / NeedleRootTick),
 		NextTickAt: impactAt + NeedleRootTick.Milliseconds(), Interval: NeedleRootTick.Milliseconds(), ExpiresAt: expiresAt,
 		Color: p.Color,
@@ -726,6 +733,7 @@ func (gs *GameState) useNewHeroGadget(p *player.Player, ts int64) bool {
 			gs.addEffect("zeus_thunderbrand", p.X, p.Y, 0, 0, 68, p.Rotation, 0, 0, "#9eeaff", 0, 650)
 		case "Wukong Mico":
 			p.ShieldHP, p.StoneArmorUntil = 30, ts+4000
+			p.ShieldProvided += 30
 			p.ShieldUntil = ts + 4000
 			gs.addEffect("mico_ruyi_bind", p.X, p.Y, 0, 0, 72, p.Rotation, 0, 0, "#ffd35a", 0, 4000)
 		}
@@ -765,7 +773,9 @@ func (gs *GameState) updateNewHeroSystems() {
 					if distance := math.Hypot(dx, dy); distance > 0 {
 						gs.movePlayerByCollision(target, dx, dy)
 					}
-					gs.dealPlayerDamage(owner, target, NeedleRootInitialDamage)
+					gs.withCombatCommand(z.CommandID, z.Owner, "primary", func() {
+						gs.dealPlayerDamage(owner, target, NeedleRootInitialDamage)
+					})
 					gs.addEffect("needle_root_pull", target.X, target.Y, z.X, z.Y, target.Radius+24, 0, 0, 0, "#b7ff75", NeedleRootInitialDamage, 420)
 				}
 				z.ImpactDone = true
@@ -861,7 +871,9 @@ func (gs *GameState) updateNewHeroSystems() {
 					if !target.CanBulletHurt(owner.PlayerId, owner.Team) || math.Hypot(target.X-z.X, target.Y-z.Y) > z.Radius+target.Radius {
 						continue
 					}
-					gs.dealPlayerDamage(owner, target, LumiRootImpactDamage)
+					gs.withCombatCommand(z.CommandID, z.Owner, "primary", func() {
+						gs.dealPlayerDamage(owner, target, LumiRootImpactDamage)
+					})
 					target.StunUntil = max(target.StunUntil, now+LumiRootStunDuration.Milliseconds())
 					addSuperChargeForControl(owner, target, LumiRootStunDuration.Milliseconds())
 					gs.addEffect("lumi_root_impact", target.X, target.Y, 0, 0, target.Radius+20, 0, 0, 0, owner.Color, LumiRootImpactDamage, 500)
@@ -891,7 +903,9 @@ func (gs *GameState) updateNewHeroSystems() {
 				z.Visual = gs.addEffect("katty_paint_puddle", z.X, z.Y, 0, 0, z.Radius, 0, 0, 0, owner.Color, 0, z.ExpiresAt-now)
 			}
 			if owner != nil && !z.ImpactDone {
-				gs.resolveKattySuperImpact(owner, z, now)
+				gs.withCombatCommand(z.CommandID, z.Owner, "primary", func() {
+					gs.resolveKattySuperImpact(owner, z, now)
+				})
 				z.ImpactDone = true
 			}
 			for _, target := range gs.Players {
@@ -965,8 +979,10 @@ func (gs *GameState) updateNewHeroSystems() {
 		if s.Impact == 2 {
 			radius, damage = ZeusSuperFinalRadius, ZeusSuperFinalDamage
 		}
-		gs.destroyWallsInRadius(s.X, s.Y, radius)
-		gs.radialDamage(s.Owner, s.X, s.Y, radius, damage)
+		gs.withCombatCommand(s.CommandID, s.Owner, "primary", func() {
+			gs.destroyWallsInRadius(s.X, s.Y, radius)
+			gs.radialDamage(s.Owner, s.X, s.Y, radius, damage)
+		})
 		for _, target := range gs.Players {
 			if source := gs.Players[s.Owner]; source != nil && target.CanBulletHurt(source.PlayerId, source.Team) && math.Hypot(target.X-s.X, target.Y-s.Y) <= radius+target.Radius {
 				target.SlowUntil = now + 1000

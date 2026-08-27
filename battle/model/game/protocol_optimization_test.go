@@ -77,11 +77,12 @@ func TestStateUpdateIncludesCombatContractVersion(t *testing.T) {
 	var wire struct {
 		CombatProfileID    string `json:"combatProfileId"`
 		CombatRulesVersion string `json:"combatRulesVersion"`
+		EventSchemaVersion int    `json:"eventSchemaVersion"`
 	}
 	if err := json.Unmarshal(data, &wire); err != nil {
 		t.Fatalf("decode state update contract fields: %v", err)
 	}
-	if wire.CombatProfileID != CombatProfileID || wire.CombatRulesVersion != CombatRulesVersion {
+	if wire.CombatProfileID != CombatProfileID || wire.CombatRulesVersion != CombatRulesVersion || wire.EventSchemaVersion != CombatEventSchemaVersion {
 		t.Fatalf("wire combat contract = %#v, want profile=%q version=%q", wire, CombatProfileID, CombatRulesVersion)
 	}
 }
@@ -107,8 +108,9 @@ func TestMonsterJSONCarriesNoticeWindow(t *testing.T) {
 
 func TestRejectedCombatEventKeepsExplicitOutcomeFields(t *testing.T) {
 	data, err := json.Marshal(CombatEventJSON{
-		ID: 1, Ts: 100, Kind: "ability", AbilitySlot: "primary",
+		ID: 1, Ts: 100, MatchID: "match-1", Hero: "Needle", Kind: "ability", AbilitySlot: "primary",
 		Reason: "super_not_ready", Phase: "rejected", Accepted: false, Resolved: true,
+		ResourceKind: "super_charge", ResourceBefore: 40, ResourceAfter: 40,
 		EventSchemaVersion: CombatEventSchemaVersion,
 	})
 	if err != nil {
@@ -132,5 +134,32 @@ func TestRejectedCombatEventKeepsExplicitOutcomeFields(t *testing.T) {
 	}
 	if version, ok := wire["eventSchemaVersion"].(float64); !ok || int(version) != CombatEventSchemaVersion {
 		t.Fatalf("combat event schema version = %#v, want %d", wire["eventSchemaVersion"], CombatEventSchemaVersion)
+	}
+	if wire["matchId"] != "match-1" || wire["hero"] != "Needle" || wire["resourceBefore"] != float64(40) || wire["resourceAfter"] != float64(40) {
+		t.Fatalf("combat event context = %#v", wire)
+	}
+}
+
+func TestResolvedCombatAbilityKeepsMissOutcomeFields(t *testing.T) {
+	data, err := json.Marshal(CombatEventJSON{
+		ID: 2, Ts: 200, MatchID: "match-1", Hero: "Brock Zeus", Kind: "ability", AbilitySlot: "primary",
+		Reason: "ability_missed", Phase: "miss", CommandID: "ability-2", SourceID: "player-1",
+		Accepted: false, Resolved: true, EventSchemaVersion: CombatEventSchemaVersion,
+	})
+	if err != nil {
+		t.Fatalf("marshal ability miss event: %v", err)
+	}
+	var wire struct {
+		Reason    string `json:"reason"`
+		Phase     string `json:"phase"`
+		CommandID string `json:"commandId"`
+		Accepted  bool   `json:"accepted"`
+		Resolved  bool   `json:"resolved"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		t.Fatalf("decode ability miss event: %v", err)
+	}
+	if wire.Reason != "ability_missed" || wire.Phase != "miss" || wire.CommandID != "ability-2" || wire.Accepted || !wire.Resolved {
+		t.Fatalf("ability miss wire = %#v, want explicit miss outcome", wire)
 	}
 }

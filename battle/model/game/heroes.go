@@ -52,7 +52,7 @@ type HeroKit struct {
 var heroKits = map[string]HeroKit{
 	"Needle":          {Basic: AbilityDefinition{"spore_thorn", "Споровый шип", "Спора летит по прямой, снижает лечение цели на 50% на 2 секунды и раскрывается шестью фиксированными шипами.", "basic", "projectile"}, Super: AbilityDefinition{"hunter_root", "Ловчий корень", "После 300 мс замаха корень наносит 40 урона, притягивает врагов к центру и оставляет на 3 секунды зону с уроном 15 каждые 0,5 секунды и замедлением 60%.", "primary", "server"}, Gadget: AbilityDefinition{"spore_escape", "Споровый побег", "Рывок на 6 метров оставляет облако спор радиусом 90 на 2 секунды: оно замедляет на 40%, а третий стак спор оглушает.", "secondary", "server"}},
 	"Mandy":           {Basic: AbilityDefinition{"staff_strike", "Удар посохом", "Наносит 100 урона и оглушает на 0,3 секунды. После 2 секунд неподвижности Фокус усиливает следующий удар до 150, увеличивает радиус и дальность, оглушая на 0,8 секунды.", "basic", "melee"}, Super: AbilityDefinition{"devastation_wave", "Волна опустошения", "После подготовки 0,8 секунды выпускает волну через всю карту: 140–220 урона, оглушение 1,2 секунды и разрушение стен; во время подготовки Mandy защищена щитом 30% HP.", "primary", "server"}, Gadget: AbilityDefinition{"unyielding_stance", "Нерушимая стойка", "На 1,8 секунды снижает входящий урон на 40%; следующий удар наносит на 50% больше и возвращает Mandy 10% максимального HP при попадании.", "secondary", "server"}},
-	"Fairy Mina":      {Basic: AbilityDefinition{"star_fan", "Звёздный веер", "Звёзды наносят 55 урона и лечат Mina на 5 HP за попадание; третье попадание взрывает метку на 80 урона в радиусе 100 и замедляет.", "basic", "projectile"}, Super: AbilityDefinition{"star_cocoon", "Звёздный кокон", "Всегда окутывает Mina: щит 500 HP на 4 секунды, аура радиусом 180 лечит её на 15 и наносит врагам 10 каждые 0,5 секунды.", "primary", "server"}, Gadget: AbilityDefinition{"repelling_wave", "Отталкивающая волна", "Волна радиусом 150 наносит 30 урона, отбрасывает врагов и очищает с Mina отрицательные эффекты.", "secondary", "server"}},
+	"Fairy Mina":      {Basic: AbilityDefinition{"star_fan", "Звёздный веер", "Звёзды наносят 40 урона и лечат Mina на 5 HP за попадание; третье попадание взрывает метку на 80 урона в радиусе 100 и замедляет.", "basic", "projectile"}, Super: AbilityDefinition{"star_cocoon", "Звёздный кокон", "Всегда окутывает Mina: щит 500 HP на 4 секунды, аура радиусом 180 лечит её на 15 и наносит врагам 10 каждые 0,5 секунды.", "primary", "server"}, Gadget: AbilityDefinition{"repelling_wave", "Отталкивающая волна", "Волна радиусом 150 наносит 30 урона, отбрасывает врагов и очищает с Mina отрицательные эффекты.", "secondary", "server"}},
 	"Brock Zeus":      {Basic: AbilityDefinition{"thunder_projectile", "Грозовой снаряд", "Снаряд наносит 85 урона и взрывается радиусом 80.", "basic", "projectile"}, Super: AbilityDefinition{"gods_hammer", "Молот богов", "Три удара через 0,7/1,1/1,5 секунды наносят 80/80/120 урона, замедляют и каждый разрушает стены.", "primary", "server"}, Gadget: AbilityDefinition{"discharge_cable", "Разрядный кабель", "Следующий выстрел становится пробивающим лучом и оставляет огненный след на 3 секунды: 5 урона каждые 0,5 секунды.", "secondary", "server"}},
 	"Kaze":            {Basic: AbilityDefinition{"cross_slash", "Косые удары", "Два попадания открывают усиленный третий удар.", "basic", "melee"}, Super: AbilityDefinition{"piercing_dash", "Пронзающий рывок", "Попадание рывком оглушает на 1 секунду и сразу подготавливает усиленный следующий удар Kaze.", "primary", "server"}, Gadget: AbilityDefinition{"vanish", "Исчезновение", "Невидимость гарантирует критический первый удар.", "secondary", "server"}},
 	"Wukong Mico":     {Basic: AbilityDefinition{"heavy_staff", "Тяжёлый посох", "Попадания накапливают до 5 зарядов Ярости.", "basic", "melee"}, Super: AbilityDefinition{"vengeance_vortex", "Вихрь возмездия", "Короткий прыжок запускает вихрь: он притягивает врагов на 20%, наносит 35 урона при старте, оглушает на 0,6 секунды, затем тикает каждые 0,4 секунды и лечит Mico.", "primary", "server"}, Gadget: AbilityDefinition{"stone_armor", "Каменная броня", "4 секунды снижает урон на 60%, хранит до 240 урона и взрывается на 80 урона в радиусе 140, давая до 4 зарядов Ярости.", "secondary", "server"}},
@@ -60,14 +60,14 @@ var heroKits = map[string]HeroKit{
 }
 
 var Heroes = withSelectionMetadata(withHeroKits(withAttackConfigs([]Hero{
-	{Name: "Needle", Color: "#75D947", Radius: 14, MaxLives: 600, Speed: 13, AttackDamage: 60, AttackRate: 420, ReloadTime: 1750, MaxAmmo: 3, BulletSpeed: 23, BulletSize: 15, AttackType: "spore", Role: "Controller", RegenRate: .011, Desc: "Root controller with anti-heal spores and a pull zone"},
-	{Name: "Mandy", Color: "#F4C542", Radius: 14, MaxLives: 700, Speed: 15, AttackDamage: 100, AttackRate: 420, ReloadTime: 1650, MaxAmmo: 3, AttackType: "mandy_staff", Role: "Fighter", RegenRate: .010, Desc: "Focused melee fighter with a map-wide ground-wave Super"},
-	{Name: "Fairy Mina", Color: "#FF8FE8", Radius: 13, MaxLives: 650, Speed: 14, AttackDamage: 55, AttackRate: 420, ReloadTime: 1550, MaxAmmo: 3, BulletSpeed: 30, BulletSize: 7, AttackType: "mina_star_fan", Role: "Support", RegenRate: .008, Desc: "Self-sustaining star fan with a dangerous aura"},
-	{Name: "Brock Zeus", Color: "#62C8FF", Radius: 14, MaxLives: 600, Speed: 12, AttackDamage: 85, AttackRate: 520, ReloadTime: 1800, MaxAmmo: 3, BulletSpeed: 36, BulletSize: 8, AttackType: "zeus_lightning", Role: "Sharpshooter", RegenRate: .009, Desc: "Explosive lightning and a wall-breaking storm"},
-	{Name: "Kaze", Color: "#B88CFF", Radius: 12, MaxLives: 650, Speed: 16, AttackDamage: 85, AttackRate: 280, ReloadTime: 1050, MaxAmmo: 3, AttackType: "kaze_cross_slash", Role: "Assassin", RegenRate: .011, Desc: "Rapid combo slashes and a follow-up-priming dash"},
-	{Name: "Wukong Mico", Color: "#FFB33E", Radius: 15, MaxLives: 900, Speed: 14, AttackDamage: 100, AttackRate: 650, ReloadTime: 1750, MaxAmmo: 3, AttackType: "mico_staff", Role: "Tank", RegenRate: .010, Desc: "Heavy close-range staff swings without forced movement"},
-	{Name: "Persephone Lumi", Color: "#D954A8", Radius: 13, MaxLives: 680, Speed: 15, AttackDamage: 60, AttackRate: 470, ReloadTime: 1600, MaxAmmo: 3, BulletSpeed: 28, BulletSize: 8, AttackType: "lumi_orb", Role: "Controller", RegenRate: .010, Desc: "Tactical flower projectiles build a damaging garden and root enemies"},
-	{Name: "Katty", Color: "#FF5C9A", Radius: 13, MaxLives: 640, Speed: 14, AttackDamage: 55, AttackRate: 520, ReloadTime: 1700, MaxAmmo: 3, AttackType: "katty_paint_spray", Role: "Controller", RegenRate: .010, Desc: "Street artist who controls space with layered paint"},
+	{Name: "Needle", Color: "#75D947", Radius: 14, MaxLives: 600, Speed: 13, AttackDamage: 60, AttackRate: 420, ReloadTime: 1200, MaxAmmo: 3, BulletSpeed: 23, BulletSize: 15, AttackType: "spore", Role: "Controller", RegenRate: .011, Desc: "Root controller with anti-heal spores and a pull zone"},
+	{Name: "Mandy", Color: "#F4C542", Radius: 14, MaxLives: 700, Speed: 15, AttackDamage: 100, AttackRate: 420, ReloadTime: 1150, MaxAmmo: 3, AttackType: "mandy_staff", Role: "Fighter", RegenRate: .010, Desc: "Focused melee fighter with a map-wide ground-wave Super"},
+	{Name: "Fairy Mina", Color: "#FF8FE8", Radius: 13, MaxLives: 650, Speed: 14, AttackDamage: 40, AttackRate: 420, ReloadTime: 1100, MaxAmmo: 3, BulletSpeed: 30, BulletSize: 7, AttackType: "mina_star_fan", Role: "Support", RegenRate: .008, Desc: "Self-sustaining star fan with a dangerous aura"},
+	{Name: "Brock Zeus", Color: "#62C8FF", Radius: 14, MaxLives: 600, Speed: 12, AttackDamage: 85, AttackRate: 520, ReloadTime: 1300, MaxAmmo: 3, BulletSpeed: 36, BulletSize: 8, AttackType: "zeus_lightning", Role: "Sharpshooter", RegenRate: .009, Desc: "Explosive lightning and a wall-breaking storm"},
+	{Name: "Kaze", Color: "#B88CFF", Radius: 12, MaxLives: 650, Speed: 16, AttackDamage: 85, AttackRate: 280, ReloadTime: 800, MaxAmmo: 3, AttackType: "kaze_cross_slash", Role: "Assassin", RegenRate: .011, Desc: "Rapid combo slashes and a follow-up-priming dash"},
+	{Name: "Wukong Mico", Color: "#FFB33E", Radius: 15, MaxLives: 900, Speed: 14, AttackDamage: 100, AttackRate: 650, ReloadTime: 1400, MaxAmmo: 3, AttackType: "mico_staff", Role: "Tank", RegenRate: .010, Desc: "Heavy close-range staff swings without forced movement"},
+	{Name: "Persephone Lumi", Color: "#D954A8", Radius: 13, MaxLives: 680, Speed: 15, AttackDamage: 60, AttackRate: 470, ReloadTime: 1250, MaxAmmo: 3, BulletSpeed: 28, BulletSize: 8, AttackType: "lumi_orb", Role: "Controller", RegenRate: .010, Desc: "Tactical flower projectiles build a damaging garden and root enemies"},
+	{Name: "Katty", Color: "#FF5C9A", Radius: 13, MaxLives: 640, Speed: 14, AttackDamage: 55, AttackRate: 520, ReloadTime: 1300, MaxAmmo: 3, AttackType: "katty_paint_spray", Role: "Controller", RegenRate: .010, Desc: "Street artist who controls space with layered paint"},
 })))
 
 type heroSelectionMetadata struct {
@@ -149,8 +149,8 @@ func (h Hero) CreatePlayer(id, name string, x, y float64) *player.Player {
 		HeroName:         h.Name,
 		Speed:            float64(h.Speed) * RuntimeMovementSpeedScale,
 		AttackDmg:        h.AttackDamage,
-		AttackRate:       int64(float64(h.AttackRate)*AttackRateScale + .5),
-		ReloadTime:       int64(float64(h.ReloadTime)*ReloadTimeScale + .5),
+		AttackRate:       h.AttackRate,
+		ReloadTime:       h.ReloadTime,
 		MaxAmmo:          h.MaxAmmo,
 		Ammo:             h.MaxAmmo,
 		BulletSpd:        float64(h.BulletSpeed) * RuntimeProjectileSpeedScale,
@@ -159,8 +159,8 @@ func (h Hero) CreatePlayer(id, name string, x, y float64) *player.Player {
 		RegenRate:        h.RegenRate,
 		DamageMultiplier: 1,
 		SlowMultiplier:   1,
-		SuperCharge:      0,
-		GadgetCharges:    3,
+		SuperCharge:      SuperStartChargePercent,
+		GadgetCharges:    GadgetChargesOnSpawn,
 	}
 	return p
 }

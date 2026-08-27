@@ -908,7 +908,8 @@ func TestPartyHTTPRestoresAndLeavesActiveParty(t *testing.T) {
 		t.Fatalf("restored party = %q, want %q", restored.ID, party.ID)
 	}
 
-	start := httptest.NewRequest(http.MethodPost, "/party/"+party.ID+"/start", nil)
+	start := httptest.NewRequest(http.MethodPost, "/party/"+party.ID+"/start", strings.NewReader(`{"mapName":"team-battle"}`))
+	start.Header.Set("Content-Type", "application/json")
 	start.Header.Set("X-User-ID", "1")
 	startResponse := httptest.NewRecorder()
 	srv.ServeHTTP(startResponse, start)
@@ -919,8 +920,8 @@ func TestPartyHTTPRestoresAndLeavesActiveParty(t *testing.T) {
 	if err := json.NewDecoder(startResponse.Body).Decode(&started); err != nil {
 		t.Fatal(err)
 	}
-	if started.BattleNonce == "" {
-		t.Fatal("start response did not include a battle nonce")
+	if started.BattleNonce == "" || started.BattleMap != "team-battle" {
+		t.Fatalf("start response did not include the selected battle map: %+v", started)
 	}
 
 	leave := httptest.NewRequest(http.MethodDelete, "/party/"+party.ID+"/members/1", nil)

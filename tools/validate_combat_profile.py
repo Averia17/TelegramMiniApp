@@ -38,6 +38,15 @@ def _require_number(
         errors.append(f"{path} must be >= {minimum}")
 
 
+def _require_integer(
+    errors: list[str], value: Any, path: str, *, minimum: int | None = None
+) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        errors.append(f"{path} must be an integer")
+    elif minimum is not None and value < minimum:
+        errors.append(f"{path} must be >= {minimum}")
+
+
 def _require_fraction(errors: list[str], value: Any, path: str) -> None:
     if not _is_number(value):
         errors.append(f"{path} must be a number")
@@ -104,7 +113,7 @@ def validate_profile(
         _reject_unknown_keys(errors, defaults, "profile.defaults", ("super", "gadget", "healthBoost", "respawn", "pickup", "loot", "bats", "telegraph", "ai"))
         _require_keys(errors, defaults.get("super"), "profile.defaults.super", ("maxChargePercent", "startChargePercent", "chargeSources"))
         _require_keys(errors, defaults.get("gadget"), "profile.defaults.gadget", ("maxCharges", "chargesOnSpawn", "cooldownPolicy"))
-        _require_keys(errors, defaults.get("healthBoost"), "profile.defaults.healthBoost", ("pickupId", "stat", "fraction", "maxStacks", "ttlMs", "healsCurrentLives"))
+        _require_keys(errors, defaults.get("healthBoost"), "profile.defaults.healthBoost", ("pickupId", "stat", "fraction", "teamFraction", "maxStacks", "maxActivePickups", "ttlMs", "healsCurrentLives"))
         _require_keys(errors, defaults.get("respawn"), "profile.defaults.respawn", ("preserveHealthBoostStacks", "resetSuperCharge", "resetStatuses", "refillAmmo", "preserveGadgetCharges"))
         _require_keys(errors, defaults.get("pickup"), "profile.defaults.pickup", ("claimPolicy", "collectorOnly"))
         _require_keys(errors, defaults.get("loot"), "profile.defaults.loot", ("healthPickupIds", "nonHpPickupIds", "nonHpPickupMode", "nonHpAffectsCurrentLives"))
@@ -113,16 +122,45 @@ def validate_profile(
         _require_keys(errors, defaults.get("ai"), "profile.defaults.ai", ("lowHealthRetreatFraction", "criticalHealthRetreatFraction", "superUseAdvantageFraction", "pickupContestHealthFraction"))
         _reject_unknown_keys(errors, defaults.get("super"), "profile.defaults.super", ("maxChargePercent", "startChargePercent", "chargeSources"))
         _reject_unknown_keys(errors, defaults.get("gadget"), "profile.defaults.gadget", ("maxCharges", "chargesOnSpawn", "cooldownPolicy"))
-        _reject_unknown_keys(errors, defaults.get("healthBoost"), "profile.defaults.healthBoost", ("pickupId", "stat", "fraction", "maxStacks", "ttlMs", "healsCurrentLives"))
+        _reject_unknown_keys(errors, defaults.get("healthBoost"), "profile.defaults.healthBoost", ("pickupId", "stat", "fraction", "teamFraction", "maxStacks", "maxActivePickups", "ttlMs", "healsCurrentLives"))
         _reject_unknown_keys(errors, defaults.get("respawn"), "profile.defaults.respawn", ("preserveHealthBoostStacks", "resetSuperCharge", "resetStatuses", "refillAmmo", "preserveGadgetCharges"))
         _reject_unknown_keys(errors, defaults.get("pickup"), "profile.defaults.pickup", ("claimPolicy", "collectorOnly"))
         _reject_unknown_keys(errors, defaults.get("loot"), "profile.defaults.loot", ("healthPickupIds", "nonHpPickupIds", "nonHpPickupMode", "nonHpAffectsCurrentLives"))
         _reject_unknown_keys(errors, defaults.get("bats"), "profile.defaults.bats", ("role", "respawnPolicy", "target"))
         _reject_unknown_keys(errors, defaults.get("telegraph"), "profile.defaults.telegraph", ("minDurationMs",))
         _reject_unknown_keys(errors, defaults.get("ai"), "profile.defaults.ai", ("lowHealthRetreatFraction", "criticalHealthRetreatFraction", "superUseAdvantageFraction", "pickupContestHealthFraction"))
-        _require_number(errors, defaults.get("healthBoost", {}).get("fraction") if isinstance(defaults.get("healthBoost"), dict) else None, "profile.defaults.healthBoost.fraction", minimum=0)
-        _require_number(errors, defaults.get("healthBoost", {}).get("maxStacks") if isinstance(defaults.get("healthBoost"), dict) else None, "profile.defaults.healthBoost.maxStacks", minimum=1)
-        _require_number(errors, defaults.get("healthBoost", {}).get("ttlMs") if isinstance(defaults.get("healthBoost"), dict) else None, "profile.defaults.healthBoost.ttlMs", minimum=1)
+        super_defaults = defaults.get("super")
+        if isinstance(super_defaults, dict):
+            _require_integer(errors, super_defaults.get("maxChargePercent"), "profile.defaults.super.maxChargePercent", minimum=1)
+            _require_integer(errors, super_defaults.get("startChargePercent"), "profile.defaults.super.startChargePercent", minimum=0)
+            if _is_number(super_defaults.get("maxChargePercent")) and _is_number(super_defaults.get("startChargePercent")) and super_defaults["startChargePercent"] > super_defaults["maxChargePercent"]:
+                errors.append("profile.defaults.super.startChargePercent must be <= maxChargePercent")
+        gadget_defaults = defaults.get("gadget")
+        if isinstance(gadget_defaults, dict):
+            _require_integer(errors, gadget_defaults.get("maxCharges"), "profile.defaults.gadget.maxCharges", minimum=1)
+            _require_integer(errors, gadget_defaults.get("chargesOnSpawn"), "profile.defaults.gadget.chargesOnSpawn", minimum=0)
+            if _is_number(gadget_defaults.get("maxCharges")) and _is_number(gadget_defaults.get("chargesOnSpawn")) and gadget_defaults["chargesOnSpawn"] > gadget_defaults["maxCharges"]:
+                errors.append("profile.defaults.gadget.chargesOnSpawn must be <= maxCharges")
+        health_defaults = defaults.get("healthBoost")
+        _require_fraction(errors, health_defaults.get("fraction") if isinstance(health_defaults, dict) else None, "profile.defaults.healthBoost.fraction")
+        _require_fraction(errors, health_defaults.get("teamFraction") if isinstance(health_defaults, dict) else None, "profile.defaults.healthBoost.teamFraction")
+        _require_integer(errors, health_defaults.get("maxStacks") if isinstance(health_defaults, dict) else None, "profile.defaults.healthBoost.maxStacks", minimum=1)
+        _require_integer(errors, health_defaults.get("maxActivePickups") if isinstance(health_defaults, dict) else None, "profile.defaults.healthBoost.maxActivePickups", minimum=1)
+        _require_integer(errors, health_defaults.get("ttlMs") if isinstance(health_defaults, dict) else None, "profile.defaults.healthBoost.ttlMs", minimum=1)
+        if isinstance(health_defaults, dict) and _is_number(health_defaults.get("fraction")) and _is_number(health_defaults.get("teamFraction")) and health_defaults["teamFraction"] > health_defaults["fraction"]:
+            errors.append("profile.defaults.healthBoost.teamFraction must be <= fraction")
+        health_boost = defaults.get("healthBoost")
+        heals_current_lives = health_boost.get("healsCurrentLives") if isinstance(health_boost, dict) else None
+        if not isinstance(heals_current_lives, bool):
+            errors.append("profile.defaults.healthBoost.healsCurrentLives must be a boolean")
+        elif heals_current_lives:
+            errors.append("profile.defaults.healthBoost.healsCurrentLives must be false for MaxHP-only health boosts")
+        ai_defaults = defaults.get("ai")
+        if isinstance(ai_defaults, dict):
+            for key in ("lowHealthRetreatFraction", "criticalHealthRetreatFraction", "superUseAdvantageFraction", "pickupContestHealthFraction"):
+                _require_fraction(errors, ai_defaults.get(key), f"profile.defaults.ai.{key}")
+            if _is_number(ai_defaults.get("criticalHealthRetreatFraction")) and _is_number(ai_defaults.get("lowHealthRetreatFraction")) and ai_defaults["criticalHealthRetreatFraction"] > ai_defaults["lowHealthRetreatFraction"]:
+                errors.append("profile.defaults.ai.criticalHealthRetreatFraction must be <= lowHealthRetreatFraction")
         _require_number(errors, defaults.get("telegraph", {}).get("minDurationMs") if isinstance(defaults.get("telegraph"), dict) else None, "profile.defaults.telegraph.minDurationMs", minimum=1)
         loot = defaults.get("loot")
         if isinstance(loot, dict):

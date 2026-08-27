@@ -83,13 +83,17 @@ func combatEventsForClient(events []game.CombatEvent, playerID string, now int64
 			continue
 		}
 		result = append(result, game.CombatEventJSON{
-			ID: event.ID, Ts: event.Ts, Kind: event.Kind, Phase: event.Phase,
+			ID: event.ID, Ts: event.Ts, MatchID: event.MatchID, Kind: event.Kind, Phase: event.Phase,
+			Hero:        event.Hero,
 			AbilitySlot: event.AbilitySlot, Reason: event.Reason,
 			EventSchemaVersion: game.CombatEventSchemaVersion,
 			CombatProfileID:    game.CombatProfileID, CombatRulesVersion: game.CombatRulesVersion,
 			CommandID: event.CommandID,
 			SourceID:  event.SourceID, TargetType: event.TargetType, TargetID: event.TargetID,
-			ProjectileID: event.ProjectileID, Damage: event.Damage, Accepted: event.Accepted, Resolved: event.Resolved,
+			ProjectileID: event.ProjectileID, Distance: event.Distance, Damage: event.Damage,
+			EffectiveDamage: event.EffectiveDamage, ResourceKind: event.ResourceKind,
+			ResourceBefore: event.ResourceBefore, ResourceAfter: event.ResourceAfter,
+			Accepted: event.Accepted, Resolved: event.Resolved,
 		})
 	}
 	return result

@@ -105,6 +105,9 @@ func (r *Room) unregisterClient(client *Client, emptySince *time.Time) {
 				log.Printf("Store remove player error: %v", err)
 			}
 		}
+		if len(r.Clients) > 0 {
+			r.State.EnsureTeamRoster(len(r.Clients))
+		}
 	}
 	if len(r.Clients) == 0 && len(r.Disconnected) == 0 {
 		*emptySince = time.Now()

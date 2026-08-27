@@ -1,5 +1,10 @@
 # Implementation Plan: Hero Combat Overhaul — Balance and Skill Readability
 
+> Historical planning draft. The executable status, current values and
+> evidence ledger are maintained in `tasks/combat-audit-2026-08-plan.md` and
+> `tasks/combat-audit-2026-08-todo.md`; baseline numbers in this draft are not
+> runtime source-of-truth.
+
 ## Overview
 
 The existing combat-feel pass solved duplicated hit feedback. This iteration

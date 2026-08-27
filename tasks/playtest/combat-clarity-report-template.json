@@ -1,0 +1,346 @@
+{
+  "profileId": "combat-profile",
+  "combatRulesVersion": "2026-08-27-cadence-window",
+  "combatProfileFingerprint": "FB04F651CBFF6F8FCBE7830CB752CBE1F52FC04976274D90B5C1CFD25CFF2488",
+  "heroCoverage": ["Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi", "Katty"],
+  "heroCoverageEvidence": [
+    {"hero": "Needle", "participantId": "replace-with-participant-id-1", "caseId": "C1"},
+    {"hero": "Mandy", "participantId": "replace-with-participant-id-1", "caseId": "C2"},
+    {"hero": "Fairy Mina", "participantId": "replace-with-participant-id-1", "caseId": "C3"},
+    {"hero": "Brock Zeus", "participantId": "replace-with-participant-id-1", "caseId": "C4"},
+    {"hero": "Kaze", "participantId": "replace-with-participant-id-1", "caseId": "C5"},
+    {"hero": "Wukong Mico", "participantId": "replace-with-participant-id-1", "caseId": "C6"},
+    {"hero": "Persephone Lumi", "participantId": "replace-with-participant-id-2", "caseId": "C1"},
+    {"hero": "Katty", "participantId": "replace-with-participant-id-2", "caseId": "C2"}
+  ],
+  "participants": [
+    {
+      "participantId": "replace-with-participant-id-1",
+      "signed": false,
+      "signature": "replace-with-participant-signature",
+      "capturedAt": "replace-with-iso-8601-timestamp",
+      "cases": [
+        {
+          "caseId": "C1",
+          "hero": "Needle",
+          "mode": "solo",
+          "correctAnswers": 0,
+          "requiredAnswers": 5,
+          "evidence": ["replace-with-screen-or-video-path"],
+          "consoleErrors": [],
+          "pageErrors": [],
+          "telemetry": {
+            "timeToFirstContact": 0,
+            "combatUptime": 0,
+            "uncontestedTravel": 0,
+            "deaths": 0,
+            "skillCasts": 0,
+            "hitMissReason": "replace-with-observed-reason",
+            "resourceContest": "replace-with-observed-result"
+          },
+          "answers": [
+            "replace-with-verbatim-answer-1",
+            "replace-with-verbatim-answer-2",
+            "replace-with-verbatim-answer-3",
+            "replace-with-verbatim-answer-4",
+            "replace-with-verbatim-answer-5"
+          ]
+        },
+        {
+          "caseId": "C2",
+          "hero": "Mandy",
+          "mode": "solo",
+          "correctAnswers": 0,
+          "requiredAnswers": 5,
+          "evidence": ["replace-with-screen-or-video-path"],
+          "consoleErrors": [],
+          "pageErrors": [],
+          "telemetry": {
+            "timeToFirstContact": 0,
+            "combatUptime": 0,
+            "uncontestedTravel": 0,
+            "deaths": 0,
+            "skillCasts": 0,
+            "hitMissReason": "replace-with-observed-reason",
+            "resourceContest": "replace-with-observed-result"
+          },
+          "answers": [
+            "replace-with-verbatim-answer-1",
+            "replace-with-verbatim-answer-2",
+            "replace-with-verbatim-answer-3",
+            "replace-with-verbatim-answer-4",
+            "replace-with-verbatim-answer-5"
+          ]
+        },
+        {
+          "caseId": "C3",
+          "hero": "Fairy Mina",
+          "mode": "team",
+          "correctAnswers": 0,
+          "requiredAnswers": 5,
+          "evidence": ["replace-with-screen-or-video-path"],
+          "consoleErrors": [],
+          "pageErrors": [],
+          "telemetry": {
+            "timeToFirstContact": 0,
+            "combatUptime": 0,
+            "uncontestedTravel": 0,
+            "deaths": 0,
+            "skillCasts": 0,
+            "hitMissReason": "replace-with-observed-reason",
+            "resourceContest": "replace-with-observed-result"
+          },
+          "answers": [
+            "replace-with-verbatim-answer-1",
+            "replace-with-verbatim-answer-2",
+            "replace-with-verbatim-answer-3",
+            "replace-with-verbatim-answer-4",
+            "replace-with-verbatim-answer-5"
+          ]
+        },
+        {
+          "caseId": "C4",
+          "hero": "Brock Zeus",
+          "mode": "team",
+          "correctAnswers": 0,
+          "requiredAnswers": 5,
+          "evidence": ["replace-with-screen-or-video-path"],
+          "consoleErrors": [],
+          "pageErrors": [],
+          "telemetry": {
+            "timeToFirstContact": 0,
+            "combatUptime": 0,
+            "uncontestedTravel": 0,
+            "deaths": 0,
+            "skillCasts": 0,
+            "hitMissReason": "replace-with-observed-reason",
+            "resourceContest": "replace-with-observed-result"
+          },
+          "answers": [
+            "replace-with-verbatim-answer-1",
+            "replace-with-verbatim-answer-2",
+            "replace-with-verbatim-answer-3",
+            "replace-with-verbatim-answer-4",
+            "replace-with-verbatim-answer-5"
+          ]
+        },
+        {
+          "caseId": "C5",
+          "hero": "Kaze",
+          "mode": "team",
+          "correctAnswers": 0,
+          "requiredAnswers": 5,
+          "evidence": ["replace-with-screen-or-video-path"],
+          "consoleErrors": [],
+          "pageErrors": [],
+          "telemetry": {
+            "timeToFirstContact": 0,
+            "combatUptime": 0,
+            "uncontestedTravel": 0,
+            "deaths": 0,
+            "skillCasts": 0,
+            "hitMissReason": "replace-with-observed-reason",
+            "resourceContest": "replace-with-observed-result"
+          },
+          "answers": [
+            "replace-with-verbatim-answer-1",
+            "replace-with-verbatim-answer-2",
+            "replace-with-verbatim-answer-3",
+            "replace-with-verbatim-answer-4",
+            "replace-with-verbatim-answer-5"
+          ]
+        },
+        {
+          "caseId": "C6",
+          "hero": "Wukong Mico",
+          "mode": "solo",
+          "correctAnswers": 0,
+          "requiredAnswers": 5,
+          "evidence": ["replace-with-screen-or-video-path"],
+          "consoleErrors": [],
+          "pageErrors": [],
+          "telemetry": {
+            "timeToFirstContact": 0,
+            "combatUptime": 0,
+            "uncontestedTravel": 0,
+            "deaths": 0,
+            "skillCasts": 0,
+            "hitMissReason": "replace-with-observed-reason",
+            "resourceContest": "replace-with-observed-result"
+          },
+          "answers": [
+            "replace-with-verbatim-answer-1",
+            "replace-with-verbatim-answer-2",
+            "replace-with-verbatim-answer-3",
+            "replace-with-verbatim-answer-4",
+            "replace-with-verbatim-answer-5"
+          ]
+        }
+      ]
+    },
+    {
+      "participantId": "replace-with-participant-id-2",
+      "signed": false,
+      "signature": "replace-with-participant-signature",
+      "capturedAt": "replace-with-iso-8601-timestamp",
+      "cases": [
+        {
+          "caseId": "C1",
+          "hero": "Persephone Lumi",
+          "mode": "solo",
+          "correctAnswers": 0,
+          "requiredAnswers": 5,
+          "evidence": ["replace-with-screen-or-video-path"],
+          "consoleErrors": [],
+          "pageErrors": [],
+          "telemetry": {
+            "timeToFirstContact": 0,
+            "combatUptime": 0,
+            "uncontestedTravel": 0,
+            "deaths": 0,
+            "skillCasts": 0,
+            "hitMissReason": "replace-with-observed-reason",
+            "resourceContest": "replace-with-observed-result"
+          },
+          "answers": [
+            "replace-with-verbatim-answer-1",
+            "replace-with-verbatim-answer-2",
+            "replace-with-verbatim-answer-3",
+            "replace-with-verbatim-answer-4",
+            "replace-with-verbatim-answer-5"
+          ]
+        },
+        {
+          "caseId": "C2",
+          "hero": "Katty",
+          "mode": "solo",
+          "correctAnswers": 0,
+          "requiredAnswers": 5,
+          "evidence": ["replace-with-screen-or-video-path"],
+          "consoleErrors": [],
+          "pageErrors": [],
+          "telemetry": {
+            "timeToFirstContact": 0,
+            "combatUptime": 0,
+            "uncontestedTravel": 0,
+            "deaths": 0,
+            "skillCasts": 0,
+            "hitMissReason": "replace-with-observed-reason",
+            "resourceContest": "replace-with-observed-result"
+          },
+          "answers": [
+            "replace-with-verbatim-answer-1",
+            "replace-with-verbatim-answer-2",
+            "replace-with-verbatim-answer-3",
+            "replace-with-verbatim-answer-4",
+            "replace-with-verbatim-answer-5"
+          ]
+        },
+        {
+          "caseId": "C3",
+          "hero": "Kaze",
+          "mode": "team",
+          "correctAnswers": 0,
+          "requiredAnswers": 5,
+          "evidence": ["replace-with-screen-or-video-path"],
+          "consoleErrors": [],
+          "pageErrors": [],
+          "telemetry": {
+            "timeToFirstContact": 0,
+            "combatUptime": 0,
+            "uncontestedTravel": 0,
+            "deaths": 0,
+            "skillCasts": 0,
+            "hitMissReason": "replace-with-observed-reason",
+            "resourceContest": "replace-with-observed-result"
+          },
+          "answers": [
+            "replace-with-verbatim-answer-1",
+            "replace-with-verbatim-answer-2",
+            "replace-with-verbatim-answer-3",
+            "replace-with-verbatim-answer-4",
+            "replace-with-verbatim-answer-5"
+          ]
+        },
+        {
+          "caseId": "C4",
+          "hero": "Kaze",
+          "mode": "team",
+          "correctAnswers": 0,
+          "requiredAnswers": 5,
+          "evidence": ["replace-with-screen-or-video-path"],
+          "consoleErrors": [],
+          "pageErrors": [],
+          "telemetry": {
+            "timeToFirstContact": 0,
+            "combatUptime": 0,
+            "uncontestedTravel": 0,
+            "deaths": 0,
+            "skillCasts": 0,
+            "hitMissReason": "replace-with-observed-reason",
+            "resourceContest": "replace-with-observed-result"
+          },
+          "answers": [
+            "replace-with-verbatim-answer-1",
+            "replace-with-verbatim-answer-2",
+            "replace-with-verbatim-answer-3",
+            "replace-with-verbatim-answer-4",
+            "replace-with-verbatim-answer-5"
+          ]
+        },
+        {
+          "caseId": "C5",
+          "hero": "Kaze",
+          "mode": "team",
+          "correctAnswers": 0,
+          "requiredAnswers": 5,
+          "evidence": ["replace-with-screen-or-video-path"],
+          "consoleErrors": [],
+          "pageErrors": [],
+          "telemetry": {
+            "timeToFirstContact": 0,
+            "combatUptime": 0,
+            "uncontestedTravel": 0,
+            "deaths": 0,
+            "skillCasts": 0,
+            "hitMissReason": "replace-with-observed-reason",
+            "resourceContest": "replace-with-observed-result"
+          },
+          "answers": [
+            "replace-with-verbatim-answer-1",
+            "replace-with-verbatim-answer-2",
+            "replace-with-verbatim-answer-3",
+            "replace-with-verbatim-answer-4",
+            "replace-with-verbatim-answer-5"
+          ]
+        },
+        {
+          "caseId": "C6",
+          "hero": "Kaze",
+          "mode": "solo",
+          "correctAnswers": 0,
+          "requiredAnswers": 5,
+          "evidence": ["replace-with-screen-or-video-path"],
+          "consoleErrors": [],
+          "pageErrors": [],
+          "telemetry": {
+            "timeToFirstContact": 0,
+            "combatUptime": 0,
+            "uncontestedTravel": 0,
+            "deaths": 0,
+            "skillCasts": 0,
+            "hitMissReason": "replace-with-observed-reason",
+            "resourceContest": "replace-with-observed-result"
+          },
+          "answers": [
+            "replace-with-verbatim-answer-1",
+            "replace-with-verbatim-answer-2",
+            "replace-with-verbatim-answer-3",
+            "replace-with-verbatim-answer-4",
+            "replace-with-verbatim-answer-5"
+          ]
+        }
+      ]
+    }
+  ]
+}

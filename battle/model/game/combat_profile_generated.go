@@ -4,16 +4,16 @@ package game
 const (
 	CombatProfileID            = "combat-profile"
 	CombatProfileSchemaVersion = 1
-	CombatProfileRevision      = "2026-08-26-phase-1-combat-core"
-	CombatRulesVersion         = "2026-08-26-phase-1-combat-core"
-	CombatProfileFingerprint   = "3B2F8D0486E03BA44B3A706E5E547BCA7AA1E3AEADDAA88462C56C41D9233BD4"
+	CombatProfileRevision      = "2026-08-27-cadence-window"
+	CombatRulesVersion         = "2026-08-27-cadence-window"
+	CombatProfileFingerprint   = "FB04F651CBFF6F8FCBE7830CB752CBE1F52FC04976274D90B5C1CFD25CFF2488"
 )
 
 const GeneratedCombatProfileJSON = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "schemaVersion": 1,
   "profileId": "combat-profile",
-  "profileRevision": "2026-08-26-phase-1-combat-core",
+  "profileRevision": "2026-08-27-cadence-window",
   "purpose": "Версионируемый контракт authoritative combat core и его runtime-представлений.",
   "modes": [
     "deathmatch",
@@ -39,7 +39,9 @@ const GeneratedCombatProfileJSON = `{
       "pickupId": "health_boost",
       "stat": "maxLives",
       "fraction": 0.05,
+      "teamFraction": 0.02,
       "maxStacks": 5,
+      "maxActivePickups": 12,
       "ttlMs": 30000,
       "healsCurrentLives": false
     },
@@ -100,7 +102,7 @@ const GeneratedCombatProfileJSON = `{
         "attackType": "spore",
         "attackDamage": 60,
         "attackCooldownMs": 420,
-        "reloadTimeMs": 1750,
+        "reloadTimeMs": 1200,
         "maxAmmo": 3,
         "archetype": "projectile",
         "range": 620
@@ -131,7 +133,7 @@ const GeneratedCombatProfileJSON = `{
         "attackType": "mandy_staff",
         "attackDamage": 100,
         "attackCooldownMs": 420,
-        "reloadTimeMs": 1650,
+        "reloadTimeMs": 1150,
         "maxAmmo": 3,
         "archetype": "melee_cone",
         "range": 110
@@ -160,9 +162,9 @@ const GeneratedCombatProfileJSON = `{
       "basic": {
         "abilityId": "star_fan",
         "attackType": "mina_star_fan",
-        "attackDamage": 55,
+        "attackDamage": 40,
         "attackCooldownMs": 420,
-        "reloadTimeMs": 1550,
+        "reloadTimeMs": 1100,
         "maxAmmo": 3,
         "archetype": "shotgun",
         "range": 510
@@ -193,7 +195,7 @@ const GeneratedCombatProfileJSON = `{
         "attackType": "zeus_lightning",
         "attackDamage": 85,
         "attackCooldownMs": 520,
-        "reloadTimeMs": 1800,
+        "reloadTimeMs": 1300,
         "maxAmmo": 3,
         "archetype": "projectile",
         "range": 760
@@ -224,7 +226,7 @@ const GeneratedCombatProfileJSON = `{
         "attackType": "kaze_cross_slash",
         "attackDamage": 85,
         "attackCooldownMs": 280,
-        "reloadTimeMs": 1050,
+        "reloadTimeMs": 800,
         "maxAmmo": 3,
         "archetype": "melee_cone",
         "range": 125
@@ -255,7 +257,7 @@ const GeneratedCombatProfileJSON = `{
         "attackType": "mico_staff",
         "attackDamage": 100,
         "attackCooldownMs": 650,
-        "reloadTimeMs": 1750,
+        "reloadTimeMs": 1400,
         "maxAmmo": 3,
         "archetype": "melee_cone",
         "range": 140
@@ -286,7 +288,7 @@ const GeneratedCombatProfileJSON = `{
         "attackType": "lumi_orb",
         "attackDamage": 60,
         "attackCooldownMs": 470,
-        "reloadTimeMs": 1600,
+        "reloadTimeMs": 1250,
         "maxAmmo": 3,
         "archetype": "projectile",
         "range": 520
@@ -317,7 +319,7 @@ const GeneratedCombatProfileJSON = `{
         "attackType": "katty_paint_spray",
         "attackDamage": 55,
         "attackCooldownMs": 520,
-        "reloadTimeMs": 1700,
+        "reloadTimeMs": 1300,
         "maxAmmo": 3,
         "archetype": "projectile",
         "range": 220

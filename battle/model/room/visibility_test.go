@@ -66,7 +66,7 @@ func TestActivePlayerCountIncludesConcealedPlayers(t *testing.T) {
 
 func TestCombatEventsForClientFiltersWithoutEmptyAllocation(t *testing.T) {
 	events := []game.CombatEvent{
-		{ID: 1, Ts: 900, SourceID: "viewer", Kind: "attack"},
+		{ID: 1, Ts: 900, MatchID: "match-1", SourceID: "viewer", Kind: "attack"},
 		{ID: 2, Ts: 900, SourceID: "enemy", TargetID: "other", Kind: "attack"},
 		{ID: 3, Ts: 900, TargetID: "viewer", Kind: "damage"},
 	}
@@ -77,6 +77,9 @@ func TestCombatEventsForClientFiltersWithoutEmptyAllocation(t *testing.T) {
 	}
 	if visible[0].CombatProfileID != game.CombatProfileID || visible[0].CombatRulesVersion != game.CombatRulesVersion {
 		t.Fatalf("combat event version = %#v, want profile=%q version=%q", visible[0], game.CombatProfileID, game.CombatRulesVersion)
+	}
+	if visible[0].MatchID != "match-1" {
+		t.Fatalf("combat event match id = %q, want match-1", visible[0].MatchID)
 	}
 	if empty := combatEventsForClient(nil, "viewer", 1_000); empty != nil {
 		t.Fatalf("empty combat events = %#v, want nil", empty)

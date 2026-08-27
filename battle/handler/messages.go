@@ -159,6 +159,7 @@ func clientReadPump(c *mroom.Client) {
 			}
 			var request struct {
 				Token string `json:"token"`
+				CombatCapabilities
 			}
 			if json.Unmarshal(message, &request) != nil {
 				sendError(c, "Invalid authentication request")
@@ -167,6 +168,10 @@ func clientReadPump(c *mroom.Client) {
 			userID, err := verifyAccessToken(request.Token)
 			if err != nil {
 				sendError(c, "Authentication failed")
+				return
+			}
+			if err := validateCombatCapabilities(request.CombatCapabilities); err != nil {
+				sendError(c, "Unsupported combat client")
 				return
 			}
 			c.Id = userID
@@ -700,14 +705,17 @@ func sendRoomJoined(c *mroom.Client, r *mroom.Room) {
 		mapID = r.MapName
 	}
 	params := game.RoomJoinedParams{
-		PlayerId:    c.Id,
-		RoomId:      r.Id,
-		RoomName:    r.Name,
-		MapName:     r.MapName,
-		MapID:       mapID,
-		MapRevision: mapRevision,
-		Mode:        r.Mode,
-		MaxPlayers:  r.MaxPlayers,
+		PlayerId:           c.Id,
+		RoomId:             r.Id,
+		RoomName:           r.Name,
+		MapName:            r.MapName,
+		MapID:              mapID,
+		MapRevision:        mapRevision,
+		Mode:               r.Mode,
+		MaxPlayers:         r.MaxPlayers,
+		CombatProfileID:    game.CombatProfileID,
+		CombatRulesVersion: game.CombatRulesVersion,
+		EventSchemaVersion: game.CombatEventSchemaVersion,
 	}
 	msg := game.NewServerMessage("room_joined", params)
 	msgData, _ := json.Marshal(msg)

@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	mapValue := gamemap.GenerateTeamBattle(gamemap.CanonicalTeamBattleSeed)
+	mapValue := gamemap.GenerateTeamBattleClassic(gamemap.CanonicalTeamBattleSeed)
 	report, err := game.BuildResourceTopologyReport("team-battle", mapValue)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

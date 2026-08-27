@@ -460,6 +460,24 @@ func TestBotDoesNotAbandonNearbyEnemyForPowerPickup(t *testing.T) {
 	}
 }
 
+func TestBotDoesNotSelectLegacyPowerPickup(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Needle")
+	bot := gs.Players["bot"]
+	bot.X, bot.Y = 100, 100
+	legacy := prop.NewProp("power", 100, 100, 12)
+	gs.Props = append(gs.Props, legacy)
+
+	if target := gs.botPickupTarget(bot); target != nil {
+		t.Fatalf("bot selected legacy power pickup: %#v", target)
+	}
+	if gs.botShouldCollectPickup(bot, legacy, nil) {
+		t.Fatal("bot accepted legacy power pickup without a combat target")
+	}
+}
+
 func TestBotEngagesVisibleTargetBeforeOpeningCrates(t *testing.T) {
 	crate := &geometry.WallTile{MinX: 80, MinY: 260, MaxX: 120, MaxY: 300, Type: "crates"}
 	gs := newTestGameState()
@@ -928,6 +946,24 @@ func TestBotCombatSteeringCommitsToOneStrafeSide(t *testing.T) {
 	}
 	if memory := gs.BotMemory[bot.PlayerId]; memory == nil || memory.StrafeUntil <= now+profile.StrafePeriod/2 {
 		t.Fatalf("bot strafe commitment was not retained: memory=%+v", memory)
+	}
+}
+
+func TestBotWithNoAmmoRepositionsInsteadOfOrbitingInAttackRange(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.X, bot.Y, bot.Ammo, bot.MaxAmmo = 100, 100, 0, 3
+	enemy.X, enemy.Y = 400, 100
+	target := &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, x: enemy.X, y: enemy.Y, distance: 300}
+
+	gs.botEngageTarget(bot.PlayerId, bot, target, 10_000)
+
+	if bot.MoveX >= -0.05 {
+		t.Fatalf("empty-ammo ranged bot orbited instead of creating reload distance: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
 	}
 }
 

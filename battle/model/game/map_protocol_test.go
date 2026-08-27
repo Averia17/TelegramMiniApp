@@ -41,9 +41,9 @@ func TestNewMapJSONKeepsIdentityOnCompactSnapshots(t *testing.T) {
 }
 
 func TestNewMapJSONPublishesPassableTeamFeatures(t *testing.T) {
-	canonical := gamemap.GenerateTeamBattle(gamemap.CanonicalTeamBattleSeed)
+	canonical := gamemap.GenerateTeamBattleClassic(gamemap.CanonicalTeamBattleSeed)
 	got := NewMapJSON("team-battle", canonical, 0, true)
-	if got.ID != "team-battle@20260816" {
+	if got.ID != gamemap.CanonicalTeamBattleClassicID {
 		t.Fatalf("team map identity = %q", got.ID)
 	}
 	if len(got.Features) != len(canonical.Features) || len(got.Features) < 4 {
@@ -54,8 +54,19 @@ func TestNewMapJSONPublishesPassableTeamFeatures(t *testing.T) {
 	}
 }
 
+func TestNewMapJSONPublishesNorthernTeamMapIdentity(t *testing.T) {
+	canonical := gamemap.GenerateTeamBattle(gamemap.CanonicalTeamBattleNorthernSeed)
+	got := NewMapJSON("team-battle-northern", canonical, 2, true)
+	if got.ID != gamemap.CanonicalTeamBattleNorthernID || got.Name != "team-battle-northern" || got.Seed != gamemap.CanonicalTeamBattleNorthernSeed || got.Revision != 2 {
+		t.Fatalf("northern team map identity = %#v", got)
+	}
+	if len(got.Features) <= len(gamemap.GenerateTeamBattleClassic(gamemap.CanonicalTeamBattleSeed).Features) {
+		t.Fatalf("northern team map did not retain its detailed city features: %d", len(got.Features))
+	}
+}
+
 func TestNewMapJSONPublishesRiverAndBridgeCollisionLayers(t *testing.T) {
-	canonical := gamemap.GenerateTeamBattle(gamemap.CanonicalTeamBattleSeed)
+	canonical := gamemap.GenerateTeamBattleClassic(gamemap.CanonicalTeamBattleSeed)
 	got := NewMapJSON("team-battle", canonical, 0, true)
 
 	river, bridge := 0, 0

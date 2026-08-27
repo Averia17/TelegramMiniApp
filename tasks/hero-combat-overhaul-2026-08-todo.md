@@ -1,5 +1,11 @@
 # Todo: Hero Combat Overhaul — Balance and Readability
 
+> Архивный checklist раннего среза. Канонический исполняемый статус и
+> acceptance gates находятся в `tasks/combat-audit-2026-08-todo.md`; значения
+> берутся из `docs/combat-profile.json`. Не трактовать незакрытые пункты ниже
+> как отдельные незавершённые задачи: их покрытие перенесено в T11–T17,
+> automated gate и внешние human/release gates.
+
 ## Phase 0 — contract and measurement
 
 - [x] Synchronize Go, frontend fallback, and hero catalog balance values.

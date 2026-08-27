@@ -12,8 +12,10 @@ const test = (name, fn) => nodeTest(name, {concurrency: true}, fn)
 test("health boost uses a single readable green max-health cube visual", () => {
   const boost = createHealthBoost({type: "health_boost"})
   const roles = []
+  const colors = []
   boost.traverse(child => {
     if (child.userData.role) roles.push(child.userData.role)
+    if (child.material?.color) colors.push(child.material.color.getHex())
   })
 
   assert.equal(boost.userData.type, "health_boost")
@@ -24,6 +26,9 @@ test("health boost uses a single readable green max-health cube visual", () => {
   assert.equal(roles.includes("health-boost-edge"), true)
   assert.equal(roles.filter(role => role === "health-boost-shard").length >= 4, true)
   assert.equal(roles.includes("health-boost-halo"), true)
+  assert.equal(boost.userData.primaryColor, 0x2fbf5a)
+  assert.equal(boost.userData.haloColor, 0x3cff6b)
+  assert.equal(colors.includes(0x8747d7), false)
 })
 
 test("collecting a health boost shows a readable max-health marker", () => {

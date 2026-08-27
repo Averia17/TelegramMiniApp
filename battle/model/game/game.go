@@ -20,6 +20,7 @@ const (
 	regenerationConcealedPulsePercent = 0.25
 	regenerationBaselineRate          = 0.01
 	teamBaseRegenerationPercent       = 0.01
+	healWindowGap                     = 2 * time.Second
 	teamBaseSemicircleRadius          = 10.5 * TileSize
 	teamBaseSemicircleEntrance        = 4.5 * TileSize
 )
@@ -88,6 +89,7 @@ func InitGameStateWithDependencies(gs *GameState, dependencies GameDependencies)
 	gs.IslandVoiceNextAt = make(map[string]int64)
 	gs.IslandVoiceKillClaimed = make(map[string]bool)
 	gs.CombatEvents = make([]CombatEvent, 0)
+	gs.abilityResolutions = make(map[string]*abilityResolution)
 	gs.BeaconHoldStartedAt = make(map[string]int64)
 	gs.MapRevision = 0
 	gs.botWallCacheRevision = -1
@@ -173,6 +175,7 @@ func (gs *GameState) updateWithDelta(elapsed time.Duration) {
 	gs.updateMonsters()
 	gs.updateBullets()
 	now := gs.nowMs()
+	gs.updateAbilityResolutions(now)
 	gs.expireProps(now)
 	gs.updateTeamObjectivesAt(now)
 	gs.updateTeamRespawns(now)
@@ -183,6 +186,43 @@ func (gs *GameState) updateWithDelta(elapsed time.Duration) {
 func (gs *GameState) emitCombatEvent(event CombatEvent) {
 	if event.CommandID == "" {
 		return
+	}
+	if event.MatchID == "" {
+		event.MatchID = gs.MatchID
+		if event.MatchID == "" {
+			event.MatchID = gs.RoomName
+		}
+	}
+	if event.Hero == "" {
+		if source := gs.Players[event.SourceID]; source != nil {
+			event.Hero = source.HeroName
+		}
+	}
+	if event.EffectiveDamage == 0 && event.Damage > 0 {
+		event.EffectiveDamage = event.Damage
+	}
+	if event.Distance == 0 {
+		if source := gs.Players[event.SourceID]; source != nil {
+			var targetX, targetY float64
+			found := false
+			switch event.TargetType {
+			case "players":
+				if target := gs.Players[event.TargetID]; target != nil {
+					targetX, targetY, found = target.X, target.Y, true
+				}
+			case "monsters":
+				if target := gs.Monsters[event.TargetID]; target != nil {
+					targetX, targetY, found = target.X, target.Y, true
+				}
+			case "objectives":
+				if target := gs.Objectives[event.TargetID]; target != nil {
+					targetX, targetY, found = target.X, target.Y, true
+				}
+			}
+			if found {
+				event.Distance = math.Hypot(targetX-source.X, targetY-source.Y)
+			}
+		}
 	}
 	if event.Phase == "" {
 		switch event.Kind {
@@ -290,7 +330,9 @@ func (gs *GameState) healPlayerAt(target *player.Player, amount int, now int64) 
 		return 0
 	}
 	multiplier := 1.0
+	antiHealApplied := false
 	if target.AntiHealUntil > now {
+		antiHealApplied = true
 		multiplier = target.AntiHealMultiplier
 		if multiplier <= 0 || multiplier > 1 {
 			multiplier = .5
@@ -300,11 +342,18 @@ func (gs *GameState) healPlayerAt(target *player.Player, amount int, now int64) 
 	if adjusted == 0 {
 		adjusted = 1
 	}
+	if antiHealApplied && adjusted < amount {
+		target.HealingBlocked += amount - adjusted
+	}
 	missing := target.MaxLives - target.Lives
 	if adjusted > missing {
 		adjusted = missing
 	}
 	target.Lives += adjusted
+	if target.LastEffectiveHealAt > 0 && now > target.LastEffectiveHealAt && now-target.LastEffectiveHealAt <= healWindowGap.Milliseconds() {
+		target.HealWindowMs += now - target.LastEffectiveHealAt
+	}
+	target.LastEffectiveHealAt = now
 	return adjusted
 }
 
@@ -463,7 +512,14 @@ func (gs *GameState) updatePlayers() {
 			}
 		case "ability":
 			if v, ok := action.Value.(*AbilityValue); ok {
+				if v.AimProvided {
+					gs.playerRotate(action.PlayerId, gs.nowMs(), v.AimAngle, v.AimDistance)
+				}
 				gs.playerAbility(action.PlayerId, gs.nowMs(), v.Slot, v.ClientID, v.TargetID)
+			}
+		case "ability_cancel":
+			if v, ok := action.Value.(*AbilityCancelValue); ok {
+				gs.playerAbilityCancel(action.PlayerId, gs.nowMs(), v.ClientID, v.TargetClientID)
 			}
 		case "aiming":
 			if v, ok := action.Value.(*AimingValue); ok {
@@ -777,12 +833,25 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 	}
 	now := gs.nowMs()
 	expirePlayerShieldAt(target, now)
+	incomingAmount := amount
+	// A save is a hit that would have removed the remaining health without a
+	// defensive layer. Shield points are intentionally not part of this test:
+	// spending a shield to preserve the hero is the event the metric describes.
+	incomingWouldBeLethal := amount >= target.Lives
 	target.InterruptRegenerationAt(now)
 	if target.InvulnerableUntil > now {
+		target.DamagePrevented += incomingAmount
+		if incomingWouldBeLethal {
+			target.EscapeSaves++
+		}
 		return 0
 	}
 	if target.StealthUntil > now && target.Dodges > 0 {
 		target.Dodges--
+		target.DamagePrevented += incomingAmount
+		if incomingWouldBeLethal {
+			target.EscapeSaves++
+		}
 		gs.addEffect("evade", target.X, target.Y, 0, 0, 0, 0, 0, 0, "#ffffff", 0, 450)
 		return 0
 	}
@@ -803,7 +872,19 @@ func (gs *GameState) applyDamageAmount(target *player.Player, amount int) int {
 	shieldBefore := target.ShieldHP
 	target.TakeDamageAt(amount, now)
 	dealt := livesBefore - target.Lives + shieldBefore - target.ShieldHP
+	preventable := incomingAmount
+	if maxHealth := livesBefore + shieldBefore; preventable > maxHealth {
+		preventable = maxHealth
+	}
+	prevented := preventable - (livesBefore - target.Lives)
+	if prevented > 0 {
+		target.DamagePrevented += prevented
+	}
+	if incomingWouldBeLethal && target.IsAlive() && prevented > 0 {
+		target.EscapeSaves++
+	}
 	if livesBefore > 0 && target.Lives <= 0 {
+		target.LastDeathAt = now
 		target.SuperCharge = 0
 		target.Deaths++
 		if gs.Mode != ModeTeamDeathmatch && target.Place == 0 {
@@ -834,18 +915,40 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		return 0
 	}
 	wasAlive := target != nil && target.IsAlive()
+	previousContactBy, previousContactAt := target.LastContactBy, target.LastContactAt
 	dealt := gs.applyDamageAmount(target, amount)
 	if dealt > 0 && target != nil {
 		if source != nil {
 			if source.IsBot {
-				gs.botMetrics.AttackHits++
+				if gs.activeAbilitySlot == "basic" {
+					gs.recordBotAttackHit()
+				}
 			}
 			source.PlayerDamage += dealt
+			if gs.activeAbilitySlot == "basic" {
+				source.BasicDamage += dealt
+			} else if gs.activeAbilitySlot != "" {
+				source.SkillDamage += dealt
+			}
 			addSuperChargeFromEffectiveDamage(source, target, dealt)
+			now := gs.nowMs()
+			if source.CombatFirstContactAt == 0 {
+				source.CombatFirstContactAt = now
+				if gs.MatchStartedAt > 0 {
+					source.TimeToFirstContactMs = maxInt64(0, now-gs.MatchStartedAt)
+				}
+			}
+			if source.LastCombatAt > 0 && now-source.LastCombatAt <= combatActivityWindow.Milliseconds() {
+				source.CombatUptimeMs += now - source.LastCombatAt
+			}
+			source.LastCombatAt = now
 		}
 		gs.recordLastContact(source, target)
 	}
 	if dealt > 0 && target != nil && gs.activeCommandID != "" {
+		if gs.activeAbilitySlot != "" && gs.activeAbilitySlot != "basic" {
+			gs.markAbilityResolutionHit(gs.activeCommandID)
+		}
 		sourceID := gs.activeSourceID
 		if source != nil {
 			sourceID = source.PlayerId
@@ -860,6 +963,16 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		if source != nil {
 			killerName = source.Name
 			source.Kills++
+			if previousContactBy != "" && previousContactBy != source.PlayerId && previousContactAt > 0 && gs.nowMs()-previousContactAt <= combatAssistWindow.Milliseconds() {
+				if assister := gs.Players[previousContactBy]; assister != nil && assister.PlayerId != source.PlayerId {
+					assister.Assists++
+				}
+			}
+			if gs.activeAbilitySlot == "basic" {
+				source.BasicOnlyKills++
+			} else if gs.activeAbilitySlot != "" {
+				source.SkillAssistedKills++
+			}
 			gs.dropHeroHealthBoost(target, source)
 			if !gs.IslandVoiceKillClaimed[source.PlayerId] {
 				gs.IslandVoiceKillClaimed[source.PlayerId] = true
@@ -893,7 +1006,28 @@ func (gs *GameState) dropHeroHealthBoost(target, killer *player.Player) {
 	} else {
 		reward.VisibilityPlayerID = killer.PlayerId
 	}
+	gs.appendHealthBoostReward(reward)
+}
+
+func activeHealthBoostCount(gs *GameState) int {
+	if gs == nil {
+		return 0
+	}
+	count := 0
+	for _, candidate := range gs.Props {
+		if candidate != nil && candidate.Active && candidate.Type == "health_boost" {
+			count++
+		}
+	}
+	return count
+}
+
+func (gs *GameState) appendHealthBoostReward(reward *prop.Prop) bool {
+	if gs == nil || reward == nil || activeHealthBoostCount(gs) >= MaxActiveHealthBoosts {
+		return false
+	}
 	gs.Props = append(gs.Props, reward)
+	return true
 }
 
 func (gs *GameState) safeHealthBoostDropPosition(x, y, radius float64) (float64, float64) {
@@ -1070,10 +1204,10 @@ func (gs *GameState) pullTargets(source *player.Player, x, y, radius, distance f
 }
 
 func (gs *GameState) updateBullets() {
-	previousCommandID, previousSourceID, previousProjectileID := gs.activeCommandID, gs.activeSourceID, gs.activeProjectileID
+	previousCommandID, previousSourceID, previousAbilitySlot, previousBotAttackID, previousProjectileID := gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot, gs.activeBotAttackID, gs.activeProjectileID
 	previousPending := gs.commandHasProjectile
 	defer func() {
-		gs.activeCommandID, gs.activeSourceID, gs.activeProjectileID = previousCommandID, previousSourceID, previousProjectileID
+		gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot, gs.activeBotAttackID, gs.activeProjectileID = previousCommandID, previousSourceID, previousAbilitySlot, previousBotAttackID, previousProjectileID
 		gs.commandHasProjectile = previousPending
 	}()
 	for i := 0; i < len(gs.Bullets); i++ {
@@ -1081,7 +1215,7 @@ func (gs *GameState) updateBullets() {
 		if b == nil || !b.Active {
 			continue
 		}
-		gs.activeCommandID, gs.activeSourceID, gs.activeProjectileID = b.CommandID, b.PlayerId, b.ID
+		gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot, gs.activeBotAttackID, gs.activeProjectileID = b.CommandID, b.PlayerId, b.AbilitySlot, b.BotAttackID, b.ID
 		previousX, previousY := b.X, b.Y
 		if b.Homing && b.TargetID != "" {
 			if target := gs.Players[b.TargetID]; target != nil && target.IsAlive() {
@@ -1605,21 +1739,46 @@ func (gs *GameState) playerMove(id string, ts int64, dirX, dirY float64) {
 	if p == nil {
 		return
 	}
+	moving := math.Hypot(dirX, dirY) > .01
 	if p.ChannelUntil > ts {
 		p.MoveX, p.MoveY, p.Ack = 0, 0, ts
+		gs.recordMovementPacing(p, false)
 		return
 	}
 	p.Ack = ts
 	if p.IsBot {
 		dirX, dirY = gs.smoothBotMove(id, ts, dirX, dirY)
-	} else if math.Hypot(dirX, dirY) <= .01 {
+	} else if !moving {
 		p.MoveX, p.MoveY = 0, 0
+		gs.recordMovementPacing(p, false)
 		return
 	}
 	p.MoveX, p.MoveY = dirX, dirY
+	gs.recordMovementPacing(p, moving)
 	if p.HeroName == "Mandy" && math.Hypot(dirX, dirY) > .01 {
 		p.FocusStartedAt, p.FocusCharge = 0, 0
 	}
+}
+
+// recordMovementPacing measures consecutive movement-input time while the
+// player has not recently dealt combat damage. It is intentionally a bounded
+// input-based estimate, not a claim that every travelled pixel was productive.
+func (gs *GameState) recordMovementPacing(p *player.Player, moving bool) {
+	if gs == nil || p == nil || !moving {
+		if p != nil {
+			p.LastMovementAt = 0
+		}
+		return
+	}
+	now := gs.nowMs()
+	lastCombat := p.LastCombatAt
+	if p.LastDamageAt > lastCombat {
+		lastCombat = p.LastDamageAt
+	}
+	if p.LastMovementAt > 0 && now > p.LastMovementAt && now-p.LastMovementAt <= time.Second.Milliseconds() && (lastCombat == 0 || now-lastCombat > combatActivityWindow.Milliseconds()) {
+		p.UncontestedTravelMs += now - p.LastMovementAt
+	}
+	p.LastMovementAt = now
 }
 
 // EffectiveMovementSpeed is the single movement-speed contract shared by the
@@ -1737,20 +1896,117 @@ func worldAngleFromScreen(angle float64) float64 {
 }
 
 type CombatEvent struct {
-	ID           uint64
-	Ts           int64
-	Kind         string
-	Phase        string
-	AbilitySlot  string
-	Reason       string
-	CommandID    string
-	SourceID     string
-	TargetType   string
-	TargetID     string
-	ProjectileID uint64
-	Damage       int
-	Accepted     bool
-	Resolved     bool
+	ID              uint64
+	Ts              int64
+	MatchID         string
+	Kind            string
+	Phase           string
+	Hero            string
+	AbilitySlot     string
+	Reason          string
+	CommandID       string
+	SourceID        string
+	TargetType      string
+	TargetID        string
+	ProjectileID    uint64
+	Distance        float64
+	Damage          int
+	EffectiveDamage int
+	ResourceKind    string
+	ResourceBefore  int
+	ResourceAfter   int
+	Accepted        bool
+	Resolved        bool
+}
+
+type abilityResolution struct {
+	CommandID string
+	SourceID  string
+	Slot      string
+	ResolveAt int64
+	Hit       bool
+}
+
+func abilityResolutionWindow(hero string) int64 {
+	switch hero {
+	case "Needle":
+		return 3_500
+	case "Mandy":
+		return 800
+	case "Brock Zeus":
+		return 1_900
+	case "Kaze":
+		return 450
+	case "Wukong Mico":
+		return 2_500
+	case "Persephone Lumi":
+		return 6_600
+	case "Katty":
+		return 7_500
+	default:
+		return 0
+	}
+}
+
+func (gs *GameState) startAbilityResolution(source *player.Player, slot, commandID string, ts int64) {
+	if gs == nil || source == nil || slot != "primary" || commandID == "" {
+		return
+	}
+	window := abilityResolutionWindow(source.HeroName)
+	if window <= 0 {
+		return
+	}
+	if gs.abilityResolutions == nil {
+		gs.abilityResolutions = make(map[string]*abilityResolution)
+	}
+	gs.abilityResolutions[commandID] = &abilityResolution{
+		CommandID: commandID, SourceID: source.PlayerId, Slot: slot, ResolveAt: ts + window,
+	}
+}
+
+func (gs *GameState) markAbilityResolutionHit(commandID string) {
+	if gs == nil || commandID == "" || gs.abilityResolutions == nil {
+		return
+	}
+	if resolution := gs.abilityResolutions[commandID]; resolution != nil {
+		resolution.Hit = true
+	}
+}
+
+func (gs *GameState) updateAbilityResolutions(now int64) {
+	if gs == nil || len(gs.abilityResolutions) == 0 {
+		return
+	}
+	for commandID, resolution := range gs.abilityResolutions {
+		if resolution == nil || resolution.ResolveAt > now {
+			continue
+		}
+		reason, phase, accepted := "ability_missed", "miss", false
+		if resolution.Hit {
+			reason, phase, accepted = "ability_resolved", "impact", true
+		}
+		gs.emitCombatEvent(CombatEvent{
+			Kind: "ability", AbilitySlot: resolution.Slot, Reason: reason, CommandID: commandID,
+			SourceID: resolution.SourceID, Accepted: accepted, Resolved: true, Phase: phase,
+		})
+		delete(gs.abilityResolutions, commandID)
+	}
+}
+
+func (gs *GameState) withCombatCommand(commandID, sourceID, abilitySlot string, action func()) {
+	if action == nil {
+		return
+	}
+	if gs == nil || commandID == "" {
+		action()
+		return
+	}
+	previousCommandID, previousSourceID, previousAbilitySlot := gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot
+	gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot = commandID, sourceID, abilitySlot
+	defer func() {
+		gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot = previousCommandID, previousSourceID, previousAbilitySlot
+	}()
+	action()
 }
 
 func screenAngleFromWorld(angle float64) float64 {
@@ -1785,6 +2041,14 @@ func (gs *GameState) collectPickups(p *player.Player) {
 			}
 			continue
 		}
+		if pr.Type == "power" {
+			// Legacy power cubes used to combine an instant heal, max-health
+			// growth, and a damage multiplier. They are not part of the
+			// versioned combat economy; discard stale props without mutating
+			// authoritative player state.
+			pr.Active = false
+			continue
+		}
 		inside := geometry.CircleToCircle(&p.CircleBody, &pr.CircleBody)
 		if pr.Type == "health_boost" && pr.LootType == "bat" && inside && !canCollectPickup(p, pr) {
 			gs.recordBatRewardDenial(p, pr)
@@ -1795,14 +2059,6 @@ func (gs *GameState) collectPickups(p *player.Player) {
 		}
 		if inside {
 			switch pr.Type {
-			case "power":
-				pr.Active = false
-				p.PowerCores++
-				p.MaxLives += 35
-				gs.healPlayerAt(p, 90, now)
-				p.DamageMultiplier = math.Min(1.35, 1+float64(p.PowerCores)*.07)
-				// Never let a pickup reduce an assassin's native movement speed.
-				p.Speed = math.Max(p.Speed, math.Min(p.Speed*1.012, 14.25))
 			case "health_boost":
 				if !gs.collectHealthBoost(p, pr) {
 					if pr.LootType == "bat" {
@@ -1864,12 +2120,20 @@ func (gs *GameState) expireProps(now int64) {
 
 func (gs *GameState) collectHealthBoost(collector *player.Player, reward *prop.Prop) bool {
 	if reward == nil || reward.HealthBoostKillerID == "" {
-		return collector.ApplyHealthBoost(HealthBoostFraction) > 0
+		if collector.ApplyHealthBoost(HealthBoostFraction, HealthBoostMaxStacks) <= 0 {
+			return false
+		}
+		collector.CubeClaims++
+		return true
 	}
 
 	killer := gs.Players[reward.HealthBoostKillerID]
 	if gs.Mode != ModeTeamDeathmatch || reward.VisibilityTeam == "" {
-		return killer != nil && killer.PlayerId == collector.PlayerId && killer.ApplyHealthBoost(HealthBoostFraction) > 0
+		if killer == nil || killer.PlayerId != collector.PlayerId || killer.ApplyHealthBoost(HealthBoostFraction, HealthBoostMaxStacks) <= 0 {
+			return false
+		}
+		killer.CubeClaims++
+		return true
 	}
 
 	benefited := false
@@ -1881,7 +2145,8 @@ func (gs *GameState) collectHealthBoost(collector *player.Player, reward *prop.P
 		if teammate.PlayerId == reward.HealthBoostKillerID {
 			fraction = HealthBoostFraction
 		}
-		if teammate.ApplyHealthBoost(fraction) > 0 {
+		if teammate.ApplyHealthBoost(fraction, HealthBoostMaxStacks) > 0 {
+			teammate.CubeClaims++
 			// Keep the pickup active when every eligible teammate is already at
 			// the stack cap. A contested resource must never disappear without
 			// producing an authoritative state change.
@@ -1891,8 +2156,21 @@ func (gs *GameState) collectHealthBoost(collector *player.Player, reward *prop.P
 	return benefited
 }
 
+func normalizeGadgetCharges(p *player.Player) {
+	if p == nil {
+		return
+	}
+	if p.GadgetCharges < 0 {
+		p.GadgetCharges = 0
+	}
+	if p.GadgetCharges > MaxGadgetCharges {
+		p.GadgetCharges = MaxGadgetCharges
+	}
+}
+
 func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ...string) {
 	p := gs.Players[id]
+	normalizeGadgetCharges(p)
 	ackID := ""
 	if len(clientID) > 0 {
 		ackID = clientID[0]
@@ -1900,13 +2178,40 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 	if len(clientID) > 1 {
 		gs.AbilityTargets[id] = clientID[1]
 	}
+	previousCommandID, previousSourceID, previousAbilitySlot := gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot
+	gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot = ackID, id, slot
+	defer func() {
+		gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot = previousCommandID, previousSourceID, previousAbilitySlot
+	}()
+	resourceKind := ""
+	resourceBefore := 0
+	if slot == "primary" {
+		resourceKind = "super_charge"
+		if p != nil {
+			resourceBefore = p.SuperCharge
+		}
+	} else {
+		resourceKind = "gadget_charges"
+		if p != nil {
+			resourceBefore = p.GadgetCharges
+		}
+	}
 	emitAbilityEvent := func(accepted bool, reason string) {
 		if ackID == "" {
 			return
 		}
+		resourceAfter := 0
+		if p != nil {
+			if slot == "primary" {
+				resourceAfter = p.SuperCharge
+			} else {
+				resourceAfter = p.GadgetCharges
+			}
+		}
 		gs.emitCombatEvent(CombatEvent{
 			Kind: "ability", AbilitySlot: slot, Reason: reason, CommandID: ackID,
-			SourceID: id, Accepted: accepted, Resolved: true,
+			SourceID: id, ResourceKind: resourceKind, ResourceBefore: resourceBefore,
+			ResourceAfter: resourceAfter, Accepted: accepted, Resolved: true,
 		})
 	}
 	if p != nil {
@@ -1959,7 +2264,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 		emitAbilityEvent(true, "accepted")
 		return
 	}
-	if primary && SuperChargePercent(p, ts) < 100 {
+	if primary && SuperChargePercent(p, ts) < SuperMaxChargePercent {
 		emitAbilityEvent(false, "super_not_ready")
 		return
 	}
@@ -1986,6 +2291,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 			p.RevealedUntil = gs.nowMs() + 2000
 			p.LastAbilityOK = true
 			emitAbilityEvent(true, "accepted")
+			gs.startAbilityResolution(p, slot, ackID, ts)
 			return
 		}
 	}
@@ -1998,6 +2304,7 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 	}
 	p.LastAbilityOK = true
 	emitAbilityEvent(true, "accepted")
+	gs.startAbilityResolution(p, slot, ackID, ts)
 
 	angle := p.Rotation
 	gs.addEffect("burst", p.X, p.Y, 0, 0, 95, angle, 0, 0, p.Color, 0, 420)
@@ -2012,6 +2319,82 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 			gs.addEffect("spore-jump", p.X, p.Y, 0, 0, 90, angle, 0, 0, "#75d947", 0, 500)
 		}
 	}
+}
+
+// playerAbilityCancel is an explicit player decision during a readable
+// wind-up/channel. The resource was already committed by the accepted cast;
+// cancellation only prevents its delayed impact and reports that outcome so
+// the client cannot leave a stale telegraph on screen.
+func (gs *GameState) playerAbilityCancel(id string, ts int64, clientID string, targetClientID string) {
+	p := gs.Players[id]
+	emit := func(accepted bool, reason string) {
+		if clientID == "" {
+			return
+		}
+		resourceKind := "super_charge"
+		resourceBefore, resourceAfter := 0, 0
+		if p != nil {
+			resourceBefore, resourceAfter = p.SuperCharge, p.SuperCharge
+		}
+		gs.emitCombatEvent(CombatEvent{
+			Kind: "ability", AbilitySlot: "primary", Reason: reason, CommandID: clientID,
+			SourceID: id, ResourceKind: resourceKind, ResourceBefore: resourceBefore, ResourceAfter: resourceAfter,
+			Accepted: accepted, Resolved: true, Phase: "cancelled",
+		})
+	}
+	if p == nil || !p.IsAlive() || !gs.CombatEnabled() {
+		emit(false, "ability_unavailable")
+		return
+	}
+	cancelled := false
+	keptMandy := gs.PendingMandySupers[:0]
+	for _, cast := range gs.PendingMandySupers {
+		if cast != nil && cast.Owner == id && cast.TriggerAt > ts && (targetClientID == "" || cast.CommandID == targetClientID) {
+			cancelled = true
+			if cast.Visual != nil {
+				cast.Visual.ExpiresAt = ts
+			}
+			continue
+		}
+		keptMandy = append(keptMandy, cast)
+	}
+	gs.PendingMandySupers = keptMandy
+	keptStrikes := gs.LightningStrikes[:0]
+	for _, strike := range gs.LightningStrikes {
+		if strike != nil && strike.Owner == id && strike.TriggerAt > ts && (targetClientID == "" || strike.CommandID == targetClientID) {
+			cancelled = true
+			if strike.Visual != nil {
+				strike.Visual.ExpiresAt = ts
+			}
+			if strike.TargetVisual != nil {
+				strike.TargetVisual.ExpiresAt = ts
+			}
+			continue
+		}
+		keptStrikes = append(keptStrikes, strike)
+	}
+	gs.LightningStrikes = keptStrikes
+	if !cancelled {
+		emit(false, "ability_unavailable")
+		return
+	}
+	if gs.abilityResolutions != nil {
+		if targetClientID != "" {
+			delete(gs.abilityResolutions, targetClientID)
+		} else {
+			for commandID, resolution := range gs.abilityResolutions {
+				if resolution != nil && resolution.SourceID == id && resolution.ResolveAt > ts {
+					delete(gs.abilityResolutions, commandID)
+				}
+			}
+		}
+	}
+	p.CastUntil, p.ChannelUntil = 0, 0
+	if p.MandySuperShieldUntil > ts {
+		p.MandySuperShieldUntil, p.ShieldUntil, p.ShieldHP = 0, 0, 0
+	}
+	p.LastAbilityID, p.LastAbilityOK = clientID, false
+	emit(false, "ability_cancelled")
 }
 
 func AbilityCooldownMs(heroName, slot string) int64 {
@@ -2059,10 +2442,21 @@ func (gs *GameState) playerShootWithCommand(id string, ts int64, screenAngle flo
 }
 
 func (gs *GameState) playerShootWithMode(id string, ts int64, screenAngle float64, commandID string, autoAim bool, aimDistance ...float64) {
-	emitResult := func(accepted, resolved bool) {
-		gs.emitCombatEvent(CombatEvent{Kind: "attack", CommandID: commandID, SourceID: id, Accepted: accepted, Resolved: resolved})
-	}
 	p := gs.Players[id]
+	ammoBefore := 0
+	if p != nil {
+		ammoBefore = p.Ammo
+	}
+	emitResult := func(accepted, resolved bool) {
+		ammoAfter := ammoBefore
+		if p != nil {
+			ammoAfter = p.Ammo
+		}
+		gs.emitCombatEvent(CombatEvent{
+			Kind: "attack", CommandID: commandID, SourceID: id, ResourceKind: "ammo",
+			ResourceBefore: ammoBefore, ResourceAfter: ammoAfter, Accepted: accepted, Resolved: resolved,
+		})
+	}
 	if p == nil || !p.IsAlive() || p.StunUntil > ts || p.CastUntil > ts || p.ChannelUntil > ts || !gs.CombatEnabled() || p.Ammo <= 0 {
 		emitResult(false, true)
 		return
@@ -2076,15 +2470,17 @@ func (gs *GameState) playerShootWithMode(id string, ts int64, screenAngle float6
 		emitResult(false, true)
 		return
 	}
-	previousCommandID, previousSourceID, previousProjectileID := gs.activeCommandID, gs.activeSourceID, gs.activeProjectileID
+	previousCommandID, previousSourceID, previousAbilitySlot, previousBotAttackID, previousProjectileID := gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot, gs.activeBotAttackID, gs.activeProjectileID
 	previousPending := gs.commandHasProjectile
 	previousAutoAim := gs.activeAutoAim
-	gs.activeCommandID, gs.activeSourceID, gs.activeProjectileID = commandID, id, 0
+	gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot, gs.activeProjectileID = commandID, id, "basic", 0
+	gs.activeBotAttackID = ""
 	gs.commandHasProjectile = false
 	gs.activeAutoAim = autoAim
 	defer func() {
 		resolved := !gs.commandHasProjectile
-		gs.activeCommandID, gs.activeSourceID, gs.activeProjectileID = previousCommandID, previousSourceID, previousProjectileID
+		gs.activeCommandID, gs.activeSourceID, gs.activeBotAttackID, gs.activeProjectileID = previousCommandID, previousSourceID, previousBotAttackID, previousProjectileID
+		gs.activeAbilitySlot = previousAbilitySlot
 		gs.commandHasProjectile = previousPending
 		gs.activeAutoAim = previousAutoAim
 		emitResult(true, resolved)
@@ -2099,6 +2495,7 @@ func (gs *GameState) playerShootWithMode(id string, ts int64, screenAngle float6
 	p.AttackPulse++
 	if p.IsBot {
 		gs.botMetrics.AttackAttempts++
+		gs.activeBotAttackID = fmt.Sprintf("basic:%s:%d", id, p.AttackPulse)
 	}
 	if p.HeroName == "Kaze" && p.StealthUntil > ts {
 		p.KazeCritReady = true
@@ -2248,6 +2645,8 @@ func (gs *GameState) spawnAttackBullet(p *player.Player, angle float64, kind str
 		}
 	}
 	b.CommandID = gs.activeCommandID
+	b.AbilitySlot = gs.activeAbilitySlot
+	b.BotAttackID = gs.activeBotAttackID
 	if gs.activeCommandID != "" {
 		gs.commandHasProjectile = true
 	}
@@ -2335,10 +2734,14 @@ func (gs *GameState) damageMonster(id string, target *monster.Monster, damage in
 	target.Hurt(damage)
 	dealt := livesBefore - target.Lives
 	if source := gs.Players[damageSourceID]; source != nil {
+		source.BatDamage += dealt
 		addSuperChargeForEffectiveDamage(source, target.MaxLives, dealt)
 	}
 	gs.recordBatDamage(id, gs.Players[damageSourceID], dealt)
 	if gs.activeCommandID != "" {
+		if gs.activeAbilitySlot != "" && gs.activeAbilitySlot != "basic" && dealt > 0 {
+			gs.markAbilityResolutionHit(gs.activeCommandID)
+		}
 		gs.emitCombatEvent(CombatEvent{
 			Kind: "hit", CommandID: gs.activeCommandID, SourceID: damageSourceID,
 			TargetType: "monsters", TargetID: id, ProjectileID: gs.activeProjectileID, Damage: dealt,
@@ -2360,8 +2763,9 @@ func (gs *GameState) damageMonster(id string, target *monster.Monster, damage in
 			reward.VisibilityPlayerID = source.PlayerId
 		}
 	}
-	gs.Props = append(gs.Props, reward)
-	gs.recordBatReward(id, gs.Players[damageSourceID], reward)
+	if gs.appendHealthBoostReward(reward) {
+		gs.recordBatReward(id, gs.Players[damageSourceID], reward)
+	}
 	if gs.MonsterRespawns == nil {
 		gs.MonsterRespawns = make(map[string]MonsterRespawn)
 	}
@@ -2618,8 +3022,8 @@ func SuperChargePercent(p *player.Player, _ int64) int {
 	if charge < 0 {
 		return 0
 	}
-	if charge > 100 {
-		return 100
+	if charge > SuperMaxChargePercent {
+		return SuperMaxChargePercent
 	}
 	return charge
 }
@@ -2635,7 +3039,7 @@ func addSuperChargeForEffectiveDamage(source *player.Player, maxLives, damage in
 	if source == nil || damage <= 0 || maxLives <= 0 {
 		return
 	}
-	charge := int(math.Round(float64(damage) * 100 / float64(maxLives)))
+	charge := int(math.Round(float64(damage) * float64(SuperMaxChargePercent) / float64(maxLives)))
 	if charge < 1 {
 		charge = 1
 	}
@@ -2653,6 +3057,7 @@ func addSuperChargeForControl(source, target *player.Player, durationMs int64) {
 	if charge < 1 {
 		charge = 1
 	}
+	source.ControlAppliedMs += durationMs
 	addSuperChargePoints(source, charge)
 }
 
@@ -2664,6 +3069,7 @@ func addSuperChargeForSupport(source *player.Player, effectiveValue, maxLives in
 	if charge < 1 {
 		charge = 1
 	}
+	source.HealingDone += effectiveValue
 	addSuperChargePoints(source, charge)
 }
 
@@ -2672,8 +3078,8 @@ func addSuperChargePoints(source *player.Player, points int) {
 		return
 	}
 	source.SuperCharge += points
-	if source.SuperCharge > 100 {
-		source.SuperCharge = 100
+	if source.SuperCharge > SuperMaxChargePercent {
+		source.SuperCharge = SuperMaxChargePercent
 	}
 }
 
@@ -2871,8 +3277,8 @@ func (gs *GameState) resetPlayerMatchState(p *player.Player) {
 		p.BaseMaxLives = hero.MaxLives
 		p.Speed = float64(hero.Speed) * RuntimeMovementSpeedScale
 		p.AttackDmg = hero.AttackDamage
-		p.AttackRate = int64(float64(hero.AttackRate)*AttackRateScale + .5)
-		p.ReloadTime = int64(float64(hero.ReloadTime)*ReloadTimeScale + .5)
+		p.AttackRate = hero.AttackRate
+		p.ReloadTime = hero.ReloadTime
 		p.MaxAmmo = hero.MaxAmmo
 		p.BulletSpd = float64(hero.BulletSpeed) * RuntimeProjectileSpeedScale
 		p.BulletSz = hero.BulletSize
@@ -2884,7 +3290,15 @@ func (gs *GameState) resetPlayerMatchState(p *player.Player) {
 
 	p.Lives = p.MaxLives
 	p.HealthBoosts = 0
-	p.Kills, p.Place, p.Deaths = 0, 0, 0
+	p.Kills, p.BasicDamage, p.SkillDamage, p.BasicOnlyKills, p.SkillAssistedKills = 0, 0, 0, 0, 0
+	p.HealingDone, p.HealingBlocked, p.ShieldProvided, p.DamagePrevented, p.Assists = 0, 0, 0, 0, 0
+	p.HealWindowMs, p.LastEffectiveHealAt = 0, 0
+	p.ControlAppliedMs = 0
+	p.BatDamage, p.BatContests, p.CubeClaims, p.EscapeSaves = 0, 0, 0, 0
+	p.TimeToFirstContactMs, p.CombatUptimeMs, p.RespawnDowntimeMs = 0, 0, 0
+	p.UncontestedTravelMs = 0
+	p.CombatFirstContactAt, p.LastCombatAt, p.LastDeathAt, p.LastMovementAt = 0, 0, 0, 0
+	p.Place, p.Deaths = 0, 0
 	p.PlayerDamage, p.TowerDamage = 0, 0
 	p.TownHallDamage, p.TowersDestroyed, p.TownHallsDestroyed = 0, 0, 0
 	p.Rotation, p.Ack = 0, 0
@@ -2912,9 +3326,11 @@ func (gs *GameState) resetPlayerMatchState(p *player.Player) {
 	p.StoneArmorUntil, p.GadgetArmed = 0, false
 	p.MandySuperShieldUntil, p.MicoArmorDetonation = 0, false
 	p.KazeCritReady, p.KazeStealthCritReady, p.KazeSuperReset, p.KazeCombo, p.KazeComboUntil = false, false, false, 0, 0
-	p.GadgetCharges, p.Ammo, p.NextAmmoAt = 3, p.MaxAmmo, 0
+	p.GadgetCharges, p.Ammo, p.NextAmmoAt = GadgetChargesOnSpawn, p.MaxAmmo, 0
 	p.RegenCarry, p.LastDamageAt, p.RespawnAt = 0, 0, 0
 	p.RespawnCount, p.LastRegenAt = 0, 0
+	p.CombatFirstContactAt, p.LastCombatAt, p.LastDeathAt = 0, 0, 0
+	p.TimeToFirstContactMs, p.CombatUptimeMs, p.RespawnDowntimeMs = 0, 0, 0
 	p.RevealedUntil, p.LastContactAt, p.LastContactBy = 0, 0, ""
 	p.LastContactX, p.LastContactY, p.LastContactDirX, p.LastContactDirY = 0, 0, 0, 0
 	p.HitImpulseX, p.HitImpulseY = 0, 0
@@ -2933,6 +3349,7 @@ func (gs *GameState) resetMatchAbilityRuntime() {
 	gs.KattyPaintUntil = make(map[string]map[string]int64)
 	gs.LightMarkedUntil = make(map[string]int64)
 	gs.AbilityTargets = make(map[string]string)
+	gs.abilityResolutions = make(map[string]*abilityResolution)
 	gs.LightningStrikes = make([]*LightningStrike, 0)
 	gs.Skyfalls = make([]*Skyfall, 0)
 	gs.TemporaryWalls = make(map[*geometry.WallTile]int64)
@@ -2941,7 +3358,8 @@ func (gs *GameState) resetMatchAbilityRuntime() {
 	gs.BotMemory = make(map[string]*BotPerception)
 	gs.resetBotAIMetrics()
 	gs.resetBatLifecycleMetrics()
-	gs.activeCommandID, gs.activeSourceID = "", ""
+	gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot = "", "", ""
+	gs.activeBotAttackID = ""
 	gs.activeProjectileID, gs.commandHasProjectile = 0, false
 	gs.activeAutoAim, gs.hasAutoAimTarget = false, false
 	gs.autoAimTargetX, gs.autoAimTargetY, gs.autoAimTargetID = 0, 0, ""

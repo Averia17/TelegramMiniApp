@@ -27,11 +27,6 @@ const (
 	LunarCratesCount = 12
 	MonstersCount    = 8
 
-	HealthBoostFraction     = .05
-	TeamHealthBoostFraction = .02
-	BatCampRespawnDuration  = 20 * time.Second
-	HealthBoostTTL          = 30 * time.Second
-
 	PlayerSize = 32.0
 
 	BulletSize  = 8.0
@@ -50,6 +45,8 @@ const (
 	BotRevealRange          = 900.0
 	BotRecentThreatDuration = 2 * time.Second
 	BotFocusFireDuration    = 1800 * time.Millisecond
+	combatActivityWindow    = 2 * time.Second
+	combatAssistWindow      = 3 * time.Second
 	BotTargetStickDuration  = 1200 * time.Millisecond
 	BotPathRefreshInterval  = 240 * time.Millisecond
 	BotStuckTimeout         = 650 * time.Millisecond
@@ -63,12 +60,30 @@ const (
 	// they look like they have access to the whole authoritative state.
 	BotReactionDelayMin = 140 * time.Millisecond
 	BotReactionDelayMax = 320 * time.Millisecond
-	AttackRateScale     = 1.55
-	ReloadTimeScale     = 1.22
 	// Public hero stats stay compact for the UX; these keep their combat pace
 	// in the same world-unit range as before the catalog compaction.
 	RuntimeMovementSpeedScale   = 12.0
 	RuntimeProjectileSpeedScale = 20.0
+)
+
+var (
+	SuperMaxChargePercent          = loadedCombatProfileRuntimeDefaults.Defaults.Super.MaxChargePercent
+	SuperStartChargePercent        = loadedCombatProfileRuntimeDefaults.Defaults.Super.StartChargePercent
+	MaxGadgetCharges               = loadedCombatProfileRuntimeDefaults.Defaults.Gadget.MaxCharges
+	GadgetChargesOnSpawn           = loadedCombatProfileRuntimeDefaults.Defaults.Gadget.ChargesOnSpawn
+	BotLowHealthRetreatFraction    = loadedCombatProfileRuntimeDefaults.Defaults.AI.LowHealthRetreatFraction
+	BotCriticalHealthFraction      = loadedCombatProfileRuntimeDefaults.Defaults.AI.CriticalHealthRetreatFraction
+	BotSuperUseAdvantageFraction   = loadedCombatProfileRuntimeDefaults.Defaults.AI.SuperUseAdvantageFraction
+	BotPickupContestHealthFraction = loadedCombatProfileRuntimeDefaults.Defaults.AI.PickupContestHealthFraction
+	HealthBoostFraction            = loadedCombatProfileRuntimeDefaults.Defaults.HealthBoost.Fraction
+	TeamHealthBoostFraction        = loadedCombatProfileRuntimeDefaults.Defaults.HealthBoost.TeamFraction
+	HealthBoostMaxStacks           = loadedCombatProfileRuntimeDefaults.Defaults.HealthBoost.MaxStacks
+	BatCampRespawnDuration         = 20 * time.Second
+	HealthBoostTTL                 = time.Duration(loadedCombatProfileRuntimeDefaults.Defaults.HealthBoost.TTLMS) * time.Millisecond
+	HealthBoostHealsCurrentLives   = loadedCombatProfileRuntimeDefaults.Defaults.HealthBoost.HealsCurrentLives
+	// Bound visible green-cube clutter. A full budget drops no new cube until
+	// one of the existing claims or expires, preserving a meaningful contest.
+	MaxActiveHealthBoosts = loadedCombatProfileRuntimeDefaults.Defaults.HealthBoost.MaxActivePickups
 )
 
 type GameMode string
@@ -79,6 +94,9 @@ const (
 )
 
 type GameState struct {
+	// MatchID is the stable room/match correlation key used by combat events
+	// and result telemetry. RoomName remains a display-oriented field.
+	MatchID                 string
 	State                   string
 	RoomName                string
 	MapName                 string
@@ -148,8 +166,11 @@ type GameState struct {
 	IslandVoiceKillClaimed  map[string]bool
 	CombatEvents            []CombatEvent
 	NextCombatEventID       uint64
+	abilityResolutions      map[string]*abilityResolution
 	activeCommandID         string
 	activeSourceID          string
+	activeAbilitySlot       string
+	activeBotAttackID       string
 	activeProjectileID      uint64
 	commandHasProjectile    bool
 	activeAutoAim           bool
@@ -205,6 +226,7 @@ type BotAIMetrics struct {
 	SpawnProtectionAvoidances uint64
 	StuckReplans              uint64
 	IdleDecisionTicks         uint64
+	attackHitKeys             map[string]struct{}
 }
 
 // BatLifecycleMetrics are match-local counters for the neutral camp loop.
@@ -253,6 +275,7 @@ func newBotAIMetrics() BotAIMetrics {
 		ActionScoreSums:       make(map[string]float64),
 		ActionScoreSamples:    make(map[string]uint64),
 		ResourceContestByRole: make(map[string]uint64),
+		attackHitKeys:         make(map[string]struct{}),
 	}
 }
 

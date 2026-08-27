@@ -4,6 +4,8 @@ const ABILITY_REJECTION_MESSAGES = {
   gadget_unavailable: "No gadget charges",
   super_not_ready: "Super is not ready",
   ability_rejected: "Ability was not accepted",
+  ability_cancelled: "Ability cancelled",
+  ability_missed: "Ability missed — no target was hit",
 }
 
 export const formatCombatAbilityReason = (reason, slot = "") => {

@@ -138,7 +138,8 @@ export const getBattleHistoryPresentation = battle => {
 
 export const getBattleMapLabel = mapName => ({
   "battle-royale": "Остров Первого Испытания",
-  "team-battle": "Квартал Битвы",
+  "team-battle": "Каменный Перекрёсток",
+  "team-battle-northern": "Северный Пепел",
   arena: "Тренировочная арена",
 }[String(mapName || "").toLowerCase()] || "Арена боя")
 

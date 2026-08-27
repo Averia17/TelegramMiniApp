@@ -1,7 +1,10 @@
 const CANONICAL_MAP_URL = "/api/battle/map-preview"
 
-export const loadCanonicalBattleMap = async (fetchImpl = fetch, mode = "solo") => {
-  const query = mode === "team" ? "?mode=team" : ""
+export const loadCanonicalBattleMap = async (fetchImpl = fetch, mode = "solo", mapName = "") => {
+  const params = new URLSearchParams()
+  if (mode === "team") params.set("mode", "team")
+  if (mode === "team" && mapName) params.set("map", mapName)
+  const query = params.toString() ? `?${params.toString()}` : ""
   const response = await fetchImpl(`${CANONICAL_MAP_URL}${query}`, {cache: "no-store"})
   if (!response.ok) throw new Error(`Map API returned ${response.status}`)
   const payload = await response.json()

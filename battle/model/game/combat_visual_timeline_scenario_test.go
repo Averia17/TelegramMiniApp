@@ -49,8 +49,17 @@ func runVisualTimelineTrial(t *testing.T, trial visualTimelineTrial) CombatScena
 	if trial.impactKind != "" && impactObserved != 1 {
 		t.Fatalf("%s impact effect %q was not materialized by %dms: %#v", trial.hero, trial.impactKind, trial.resolveAt, state.Effects)
 	}
-	if len(state.CombatEvents) != 1 || state.CombatEvents[0].Phase != "accepted" || !state.CombatEvents[0].Accepted {
-		t.Fatalf("%s visual timeline command acknowledgement invalid: %#v", trial.hero, state.CombatEvents)
+	acknowledgements := 0
+	for _, event := range state.CombatEvents {
+		if event.Kind == "ability" && event.CommandID == "visual-timeline" && event.Phase == "accepted" {
+			acknowledgements++
+			if event.Phase != "accepted" || !event.Accepted || !event.Resolved {
+				t.Fatalf("%s visual timeline acknowledgement invalid: %#v", trial.hero, event)
+			}
+		}
+	}
+	if acknowledgements != 1 {
+		t.Fatalf("%s visual timeline acknowledgement count=%d: %#v", trial.hero, acknowledgements, state.CombatEvents)
 	}
 	if err := runner.RecordMetric("impactObserved", impactObserved); err != nil {
 		t.Fatalf("record %s impact: %v", trial.hero, err)

@@ -8,7 +8,7 @@ import (
 
 func TestCombatResourceTopologyReportIsDeterministicAndReachable(t *testing.T) {
 	build := func() ResourceTopologyReport {
-		report, err := BuildResourceTopologyReport("team-battle", gamemap.GenerateTeamBattle(gamemap.CanonicalTeamBattleSeed))
+	report, err := BuildResourceTopologyReport("team-battle", gamemap.GenerateTeamBattleClassic(gamemap.CanonicalTeamBattleSeed))
 		if err != nil {
 			t.Fatalf("build resource topology report: %v", err)
 		}

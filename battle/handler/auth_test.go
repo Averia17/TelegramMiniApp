@@ -38,7 +38,11 @@ func TestVerifyBattleTicketRequiresMatchingActiveParticipant(t *testing.T) {
 	if _, err := verifyBattleTicket(ticket, "party-1", "player-2"); err == nil {
 		t.Fatal("battle ticket accepted for a different player")
 	}
-	tampered := ticket[:len(ticket)-1] + "A"
+	tamperedSuffix := "A"
+	if ticket[len(ticket)-1] == tamperedSuffix[0] {
+		tamperedSuffix = "B"
+	}
+	tampered := ticket[:len(ticket)-1] + tamperedSuffix
 	if _, err := verifyBattleTicket(tampered, "party-1", "player-1"); err == nil {
 		t.Fatal("tampered battle ticket accepted")
 	}

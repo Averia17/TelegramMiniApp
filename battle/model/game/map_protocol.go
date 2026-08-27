@@ -15,8 +15,11 @@ func NewMapJSON(name string, source *gamemap.GameMap, revision int, includeWalls
 		id = gamemap.CanonicalBattleRoyaleID
 		seed = gamemap.CanonicalBattleRoyaleSeed
 	} else if name == "team-battle" {
-		id = "team-battle@20260816"
+		id = gamemap.CanonicalTeamBattleClassicID
 		seed = gamemap.CanonicalTeamBattleSeed
+	} else if name == "team-battle-northern" {
+		id = gamemap.CanonicalTeamBattleNorthernID
+		seed = gamemap.CanonicalTeamBattleNorthernSeed
 	}
 	result := MapJSON{ID: id, Name: name, Seed: seed, Revision: revision}
 	if source == nil {

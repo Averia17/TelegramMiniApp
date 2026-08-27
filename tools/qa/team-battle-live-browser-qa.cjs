@@ -5,7 +5,9 @@ const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cj
 
 const baseUrl = process.env.TEAM_BATTLE_QA_URL || "http://localhost"
 const devUser = process.env.TEAM_BATTLE_QA_USER || "920000001"
-const output = path.resolve(__dirname, "../../output/playwright/team-battle-live.png")
+const selectedMap = process.env.TEAM_BATTLE_QA_MAP === "team-battle" ? "team-battle" : "team-battle-northern"
+const expectedMapId = selectedMap === "team-battle" ? "team-battle@20260816" : "team-battle-northern@20260827"
+const output = path.resolve(__dirname, `../../output/playwright/team-battle-live-${selectedMap}.png`)
 
 runWithBrowser(
   () => launchHeadlessChromium(chromium, {headless: true}),
@@ -19,10 +21,11 @@ runWithBrowser(
     // Enter through the lobby so the route carries startNewBattle state. A
     // direct /battle URL is intentionally treated as recovery and can return
     // to the lobby when there is no authoritative room to resume.
-    await page.addInitScript(userId => {
+    await page.addInitScript(({userId, mapName}) => {
       localStorage.setItem(`battle_mode:${userId}`, "team")
+      localStorage.setItem(`battle_map:${userId}`, mapName)
       localStorage.setItem(`battle_hero:${userId}`, "Needle")
-    }, devUser)
+    }, {userId: devUser, mapName: selectedMap})
     // Party notifications are optional for this battle QA and may be absent
     // in a minimal local compose profile; keep that optional dependency from
     // turning a map regression into a proxy error.
@@ -103,7 +106,7 @@ runWithBrowser(
     assert.equal(report.botCount, 5, "one real player must produce five bots")
     assert.equal(report.hasEnemyRedView, true, "enemy red marker was not rendered")
     assert.deepEqual(report.friendlyFireEvents, [], "friendly-fire combat event detected")
-    assert.equal(report.mapId, "team-battle@20260816", "unexpected team map")
+    assert.equal(report.mapId, expectedMapId, "unexpected team map")
     assert.ok(report.riverCellCount >= 300, "river collision layer is incomplete")
     assert.ok(report.bridgeCellCount >= 60, "bridge collision layer is incomplete")
     assert.equal(report.riverMinAlong, 15, "river does not reach the first island shoreline")

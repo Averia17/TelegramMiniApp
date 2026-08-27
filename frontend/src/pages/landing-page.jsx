@@ -7,7 +7,7 @@ import {StoreTab} from "../components/Tabs/StoreTab.jsx"
 import "./landing-page.css"
 import {API_URL, PARTY_URL} from "../utils/urls.js"
 import {BattleLoading} from "../components/BattleLoading/BattleLoading.jsx"
-import {getBattleRoute, loadBattleHero, loadBattleMode, saveBattleHero, saveBattleMode} from "../utils/battlePreferences.js"
+import {DEFAULT_TEAM_BATTLE_MAP, getBattleRoute, getTeamBattleMap, loadBattleHero, loadBattleMap, loadBattleMode, saveBattleHero, saveBattleMap, saveBattleMode, TEAM_BATTLE_MAPS} from "../utils/battlePreferences.js"
 import {PartyPanel} from "../components/Party/PartyPanel.jsx"
 import {canStartTeamParty, getBattleModeAfterPartyState, getPartyBattleIntent, shouldApplyPartyState} from "../components/Party/partyRoster.js"
 import {PartyInviteNotifications} from "../components/Party/PartyInviteNotifications.jsx"
@@ -35,6 +35,7 @@ const LandingPage = ({id}) => {
   const [playError, setPlayError] = useState(() => location.state?.battleError || "")
   const [battleStarting, setBattleStarting] = useState(false)
   const [battleMode, setBattleMode] = useState(() => loadBattleMode(id))
+  const [battleMap, setBattleMap] = useState(() => loadBattleMap(id))
   const [partyId, setPartyId] = useState(() => new URLSearchParams(window.location.search).get("party") || "")
   const [partyState, setPartyState] = useState(null)
   const [outgoingInvites, setOutgoingInvites] = useState([])
@@ -91,14 +92,21 @@ const LandingPage = ({id}) => {
     saveBattleMode(id, nextMode)
     setPlayError("")
   }, [id])
-  const enterBattle = useCallback(async ({partyId: nextPartyId = "", partyTicket = "", intentId = ""} = {}) => {
+  const changeBattleMap = useCallback(mapName => {
+    const nextMap = TEAM_BATTLE_MAPS.some(map => map.id === mapName) ? mapName : DEFAULT_TEAM_BATTLE_MAP
+    setBattleMap(nextMap)
+    saveBattleMap(id, nextMap)
+    setPlayError("")
+  }, [id])
+  const enterBattle = useCallback(async ({partyId: nextPartyId = "", partyTicket = "", intentId = "", partyMap = ""} = {}) => {
     if (!selectedHero) return false
     setPlayError("")
     setBattleStarting(true)
     try {
       const battleIntentId = intentId || `${Date.now()}-${Math.random().toString(36).slice(2)}`
       const battleModeForStart = nextPartyId ? "team" : battleMode
-      navigate(getBattleRoute(battleModeForStart, nextPartyId), {state: {
+      const battleMapForStart = partyMap || partyState?.battleMap || battleMap
+      navigate(getBattleRoute(battleModeForStart, nextPartyId, battleMapForStart), {state: {
         heroName: selectedHero,
         tauntActive: Boolean(economy.taunt_active),
         playerName: nickname,
@@ -112,7 +120,7 @@ const LandingPage = ({id}) => {
       setPlayError(error.response?.data?.detail || "Не удалось начать бой")
       return false
     }
-  }, [battleMode, economy.taunt_active, navigate, nickname, selectedHero])
+  }, [battleMap, battleMode, economy.taunt_active, navigate, nickname, partyState?.battleMap, selectedHero])
   const handlePartyReady = useCallback((state, {force = false} = {}) => {
     const nextParty = state?.partyId ? state : null
     if (nextParty?.partyId && disbandedPartyIdsRef.current.has(nextParty.partyId)) return
@@ -226,10 +234,10 @@ const LandingPage = ({id}) => {
   useEffect(() => {
     if (!partyBattleIntent || !selectedHero || handledPartyBattles.current.has(partyBattleIntent)) return
     handledPartyBattles.current.add(partyBattleIntent)
-    enterBattle({partyId: partyState.partyId, partyTicket: partyState.battleTicket, intentId: partyBattleIntent}).then(started => {
+    enterBattle({partyId: partyState.partyId, partyTicket: partyState.battleTicket, partyMap: partyState.battleMap, intentId: partyBattleIntent}).then(started => {
       if (!started) handledPartyBattles.current.delete(partyBattleIntent)
     })
-  }, [enterBattle, partyBattleIntent, partyState?.battleTicket, partyState?.partyId, selectedHero])
+  }, [enterBattle, partyBattleIntent, partyState?.battleMap, partyState?.battleTicket, partyState?.partyId, selectedHero])
 
   const refreshParty = useCallback(async () => {
     try {
@@ -287,7 +295,7 @@ const LandingPage = ({id}) => {
       setPlayError("")
       setBattleStarting(true)
       try {
-        const {data} = await axios.post(`${PARTY_URL}/${activePartyId}/start`, {}, {headers: {"X-User-ID": String(id)}})
+        const {data} = await axios.post(`${PARTY_URL}/${activePartyId}/start`, {mapName: battleMap}, {headers: {"X-User-ID": String(id)}})
         handlePartyReady(data)
       } catch (error) {
         setBattleStarting(false)
@@ -296,7 +304,7 @@ const LandingPage = ({id}) => {
       return
     }
     enterBattle()
-  }, [battleMode, enterBattle, handlePartyReady, id, partyId, partyState, selectedHero])
+  }, [battleMap, battleMode, enterBattle, handlePartyReady, id, partyId, partyState, selectedHero])
 
   const playerDisplayName = nickname.trim() || "БОЕЦ"
 
@@ -339,7 +347,7 @@ const LandingPage = ({id}) => {
             <button className={`lp-team-button ${battleMode === "team" ? "is-active" : ""}`} onClick={() => { changeBattleMode("team"); setPartyOpen(true) }}><span>＋</span><small>{partyId ? "ПАТИ" : "КОМАНДА"}</small></button>
             <div className="lp-event-card">
               <div className="lp-event-icon">☠</div>
-              <div><small>{battleMode === "team" ? "КОМАНДНЫЙ БОЙ" : "ОДИНОЧНОЕ СТОЛКНОВЕНИЕ"}</small><strong>{battleMode === "team" ? "Командная арена" : "Песчаный лабиринт"}</strong><span>{battleMode === "team" ? "Две команды по три игрока" : "Новая карта через 3ч."}</span></div>
+              <div className="lp-event-copy"><small>{battleMode === "team" ? "КОМАНДНЫЙ БОЙ" : "ОДИНОЧНОЕ СТОЛКНОВЕНИЕ"}</small><strong>{battleMode === "team" ? getTeamBattleMap(battleMap).label : "Песчаный лабиринт"}</strong><span>{battleMode === "team" ? getTeamBattleMap(battleMap).subtitle : "Новая карта через 3ч."}</span>{battleMode === "team" && <div className="lp-map-picker" aria-label="Карта командного боя">{TEAM_BATTLE_MAPS.map(map => <button key={map.id} type="button" className={map.id === battleMap ? "is-active" : ""} onClick={() => changeBattleMap(map.id)} aria-pressed={map.id === battleMap}>{map.id === "team-battle" ? "СТАРАЯ" : "СЕВЕР"}</button>)}</div>}</div>
             </div>
             <button className="lp-play-btn" disabled={!selectedHero || battleStarting} onClick={handlePlay} aria-busy={battleStarting}>
               В БОЙ!

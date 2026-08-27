@@ -534,6 +534,45 @@ func TestHandleMapPreviewReturnsCanonicalBattleMap(t *testing.T) {
 	}
 }
 
+func TestHandleMapPreviewReturnsSelectedTeamMapVariant(t *testing.T) {
+	h := NewHandler()
+	req := httptest.NewRequest(http.MethodGet, "/map-preview?mode=team&map=team-battle", nil)
+	w := httptest.NewRecorder()
+	h.HandleMapPreview(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %v, want 200", w.Code)
+	}
+	var payload mapPreviewResponse
+	if err := json.NewDecoder(w.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode team map preview: %v", err)
+	}
+	classic := gamemap.GenerateTeamBattleClassic(gamemap.CanonicalTeamBattleSeed)
+	if payload.Map.ID != gamemap.CanonicalTeamBattleClassicID || payload.Map.Name != "team-battle" || payload.Seed != gamemap.CanonicalTeamBattleSeed {
+		t.Fatalf("classic team preview identity = %#v, seed %d", payload.Map, payload.Seed)
+	}
+	if len(payload.Map.Features) != len(classic.Features) || len(payload.Map.Walls) != len(classic.Collisions) {
+		t.Fatalf("classic team preview geometry = features %d walls %d; want %d/%d", len(payload.Map.Features), len(payload.Map.Walls), len(classic.Features), len(classic.Collisions))
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/map-preview?mode=team&map=team-battle-northern", nil)
+	w = httptest.NewRecorder()
+	h.HandleMapPreview(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("northern status = %v, want 200", w.Code)
+	}
+	payload = mapPreviewResponse{}
+	if err := json.NewDecoder(w.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode northern team map preview: %v", err)
+	}
+	northern := gamemap.GenerateTeamBattle(gamemap.CanonicalTeamBattleNorthernSeed)
+	if payload.Map.ID != gamemap.CanonicalTeamBattleNorthernID || payload.Map.Name != "team-battle-northern" || payload.Seed != gamemap.CanonicalTeamBattleNorthernSeed {
+		t.Fatalf("northern team preview identity = %#v, seed %d", payload.Map, payload.Seed)
+	}
+	if len(payload.Map.Features) != len(northern.Features) || len(payload.Map.Walls) != len(northern.Collisions) {
+		t.Fatalf("northern team preview geometry = features %d walls %d; want %d/%d", len(payload.Map.Features), len(payload.Map.Walls), len(northern.Features), len(northern.Collisions))
+	}
+}
+
 func TestNewHandler(t *testing.T) {
 	h := NewHandler()
 	if h == nil {

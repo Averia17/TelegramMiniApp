@@ -55,6 +55,51 @@ export class SceneRoot {
       aim: new THREE.Group(),
     }
     this.scene.add(...Object.values(this.roots))
+    this.teamAtmosphereKey = null
+  }
+
+  setTeamAtmosphere(enabled, mapName = "") {
+    const northernTeamMap = enabled && /team-battle-northern/i.test(String(mapName))
+    const atmosphereKey = `${Boolean(enabled)}:${northernTeamMap}`
+    if (this.teamAtmosphereKey === atmosphereKey) return
+    this.teamAtmosphereKey = atmosphereKey
+    if (enabled) {
+      if (northernTeamMap) {
+        // Northern Ash intentionally keeps the colder, darker castle grade;
+        // only the classic team map gets the brighter daylight treatment.
+        this.renderer.setClearColor(0x26302d, 1)
+        this.scene.fog.color.setHex(0x4b5147)
+        this.scene.fog.near = 28
+        this.scene.fog.far = 86
+        this.fillLight.color.setHex(0xb9c9c0)
+        this.fillLight.groundColor.setHex(0x302922)
+        this.fillLight.intensity = 1.35
+        this.keyLight.color.setHex(0xffd2a7)
+        this.keyLight.intensity = 2.35
+        return
+      }
+      // The classic team map retains the previous commit's brighter daylight
+      // presentation instead of inheriting the Northern Ash night grade.
+      this.renderer.setClearColor(0x64746d, 1)
+      this.scene.fog.color.setHex(0x738076)
+      this.scene.fog.near = 48
+      this.scene.fog.far = 128
+      this.fillLight.color.setHex(0xd2e0d5)
+      this.fillLight.groundColor.setHex(0x5b594c)
+      this.fillLight.intensity = 1.72
+      this.keyLight.color.setHex(0xffe0bb)
+      this.keyLight.intensity = 2.85
+      return
+    }
+    this.renderer.setClearColor(0xd87850, 1)
+    this.scene.fog.color.setHex(0xe99a65)
+    this.scene.fog.near = 42
+    this.scene.fog.far = 105
+    this.fillLight.color.setHex(0xcde9ff)
+    this.fillLight.groundColor.setHex(0x70452f)
+    this.fillLight.intensity = 1.65
+    this.keyLight.color.setHex(0xfff3df)
+    this.keyLight.intensity = 3.1
   }
 
   resize(width, height) {

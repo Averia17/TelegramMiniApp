@@ -26,14 +26,20 @@ func (h *Handler) HandleMapPreview(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	teamMap := strings.EqualFold(r.URL.Query().Get("mode"), "team") || strings.EqualFold(r.URL.Query().Get("map"), "team-battle")
+	requestedMap := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("map")))
+	teamMap := strings.EqualFold(r.URL.Query().Get("mode"), "team") || strings.HasPrefix(requestedMap, "team-battle")
 	seed := gamemap.CanonicalBattleRoyaleSeed
 	mapName := "battle-royale"
 	canonical := gamemap.GenerateBattleRoyale(seed)
 	if teamMap {
-		seed = gamemap.CanonicalTeamBattleSeed
-		mapName = "team-battle"
+		mapName = "team-battle-northern"
+		seed = gamemap.CanonicalTeamBattleNorthernSeed
 		canonical = gamemap.GenerateTeamBattle(seed)
+		if requestedMap == "team-battle" {
+			mapName = "team-battle"
+			seed = gamemap.CanonicalTeamBattleSeed
+			canonical = gamemap.GenerateTeamBattleClassic(seed)
+		}
 	}
 	spawners := make([]mapPreviewSpawnerJSON, 0, len(canonical.Spawners))
 	for _, spawner := range canonical.Spawners {

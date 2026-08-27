@@ -33,6 +33,17 @@ test("canonical map loader preserves passable team features", async () => {
   assert.deepEqual(map.features, payload.map.features)
 })
 
+test("canonical map loader sends the selected team map", async () => {
+  const payload = {map: {id: "team-battle-northern@20260827", name: "team-battle-northern", walls: []}}
+  const fetchImpl = async (url, options) => {
+    assert.equal(url, "/api/battle/map-preview?mode=team&map=team-battle-northern")
+    assert.deepEqual(options, {cache: "no-store"})
+    return {ok: true, json: async () => payload}
+  }
+  const map = await loadCanonicalBattleMap(fetchImpl, "team", "team-battle-northern")
+  assert.equal(map.name, "team-battle-northern")
+})
+
 test("both map labs import the one canonical map loader", async () => {
   const [mapHtml, heroHtml] = await Promise.all([
     readFile(new URL("./map-environment-harness.html", import.meta.url), "utf8"),
@@ -43,7 +54,7 @@ test("both map labs import the one canonical map loader", async () => {
     assert.match(html, /import \{loadCanonicalBattleMap\} from "\/src\/components\/BattleGame\/canonicalMap\.js"/)
     assert.doesNotMatch(html, /fetch\("\/api\/battle\/map-preview"/)
   }
-  assert.match(mapHtml, /await loadCanonicalBattleMap\(fetch, selectedMode\)/)
+  assert.match(mapHtml, /await loadCanonicalBattleMap\(fetch, selectedMode, selectedMap\)/)
   assert.match(heroHtml, /await loadCanonicalBattleMap\(\)/)
   assert.doesNotMatch(heroHtml, /islandName:null/)
   assert.match(heroHtml, /islandName:"Остров Первого Испытания"/)

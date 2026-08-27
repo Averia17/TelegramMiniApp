@@ -19,6 +19,30 @@ type Player struct {
 	TeamLocked            bool
 	Color                 string
 	Kills                 int
+	BasicDamage           int
+	SkillDamage           int
+	BasicOnlyKills        int
+	SkillAssistedKills    int
+	HealingDone           int
+	HealingBlocked        int
+	HealWindowMs          int64
+	ShieldProvided        int
+	DamagePrevented       int
+	Assists               int
+	ControlAppliedMs      int64
+	BatDamage             int
+	BatContests           int
+	CubeClaims            int
+	EscapeSaves           int
+	TimeToFirstContactMs  int64
+	CombatUptimeMs        int64
+	RespawnDowntimeMs     int64
+	UncontestedTravelMs   int64
+	CombatFirstContactAt  int64
+	LastCombatAt          int64
+	LastDeathAt           int64
+	LastMovementAt        int64
+	LastEffectiveHealAt   int64
 	Place                 int
 	Deaths                int
 	PlayerDamage          int
@@ -179,18 +203,18 @@ func (p *Player) Heal() {
 	p.Lives++
 }
 
-const maxHealthBoostStacks = 5
-
 // ApplyHealthBoost permanently adds a fraction of the hero's original max
 // health. The pickup is not a heal: current Lives stay unchanged, so the
 // player must still create a safe recovery window after taking the upgrade.
 // Keeping BaseMaxLives separate prevents stacked boosts from compounding
-// unexpectedly as the current max health grows.
-func (p *Player) ApplyHealthBoost(fraction float64) int {
+// unexpectedly as the current max health grows. The cap is supplied by the
+// authoritative combat profile so this model package does not own a second
+// balance source.
+func (p *Player) ApplyHealthBoost(fraction float64, maxStacks int) int {
 	if p == nil || fraction <= 0 {
 		return 0
 	}
-	if p.HealthBoosts >= maxHealthBoostStacks {
+	if maxStacks <= 0 || p.HealthBoosts >= maxStacks {
 		return 0
 	}
 	if p.BaseMaxLives <= 0 {

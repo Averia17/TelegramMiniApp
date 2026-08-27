@@ -68,39 +68,47 @@ type GameStateJSON struct {
 }
 
 type StateUpdate struct {
-	Type               string                 `json:"type"`
-	Ts                 int64                  `json:"ts"`
-	CombatProfileID    string                 `json:"combatProfileId"`
-	CombatRulesVersion string                 `json:"combatRulesVersion"`
-	Game               GameStateJSON          `json:"game"`
-	Map                MapJSON                `json:"map"`
-	Players            map[string]PlayerJSON  `json:"players"`
-	Monsters           map[string]MonsterJSON `json:"monsters"`
-	Bullets            []BulletJSON           `json:"bullets"`
-	Props              []PropJSON             `json:"props"`
-	Effects            []EffectJSON           `json:"effects,omitempty"`
-	CombatEvents       []CombatEventJSON      `json:"combatEvents,omitempty"`
-	Objectives         []ObjectiveStateJSON   `json:"objectives,omitempty"`
+	Type                     string                 `json:"type"`
+	Ts                       int64                  `json:"ts"`
+	CombatProfileID          string                 `json:"combatProfileId"`
+	CombatRulesVersion       string                 `json:"combatRulesVersion"`
+	CombatEventSchemaVersion int                    `json:"eventSchemaVersion"`
+	Game                     GameStateJSON          `json:"game"`
+	Map                      MapJSON                `json:"map"`
+	Players                  map[string]PlayerJSON  `json:"players"`
+	Monsters                 map[string]MonsterJSON `json:"monsters"`
+	Bullets                  []BulletJSON           `json:"bullets"`
+	Props                    []PropJSON             `json:"props"`
+	Effects                  []EffectJSON           `json:"effects,omitempty"`
+	CombatEvents             []CombatEventJSON      `json:"combatEvents,omitempty"`
+	Objectives               []ObjectiveStateJSON   `json:"objectives,omitempty"`
 }
 
 type CombatEventJSON struct {
-	ID                 uint64 `json:"id"`
-	Ts                 int64  `json:"ts"`
-	Kind               string `json:"kind"`
-	Phase              string `json:"phase,omitempty"`
-	AbilitySlot        string `json:"abilitySlot,omitempty"`
-	Reason             string `json:"reason,omitempty"`
-	EventSchemaVersion int    `json:"eventSchemaVersion"`
-	CombatProfileID    string `json:"combatProfileId"`
-	CombatRulesVersion string `json:"combatRulesVersion"`
-	CommandID          string `json:"commandId,omitempty"`
-	SourceID           string `json:"sourceId,omitempty"`
-	TargetType         string `json:"targetType,omitempty"`
-	TargetID           string `json:"targetId,omitempty"`
-	ProjectileID       uint64 `json:"projectileId,omitempty"`
-	Damage             int    `json:"damage,omitempty"`
-	Accepted           bool   `json:"accepted"`
-	Resolved           bool   `json:"resolved"`
+	ID                 uint64  `json:"id"`
+	Ts                 int64   `json:"ts"`
+	MatchID            string  `json:"matchId"`
+	Kind               string  `json:"kind"`
+	Phase              string  `json:"phase,omitempty"`
+	Hero               string  `json:"hero,omitempty"`
+	AbilitySlot        string  `json:"abilitySlot,omitempty"`
+	Reason             string  `json:"reason,omitempty"`
+	EventSchemaVersion int     `json:"eventSchemaVersion"`
+	CombatProfileID    string  `json:"combatProfileId"`
+	CombatRulesVersion string  `json:"combatRulesVersion"`
+	CommandID          string  `json:"commandId,omitempty"`
+	SourceID           string  `json:"sourceId,omitempty"`
+	TargetType         string  `json:"targetType,omitempty"`
+	TargetID           string  `json:"targetId,omitempty"`
+	ProjectileID       uint64  `json:"projectileId,omitempty"`
+	Distance           float64 `json:"distance,omitempty"`
+	Damage             int     `json:"damage,omitempty"`
+	EffectiveDamage    int     `json:"effectiveDamage,omitempty"`
+	ResourceKind       string  `json:"resourceKind,omitempty"`
+	ResourceBefore     int     `json:"resourceBefore,omitempty"`
+	ResourceAfter      int     `json:"resourceAfter,omitempty"`
+	Accepted           bool    `json:"accepted"`
+	Resolved           bool    `json:"resolved"`
 }
 
 type EffectJSON struct {
@@ -336,14 +344,17 @@ type WallJSON struct {
 }
 
 type RoomJoinedParams struct {
-	PlayerId    string `json:"playerId"`
-	RoomId      string `json:"roomId"`
-	RoomName    string `json:"roomName"`
-	MapName     string `json:"mapName"`
-	MapID       string `json:"mapId,omitempty"`
-	MapRevision int    `json:"mapRevision,omitempty"`
-	Mode        string `json:"mode"`
-	MaxPlayers  int    `json:"maxPlayers"`
+	PlayerId           string `json:"playerId"`
+	RoomId             string `json:"roomId"`
+	RoomName           string `json:"roomName"`
+	MapName            string `json:"mapName"`
+	MapID              string `json:"mapId,omitempty"`
+	MapRevision        int    `json:"mapRevision,omitempty"`
+	Mode               string `json:"mode"`
+	MaxPlayers         int    `json:"maxPlayers"`
+	CombatProfileID    string `json:"combatProfileId"`
+	CombatRulesVersion string `json:"combatRulesVersion"`
+	EventSchemaVersion int    `json:"eventSchemaVersion"`
 }
 
 type MatchFoundParams struct {
@@ -372,17 +383,18 @@ func NewServerMessage(msgType string, params interface{}) *ServerMessage {
 
 func NewStateUpdate(g *GameStateJSON, m *MapJSON, players map[string]PlayerJSON, monsters map[string]MonsterJSON, bullets []BulletJSON, props []PropJSON, effects []EffectJSON, combatEvents ...[]CombatEventJSON) *StateUpdate {
 	state := &StateUpdate{
-		Type:               "state",
-		Ts:                 time.Now().UnixMilli(),
-		CombatProfileID:    CombatProfileID,
-		CombatRulesVersion: CombatRulesVersion,
-		Game:               *g,
-		Map:                *m,
-		Players:            players,
-		Monsters:           monsters,
-		Bullets:            bullets,
-		Props:              props,
-		Effects:            effects,
+		Type:                     "state",
+		Ts:                       time.Now().UnixMilli(),
+		CombatProfileID:          CombatProfileID,
+		CombatRulesVersion:       CombatRulesVersion,
+		CombatEventSchemaVersion: CombatEventSchemaVersion,
+		Game:                     *g,
+		Map:                      *m,
+		Players:                  players,
+		Monsters:                 monsters,
+		Bullets:                  bullets,
+		Props:                    props,
+		Effects:                  effects,
 	}
 	if len(combatEvents) > 0 {
 		state.CombatEvents = combatEvents[0]

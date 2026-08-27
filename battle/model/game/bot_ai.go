@@ -21,13 +21,9 @@ func (botStrategyBase) emergency(gs *GameState, bot *player.Player, now int64) b
 		gs.playerMove(bot.PlayerId, now, dodgeX, dodgeY)
 		return true
 	}
-	if threat, flee := gs.botMonsterThreat(bot); threat != nil {
+	if threat, flee := gs.botMonsterThreat(bot); threat != nil && flee {
 		gs.recordBotHardInterrupt()
-		if flee {
-			gs.botRetreatFrom(bot.PlayerId, bot, threat.X, threat.Y, now)
-		} else {
-			gs.botEngageTarget(bot.PlayerId, bot, &botTarget{kind: "monster", id: "threat", monster: threat, x: threat.X, y: threat.Y, distance: math.Hypot(threat.X-bot.X, threat.Y-bot.Y)}, now)
-		}
+		gs.botRetreatFrom(bot.PlayerId, bot, threat.X, threat.Y, now)
 		return true
 	}
 	return false
@@ -53,6 +49,7 @@ const (
 	teamIntentSupport      teamBotIntentKind = "support"
 	teamIntentAttackBase   teamBotIntentKind = "attack_base"
 	teamIntentAttackPlayer teamBotIntentKind = "attack_player"
+	teamIntentFarmBat      teamBotIntentKind = "farm_bat"
 	teamIntentRegroup      teamBotIntentKind = "regroup"
 	teamIntentRoam         teamBotIntentKind = "roam"
 )
@@ -178,22 +175,23 @@ func (attackPlayerBehavior) Decide(ctx *teamBotContext) (teamBotIntent, bool) {
 }
 
 // batResourceBehavior gives one role in each team a deliberate neutral-farm
-// assignment. It runs only when no hero is currently visible, so a bat route
-// cannot make a bot abandon an active fight. The low-health and stack-cap
-// gates keep a wounded or already-maxed bot from taking an irrational detour.
+// assignment. It may run when a bat is visible, but never while a hero is
+// visible, so a bat route cannot make a bot abandon an active fight. The
+// low-health and stack-cap gates keep a wounded or already-maxed bot from
+// taking an irrational detour.
 type batResourceBehavior struct{}
 
 func (batResourceBehavior) Decide(ctx *teamBotContext) (teamBotIntent, bool) {
 	if ctx == nil || ctx.gs == nil || ctx.bot == nil || ctx.gs.Mode != ModeTeamDeathmatch ||
-		ctx.assignment != teamAssignmentFlank || ctx.visibleTarget != nil || !ctx.bot.IsAlive() ||
-		ctx.bot.HealthBoosts >= 5 || float64(ctx.bot.Lives)/math.Max(1, float64(ctx.bot.MaxLives)) < .42 {
+		ctx.assignment != teamAssignmentFlank || ctx.visibleTarget != nil && ctx.visibleTarget.player != nil || !ctx.bot.IsAlive() ||
+		ctx.bot.HealthBoosts >= HealthBoostMaxStacks || float64(ctx.bot.Lives)/math.Max(1, float64(ctx.bot.MaxLives)) < .42 {
 		return teamBotIntent{}, false
 	}
 	target := ctx.gs.knownBatTarget(ctx.bot)
 	if target == nil {
 		return teamBotIntent{}, false
 	}
-	return teamBotIntent{kind: teamIntentAttackPlayer, target: target}, true
+	return teamBotIntent{kind: teamIntentFarmBat, target: target}, true
 }
 
 func (gs *GameState) knownBatTarget(bot *player.Player) *botTarget {
@@ -308,7 +306,7 @@ func (s *teamBattleBotStrategy) behaviorsFor(assignment teamBotAssignment) []tea
 		return []teamBotBehavior{supportAllyBehavior{}, defendObjectiveBehavior{}, respawnAwarenessBehavior{}, batResourceBehavior{}, attackPlayerBehavior{}, attackObjectiveBehavior{}, regroupBehavior{}, roamBehavior{}}
 	}
 	if assignment == teamAssignmentFlank {
-		return []teamBotBehavior{attackPlayerBehavior{}, supportAllyBehavior{}, defendObjectiveBehavior{}, respawnAwarenessBehavior{}, batResourceBehavior{}, attackObjectiveBehavior{}, regroupBehavior{}, roamBehavior{}}
+		return []teamBotBehavior{batResourceBehavior{}, attackPlayerBehavior{}, supportAllyBehavior{}, defendObjectiveBehavior{}, respawnAwarenessBehavior{}, attackObjectiveBehavior{}, regroupBehavior{}, roamBehavior{}}
 	}
 	if assignment == teamAssignmentAnchor {
 		return []teamBotBehavior{defendObjectiveBehavior{}, supportAllyBehavior{}, respawnAwarenessBehavior{}, batResourceBehavior{}, attackPlayerBehavior{}, attackObjectiveBehavior{}, regroupBehavior{}, roamBehavior{}}
@@ -377,7 +375,7 @@ func (s *teamBattleBotStrategy) Update(gs *GameState) {
 		for _, behavior := range s.behaviorsFor(ctx.assignment) {
 			if candidate, ok := behavior.Decide(ctx); ok {
 				intent = candidate
-				if candidate.target != nil && candidate.target.kind == "monster" && visible == nil {
+				if candidate.target != nil && candidate.target.kind == "monster" && (visible == nil || visible.player == nil) {
 					gs.botMetrics.BatFarmDecisions++
 				}
 				if candidate.kind == teamIntentSupport && candidate.target != nil {
@@ -393,7 +391,7 @@ func (s *teamBattleBotStrategy) Update(gs *GameState) {
 
 func (s *teamBattleBotStrategy) execute(gs *GameState, bot *player.Player, intent teamBotIntent, index int, now int64) {
 	switch intent.kind {
-	case teamIntentDefend, teamIntentSupport, teamIntentAttackPlayer, teamIntentAttackBase:
+	case teamIntentDefend, teamIntentSupport, teamIntentAttackPlayer, teamIntentFarmBat, teamIntentAttackBase:
 		if intent.target != nil {
 			gs.botEngageTarget(bot.PlayerId, bot, intent.target, now)
 			return

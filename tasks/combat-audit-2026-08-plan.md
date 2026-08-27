@@ -1,5 +1,21 @@
 # Глобальный аудит и переработка боёв героев — 2026-08
 
+## Текущий статус — 2026-08-27
+
+Кодовая и automated часть переработки доведена до зелёного gate: общий
+CombatProfile, authoritative resource/ability lifecycle, roster contracts,
+solo/team deterministic scenarios, bot/resource telemetry, renderer/browser
+checks и frontend/backend regression проходят. Сводная трассировка evidence:
+`tasks/combat-automated-gate-2026-08.md`.
+
+Референсные принципы и их связь с текущими контрактами собраны в
+`tasks/combat-reference-research-2026-08.md`.
+
+Полное завершение проекта намеренно не объявляется до трёх внешних артефактов:
+подписанного human clarity/role playtest, approved clean rollback ref/build и
+операторского staged rollout с rollback drill. Текущий dirty working tree и
+`ba17770` со stale catalog fingerprint не считаются release evidence.
+
 ## Итог аудита
 
 Боёвка сейчас страдает не от одной плохой цифры, а от рассинхронизации
@@ -105,11 +121,11 @@ progression. Переносим только проверяемые принци
 
 | Область | Наблюдение | Почему это плохо |
 |---|---|---|
-| Базовая атака | В `game_types.go` применяются глобальные `AttackRateScale = 1.55` и `ReloadTimeScale = 1.22`, поверх компактных значений каталога | Реальный темп боя скрыт от таблицы баланса; каждое изменение героя проходит через неочевидный multiplier |
+| Базовая атака | Runtime применяет cadence/reload непосредственно из versioned hero catalog; скрытые глобальные `AttackRateScale`/`ReloadTimeScale` удалены | Темп боя теперь виден в профиле и одинаково восстанавливается при spawn/respawn; дальнейший баланс делается per-hero |
 | Super | `SuperChargePercent` фактически считает время от `LastPrimaryAt`; после reset герой стартует с `SuperCharge = 100` | Super ощущается как периодический таймер, а не как боевой payoff; стартовый бой может решаться готовым skill |
 | Gadget | Для большинства героев используется один глобальный cooldown `6500 ms` | Сила и частота разных гаджетов не оплачиваются одинаково |
 | Balance matrix | `combat_balance.go` считает только basic burst/DPS/range/HP/speed | В таблице отсутствуют control, mobility, sustain, setup и skill payoff; «сильный» hero может выглядеть слабым или наоборот |
-| Ростер | Номинальный full-ammo burst: Needle 180, Mandy 300, Mina 495, Brock 255, Kaze 255, Mico 300, Lumi 180, Katty 165 | Одно и то же число попаданий не означает одинаковый бой; Mina имеет огромный theoretical burst, а Katty/Lumi/Needle должны зарабатывать силу через setup |
+| Ростер | Аудит нашёл номинальный full-ammo burst Mina 495 при support-роле; в profile revision `2026-08-27-cadence-window` он снижен до 360 | Одно и то же число попаданий не означает одинаковый бой; sustain/peel/mark остаются источниками силы Mina, а Katty/Lumi/Needle зарабатывают силу через setup |
 | Pickup economy | Legacy `health_crate`/`potion-red` pipeline удалён; hero и bat defeat создают только `health_boost` | Новый профиль имеет один HP-ресурс; осталось проверить budget/contest metrics и safe drop positions |
 | Боты | `updateBattleRoyaleBots` и team strategy используют приоритетную цепочку условий, а не общую utility-модель | Ситуация «низкое HP + видимый враг + рядом зелёный куб» не сравнивается как единый выбор |
 | Боты и HP-ресурс | `botPickupTarget` учитывает незаполненный cap `health_boost`; team и solo policies умеют идти к cube, а bat wind-up даёт hard retreat interrupt | Нужны role-aware action scores, hysteresis, assignments и contest metrics |
@@ -874,15 +890,17 @@ version нужны:
 - capability/version handshake клиента;
 - минимальная совместимая версия snapshot/event schema;
 - безопасный fallback UI для неизвестного effect/phase;
-- серверный kill switch на предыдущий `CombatProfileId`;
+- rollback switch на предыдущий `CombatProfileId` или целиком предыдущий
+  approved build/ref; выбор должен быть операционно проверен до rollout;
 - запись `combatVersion` в match result и telemetry;
 - запрет смешивать в одном матче игроков с несовместимыми правилами.
 
 Рекомендуемый rollout: deterministic runner → internal bot matches → closed
 playtest → малый процент новых матчей → полный rollout. При desync, росте
-rejected commands, frame-time или crash rate профиль автоматически возвращается
-на предыдущий version ID. Balance regression сама по себе не должна маскироваться
-под технический rollback — для неё нужен отдельный tuning profile.
+rejected commands, frame-time или crash rate оператор останавливает rollout и
+переключает только на заранее approved предыдущий profile/build. Если такого
+артефакта нет, rollout блокируется. Balance regression сама по себе не должна
+маскироваться под технический rollback — для неё нужен отдельный tuning profile.
 
 ### 13. Ability power budget и sustain policy
 
@@ -971,7 +989,7 @@ scenario report и помечается по роли, режиму и уров�
 повторяемый scenario report, role/mode matrix, human notes, отсутствие
 десинхронизации и отсутствие новых console/page errors.
 
-## Текущий статус исполнения (2026-08-26)
+## Текущий статус исполнения (2026-08-27)
 
 Закрыты следующие foundation-gates:
 
@@ -980,6 +998,9 @@ scenario report и помечается по роли, режиму и уров�
 - единый `health_boost`, TTL/expiry, cap, ownership/no-benefit guard и safe-drop;
 - deterministic bat patrol/wind-up/leash/respawn loop с гарантированным reward;
 - snapshot/event schema, rejection feedback и лимит 24 событий на snapshot;
+  authoritative event context теперь включает `matchId`, `hero`, `distance`,
+  `effectiveDamage` и resource delta (`resourceBefore/resourceAfter`), а
+  `eventSchemaVersion` присутствует и на snapshot-уровне;
 - scenario runner со synthetic clock, simulation-sized steps, stable hash,
   checkpoint event IDs и именованными metrics; добавлены replayable Kaze basic
   и Katty paint-setup smoke scenarios;
@@ -1020,49 +1041,100 @@ scenario report и помечается по роли, режиму и уров�
 - добавлена replayable outcome matrix для всех восьми героев: full-ammo
   damage/deletion, фактические shots fired, attack cadence, reload и basic DPS;
   отдельный TTK runner учитывает projectile resolution и reload, а не только
-  формулу из каталога;
+  формулу из каталога; solo/team parity matrix теперь повторяется 20 раз и
+  изолирует hero-to-hero outcome от башенного encounter;
+- authoritative team objective/player loops получили стабильный порядок по ID,
+  а bot basic accuracy считается по успешной basic-команде, поэтому shotgun,
+  pierce и splash больше не раздувают accuracy выше 100%; roster-wide bot
+  role/mode matrix проходит 20 replay cycles с zero unexplained idle;
 - добавлена replayable counterplay-window matrix для всех восьми Super с
   проверкой wind-up и feedback phase; найден и исправлен незарегистрированный
   `kaze_dash`, который ошибочно попадал в fallback `cast` phase;
 - добавлена skill-conversion matrix для всех восьми героев: basic-vs-Super
   delta и отдельный control/support signal; miss-path smoke подтверждает, что
   ошибочный basic aim не наносит скрытый урон ни одному герою;
+- contract benchmark matrix теперь исполняет все 16 документированных matchup
+  карт в solo и team и проверяет базовый impact обеих сторон; это runtime
+  coverage contract cards, а не подмена human win-rate evidence;
+- blocked-route scenario 20 раз подтверждает построение waypoint path,
+  stuck replan и bounded `bot.stuckReplans` telemetry;
+- добавлен отдельный 3×3 team mirror для всех восьми героев: Blue и Red
+  проходят зеркальные damage rounds по трём lane, обе стороны имеют ненулевой
+  impact, delta равна нулю, а отчёты совпадают на 20 replay cycles;
+- добавлен AI regression guard для empty-ammo ranged state: бот в своей
+  attack range создаёт радиальную дистанцию до перезарядки, а не остаётся в
+  чистом strafe/orbit; guard повторно проходит вместе с counter-role steering;
+- после отдельного cadence-аудита per-hero reload values снижены и зафиксированы
+  в profile revision `2026-08-27-cadence-window`; каждый герой теперь имеет
+  `reloadDeadTimeFraction <= 0.60`, а source/catalog/generated views
+  проходят fingerprint validation;
+- balance/regression report дополнен `sustainedBasicDps`: это full-cycle
+  значение с учётом reload, отделённое от burst-window DPS, чтобы cadence
+  tuning не маскировал реальную длительную threat силу героя;
+- skill-centrality audit получил before/after outcome matrix: basic-only и
+  skill-assisted kill-rate сравниваются на одинаковых health thresholds в solo
+  и team, а Mina проверяется через survival value от реально поглощённого
+  counter-hit; полный roster matrix повторяется 20 раз;
+- benchmark balance audit теперь исполняет первый documented matchup каждого
+  героя в runtime: в solo и team проверяются advantage margin и survival для
+  всех 8 героев, contract drift ловится сверкой с `hero-combat-contracts.json`,
+  а replay gate составляет 20 циклов; это не подменяет живой win-rate;
+- release evidence получил `tools/capture_combat_release.py`: clean capture
+  требует passing rollback ref и сохраняет create-once manifest с commit,
+  profile/fingerprint и SHA-256 release-critical файлов; dirty capture остаётся
+  только диагностикой с явным `releaseEligible=false`;
 - добавлен visual timeline scenario для всех восьми Super: accepted command,
   initial feedback phase, delayed impact materialization и Super miss-path;
   теперь проверяется не только факт cast, но и конкретный effect/zone contract;
 - базовые catalog/frontend/build/lint/Go gates и browser checks для combat
   feedback и melee range;
+- cancel lifecycle теперь связывает cancel command с исходным ability command:
+  delayed resolution удаляется адресно, поздний `ability_missed` не возникает,
+  а resource telemetry сохраняет `super_charge` before/after;
 - browser smoke через живой gateway подтвердил hero roster (8 карточек),
   synthetic combat feedback, team battle shell на 9 mobile viewport и
   touch-управление без overlap/overflow; static topology audit сохранил
-  метрики и screenshots в `output/playwright/abandoned-city-map/global-audit`.
+  метрики и screenshots в `output/playwright/abandoned-city-map/team-battle-northern/global-audit`.
+- финальный automated sweep после `2026-08-27-cadence-window` прошёл:
+  `go test ./... -count=1`, 65 Python tooling tests, 600 frontend tests
+  (596 pass, 4 skipped), lint, build, catalog/profile/contract/generated-view
+  validators и `git diff --check`;
+  свежие mobile input/cancel, bat lifecycle и полный roster effect-phase
+  capture также без ошибок.
+- после финального sweep health-boost policy вынесена в generated profile:
+  `teamFraction`, `maxActivePickups` и runtime parity test добавлены; свежий
+  fingerprint и текущие playtest/rollout scaffolds должны использоваться из
+  `output/*-v8`/`report-v5`, а прежние версии считаются историческими.
 
-Открыты и не должны считаться выполненными до evidence:
+## Оставшиеся gates и ограничения evidence
 
-- deterministic time-injected Kaze/Katty solo и 3v3 reports;
-- scenario pack уже покрывает Super contribution, respawn reset/preserve,
-  cube ownership и bat telegraph/reward/respawn, но это ещё не заменяет полную
-  solo/team matrix и before/after reports;
-- полный role-aware utility AI с expected-value objective policy, полной
-  accuracy/direct-trade scenario matrix для всего ростера, idle/stuck/
-  action-score reports по role/mode и полноценные counter-role outcomes;
-  текущий smoke покрывает только две базовые пары, а не всю матрицу;
-  расширенными human playtest evidence;
-- world-level bat lifecycle telemetry уже добавлена (notice/cancel/windup/
-  strike/reward/respawn) в replay и bounded metrics; role-level bot contest
-  response также экспортируется; claimant-level bat contest attribution теперь
-  сохраняется в bounded match-local timeline и scenario report, без добавления
-  IDs в live snapshot/Prometheus; solo seed fairness по p50/p90 и human
-  playtest остаются;
-  server-side bat notice-state уже добавлен, а динамический
-  topology/resource-route report уже добавлен:
-  168 route samples, safe-drop p50/p90 и 2/8 contestable team-battle camps;
-  team-lane fairness теперь выражена отдельными p50/p90 arrival deltas для bat
-  и health_boost, чтобы зеркальность проверялась не только по authored camp
-  pairs;
-- полный visual contract для всего ростера и staged rollout/rollback;
-- backend-backed mobile/team browser QA для team shell закрыт на живом gateway;
-  отдельные ranged/support/zone/bat visual cases и human playtest остаются.
+Ниже перечислены только реально незакрытые критерии. Все технические
+подготовительные работы (bat lifecycle telemetry, topology report, role/pacing
+counters, 24 ability contracts, полный visual/browser capture, matchup/stuck
+replays, release preflight и mobile/team shell QA) закрыты автоматикой и
+перечислены в `tasks/combat-automated-gate-2026-08.md`; они не считаются
+human/ops evidence.
+
+- **Human clarity/role gate:** нужен отдельный playtest по шести scripted
+  cases и five-question sign-off. Report должен покрыть всех 8 активных
+  героев через `heroCoverageEvidence` → participant/case links, а не только
+  декларацию `heroCoverage`.
+- **Historical outcome gate:** нужен approved старый release/ref с валидными
+  catalog/profile fingerprints и numeric before/after по TTK, full-ammo,
+  reload, skill conversion, bot/resource metrics, duration и win rate.
+  Текущие deterministic reports не могут ретроактивно заменить baseline.
+- **Independent review gate:** нужен human/independent sign-off схемы,
+  generated views и replayable reports; agent review уже зафиксирован, но не
+  заменяет независимое подтверждение.
+- **Release/operations gate:** нужен clean immutable build manifest с
+  approved rollback ref, затем operator staged rollout и rollback drill с
+  affected rooms, hashes и post-rollback counters. Текущий diagnostic manifest
+  намеренно имеет `workingTreeClean=false`, а rollback scan нашёл 0 eligible
+  исторических refs, поэтому approval не фабрикуется.
+
+Таким образом, automated implementation completion доказан, а оставшиеся
+критерии требуют внешних участников, release history или ops environment и
+имеют конкретные валидаторы/шаблоны в репозитории.
 
 ## Definition of Done
 
@@ -1109,7 +1181,7 @@ scenario report и помечается по роли, режиму и уров�
 |---|---|---|
 | Super start | 0% для всех героев | 10–25% только для роли, если первые 20 секунд слишком пустые |
 | Super charge | effective damage + подтверждённый control/support/objective credit | per-role коэффициенты и caps |
-| Team cube | виден команде убийцы, подобрать может один игрок, бонус получает только collector | killer-only или team-claim с рольным bonus |
+| Team cube | виден команде убийцы; killer получает +5% BaseMaxLives, teammates +2%, каждый eligible teammate получает только один bounded stack | killer-only или team-claim с role bonus |
 | HP bonus | +5% от BaseMaxLives, soft cap 5 stacks, без мгновенной отдельной хилки | step/cap и comeback modifier |
 | Respawn | HP stacks сохраняются, Super 0%, статусы/marks/shield/combo сбрасываются, ammo full, Gadget charges сохраняются как есть | вернуть один Gadget charge или дать 10–25% Super |
 | Bats | фиксированные deterministic camps, patrol/leash, один cube за defeat, один respawn cycle | timer, число camps и elite variant |
@@ -1291,12 +1363,21 @@ catalog generator и renderer contracts должны иметь одного в�
 - human playtest отвечает минимум на 3 из 5 clarity-вопросов;
 - catalog validator, focused Go/frontend tests, build и browser QA зелёные.
 
-## Открытые решения перед Phase 1
+## Решения, закрытые перед Phase 1
 
-1. Подтвердить или изменить Phase-1 default profile выше.
-2. Выбрать точную схему генерации производных Go/JS balance представлений.
-3. Утвердить, должны ли support counters попадать в пользовательский battle
-   result или оставаться только в debug/telemetry.
+1. Phase-1 default profile утверждён и версионирован как
+   `2026-08-27-cadence-window`; актуальный fingerprint находится в
+   `docs/combat-profile.fingerprint.json`.
+2. Схема generated Go/JS views утверждена: редактируемым source of truth
+   остаётся `docs/combat-profile.json`, views и fingerprint проверяются
+   генератором/validator-ами.
+3. Support counters остаются authoritative match-local telemetry/result
+   metrics; пользовательский результат не восстанавливает их из UI. Это
+   покрыто T9 и соответствующими result/provider contract tests.
+
+Оставшиеся незакрытые acceptance criteria вынесены из Phase 1 в отдельные
+external gates канонического todo: signed human playtest, approved historical
+baseline/rollback ref и operator staged rollout.
 
 ## Внешние ориентиры
 

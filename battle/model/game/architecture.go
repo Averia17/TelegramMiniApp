@@ -67,6 +67,7 @@ type GameDependencies struct {
 }
 
 type GameConfig struct {
+	MatchID      string
 	RoomName     string
 	MapName      string
 	MaxPlayers   int
@@ -78,6 +79,7 @@ type GameConfig struct {
 
 func NewGameState(config GameConfig) *GameState {
 	state := &GameState{
+		MatchID:      config.MatchID,
 		RoomName:     config.RoomName,
 		MapName:      config.MapName,
 		MaxPlayers:   config.MaxPlayers,

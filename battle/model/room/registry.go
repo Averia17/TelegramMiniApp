@@ -48,6 +48,7 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 	}
 
 	gs := game.NewGameState(game.GameConfig{
+		MatchID:      roomId,
 		RoomName:     roomName,
 		MapName:      profile.MapName,
 		MaxPlayers:   profile.MaxPlayers,
@@ -63,14 +64,17 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 			}
 		}
 		result := &provider.BattleResult{
-			RoomId:   roomId,
-			EndedAt:  provider.NowMillis(),
-			MapName:  profile.MapName,
-			Mode:     string(profile.Mode),
-			Duration: duration,
-			Winner:   winner,
-			Reason:   gs.EndReason,
-			Draw:     winner == "",
+			RoomId:                   roomId,
+			EndedAt:                  provider.NowMillis(),
+			MapName:                  profile.MapName,
+			Mode:                     string(profile.Mode),
+			Duration:                 duration,
+			Winner:                   winner,
+			Reason:                   gs.EndReason,
+			Draw:                     winner == "",
+			CombatProfileID:          game.CombatProfileID,
+			CombatRulesVersion:       game.CombatRulesVersion,
+			CombatEventSchemaVersion: game.CombatEventSchemaVersion,
 		}
 		for _, p := range players {
 			if p.IsBot {
@@ -109,21 +113,40 @@ func buildPlayerResult(p *player.Player, winner string, winnerID ...string) prov
 		won = p.PlayerId == winnerID[0]
 	}
 	return provider.PlayerResult{
-		PlayerId:           p.PlayerId,
-		PartyID:            p.PartyID,
-		Team:               p.Team,
-		Name:               p.Name,
-		Hero:               p.HeroName,
-		Kills:              p.Kills,
-		Lives:              p.Lives,
-		Deaths:             p.Deaths,
-		PlayerDamage:       p.PlayerDamage,
-		TowerDamage:        p.TowerDamage,
-		TownHallDamage:     p.TownHallDamage,
-		TowersDestroyed:    p.TowersDestroyed,
-		TownHallsDestroyed: p.TownHallsDestroyed,
-		Place:              p.Place,
-		Won:                won,
+		PlayerId:             p.PlayerId,
+		PartyID:              p.PartyID,
+		Team:                 p.Team,
+		Name:                 p.Name,
+		Hero:                 p.HeroName,
+		Kills:                p.Kills,
+		BasicDamage:          p.BasicDamage,
+		SkillDamage:          p.SkillDamage,
+		BasicOnlyKills:       p.BasicOnlyKills,
+		SkillAssistedKills:   p.SkillAssistedKills,
+		HealingDone:          p.HealingDone,
+		HealingBlocked:       p.HealingBlocked,
+		HealWindowMs:         p.HealWindowMs,
+		ShieldProvided:       p.ShieldProvided,
+		DamagePrevented:      p.DamagePrevented,
+		Assists:              p.Assists,
+		ControlAppliedMs:     p.ControlAppliedMs,
+		BatDamage:            p.BatDamage,
+		BatContests:          p.BatContests,
+		CubeClaims:           p.CubeClaims,
+		EscapeSaves:          p.EscapeSaves,
+		TimeToFirstContactMs: p.TimeToFirstContactMs,
+		CombatUptimeMs:       p.CombatUptimeMs,
+		RespawnDowntimeMs:    p.RespawnDowntimeMs,
+		UncontestedTravelMs:  p.UncontestedTravelMs,
+		Lives:                p.Lives,
+		Deaths:               p.Deaths,
+		PlayerDamage:         p.PlayerDamage,
+		TowerDamage:          p.TowerDamage,
+		TownHallDamage:       p.TownHallDamage,
+		TowersDestroyed:      p.TowersDestroyed,
+		TownHallsDestroyed:   p.TownHallsDestroyed,
+		Place:                p.Place,
+		Won:                  won,
 	}
 }
 

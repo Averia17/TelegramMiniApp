@@ -60,7 +60,7 @@ for (let index = 4; index <= 20; index += 1) {
     deaths: index % 3,
   })
 }
-const activeBattle = {roomId: "active-room-7", mode: "team deathmatch", partyId: "party-qa"}
+const activeBattle = {roomId: "active-room-7", mode: "team deathmatch", mapName: "team-battle", partyId: "party-qa"}
 
 runWithBrowser(
   () => launchHeadlessChromium(chromium, {headless: true}),
@@ -97,11 +97,11 @@ runWithBrowser(
     await page.locator("[data-testid='latest-battle']").waitFor()
     const activeLink = page.locator("[data-testid='active-battle'] a")
     await activeLink.waitFor()
-    assert.equal(await activeLink.getAttribute("href"), "/battle/active-room-7?mode=team&party=party-qa")
+    assert.equal(await activeLink.getAttribute("href"), "/battle/active-room-7?mode=team&party=party-qa&map=team-battle")
 
     const profileText = await page.locator(".bs-profile").innerText()
     assert.match(profileText, /Победа/)
-    assert.match(profileText, /Квартал Битвы/)
+    assert.match(profileText, /Каменный Перекрёсток/)
     assert.match(profileText, /Луна · Кай/)
     await page.screenshot({path: profileOutput, fullPage: true})
 

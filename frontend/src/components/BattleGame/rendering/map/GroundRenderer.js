@@ -2,16 +2,17 @@ import * as THREE from "three"
 import {WORLD_SCALE} from "../shared/coordinates.js"
 import {disposeObjectTree} from "../shared/disposal.js"
 
-const GROUND_COLORS = Object.freeze({default: 0x4f9b50, island: 0x3d8a4d})
+const GROUND_COLORS = Object.freeze({default: 0x4f9b50, island: 0x3d8a4d, team: 0x59664f})
 
-const createGrassTexture = () => {
+const createGrassTexture = (theme = "default") => {
   const size = 128
+  const isTeam = theme === "team"
   const canvas = typeof document === "undefined" ? null : document.createElement("canvas")
   if (canvas) {
     canvas.width = size
     canvas.height = size
     const context = canvas.getContext("2d")
-    context.fillStyle = "#f3f1dc"
+    context.fillStyle = isTeam ? "#c2bea0" : "#f3f1dc"
     context.fillRect(0, 0, size, size)
     let seed = 918273
     const random = () => {
@@ -25,7 +26,9 @@ const createGrassTexture = () => {
       const radiusX = 7 + random() * 13
       const radiusY = 4 + random() * 8
       const points = 6 + Math.floor(random() * 3)
-      context.fillStyle = index % 3 === 0 ? "rgba(58,126,61,.09)" : "rgba(226,224,151,.10)"
+      context.fillStyle = isTeam
+        ? (index % 4 === 0 ? "rgba(45,66,48,.22)" : index % 3 === 0 ? "rgba(108,91,63,.14)" : "rgba(194,182,120,.10)")
+        : index % 3 === 0 ? "rgba(58,126,61,.09)" : "rgba(226,224,151,.10)"
       context.beginPath()
       for (let point = 0; point < points; point += 1) {
         const angle = (point / points) * Math.PI * 2
@@ -42,7 +45,9 @@ const createGrassTexture = () => {
       const x = random() * size
       const y = random() * size
       const height = 1.5 + random() * 4
-      context.strokeStyle = random() > .48 ? "rgba(116,156,74,.32)" : "rgba(204,214,137,.30)"
+      context.strokeStyle = isTeam
+        ? (random() > .48 ? "rgba(69,91,57,.38)" : "rgba(177,164,111,.28)")
+        : random() > .48 ? "rgba(116,156,74,.32)" : "rgba(204,214,137,.30)"
       context.lineWidth = .55 + random() * .65
       context.beginPath()
       context.moveTo(x, y)
@@ -55,6 +60,7 @@ const createGrassTexture = () => {
     texture.minFilter = THREE.LinearMipmapLinearFilter
     texture.userData.meadowPatchCount = meadowPatchCount
     texture.userData.grassBladeCount = 520
+    texture.userData.theme = theme
     return texture
   }
 
@@ -72,6 +78,7 @@ const createGrassTexture = () => {
   texture.minFilter = THREE.LinearFilter
   texture.userData.meadowPatchCount = 44
   texture.userData.grassBladeCount = 520
+  texture.userData.theme = theme
   return texture
 }
 
@@ -117,7 +124,7 @@ export class GroundRenderer {
       disposeObjectTree(this.mesh)
     }
     this.theme = theme
-    this.texture = createGrassTexture()
+    this.texture = createGrassTexture(theme)
     this.texture.repeat.set(Math.max(1, sceneWidth / 6), Math.max(1, sceneHeight / 6))
     this.mesh = new THREE.Mesh(
       new THREE.PlaneGeometry(sceneWidth, sceneHeight),
@@ -139,6 +146,12 @@ export class GroundRenderer {
   setTheme(theme) {
     if (!this.mesh || this.theme === theme) return
     this.theme = theme
+    this.texture?.dispose?.()
+    this.texture = createGrassTexture(theme)
+    const {width, height} = this.mesh.geometry.parameters
+    this.texture.repeat.set(Math.max(1, width / 6), Math.max(1, height / 6))
+    this.mesh.material.map = this.texture
     this.mesh.material.color.setHex(GROUND_COLORS[theme] || GROUND_COLORS.default)
+    this.mesh.material.needsUpdate = true
   }
 }

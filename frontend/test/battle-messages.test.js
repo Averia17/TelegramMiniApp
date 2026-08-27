@@ -22,6 +22,10 @@ test("formats authoritative ability rejection feedback", () => {
     formatBattleMessage({type: "combat_ability_rejected", params: {reason: "gadget_unavailable", slot: "secondary"}}),
     "No gadget charges",
   )
+  assert.equal(
+    formatBattleMessage({type: "combat_ability_rejected", params: {reason: "ability_cancelled", slot: "primary"}}),
+    "Ability cancelled",
+  )
 })
 
 test("formats a targeted clown taunt", () => {

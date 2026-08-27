@@ -1,0 +1,82 @@
+{
+  "reportVersion": 1,
+  "profileId": "combat-profile",
+  "combatRulesVersion": "<profileRevision>",
+  "combatProfileFingerprint": "<64-hex-fingerprint>",
+  "operator": {
+    "operatorId": "<operator-id>",
+    "signed": false,
+    "signature": "<operator-signature-or-approval-id>",
+    "capturedAt": "<ISO-8601-timestamp>"
+  },
+  "releaseManifest": {
+    "manifest": "<path-or-url-to-clean-release-manifest>",
+    "releaseEligible": false,
+    "workingTreeClean": false,
+    "gitCommit": "<40-hex-commit>"
+  },
+  "stages": {
+    "stage0": {
+      "status": "not_run",
+      "replayCycles": 0,
+      "stateHashStable": false,
+      "outlierCount": 0,
+      "soloTeamMatrixPassed": false
+    },
+    "stage1": {
+      "status": "not_run",
+      "visualCases": 0,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "playwrightProcessesClosed": false
+    },
+    "stage2": {
+      "status": "not_run",
+      "humanPlaytestValid": false,
+      "playtestReport": "<path-or-url-to-validated-playtest-report>"
+    },
+    "stage3": {
+      "status": "not_run",
+      "sampledMatchShare": 0,
+      "affectedMatches": 0,
+      "abortGatesTriggered": [],
+      "historicalBaseline": {
+        "source": "<path-or-url-to-approved-historical-baseline>",
+        "profileRevision": "<approved-previous-profile-revision>",
+        "profileFingerprint": "<64-hex-approved-previous-profile-fingerprint>",
+        "metrics": [
+          "ttk",
+          "fullAmmoDeletion",
+          "reloadDeadTime",
+          "skillConversion",
+          "botIdleRetreat",
+          "resourceContest",
+          "matchDuration",
+          "winRate"
+        ],
+        "comparison": {
+          "ttk": {"baseline": null, "candidate": null, "delta": null},
+          "fullAmmoDeletion": {"baseline": null, "candidate": null, "delta": null},
+          "reloadDeadTime": {"baseline": null, "candidate": null, "delta": null},
+          "skillConversion": {"baseline": null, "candidate": null, "delta": null},
+          "botIdleRetreat": {"baseline": null, "candidate": null, "delta": null},
+          "resourceContest": {"baseline": null, "candidate": null, "delta": null},
+          "matchDuration": {"baseline": null, "candidate": null, "delta": null},
+          "winRate": {"baseline": null, "candidate": null, "delta": null}
+        }
+      }
+    }
+  },
+  "rollback": {
+    "status": "not_run",
+    "rollbackRef": "<approved-rollback-ref>",
+    "rollbackDurationMs": 0,
+    "affectedRooms": 0,
+    "errorCount": 0,
+    "postRollbackStateHashesMatch": false,
+    "postRollbackCounters": {},
+    "evidence": ["<path-or-url-to-rollback-evidence>"]
+  },
+  "evidence": ["<path-or-url-to-staged-rollout-evidence>"],
+  "abortGatesTriggered": []
+}

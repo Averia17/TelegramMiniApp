@@ -1,9 +1,111 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "schemaVersion": 1,
-  "profileRevision": "2026-08-26-phase-0",
-  "purpose": "Executable-facing contract cards for the first two vertical combat slices.",
+  "profileRevision": "2026-08-27-cadence-window",
+  "purpose": "Executable-facing contract cards for every active hero and ability.",
   "heroes": {
+    "needle": {
+      "role": "Controller",
+      "fantasy": "Spore controller who turns a lane into a costly route and can escape through his own cloud.",
+      "winCondition": "Keep enemies inside spore pressure, deny healing, then pull them into the root zone or disengage through the cloud.",
+      "counterplay": "Break line of sight, leave the root telegraph, respect anti-heal and punish Needle after the escape is spent.",
+      "soloAcceptance": "Needle wins through space and attrition; a missed root or wasted cloud does not create free damage.",
+      "teamAcceptance": "Needle enables allied focus and route denial without replacing the team's finishing damage.",
+      "benchmarkMatchups": [
+        {"opponent": "Kaze", "scenario": "deny_entry", "expectedAdvantage": "Needle holds the approach with spore pressure and cloud escape.", "counterplayMetric": "Kaze can disengage after a missed root without taking free damage."},
+        {"opponent": "Brock Zeus", "scenario": "break_line_of_sight", "expectedAdvantage": "Needle converts cover and route denial into a close-range setup window.", "counterplayMetric": "Brock remains favored in clean open sightlines."}
+      ],
+      "abilities": {
+        "basic": {"abilityId": "spore_thorn", "target": "directional_projectile", "castMs": 80, "telegraphMs": 100, "activeWindowMs": 650, "recoveryMs": 180, "counterplayWindowMs": 100, "impact": "The spore projectile applies anti-heal on contact and blooms into a bounded six-spore impact.", "status": ["anti_heal", "spore_bloom"], "resourceCost": {"ammo": 1}, "missOutcome": "Ammo is spent; a bloom may finish at range but no enemy receives anti-heal without contact.", "interrupt": "Stun or cast lock before projectile release cancels the shot.", "telemetryEvent": "combat.needle.basic.impact"},
+        "super": {"abilityId": "hunter_root", "target": "point_zone", "castMs": 120, "telegraphMs": 300, "activeWindowMs": 3000, "recoveryMs": 320, "counterplayWindowMs": 300, "impact": "The root telegraph pulls enemies once on impact and leaves a damaging slow zone.", "status": ["pull", "slow", "damage_zone"], "resourceCost": {"superChargePercent": 100}, "missOutcome": "The selected zone is consumed and expires without damage or pull when no enemy is inside it.", "interrupt": "Stun before the telegraph completes cancels deployment; after impact the zone remains until expiry.", "telemetryEvent": "combat.needle.super.impact"},
+        "gadget": {"abilityId": "spore_escape", "target": "directional_self_dash", "castMs": 120, "telegraphMs": 180, "activeWindowMs": 2000, "recoveryMs": 300, "counterplayWindowMs": 180, "impact": "Needle dashes through valid space and leaves a slowing spore cloud that can build a root response.", "status": ["dash", "slow_cloud", "spore_stack"], "resourceCost": {"gadgetCharges": 1}, "missOutcome": "Charge is spent and the dash/cloud resolve without dealing damage when no enemy enters the cloud.", "interrupt": "Stun before dash activation rejects the gadget; active cloud remains independent of the caster.", "telemetryEvent": "combat.needle.gadget.activated"}
+      }
+    },
+    "mandy": {
+      "role": "Fighter",
+      "fantasy": "Close-range fighter who converts a committed stance into a staff payoff or a map-wide wave.",
+      "winCondition": "Hold the correct distance, build focus with staff strikes, then commit to the wave while surviving its preparation.",
+      "counterplay": "Keep outside the staff cone, interrupt or leave the wave telegraph, and punish Mandy after her defensive window ends.",
+      "soloAcceptance": "Mandy wins a committed close trade but cannot delete a full-health target through missed swings alone.",
+      "teamAcceptance": "Mandy creates a front-line threat and wall break, while allies still need to capitalize on the stun window.",
+      "benchmarkMatchups": [
+        {"opponent": "Brock Zeus", "scenario": "close_entry", "expectedAdvantage": "Mandy wins the committed close trade after crossing the ranged threat.", "counterplayMetric": "Brock can keep distance and punish the visible wave wind-up."},
+        {"opponent": "Kaze", "scenario": "survive_burst", "expectedAdvantage": "Mandy's stance and health budget let her contest the first assassin entry.", "counterplayMetric": "Kaze wins if Mandy wastes stance before the entry."}
+      ],
+      "abilities": {
+        "basic": {"abilityId": "staff_strike", "target": "directional_cone", "castMs": 80, "telegraphMs": 120, "activeWindowMs": 180, "recoveryMs": 220, "counterplayWindowMs": 120, "impact": "A staff cone deals melee damage and gains the focus modifier only when Mandy maintains the intended stance.", "status": ["focus", "melee_damage", "slow_on_empowered_hit"], "resourceCost": {"ammo": 1}, "missOutcome": "Ammo is spent and focus is not rewarded when the cone misses every enemy.", "interrupt": "Stun or cast lock before the active frame cancels the swing.", "telemetryEvent": "combat.mandy.basic.impact"},
+        "super": {"abilityId": "devastation_wave", "target": "directional_line", "castMs": 180, "telegraphMs": 800, "activeWindowMs": 1500, "recoveryMs": 450, "counterplayWindowMs": 800, "impact": "After a visible charge, a wall-breaking wave travels through the line and applies damage and stun once per target.", "status": ["shield_window", "stun", "wall_break"], "resourceCost": {"superChargePercent": 100}, "missOutcome": "The wave is consumed after release but deals no damage or stun when no target intersects its line.", "interrupt": "Stun before release cancels the charge; after release the wave resolves independently.", "telemetryEvent": "combat.mandy.super.impact"},
+        "gadget": {"abilityId": "unyielding_stance", "target": "self", "castMs": 100, "telegraphMs": 160, "activeWindowMs": 1800, "recoveryMs": 260, "counterplayWindowMs": 160, "impact": "Mandy gains a short damage-reduction stance and arms one empowered staff strike.", "status": ["damage_reduction", "empowered_next_hit"], "resourceCost": {"gadgetCharges": 1}, "missOutcome": "Charge is spent and the defensive window expires without a bonus strike if Mandy never connects.", "interrupt": "Stun before activation rejects the stance; the active timer does not grant immunity.", "telemetryEvent": "combat.mandy.gadget.activated"}
+      }
+    },
+    "fairy-mina": {
+      "role": "Support",
+      "fantasy": "Star support who converts accurate volleys into sustain and protects a nearby ally with a cocoon.",
+      "winCondition": "Stay near the fight edge, land star volleys, preserve an ally through the cocoon and punish marked enemies.",
+      "counterplay": "Dodge the fan, split from the aura, pressure Mina outside her support range and punish her low solo burst.",
+      "soloAcceptance": "Mina survives and wins through sustain and spacing, not by out-bursting a fighter at point blank.",
+      "teamAcceptance": "Mina's value is visible in ally survival and healing windows; her support does not become team-wide immortality.",
+      "benchmarkMatchups": [
+        {"opponent": "Kaze", "scenario": "peel_assassin_entry", "expectedAdvantage": "Mina survives the first dive with cocoon and repelling wave while preserving spacing.", "counterplayMetric": "Kaze can wait out the defensive window and re-enter after the peel is spent."},
+        {"opponent": "Wukong Mico", "scenario": "sustain_team_trade", "expectedAdvantage": "Mina preserves an ally through the tank's long contact window.", "counterplayMetric": "Mico wins space when Mina is isolated outside support range."}
+      ],
+      "abilities": {
+        "basic": {"abilityId": "star_fan", "target": "directional_fan", "castMs": 80, "telegraphMs": 120, "activeWindowMs": 250, "recoveryMs": 220, "counterplayWindowMs": 120, "impact": "A three-star fan deals 40 damage per star and returns a bounded self-heal on successful contact, with a marked-target payoff.", "status": ["mark", "self_heal", "slow_on_payoff"], "resourceCost": {"ammo": 1}, "missOutcome": "Ammo is spent and no healing, mark or detonation is granted without a valid hit.", "interrupt": "Stun or cast lock before the fan becomes active cancels the volley.", "telemetryEvent": "combat.mina.basic.impact"},
+        "super": {"abilityId": "star_cocoon", "target": "self_zone", "castMs": 120, "telegraphMs": 250, "activeWindowMs": 4000, "recoveryMs": 300, "counterplayWindowMs": 250, "impact": "Mina receives a bounded shield and a visible aura that heals Mina while damaging enemies inside it.", "status": ["shield", "healing_aura", "enemy_damage"], "resourceCost": {"superChargePercent": 100}, "missOutcome": "The cocoon is consumed with no enemy damage when opponents leave the aura; Mina's defensive benefit remains time-limited.", "interrupt": "Stun before activation rejects the cocoon; the active aura ends at its timer.", "telemetryEvent": "combat.mina.super.impact"},
+        "gadget": {"abilityId": "repelling_wave", "target": "radial_self", "castMs": 100, "telegraphMs": 180, "activeWindowMs": 450, "recoveryMs": 250, "counterplayWindowMs": 180, "impact": "A short radial wave knocks enemies away, deals bounded damage and clears Mina's negative statuses.", "status": ["knockback", "cleanse"], "resourceCost": {"gadgetCharges": 1}, "missOutcome": "Charge is spent and Mina is cleansed even when no enemy is inside the wave.", "interrupt": "Stun before the wave becomes active rejects the gadget; it never creates an untelegraphed remote hit.", "telemetryEvent": "combat.mina.gadget.impact"}
+      }
+    },
+    "brock-zeus": {
+      "role": "Sharpshooter",
+      "fantasy": "Long-range sharpshooter who trades mobility for predictable lightning lanes and delayed area strikes.",
+      "winCondition": "Create distance, land clean lightning shots and layer the delayed hammer strikes over the enemy's escape route.",
+      "counterplay": "Close the gap, use cover against the line, watch the strike reticles and punish Brock during the delayed commitment.",
+      "soloAcceptance": "Brock has the highest clean-range threat but loses a direct close trade when his telegraphs are dodged.",
+      "teamAcceptance": "Brock supplies ranged pressure and wall control without becoming a safe all-purpose finisher.",
+      "benchmarkMatchups": [
+        {"opponent": "Kaze", "scenario": "hold_range", "expectedAdvantage": "Brock wins the open-range poke if the reticles and projectile connect.", "counterplayMetric": "Kaze must cross cover and punish Brock during delayed Super recovery."},
+        {"opponent": "Needle", "scenario": "open_sightline", "expectedAdvantage": "Brock converts longer sightlines into higher immediate threat than a controller.", "counterplayMetric": "Needle can break sightline and win the route-denial exchange."}
+      ],
+      "abilities": {
+        "basic": {"abilityId": "thunder_projectile", "target": "directional_projectile", "castMs": 80, "telegraphMs": 0, "activeWindowMs": 500, "recoveryMs": 280, "counterplayWindowMs": 0, "impact": "A readable lightning projectile deals one direct hit and a bounded splash at its impact point.", "status": ["splash_damage"], "resourceCost": {"ammo": 1}, "missOutcome": "Ammo is spent and no splash occurs when the projectile misses all valid targets.", "interrupt": "Stun or cast lock before release cancels the projectile.", "telemetryEvent": "combat.brock.basic.impact"},
+        "super": {"abilityId": "gods_hammer", "target": "point_strikes", "castMs": 180, "telegraphMs": 700, "activeWindowMs": 1500, "recoveryMs": 500, "counterplayWindowMs": 700, "impact": "Three reticled strikes land at fixed absolute times, each dealing bounded damage and breaking walls.", "status": ["slow", "wall_break", "delayed_strike"], "resourceCost": {"superChargePercent": 100}, "missOutcome": "The strike sequence is consumed without damage or slow when all reticles are vacated before impact.", "interrupt": "Stun before the first strike cancels the sequence; after the first impact remaining strikes keep their authored timings.", "telemetryEvent": "combat.brock.super.impact"},
+        "gadget": {"abilityId": "discharge_cable", "target": "directional_line", "castMs": 100, "telegraphMs": 160, "activeWindowMs": 800, "recoveryMs": 240, "counterplayWindowMs": 160, "impact": "The next basic release becomes a piercing directional beam that can break walls along its line.", "status": ["pierce", "wall_break", "empowered_next_shot"], "resourceCost": {"gadgetCharges": 1}, "missOutcome": "Charge is spent and the empowered shot is lost if the next release misses every target.", "interrupt": "Stun before arming rejects the gadget; an armed shot remains a single punishable commitment.", "telemetryEvent": "combat.brock.gadget.activated"}
+      }
+    },
+    "wukong-mico": {
+      "role": "Tank",
+      "fantasy": "Durable staff tank who builds rage through contact and turns it into a disruptive vortex.",
+      "winCondition": "Occupy a contested lane, build rage with staff hits and force enemies to disengage from the vortex or armor window.",
+      "counterplay": "Kite the short cone, avoid feeding rage, leave the vortex telegraph and punish Mico after armor expires.",
+      "soloAcceptance": "Mico wins space and long trades but cannot reliably reach ranged targets without committing his limited movement tools.",
+      "teamAcceptance": "Mico anchors a team fight and creates peel space; his sustain is bounded and requires enemy proximity.",
+      "benchmarkMatchups": [
+        {"opponent": "Brock Zeus", "scenario": "cross_open_lane", "expectedAdvantage": "Mico turns cover and armor into a successful close entry against the sharpshooter.", "counterplayMetric": "Brock wins if he keeps the gap and vacates the vortex telegraph."},
+        {"opponent": "Fairy Mina", "scenario": "deny_sustain", "expectedAdvantage": "Mico forces Mina away from her ally and contests the support's safe edge.", "counterplayMetric": "Mina wins the extended trade when Mico cannot reach her support range."}
+      ],
+      "abilities": {
+        "basic": {"abilityId": "heavy_staff", "target": "directional_cone", "castMs": 80, "telegraphMs": 120, "activeWindowMs": 220, "recoveryMs": 300, "counterplayWindowMs": 120, "impact": "A heavy staff cone deals damage and grants one bounded rage charge per successful swing.", "status": ["rage_charge", "melee_damage"], "resourceCost": {"ammo": 1}, "missOutcome": "Ammo is spent and no rage is granted when the swing hits no enemy.", "interrupt": "Stun or cast lock before the active frame cancels the staff swing.", "telemetryEvent": "combat.mico.basic.impact"},
+        "super": {"abilityId": "vengeance_vortex", "target": "directional_self_zone", "castMs": 160, "telegraphMs": 250, "activeWindowMs": 2000, "recoveryMs": 400, "counterplayWindowMs": 250, "impact": "Mico aims a short landing jump, then creates a visible self-centered vortex that pulls, stuns on entry and periodically damages enemies while restoring bounded health.", "status": ["aimed_jump", "pull", "stun", "damage_zone", "self_sustain"], "resourceCost": {"superChargePercent": 100}, "missOutcome": "The vortex is consumed and Mico receives only its self effect when no enemy enters the zone.", "interrupt": "Stun before vortex activation cancels the jump; after activation the zone expires on its timer.", "telemetryEvent": "combat.mico.super.impact"},
+        "gadget": {"abilityId": "stone_armor", "target": "self", "castMs": 100, "telegraphMs": 160, "activeWindowMs": 4000, "recoveryMs": 350, "counterplayWindowMs": 160, "impact": "Mico gains bounded damage reduction and stores incoming damage for one visible retaliatory burst.", "status": ["damage_reduction", "stored_damage", "retaliation"], "resourceCost": {"gadgetCharges": 1}, "missOutcome": "Charge is spent and the armor expires without a burst if no damage is stored.", "interrupt": "Stun before activation rejects the armor; active armor never grants immunity or infinite sustain.", "telemetryEvent": "combat.mico.gadget.activated"}
+      }
+    },
+    "persephone-lumi": {
+      "role": "Controller",
+      "fantasy": "Garden controller who plants persistent flowers and converts prepared space into a burst.",
+      "winCondition": "Plant flowers along likely routes, use the garden to slow and reveal enemies, then detonate setup for a controlled burst and heal.",
+      "counterplay": "Avoid planted zones, rotate before the delayed root trigger and force Lumi to spend her setup without a target.",
+      "soloAcceptance": "Lumi controls routes and wins prepared fights, but direct unprepared trades remain punishable.",
+      "teamAcceptance": "Lumi supplies area control and setup conversion for allies without stacking duplicate damage from overlapping objects.",
+      "benchmarkMatchups": [
+        {"opponent": "Kaze", "scenario": "deny_route_entry", "expectedAdvantage": "Lumi prepares the route before Kaze commits and converts the dash lane into a root window.", "counterplayMetric": "Kaze can rotate early and force Lumi to spend setup without contact."},
+        {"opponent": "Katty", "scenario": "zone_control_trade", "expectedAdvantage": "Lumi wins a prepared choke through longer persistent control and reveal.", "counterplayMetric": "Katty can leave the garden telegraph and use flight to reset the zone exchange."}
+      ],
+      "abilities": {
+        "basic": {"abilityId": "luminous_flower", "target": "directional_projectile", "castMs": 100, "telegraphMs": 0, "activeWindowMs": 6000, "recoveryMs": 260, "counterplayWindowMs": 0, "impact": "The flower projectile creates one bounded persistent zone on contact or at range end, with periodic damage and slow.", "status": ["persistent_zone", "slow", "reveal"], "resourceCost": {"ammo": 1}, "missOutcome": "The flower can bloom at range end, but no enemy receives damage or status without entering its zone.", "interrupt": "Stun or cast lock before release cancels the projectile.", "telemetryEvent": "combat.lumi.basic.impact"},
+        "super": {"abilityId": "root_garden", "target": "point_zone", "castMs": 160, "telegraphMs": 600, "activeWindowMs": 6600, "recoveryMs": 450, "counterplayWindowMs": 600, "impact": "A visible garden arms after the delay, stuns enemies once on activation and then applies a bounded slow zone.", "status": ["stun", "slow", "persistent_zone"], "resourceCost": {"superChargePercent": 100}, "missOutcome": "The garden is consumed at the chosen point and deals no damage or status when enemies leave before activation.", "interrupt": "Stun before garden activation cancels deployment; after activation the zone remains until expiry.", "telemetryEvent": "combat.lumi.super.impact"},
+        "gadget": {"abilityId": "flower_burst", "target": "self_setup_zone", "castMs": 120, "telegraphMs": 180, "activeWindowMs": 300, "recoveryMs": 260, "counterplayWindowMs": 180, "impact": "Lumi consumes her own flowers and garden once, applying one shared target burst and a bounded self-heal.", "status": ["setup_conversion", "slow", "self_heal"], "resourceCost": {"gadgetCharges": 1}, "missOutcome": "Charge is spent with no damage or heal when Lumi has no active setup to consume.", "interrupt": "Stun before conversion rejects the gadget; consumed zones cannot be triggered a second time.", "telemetryEvent": "combat.lumi.gadget.impact"}
+      }
+    },
     "kaze": {
       "role": "Assassin",
       "fantasy": "Short-window execution assassin with a readable entry and a costly miss.",
@@ -11,6 +113,10 @@
       "counterplay": "Hold spacing, punish the missed dash, survive the first combo and deny the low-health execution.",
       "soloAcceptance": "A correct dash against a 30% HP target creates a kill window; a missed dash does not grant a free reset or immunity.",
       "teamAcceptance": "Kaze creates a focused pick without replacing a frontliner; the team can follow the entry but must cover the retreat.",
+      "benchmarkMatchups": [
+        {"opponent": "Brock Zeus", "scenario": "assassin_entry", "expectedAdvantage": "Kaze reaches and executes a low-health sharpshooter through a committed dash.", "counterplayMetric": "Brock wins by maintaining range, using cover and dodging the dash line."},
+        {"opponent": "Wukong Mico", "scenario": "punish_tank_recovery", "expectedAdvantage": "Kaze chooses the post-armor recovery window instead of trading into full safety.", "counterplayMetric": "Mico wins if Kaze enters before armor expires or misses the exit."}
+      ],
       "abilities": {
         "basic": {
           "abilityId": "cross_slash",
@@ -18,6 +124,8 @@
           "castMs": 80,
           "telegraphMs": 120,
           "activeWindowMs": 160,
+          "recoveryMs": 180,
+          "counterplayWindowMs": 120,
           "impact": "Two short slashes advance the combo; the third combo hit is the only empowered basic hit.",
           "status": ["combo_progress", "low_health_bonus_on_finisher"],
           "resourceCost": {"ammo": 1},
@@ -31,6 +139,8 @@
           "castMs": 180,
           "telegraphMs": 250,
           "activeWindowMs": 220,
+          "recoveryMs": 320,
+          "counterplayWindowMs": 250,
           "impact": "One hit per target during the dash; hit applies stun and primes the follow-up. Kill resets the super cooldown only.",
           "status": ["stun", "combo_prime", "post_dash_haste"],
           "resourceCost": {"superChargePercent": 100},
@@ -44,6 +154,8 @@
           "castMs": 120,
           "telegraphMs": 160,
           "activeWindowMs": 3000,
+          "recoveryMs": 240,
+          "counterplayWindowMs": 160,
           "impact": "Kaze becomes hidden and prepares one guaranteed critical first hit.",
           "status": ["stealth", "first_hit_critical"],
           "resourceCost": {"gadgetCharges": 1},
@@ -60,6 +172,10 @@
       "counterplay": "Leave the painted zone during telegraph, avoid the third layer, and punish Katty when flight ends or a trail is wasted.",
       "soloAcceptance": "Katty wins space through visible setup and a fair exit window; direct basic trading alone does not delete a full-health target.",
       "teamAcceptance": "Katty creates a choke and enables a teammate's engage, but her zone does not replace allied damage or become unavoidable cover.",
+      "benchmarkMatchups": [
+        {"opponent": "Kaze", "scenario": "painted_entry_denial", "expectedAdvantage": "Katty layers a visible zone that makes a direct assassin entry costly.", "counterplayMetric": "Kaze can wait out the telegraph and punish Katty after flight ends."},
+        {"opponent": "Mandy", "scenario": "kite_committed_fighter", "expectedAdvantage": "Katty controls the approach and converts a forced route into a paint stun.", "counterplayMetric": "Mandy wins by exiting the zone and re-engaging after the paint stack expires."}
+      ],
       "abilities": {
         "basic": {
           "abilityId": "paint_spray",
@@ -67,6 +183,8 @@
           "castMs": 100,
           "telegraphMs": 140,
           "activeWindowMs": 180,
+          "recoveryMs": 220,
+          "counterplayWindowMs": 140,
           "impact": "Short spray applies one paint layer; the third layer adds the stun and damage conversion.",
           "status": ["paint_stack", "third_stack_stun"],
           "resourceCost": {"ammo": 1},
@@ -80,6 +198,8 @@
           "castMs": 220,
           "telegraphMs": 350,
           "activeWindowMs": 1800,
+          "recoveryMs": 420,
+          "counterplayWindowMs": 350,
           "impact": "The marked area applies a visible pull/slow and one paint conversion; damage starts after telegraph completion.",
           "status": ["slow", "blind", "paint_stack"],
           "resourceCost": {"superChargePercent": 100},
@@ -93,6 +213,8 @@
           "castMs": 120,
           "telegraphMs": 160,
           "activeWindowMs": 2200,
+          "recoveryMs": 300,
+          "counterplayWindowMs": 160,
           "impact": "Katty gains flight speed and leaves a readable trail; touching the trail detonates it once.",
           "status": ["flight", "trail_zone", "paint_stack_on_contact"],
           "resourceCost": {"gadgetCharges": 1},

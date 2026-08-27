@@ -158,3 +158,72 @@ test("stale WebSocket callbacks cannot overwrite a replacement connection", () =
     globalThis.WebSocket = previousWebSocket
   }
 })
+
+test("aimed ability commands carry a fresh aim contract and can be cancelled", () => {
+  const client = new GameClient("ws://example", "token", () => {})
+  client.playerId = "player-1"
+  const sent = []
+  const previousWebSocket = globalThis.WebSocket
+  globalThis.WebSocket = {OPEN: 1}
+  client.ws = {readyState: 1, send: payload => sent.push(JSON.parse(payload))}
+
+  const castId = client.ability("primary", undefined, {aimProvided: true, aimAngle: 0.5, aimDistance: 240})
+  const cancelId = client.cancelAbility()
+
+  globalThis.WebSocket = previousWebSocket
+  assert.equal(sent[0].value.aimProvided, true)
+  assert.equal(sent[0].value.aimAngle, 0.5)
+  assert.equal(sent[0].value.aimDistance, 240)
+  assert.deepEqual(sent[1], {type: "ability_cancel", ts: sent[1].ts, value: {clientId: cancelId, targetClientId: castId}})
+  assert.equal(client.pendingAbilities.get(castId).slot, "primary")
+})
+
+test("auth advertises the combat profile and event schema capabilities", () => {
+  const sockets = []
+  const previousWebSocket = globalThis.WebSocket
+
+  class FakeWebSocket {
+    static OPEN = 1
+    constructor() { this.readyState = 0; sockets.push(this) }
+    send(payload) { this.auth = JSON.parse(payload) }
+    close() { this.readyState = 3 }
+  }
+
+  globalThis.WebSocket = FakeWebSocket
+  try {
+    const client = new GameClient("ws://example", "token", () => {})
+    client.connect()
+    sockets[0].readyState = FakeWebSocket.OPEN
+    sockets[0].onopen()
+    assert.deepEqual(sockets[0].auth, {
+      type: "auth",
+      token: "token",
+      combatProfileId: "combat-profile",
+      combatRulesVersion: "2026-08-27-cadence-window",
+      eventSchemaVersion: 1,
+    })
+    client.disconnect()
+  } finally {
+    globalThis.WebSocket = previousWebSocket
+  }
+})
+
+test("an incompatible combat snapshot is rejected before presentation", () => {
+  const received = []
+  const messages = []
+  const client = new GameClient("ws://example", "token", state => received.push(state), message => messages.push(message))
+
+  client.handleMessage({
+    type: "state",
+    ts: Date.now(),
+    combatProfileId: "old-profile",
+    combatRulesVersion: "old-rules",
+    eventSchemaVersion: 1,
+    players: {local: {lives: 100}},
+    map: {},
+  })
+
+  assert.equal(received.length, 0)
+  assert.deepEqual(messages, [{type: "error", params: {message: "Unsupported combat version"}}])
+  assert.equal(client.combatCompatible, false)
+})

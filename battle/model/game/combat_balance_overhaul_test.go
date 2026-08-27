@@ -2,6 +2,7 @@ package game
 
 import (
 	"math"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -13,13 +14,62 @@ func TestCombatBalanceMatrixCoversEveryActiveHero(t *testing.T) {
 	}
 	seen := make(map[string]bool, len(matrix))
 	for _, row := range matrix {
-		if row.Hero == "" || row.Role == "" || row.BasicBurst <= 0 || row.BasicDPS <= 0 {
+		if row.Hero == "" || row.Role == "" || row.BasicBurst <= 0 || row.BasicDPS <= 0 || row.SustainedBasicDPS <= 0 || row.SustainedBasicDPS > row.BasicDPS {
 			t.Fatalf("invalid balance row: %#v", row)
+		}
+		if row.AttackRateMs <= 0 || row.ReloadMs <= 0 || row.FullAmmoWindowMs <= 0 || row.ReloadDeadTimeFraction > .70 {
+			t.Fatalf("%s has unexplained basic downtime: %#v", row.Hero, row)
 		}
 		if seen[row.Hero] {
 			t.Fatalf("duplicate balance row for %q", row.Hero)
 		}
 		seen[row.Hero] = true
+	}
+}
+
+func TestCombatReloadDeadTimeStaysBelowThePlayerFacingCeiling(t *testing.T) {
+	for _, row := range BuildCombatBalanceMatrix() {
+		if row.ReloadDeadTimeFraction > CombatReloadDeadTimeCeiling {
+			t.Fatalf("%s reload dead time=%.3f, want <=%.2f of the combat cycle", row.Hero, row.ReloadDeadTimeFraction, CombatReloadDeadTimeCeiling)
+		}
+	}
+}
+
+func TestSupportBasicBurstStaysBelowTheRoleThreatCeiling(t *testing.T) {
+	matrix := BuildCombatBalanceMatrix()
+	for _, row := range matrix {
+		if row.Role == "Support" && row.BasicBurst > 360 {
+			t.Fatalf("%s support basic burst=%d, want <=360 so sustain/peel remain the role's power budget", row.Hero, row.BasicBurst)
+		}
+	}
+}
+
+func TestCombatPowerBudgetMatrixIsRoleSpecializedAndReplayable(t *testing.T) {
+	first, err := BuildCombatPowerBudgetMatrix()
+	if err != nil {
+		t.Fatalf("build power budget matrix: %v", err)
+	}
+	second, err := BuildCombatPowerBudgetMatrix()
+	if err != nil {
+		t.Fatalf("rebuild power budget matrix: %v", err)
+	}
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("power budget matrix is not deterministic:\nfirst=%#v\nsecond=%#v", first, second)
+	}
+	if err := ValidateCombatPowerBudgetMatrix(first); err != nil {
+		t.Fatalf("power budget matrix is invalid: %v", err)
+	}
+	if len(first) != len(Heroes) {
+		t.Fatalf("power budget rows=%d, want %d", len(first), len(Heroes))
+	}
+
+	for _, row := range first {
+		if row.Signature == "" {
+			t.Fatalf("%s has no readable role signature: %#v", row.Hero, row)
+		}
+		if row.SignatureValue < .85 {
+			t.Fatalf("%s signature=%s/%.2f, want a deliberate specialty >=.85", row.Hero, row.Signature, row.SignatureValue)
+		}
 	}
 }
 

@@ -151,7 +151,10 @@ func LoadMap(name string) (*GameMap, error) {
 		return GenerateBattleRoyale(CanonicalBattleRoyaleSeed), nil
 	}
 	if name == "team-battle" {
-		return GenerateTeamBattle(CanonicalTeamBattleSeed), nil
+		return GenerateTeamBattleClassic(CanonicalTeamBattleSeed), nil
+	}
+	if name == "team-battle-northern" {
+		return GenerateTeamBattle(CanonicalTeamBattleNorthernSeed), nil
 	}
 	data, ok := mapData[name]
 	if !ok {

@@ -71,6 +71,12 @@ func verifyBattleTicket(token, expectedPartyID, expectedPlayerID string) (battle
 	if err != nil {
 		return claims, errors.New("invalid battle ticket signature")
 	}
+	// Raw base64url has unused pad bits when encoding a 32-byte HMAC. Reject
+	// alternate spellings so changing the final character cannot preserve the
+	// decoded signature while bypassing tamper detection.
+	if base64.RawURLEncoding.EncodeToString(signature) != parts[1] {
+		return claims, errors.New("invalid battle ticket signature")
+	}
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(parts[0]))
 	if !hmac.Equal(signature, mac.Sum(nil)) {

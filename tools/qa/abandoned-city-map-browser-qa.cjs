@@ -5,7 +5,9 @@ const {chromium} = require(path.resolve(__dirname, "../../frontend/node_modules/
 const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cjs")
 
 const baseUrl = process.env.MAP_QA_URL || "http://localhost"
-const output = path.resolve(__dirname, "../../output/playwright/abandoned-city-map")
+const selectedMap = process.env.MAP_QA_MAP === "team-battle" ? "team-battle" : "team-battle-northern"
+const expectedMapId = selectedMap === "team-battle" ? "team-battle@20260816" : "team-battle-northern@20260827"
+const output = path.resolve(__dirname, "../../output/playwright/abandoned-city-map", selectedMap)
 
 runWithBrowser(
   () => launchHeadlessChromium(chromium, {headless: true}),
@@ -17,7 +19,7 @@ runWithBrowser(
     page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()) })
     page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
 
-    await page.goto(`${baseUrl}/test/map-environment-harness.html?mode=team`, {waitUntil: "domcontentloaded", timeout: 30_000})
+    await page.goto(`${baseUrl}/test/map-environment-harness.html?mode=team&map=${selectedMap}`, {waitUntil: "domcontentloaded", timeout: 30_000})
     await page.waitForFunction(() => document.querySelector("#status")?.classList.contains("is-ready"), {timeout: 30_000})
 
     const snapshot = await page.evaluate(() => ({
@@ -27,12 +29,15 @@ runWithBrowser(
       cityWalls: window.qa.map.walls.filter(wall => wall.type === "building_wall").length,
       rubble: window.qa.map.walls.filter(wall => wall.type === "building_rubble").length,
       collisionConflicts: (() => {
-        const cells = new Set()
+        const cells = new Map()
         const conflicts = new Set()
         for (const wall of window.qa.map.walls) {
           const cell = `${Math.floor(wall.minX / 40)}:${Math.floor(wall.minY / 40)}`
-          if (cells.has(cell)) conflicts.add(cell)
-          cells.add(cell)
+          const previous = cells.get(cell)
+          // Fine-grained city_object colliders can share a coarse 40px bucket;
+          // only unrelated gameplay blockers are a real map conflict.
+          if (previous && wall.type !== "city_object" && previous.type !== "city_object") conflicts.add(cell)
+          cells.set(cell, wall)
         }
         return conflicts.size
       })(),
@@ -46,7 +51,7 @@ runWithBrowser(
         }).length
       })(),
     }))
-    assert.equal(snapshot.text.map.id, "team-battle@20260816")
+    assert.equal(snapshot.text.map.id, expectedMapId)
     assert.equal(snapshot.text.environment.ready, true)
     assert.ok(snapshot.cityFeatures >= 11, `expected city features, got ${snapshot.cityFeatures}`)
     assert.ok(snapshot.cityWalls >= 36, `expected building walls, got ${snapshot.cityWalls}`)

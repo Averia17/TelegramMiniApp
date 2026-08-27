@@ -2,9 +2,47 @@ package gamemap
 
 import (
 	"battle/service/geometry"
+	"fmt"
 	"math"
+	"strings"
 	"testing"
 )
+
+func TestTeamBattleVariantsShareCombatTopologyButHaveDistinctDressing(t *testing.T) {
+	classic := GenerateTeamBattleClassic(CanonicalTeamBattleSeed)
+	northern := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	if classic.WidthInPixels != northern.WidthInPixels || classic.HeightInPixels != northern.HeightInPixels {
+		t.Fatalf("variant dimensions differ: classic %.0fx%.0f northern %.0fx%.0f", classic.WidthInPixels, classic.HeightInPixels, northern.WidthInPixels, northern.HeightInPixels)
+	}
+	if len(classic.TeamSpawners["Blue"]) != len(northern.TeamSpawners["Blue"]) || len(classic.TeamSpawners["Red"]) != len(northern.TeamSpawners["Red"]) {
+		t.Fatalf("variant spawn topology differs")
+	}
+	if len(northern.Features) <= len(classic.Features) {
+		t.Fatalf("northern variant did not add authored dressing: classic features %d, northern %d", len(classic.Features), len(northern.Features))
+	}
+}
+
+func TestClassicTeamBattleRetainsPreviousCommitCityLayout(t *testing.T) {
+	mapValue := GenerateTeamBattleClassic(CanonicalTeamBattleSeed)
+	featureTypes := make(map[string]int)
+	featureIDs := make(map[string]bool)
+	for _, feature := range mapValue.Features {
+		featureTypes[feature.Type]++
+		featureIDs[feature.ID] = true
+	}
+	if !featureIDs["city-market"] || !featureIDs["city-market-mirror"] {
+		t.Fatal("classic map lost the previous commit's market landmarks")
+	}
+	for _, typeName := range []string{"city_inn", "city_shrine", "city_detail", "castle_keep", "castle_gate", "castle_courtyard", "castle_detail"} {
+		if featureTypes[typeName] != 0 {
+			t.Fatalf("classic map contains northern-only feature type %q (%d)", typeName, featureTypes[typeName])
+		}
+	}
+	if featureTypes["city_building"] != 10 || featureTypes["city_tower"] != 2 ||
+		featureTypes["city_plaza"] != 2 || featureTypes["city_street"] != 6 {
+		t.Fatalf("classic city layout changed: %#v", featureTypes)
+	}
+}
 
 func TestTeamBattleHasDiagonalBasesAndThreeSpawnsPerTeam(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
@@ -20,6 +58,48 @@ func TestTeamBattleHasDiagonalBasesAndThreeSpawnsPerTeam(t *testing.T) {
 	blueHall, redHall := mapValue.Objectives[0], mapValue.Objectives[1]
 	if blueHall.Team != "Blue" || redHall.Team != "Red" || blueHall.X >= redHall.X || blueHall.Y <= redHall.Y {
 		t.Fatalf("bases are not diagonal: blue=(%.0f,%.0f) red=(%.0f,%.0f)", blueHall.X, blueHall.Y, redHall.X, redHall.Y)
+	}
+}
+
+func TestTeamBattleVariantsUseCompactCanvasWithoutDroppingAuthoredContent(t *testing.T) {
+	for _, variant := range []struct {
+		name string
+		game *GameMap
+	}{
+		{name: "classic", game: GenerateTeamBattleClassic(CanonicalTeamBattleSeed)},
+		{name: "northern", game: GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)},
+	} {
+		mapValue := variant.game
+		if mapValue.WidthInPixels != 2800 || mapValue.HeightInPixels != 2800 {
+			t.Fatalf("team map dimensions = %.0fx%.0f, want 2800x2800", mapValue.WidthInPixels, mapValue.HeightInPixels)
+		}
+		assertInside := func(label string, x, y float64) {
+			if x < 0 || y < 0 || x > mapValue.WidthInPixels || y > mapValue.HeightInPixels {
+				t.Fatalf("%s at (%.0f,%.0f) escaped compact map bounds", label, x, y)
+			}
+		}
+		for _, wall := range mapValue.Collisions {
+			if wall == nil {
+				continue
+			}
+			if wall.MinX < 0 || wall.MinY < 0 || wall.MaxX > mapValue.WidthInPixels || wall.MaxY > mapValue.HeightInPixels {
+				t.Fatalf("collision %s bounds=(%.0f,%.0f)-(%.0f,%.0f) escaped compact map", wall.Type, wall.MinX, wall.MinY, wall.MaxX, wall.MaxY)
+			}
+		}
+		for _, feature := range mapValue.Features {
+			assertInside("feature "+feature.ID, feature.X, feature.Y)
+		}
+		for _, spawn := range mapValue.MonsterSpawns {
+			assertInside("monster spawn", spawn.X, spawn.Y)
+		}
+		for team, spawns := range mapValue.TeamSpawners {
+			for index, spawn := range spawns {
+				assertInside(fmt.Sprintf("%s spawn %d", team, index), spawn.CenterX(), spawn.CenterY())
+			}
+		}
+		for _, objective := range mapValue.Objectives {
+			assertInside("objective "+objective.ID, objective.X, objective.Y)
+		}
 	}
 }
 
@@ -157,7 +237,7 @@ func TestTeamBattleFortifiesBothBasesWithSemicircularRockWalls(t *testing.T) {
 			t.Fatalf("%s is inside a blocking fortress wall at %v", objective.ID, cell)
 		}
 	}
-	for _, gate := range [][2]int{{15, 53}, {53, 15}} {
+	for _, gate := range [][2]int{{10, 48}, {48, 10}} {
 		if fortress[gate] {
 			t.Fatalf("front gate at %v is blocked", gate)
 		}
@@ -165,12 +245,12 @@ func TestTeamBattleFortifiesBothBasesWithSemicircularRockWalls(t *testing.T) {
 	// The old layout exposed square corners at the far north-west and north-east
 	// edges. A semicircular enclosure must leave those front corners open while
 	// extending the rock arc farther around both sides of each base.
-	for _, corner := range [][2]int{{10, 53}, {22, 53}, {53, 10}, {53, 22}} {
+	for _, corner := range [][2]int{{5, 48}, {17, 48}, {48, 5}, {48, 17}} {
 		if fortress[corner] {
 			t.Fatalf("square fortress corner at %v should be open for a semicircular wall", corner)
 		}
 	}
-	for _, arc := range [][2]int{{7, 63}, {9, 57}, {10, 56}, {11, 55}, {22, 69}, {16, 72}, {63, 7}, {57, 9}, {56, 10}, {55, 11}, {69, 22}, {72, 16}} {
+	for _, arc := range [][2]int{{2, 58}, {4, 52}, {5, 51}, {6, 50}, {17, 64}, {11, 67}, {58, 2}, {52, 4}, {51, 5}, {50, 6}, {64, 17}, {67, 11}} {
 		if !fortress[arc] {
 			t.Fatalf("semicircular rock arc is missing at %v", arc)
 		}
@@ -212,7 +292,7 @@ func TestTeamBattleUsesGroupedCoverAndAPassableDiagonalBorder(t *testing.T) {
 		occupied[cell] = true
 	}
 	for cell := range occupied {
-		if cell[0] < 2 || cell[1] < 2 || cell[0] > 77 || cell[1] > 77 {
+		if cell[0] < 2 || cell[1] < 2 || cell[0] > 67 || cell[1] > 67 {
 			continue
 		}
 		neighbours := 0
@@ -231,12 +311,13 @@ func TestTeamBattleUsesGroupedCoverAndAPassableDiagonalBorder(t *testing.T) {
 
 func TestTeamBattleRiverClearsPropsAndLeavesOnlyBridgeCrossings(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
-	openings := [][2]int{{22, 22}, {39, 39}, {57, 57}}
+	openings := [][2]int{{17, 17}, {34, 34}, {52, 52}}
 	isRiverCell := func(x, y int) bool {
-		alongRiver := (float64(x) + .5 + float64(y) + .5) * .5
+		designX, designY := float64(x+teamBattleCropTiles), float64(y+teamBattleCropTiles)
+		alongRiver := (designX + .5 + designY + .5) * .5
 		return alongRiver >= teamBattleRiverStart && alongRiver <= teamBattleRiverMouth &&
-			math.Abs((float64(x)+.5)-(float64(y)+.5)-teamBattleRiverCenter) <= teamBattleRiverHalfWidth &&
-			math.Hypot(float64(x)+.5-40.0, float64(y)+.5-40.0) <= 35.5
+			math.Abs((designX+.5)-(designY+.5)-teamBattleRiverCenter) <= teamBattleRiverHalfWidth &&
+			math.Hypot(designX+.5-40.0, designY+.5-40.0) <= 35.5
 	}
 	waterCells := 0
 	for _, wall := range mapValue.Collisions {
@@ -286,17 +367,17 @@ func TestTeamBattleBridgeDoesNotOpenRiverAlongItsLength(t *testing.T) {
 		}
 	}
 
-	for _, cell := range [][2]int{{20, 20}, {24, 24}, {37, 37}, {41, 41}, {55, 55}, {59, 59}} {
+	for _, cell := range [][2]int{{15, 15}, {19, 19}, {32, 32}, {36, 36}, {50, 50}, {54, 54}} {
 		if river[cell] != "river" {
 			t.Fatalf("river cell %v was opened beyond the bridge deck: %q", cell, river[cell])
 		}
 	}
-	for _, cell := range [][2]int{{22, 22}, {21, 22}, {22, 21}, {21, 23}, {23, 21}, {39, 39}, {57, 57}} {
+	for _, cell := range [][2]int{{17, 17}, {16, 17}, {17, 16}, {16, 18}, {18, 16}, {34, 34}, {52, 52}} {
 		if river[cell] != "river_bridge" {
 			t.Fatalf("bridge cell %v = %q, want explicit river_bridge collision", cell, river[cell])
 		}
 	}
-	for _, center := range [][2]int{{22, 22}, {39, 39}, {57, 57}} {
+	for _, center := range [][2]int{{17, 17}, {34, 34}, {52, 52}} {
 		for distance := -4; distance <= 4; distance++ {
 			cell := [2]int{center[0] + distance, center[1] - distance}
 			if cells[cell] != "river_bridge" {
@@ -322,17 +403,17 @@ func TestTeamBattleRiverReachesTheOceanOnBothSides(t *testing.T) {
 		return cells[cell] == "river" || cells[cell] == "river_bridge"
 	}
 
-	for _, cell := range [][2]int{{16, 16}, {18, 18}, {30, 30}, {50, 50}, {64, 64}} {
+	for _, cell := range [][2]int{{11, 11}, {13, 13}, {25, 25}, {45, 45}, {59, 59}} {
 		if !isRiver(cell) {
 			t.Fatalf("river does not reach the playable bank at %v: %q", cell, cells[cell])
 		}
 	}
-	for _, cell := range [][2]int{{13, 13}, {14, 14}, {66, 66}, {67, 67}} {
+	for _, cell := range [][2]int{{8, 8}, {9, 9}, {61, 61}, {62, 62}} {
 		if isRiver(cell) {
 			t.Fatalf("river collision continues into the ocean at %v", cell)
 		}
 	}
-	for coordinate := 16; coordinate <= 64; coordinate++ {
+	for coordinate := 11; coordinate <= 59; coordinate++ {
 		if !isRiver([2]int{coordinate, coordinate}) {
 			t.Fatalf("land bypass remains beside the river at diagonal cell %d", coordinate)
 		}
@@ -375,7 +456,7 @@ func TestTeamBattleOnlyBridgesConnectTheTwoRiverBanks(t *testing.T) {
 			}
 			for _, direction := range [][2]int{{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}} {
 				next := cell{current.x + direction[0], current.y + direction[1]}
-				if next.x < 0 || next.y < 0 || next.x >= 80 || next.y >= 80 || visited[next] {
+				if next.x < 0 || next.y < 0 || next.x >= teamBattleCompactSize || next.y >= teamBattleCompactSize || visited[next] {
 					continue
 				}
 				kind := layout[next]
@@ -409,15 +490,18 @@ func TestTeamBattleHasCircularImpassableWaterBoundary(t *testing.T) {
 			water[cell{int(wall.MinX / 40), int(wall.MinY / 40)}] = true
 		}
 	}
-	if len(water) < 700 {
+	if len(water) < 600 {
 		t.Fatalf("outer water ring has only %d cells, want a visible circular boundary", len(water))
 	}
-	for _, edge := range []cell{{0, 0}, {40, 0}, {79, 0}, {0, 40}, {79, 40}, {0, 79}, {40, 79}, {79, 79}} {
+	// Cropping removes the old five-cell empty ring, so the middle of each
+	// side now reaches the playable island. The circular shoreline must still
+	// close the corners and the outer side arcs.
+	for _, edge := range []cell{{0, 0}, {17, 0}, {52, 0}, {69, 0}, {0, 17}, {0, 52}, {69, 17}, {69, 52}, {0, 69}, {17, 69}, {52, 69}, {69, 69}} {
 		if !water[edge] {
 			t.Fatalf("map edge cell %v is not water", edge)
 		}
 	}
-	for _, land := range []cell{{40, 40}, {16, 63}, {63, 16}} {
+	for _, land := range []cell{{35, 35}, {11, 58}, {58, 11}} {
 		if water[land] {
 			t.Fatalf("playable land cell %v was swallowed by the water ring", land)
 		}
@@ -544,7 +628,7 @@ func TestTeamBattleAddsMirroredRuinsVinesAndNearbyBatLairs(t *testing.T) {
 			}
 		}
 		if !nearby {
-			for _, bridge := range [][2]float64{{22.5, 22.5}, {39.5, 39.5}, {57.5, 57.5}} {
+			for _, bridge := range [][2]float64{{17.5, 17.5}, {34.5, 34.5}, {52.5, 52.5}} {
 				if math.Hypot(spawn.X-bridge[0]*40, spawn.Y-bridge[1]*40) <= 4*40 {
 					nearby = true
 					break
@@ -576,7 +660,7 @@ func TestTeamBattleAddsPassableSlowVineClumps(t *testing.T) {
 
 func TestTeamBattleAddsAbandonedCityDistricts(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
-	buildingWalls, rubble, buildings, plazas, streets, towers := 0, 0, 0, 0, 0, 0
+	buildingWalls, rubble, buildings, plazas, streets, towers, shrines, details := 0, 0, 0, 0, 0, 0, 0, 0
 	features := make(map[[2]int]string)
 	for _, wall := range mapValue.Collisions {
 		switch wall.Type {
@@ -598,20 +682,75 @@ func TestTeamBattleAddsAbandonedCityDistricts(t *testing.T) {
 			streets++
 		case "city_tower":
 			towers++
+		case "city_shrine":
+			shrines++
+		case "city_detail":
+			details++
 		}
 	}
 	if buildingWalls < 36 || rubble < 12 {
 		t.Fatalf("city collision dressing = %d building walls and %d rubble, want at least 36/12", buildingWalls, rubble)
 	}
-	if buildings < 8 || plazas < 2 || streets < 4 || towers != 2 {
-		t.Fatalf("city features = buildings %d, plazas %d, streets %d, towers %d, want at least 8/2/4/2", buildings, plazas, streets, towers)
+	if buildings < 8 || plazas < 2 || streets < 4 || towers != 2 || shrines != 4 || details != 6 {
+		t.Fatalf("city features = buildings %d, plazas %d, streets %d, towers %d, shrines %d, details %d, want at least 8/2/4/2/4/6", buildings, plazas, streets, towers, shrines, details)
 	}
 	for cell, kind := range features {
-		if kind != "city_building" && kind != "city_street" {
+		if kind != "city_building" && kind != "city_street" && kind != "city_shrine" && kind != "city_detail" {
 			continue
 		}
 		if features[[2]int{cell[1], cell[0]}] != kind {
 			t.Fatalf("city feature %v (%s) has no diagonal twin", cell, kind)
+		}
+	}
+}
+
+func TestNorthernTeamBattleAddsEnterableCastleCompound(t *testing.T) {
+	classic := GenerateTeamBattleClassic(CanonicalTeamBattleSeed)
+	northern := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	counts := map[string]int{}
+	for _, feature := range northern.Features {
+		if feature.Type == "castle_keep" || feature.Type == "castle_gate" || feature.Type == "castle_courtyard" || feature.Type == "castle_detail" || feature.Type == "castle_house" || feature.Type == "castle_market" || feature.Type == "castle_street" || feature.Type == "castle_bastion" {
+			counts[feature.Type]++
+			cell := [2]int{int(feature.X / 40), int(feature.Y / 40)}
+			foundTwin := false
+			for _, twin := range northern.Features {
+				if twin.Type == feature.Type && int(twin.X/40) == cell[1] && int(twin.Y/40) == cell[0] {
+					foundTwin = true
+					break
+				}
+			}
+			if !foundTwin {
+				t.Fatalf("castle feature %s at %v has no diagonal twin", feature.ID, cell)
+			}
+		}
+	}
+	if counts["castle_keep"] != 2 || counts["castle_gate"] != 4 || counts["castle_courtyard"] != 2 || counts["castle_detail"] != 4 || counts["castle_house"] != 8 || counts["castle_market"] != 2 || counts["castle_street"] != 2 || counts["castle_bastion"] != 8 {
+		t.Fatalf("castle features = %#v, want keep/gate/courtyard/detail/house/market/street/bastion 2/4/2/4/8/2/2/8", counts)
+	}
+	for _, feature := range classic.Features {
+		if feature.Type == "castle_keep" || feature.Type == "castle_gate" || feature.Type == "castle_courtyard" || feature.Type == "castle_detail" || feature.Type == "castle_house" || feature.Type == "castle_market" || feature.Type == "castle_street" || feature.Type == "castle_bastion" {
+			t.Fatalf("classic map unexpectedly contains castle feature %#v", feature)
+		}
+	}
+	fortressWalls := 0
+	for _, wall := range northern.Collisions {
+		if wall.Type == "fortress_wall" {
+			fortressWalls++
+		}
+	}
+	if fortressWalls < 115 {
+		t.Fatalf("castle compound did not add a substantial wall ring: %d fortress cells", fortressWalls)
+	}
+	// The front gate and the centre of the court must remain enterable.
+	for _, cell := range [][2]int{{25, 47}, {25, 44}, {22, 44}, {28, 44}, {47, 25}, {44, 25}} {
+		point := &geometry.CircleBody{X: (float64(cell[0]) + .5) * 40, Y: (float64(cell[1]) + .5) * 40, Radius: .1}
+		for _, wall := range northern.Collisions {
+			if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
+				continue
+			}
+			if geometry.CollidesCircleWithWall(point, wall) {
+				t.Fatalf("castle route cell %v is blocked by %s", cell, wall.Type)
+			}
 		}
 	}
 }
@@ -646,8 +785,8 @@ func TestTeamBattleAddsLivingMirroredBaseDressing(t *testing.T) {
 		if positions[[2]int{cell[1], cell[0]}] != kind {
 			t.Fatalf("base feature %v (%s) has no diagonal twin", cell, kind)
 		}
-		blueDistance := math.Hypot(float64(cell[0]-16), float64(cell[1]-63))
-		redDistance := math.Hypot(float64(cell[0]-63), float64(cell[1]-16))
+		blueDistance := math.Hypot(float64(cell[0]-11), float64(cell[1]-58))
+		redDistance := math.Hypot(float64(cell[0]-58), float64(cell[1]-11))
 		distance := math.Min(blueDistance, redDistance)
 		if distance < 4 || distance > 8 {
 			t.Fatalf("base feature %v (%s) is not in the readable inner fort courtyard: distance %.2f", cell, kind, distance)
@@ -670,7 +809,7 @@ func TestTeamBattleAddsLivingMirroredBaseDressing(t *testing.T) {
 
 func TestTeamBattleCityFramesEveryBridgeApproach(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
-	bridges := [][2]int{{22, 22}, {39, 39}, {57, 57}}
+	bridges := [][2]int{{17, 17}, {34, 34}, {52, 52}}
 	nearBridge := make(map[[2]int]bool)
 	for _, feature := range mapValue.Features {
 		if feature.Type != "city_building" && feature.Type != "city_street" && feature.Type != "city_tower" && feature.Type != "city_plaza" {
@@ -711,7 +850,7 @@ func TestTeamBattleCityKeepsDoorsBridgesAndSpawnsPlayable(t *testing.T) {
 		}
 		blocking[[2]int{int(wall.MinX / 40), int(wall.MinY / 40)}] = true
 	}
-	for _, door := range [][2]int{{12, 52}, {29, 47}, {43, 60}, {52, 12}, {47, 29}, {60, 43}} {
+	for _, door := range [][2]int{{7, 47}, {24, 42}, {38, 55}, {47, 7}, {42, 24}, {55, 38}} {
 		point := &geometry.CircleBody{X: (float64(door[0]) + .5) * 40, Y: (float64(door[1]) + .5) * 40, Radius: .1}
 		for _, wall := range mapValue.Collisions {
 			if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
@@ -722,7 +861,7 @@ func TestTeamBattleCityKeepsDoorsBridgesAndSpawnsPlayable(t *testing.T) {
 			}
 		}
 	}
-	for _, bridge := range [][2]int{{22, 22}, {39, 39}, {57, 57}} {
+	for _, bridge := range [][2]int{{17, 17}, {34, 34}, {52, 52}} {
 		if blocking[bridge] {
 			t.Fatalf("bridge crossing at %v is blocked by city dressing", bridge)
 		}
@@ -738,7 +877,7 @@ func TestTeamBattleCityKeepsDoorsBridgesAndSpawnsPlayable(t *testing.T) {
 
 func TestTeamBattleCityDistrictCoresStayEnterable(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
-	for _, core := range [][2]int{{13, 52}, {52, 13}, {30, 47}, {47, 30}, {44, 60}, {60, 44}, {16, 31}, {31, 16}, {49, 64}, {64, 49}} {
+	for _, core := range [][2]int{{8, 47}, {47, 8}, {25, 42}, {42, 25}, {39, 55}, {55, 39}, {11, 26}, {26, 11}, {44, 59}, {59, 44}} {
 		point := &geometry.CircleBody{X: (float64(core[0]) + .5) * 40, Y: (float64(core[1]) + .5) * 40, Radius: .1}
 		for _, wall := range mapValue.Collisions {
 			if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
@@ -769,8 +908,54 @@ func TestTeamBattleCityObjectCollidersAreTightAndBlocking(t *testing.T) {
 			t.Fatalf("city circle collider bounds do not match radius: %+v", wall)
 		}
 	}
-	if count != 54 {
-		t.Fatalf("city object colliders = %d, want 54 authored hard-prop, base-dressing and roof footprints", count)
+	if count != 122 {
+		t.Fatalf("city object colliders = %d, want 122 authored hard-prop, structural building, castle, base-dressing and roof footprints", count)
+	}
+}
+
+func TestTeamBattleVisibleBuildingBodiesAreBlocked(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	features := make(map[string]MapFeature, len(mapValue.Features))
+	for _, feature := range mapValue.Features {
+		features[feature.ID] = feature
+	}
+
+	// These probes sit inside the visible structural mass, not on a roof eave,
+	// prop, doorway, market stall, or open courtyard. A player must not be able
+	// to walk through the house body and see it as ground.
+	probes := []struct {
+		featureID string
+		localX    float64
+		localY    float64
+		label     string
+	}{
+		{featureID: "city-inn", localX: 0, localY: .62, label: "city inn body"},
+		{featureID: "castle-ashen-ward-house-0", localX: .9, localY: -.3, label: "castle ward house body"},
+		{featureID: "castle-ashen-keep", localX: 0, localY: -1.15, label: "castle keep body"},
+	}
+	for _, probe := range probes {
+		feature, ok := features[probe.featureID]
+		if !ok {
+			t.Fatalf("missing building feature %q", probe.featureID)
+		}
+		scale := feature.Scale
+		cos, sin := math.Cos(feature.Rotation), math.Sin(feature.Rotation)
+		worldX := feature.X + (probe.localX*scale*cos-probe.localY*scale*sin)*40
+		worldY := feature.Y + (probe.localX*scale*sin+probe.localY*scale*cos)*40
+		point := &geometry.CircleBody{X: worldX, Y: worldY, Radius: .1}
+		blocked := false
+		for _, wall := range mapValue.Collisions {
+			if wall == nil || wall.Type != teamBattleCityObjectCollisionType {
+				continue
+			}
+			if geometry.CollidesCircleWithWall(point, wall) {
+				blocked = true
+				break
+			}
+		}
+		if !blocked {
+			t.Fatalf("%s probe at (%.0f,%.0f) is walkable through visible building body", probe.label, worldX, worldY)
+		}
 	}
 }
 
@@ -781,9 +966,9 @@ func TestTeamBattleCityRoofFootprintsAreBlockingWithoutSealingCourtyards(t *test
 		cx, cy, rotation, scale float64
 		x, y                    float64
 	}{
-		{label: "depot roof", cx: 13, cy: 52, rotation: -.08, scale: 1.05, x: -.78, y: .95},
-		{label: "apartments roof", cx: 44, cy: 60, rotation: -.18, scale: 1.12, x: -.86, y: .9},
-		{label: "forge roof", cx: 49, cy: 64, rotation: .14, scale: .96, x: -.62, y: .52},
+		{label: "depot roof", cx: 8, cy: 47, rotation: -.08, scale: 1.05, x: -.78, y: .95},
+		{label: "apartments roof", cx: 39, cy: 55, rotation: -.18, scale: 1.12, x: -.86, y: .9},
+		{label: "forge roof", cx: 44, cy: 59, rotation: .14, scale: .96, x: -.62, y: .52},
 	} {
 		cos, sin := math.Cos(roof.rotation), math.Sin(roof.rotation)
 		worldX := (roof.cx + (roof.x*cos-roof.y*sin)*roof.scale) * 40
@@ -805,10 +990,10 @@ func TestTeamBattleCityRoofFootprintsAreBlockingWithoutSealingCourtyards(t *test
 	}
 }
 
-func TestTeamBattleCityPlazaDoesNotOccupyRiverOrBridgeCells(t *testing.T) {
+func TestTeamBattleCityLandmarksDoNotOccupyWaterCells(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
 	for _, feature := range mapValue.Features {
-		if feature.Type != "city_plaza" {
+		if feature.Type != "city_plaza" && feature.Type != "city_building" && feature.Type != "city_shrine" && feature.Type != "city_detail" {
 			continue
 		}
 		cell := [2]int{int(feature.X / 40), int(feature.Y / 40)}
@@ -817,9 +1002,77 @@ func TestTeamBattleCityPlazaDoesNotOccupyRiverOrBridgeCells(t *testing.T) {
 				continue
 			}
 			if wall.Type == "water" || wall.Type == "river" || wall.Type == "river_bridge" {
-				t.Fatalf("city plaza at %v overlaps %s collision", cell, wall.Type)
+				t.Fatalf("city landmark %s at %v overlaps %s collision", feature.ID, cell, wall.Type)
 			}
 		}
+	}
+}
+
+func TestTeamBattleDoesNotPlacePropsOrBuildingsOnWater(t *testing.T) {
+	allConflicts := []string{}
+	for _, variant := range []struct {
+		name string
+		game *GameMap
+	}{
+		{name: "classic", game: GenerateTeamBattleClassic(CanonicalTeamBattleSeed)},
+		{name: "northern", game: GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)},
+	} {
+		mapValue := variant.game
+		type cell struct{ x, y int }
+		conflicts := []string{}
+		liquid := make(map[cell]bool)
+		for _, wall := range mapValue.Collisions {
+			if wall == nil {
+				continue
+			}
+			if wall.Type == "water" || wall.Type == "pond" || wall.Type == "river" {
+				liquid[cell{int(wall.MinX / 40), int(wall.MinY / 40)}] = true
+			}
+		}
+		// A pond can be overwritten by a later clearArea call, so reconstruct
+		// its authored ellipse from the pond feature as part of the assertion.
+		for _, feature := range mapValue.Features {
+			if feature.Type != "pond" {
+				continue
+			}
+			cx, cy := int(feature.X/40), int(feature.Y/40)
+			mirrorPond := strings.HasSuffix(feature.ID, "-mirror")
+			for y := cy - 3; y <= cy+3; y++ {
+				for x := cx - 3; x <= cx+3; x++ {
+					xRadius, yRadius := 4.1, 2.7
+					if mirrorPond {
+						xRadius, yRadius = yRadius, xRadius
+					}
+					dx := float64(x-cx) / xRadius
+					dy := float64(y-cy) / yRadius
+					if dx*dx+dy*dy <= 1 {
+						liquid[cell{x, y}] = true
+					}
+				}
+			}
+		}
+		for _, wall := range mapValue.Collisions {
+			if wall == nil || wall.Type == "water" || wall.Type == "pond" || wall.Type == "river" || wall.Type == "river_bridge" {
+				continue
+			}
+			cell := cell{int(wall.MinX / 40), int(wall.MinY / 40)}
+			if liquid[cell] {
+				conflicts = append(conflicts, fmt.Sprintf("%s collision=%s@%v", variant.name, wall.Type, cell))
+			}
+		}
+		for _, feature := range mapValue.Features {
+			if feature.Type == "pond" || feature.Type == "river" || feature.Type == "river_bridge" {
+				continue
+			}
+			cell := cell{int(feature.X / 40), int(feature.Y / 40)}
+			if liquid[cell] {
+				conflicts = append(conflicts, fmt.Sprintf("%s feature=%s(%s)@%v", variant.name, feature.Type, feature.ID, cell))
+			}
+		}
+		allConflicts = append(allConflicts, conflicts...)
+	}
+	if len(allConflicts) > 0 {
+		t.Fatalf("liquid placement conflicts: %s", strings.Join(allConflicts, "; "))
 	}
 }
 

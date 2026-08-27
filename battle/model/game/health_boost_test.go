@@ -2,8 +2,10 @@ package game
 
 import (
 	"battle/model/monster"
+	"battle/model/player"
 	"battle/model/prop"
 	"battle/service/geometry"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -27,6 +29,27 @@ func TestCollectingHealthBoostAddsFivePercentOfOriginalHealth(t *testing.T) {
 	}
 	if reward.Active {
 		t.Fatal("health boost remained active after collection")
+	}
+}
+
+func TestLegacyPowerPickupCannotHealOrBuffAPlayer(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("collector", "Collector", "Mandy")
+	gs.State = GameStateGame
+	collector := gs.Players["collector"]
+	collector.Lives = collector.MaxLives / 2
+	baseLives, baseMaxLives := collector.Lives, collector.MaxLives
+	baseDamageMultiplier, baseSpeed, basePowerCores := collector.DamageMultiplier, collector.Speed, collector.PowerCores
+	legacy := prop.NewProp("power", collector.X, collector.Y, 12)
+	gs.Props = append(gs.Props, legacy)
+
+	gs.collectPickups(collector)
+
+	if legacy.Active {
+		t.Fatal("legacy power pickup remained active in the combat scene")
+	}
+	if collector.Lives != baseLives || collector.MaxLives != baseMaxLives || collector.DamageMultiplier != baseDamageMultiplier || collector.Speed != baseSpeed || collector.PowerCores != basePowerCores {
+		t.Fatalf("legacy power pickup mutated player: lives=%d/%d max=%d multiplier=%.2f speed=%.2f powerCores=%d", collector.Lives, baseLives, collector.MaxLives, collector.DamageMultiplier, collector.Speed, collector.PowerCores)
 	}
 }
 
@@ -205,6 +228,32 @@ func TestHealthBoostDropExpiresAfterItsContestWindow(t *testing.T) {
 
 	if reward.Active {
 		t.Fatal("expired health boost remained active")
+	}
+}
+
+func TestHealthBoostDropsRespectTheActiveBudget(t *testing.T) {
+	gs := newTestGameState()
+	gs.Mode = ModeDeathmatch
+	for index := 0; index < MaxActiveHealthBoosts; index++ {
+		killer := gs.Players["p1"]
+		if killer == nil {
+			gs.PlayerAdd("p1", "Killer", "Needle")
+			killer = gs.Players["p1"]
+		}
+		target := &player.Player{PlayerId: fmt.Sprintf("target-%d", index), Name: "Target", Lives: 100, MaxLives: 100}
+		target.X, target.Y = float64(index*40), 100
+		gs.Players[target.PlayerId] = target
+		gs.dropHeroHealthBoost(target, killer)
+	}
+	if got := activeHealthBoostCount(gs); got != MaxActiveHealthBoosts {
+		t.Fatalf("active health boosts = %d, want budget %d", got, MaxActiveHealthBoosts)
+	}
+	target := &player.Player{PlayerId: "over-budget", Name: "Target", Lives: 100, MaxLives: 100}
+	target.X, target.Y = 120, 100
+	gs.Players[target.PlayerId] = target
+	gs.dropHeroHealthBoost(target, gs.Players["p1"])
+	if got := activeHealthBoostCount(gs); got != MaxActiveHealthBoosts {
+		t.Fatalf("active health boosts exceeded budget: %d", got)
 	}
 }
 

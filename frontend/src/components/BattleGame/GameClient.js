@@ -20,6 +20,9 @@ const GAME_MESSAGES = new Set([
 import {recordBattleMetric} from "./rendering/shared/performance.js"
 import {preserveAuthoritativeMapWalls} from "./mapContract.js"
 import {getNetworkQuality} from "./networkQuality.js"
+import {COMBAT_PROFILE_ID, COMBAT_RULES_VERSION} from "./combatProfile.generated.js"
+
+const COMBAT_EVENT_SCHEMA_VERSION = 1
 
 export {preserveAuthoritativeMapWalls}
 
@@ -45,6 +48,7 @@ export class GameClient {
     this.abilitySequence = 0
     this.shootSequence = 0
     this.pendingAbilities = new Map()
+    this.activeAbilityClientId = null
     this.onShootPrediction = null
     this.clockOffset = null
     this.clockSyncRequests = new Map()
@@ -52,6 +56,7 @@ export class GameClient {
     this.clockSyncTimer = null
     this.leaveBattleResolver = null
     this.leaveBattleTimer = null
+    this.combatCompatible = true
   }
 
   connect() {
@@ -71,7 +76,13 @@ export class GameClient {
     this.ws = socket
     socket.onopen = () => {
       if (this.ws !== socket) return
-      socket.send(JSON.stringify({type: "auth", token: this.accessToken}))
+      socket.send(JSON.stringify({
+        type: "auth",
+        token: this.accessToken,
+        combatProfileId: COMBAT_PROFILE_ID,
+        combatRulesVersion: COMBAT_RULES_VERSION,
+        eventSchemaVersion: COMBAT_EVENT_SCHEMA_VERSION,
+      }))
       this.connected = true
       this.onConnect?.()
       this.clockSyncTimer = setInterval(() => this.syncClock(), 2000)
@@ -132,6 +143,7 @@ export class GameClient {
       return
     }
     if (message.type === "state") {
+      if (!this.validateCombatVersion(message)) return
       const stateTimestamp = Number(message.ts)
       // A reconnect or transport retry can deliver an older frame after the
       // current one. Do not wake the renderer for a state it cannot present.
@@ -170,6 +182,7 @@ export class GameClient {
       return
     }
     if (message.type === "room_joined") {
+      if (!this.validateCombatVersion(message.params)) return
       this.playerId = message.params?.playerId
       this.onMessage?.(message)
       return
@@ -183,6 +196,24 @@ export class GameClient {
       return
     }
     if (GAME_MESSAGES.has(message.type)) this.onMessage?.(message)
+  }
+
+  validateCombatVersion(value) {
+    const profileId = value?.combatProfileId
+    const rulesVersion = value?.combatRulesVersion
+    const eventSchemaVersion = value?.eventSchemaVersion
+    if (
+      (profileId && profileId !== COMBAT_PROFILE_ID) ||
+      (rulesVersion && rulesVersion !== COMBAT_RULES_VERSION) ||
+      (eventSchemaVersion && Number(eventSchemaVersion) !== COMBAT_EVENT_SCHEMA_VERSION)
+    ) {
+      if (this.combatCompatible) {
+        this.combatCompatible = false
+        this.onMessage?.({type: "error", params: {message: "Unsupported combat version"}})
+      }
+      return false
+    }
+    return true
   }
 
   send(type, value) {
@@ -309,10 +340,29 @@ export class GameClient {
     })
   }
 
-  ability(slot, targetId = undefined) {
+  ability(slot, targetId = undefined, input = undefined) {
     const clientId = `${this.playerId || "local"}:${++this.abilitySequence}`
     this.pendingAbilities.set(clientId, {slot, sentAt: Date.now()})
-    this.send("ability", {slot, clientId, ...(targetId ? {targetId} : {})})
+    if (slot === "primary") this.activeAbilityClientId = clientId
+    this.send("ability", {
+      slot,
+      clientId,
+      ...(targetId ? {targetId} : {}),
+      ...(input?.aimProvided ? {
+        aimAngle: input.aimAngle,
+        aimDistance: input.aimDistance,
+        aimProvided: true,
+      } : {}),
+    })
+    return clientId
+  }
+
+  cancelAbility() {
+    const clientId = `${this.playerId || "local"}:cancel:${++this.abilitySequence}`
+    const targetClientId = this.activeAbilityClientId
+    this.activeAbilityClientId = null
+    this.pendingAbilities.set(clientId, {slot: "primary", sentAt: Date.now()})
+    this.send("ability_cancel", {clientId, ...(targetClientId ? {targetClientId} : {})})
     return clientId
   }
 

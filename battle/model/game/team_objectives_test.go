@@ -314,12 +314,14 @@ func activeTowerShots(state *GameState) []*bullet.Bullet {
 func TestTeamRespawnResetsSuperChargeButPreservesGadgetCharges(t *testing.T) {
 	state := newTeamObjectiveState()
 	respawning := state.Players["blue"]
+	now := time.Now().UnixMilli()
 	respawning.Lives = 0
 	respawning.SuperCharge = 64
 	respawning.GadgetCharges = 1
-	respawning.RespawnAt = time.Now().UnixMilli() - 1
+	respawning.LastDeathAt = now - 5_000
+	respawning.RespawnAt = now - 1
 
-	state.updateTeamRespawns(time.Now().UnixMilli())
+	state.updateTeamRespawns(now)
 
 	if respawning.Lives != respawning.MaxLives {
 		t.Fatalf("respawn lives = %d, want %d", respawning.Lives, respawning.MaxLives)
@@ -329,6 +331,9 @@ func TestTeamRespawnResetsSuperChargeButPreservesGadgetCharges(t *testing.T) {
 	}
 	if respawning.GadgetCharges != 1 {
 		t.Fatalf("respawn gadget charges = %d, want preserved 1", respawning.GadgetCharges)
+	}
+	if respawning.RespawnDowntimeMs < 5_000 {
+		t.Fatalf("respawn downtime = %d, want at least 5000ms", respawning.RespawnDowntimeMs)
 	}
 }
 

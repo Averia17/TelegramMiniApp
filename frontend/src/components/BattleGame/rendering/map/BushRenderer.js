@@ -364,8 +364,9 @@ export const splitBushWallComponents = walls => {
   return components
 }
 
-export const createBushField = (walls, kind = "bush") => {
+export const createBushField = (walls, kind = "bush", palette = "default") => {
   const isMoonMist = kind === "moon_mist"
+  const isTeam = palette === "team"
   const visualWalls = subdivideBushWalls(walls)
   // Keep the support volume aligned to the gameplay tile. A sphere creates
   // large circular patches when several transparent instances overlap.
@@ -456,7 +457,9 @@ export const createBushField = (walls, kind = "bush") => {
   const rotation = new THREE.Quaternion()
   const palettes = isMoonMist
     ? [0x7795c8, 0x9db9e8, 0xc2d5f7]
-    : [0x5cb65f, 0x6ec76c, 0x4aa653, 0x3f9149]
+    : isTeam
+      ? [0x3b6445, 0x4a7650, 0x2f573d, 0x587552]
+      : [0x5cb65f, 0x6ec76c, 0x4aa653, 0x3f9149]
 
   visualWalls.forEach((wall, index) => {
     const centerX = (wall.minX + wall.maxX) * .5 * WORLD_SCALE
@@ -496,8 +499,26 @@ export const createBushField = (walls, kind = "bush") => {
   base.instanceMatrix.needsUpdate = true
   crown.instanceMatrix.needsUpdate = true
   foreground.instanceMatrix.needsUpdate = true
-  createInstanceColors(bed, visualWalls, 1, isMoonMist ? [0x5269a2, 0x617bb8] : [0x347d42, 0x438e47, 0x2f713b])
-  createInstanceColors(base, visualWalls, 1, isMoonMist ? [0x5f79b0, 0x6d88c0, 0x7795c8] : [0x347f43, 0x3d9949, 0x4eaa52])
+  createInstanceColors(
+    bed,
+    visualWalls,
+    1,
+    isMoonMist
+      ? [0x5269a2, 0x617bb8]
+      : isTeam
+        ? [0x263f31, 0x2f4d37, 0x3b5940]
+        : [0x347d42, 0x438e47, 0x2f713b],
+  )
+  createInstanceColors(
+    base,
+    visualWalls,
+    1,
+    isMoonMist
+      ? [0x5f79b0, 0x6d88c0, 0x7795c8]
+      : isTeam
+        ? [0x2e4b35, 0x385c3f, 0x456548]
+        : [0x347f43, 0x3d9949, 0x4eaa52],
+  )
   const color = new THREE.Color()
   leaves.forEach((_, index) => {
     color.setHex(palettes[index % palettes.length])

@@ -13,6 +13,8 @@ type Bullet struct {
 	ID           uint64
 	PlayerId     string
 	CommandID    string
+	AbilitySlot  string
+	BotAttackID  string `json:"-"`
 	Team         string
 	Rotation     float64
 	Active       bool
@@ -81,6 +83,8 @@ func (b *Bullet) Reset(playerId, team string, x, y, radius, rotation float64, co
 	b.ID = nextID.Add(1)
 	b.PlayerId = playerId
 	b.CommandID = ""
+	b.AbilitySlot = ""
+	b.BotAttackID = ""
 	b.Team = team
 	b.X = x
 	b.Y = y

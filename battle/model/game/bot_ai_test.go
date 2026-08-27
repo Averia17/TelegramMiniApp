@@ -145,8 +145,30 @@ func TestTeamBotFlankSeeksKnownBatWhenNoHeroIsVisible(t *testing.T) {
 	ctx := &teamBotContext{gs: state, bot: bot, now: 10_000, assignment: teamAssignmentFlank}
 
 	intent, ok := (batResourceBehavior{}).Decide(ctx)
-	if !ok || intent.kind != teamIntentAttackPlayer || intent.target == nil || intent.target.monster != bat {
+	if !ok || intent.kind != teamIntentFarmBat || intent.target == nil || intent.target.monster != bat {
 		t.Fatalf("bat resource intent = %#v ok=%v, want flank bot to farm known bat", intent, ok)
+	}
+}
+
+func TestTeamBotFlankPrioritizesVisibleBatAsFarmTarget(t *testing.T) {
+	state := &GameState{
+		Mode:       ModeTeamDeathmatch,
+		Players:    map[string]*player.Player{},
+		Monsters:   map[string]*monster.Monster{},
+		Objectives: map[string]*ObjectiveState{},
+	}
+	bot := &player.Player{CircleBody: geometry.CircleBody{X: 100, Y: 100}, PlayerId: "bot", Team: "Blue", Lives: 700, MaxLives: 700, HeroName: "Kaze", IsBot: true}
+	state.Players[bot.PlayerId] = bot
+	bat := monster.NewMonster(180, 100, 16, 1000, 1000, 100)
+	state.Monsters["bat"] = bat
+	ctx := &teamBotContext{
+		gs: state, bot: bot, now: 10_000, assignment: teamAssignmentFlank,
+		visibleTarget: &botTarget{kind: "monster", id: "bat", monster: bat, x: bat.X, y: bat.Y, distance: 80},
+	}
+
+	intent, ok := (batResourceBehavior{}).Decide(ctx)
+	if !ok || intent.target == nil || intent.target.kind != "monster" || intent.target.monster != bat {
+		t.Fatalf("visible bat was not selected as flank farm target: intent=%#v ok=%v", intent, ok)
 	}
 }
 
@@ -184,6 +206,89 @@ func TestTeamBotReportsKnownBatFarmDecision(t *testing.T) {
 	state.updateBots()
 	if got := state.BotAIMetricsSnapshot().BatFarmDecisions; got != 1 {
 		t.Fatalf("bat farm decisions=%d, want 1", got)
+	}
+}
+
+func TestTeamBotReportsVisibleBatFarmDecision(t *testing.T) {
+	state := &GameState{
+		Mode:       ModeTeamDeathmatch,
+		State:      GameStateGame,
+		Players:    map[string]*player.Player{},
+		Monsters:   map[string]*monster.Monster{},
+		Objectives: map[string]*ObjectiveState{},
+		BotMemory:  map[string]*BotPerception{},
+		botAI:      newTeamBattleBotStrategy(),
+	}
+	bot := &player.Player{CircleBody: geometry.CircleBody{X: 100, Y: 100}, PlayerId: "bot", Team: "Blue", Lives: 700, MaxLives: 700, HeroName: "Kaze", IsBot: true, Ammo: 1, MaxAmmo: 3}
+	state.Players[bot.PlayerId] = bot
+	state.Monsters["bat"] = monster.NewMonster(180, 100, 16, 1000, 1000, monster.MonsterLives)
+
+	state.updateBots()
+
+	metrics := state.BotAIMetricsSnapshot()
+	if metrics.BatFarmDecisions != 1 {
+		t.Fatalf("visible bat farm decisions=%d, want one explicit farm decision: %#v", metrics.BatFarmDecisions, metrics)
+	}
+	if metrics.HardInterrupts != 0 {
+		t.Fatalf("healthy visible bat was misclassified as an emergency: %#v", metrics)
+	}
+	if metrics.ActionSelections["engage"] != 1 || metrics.AttackAttempts != 1 {
+		t.Fatalf("visible bat farm did not execute a combat action: %#v", metrics)
+	}
+}
+
+func TestTeamBotCollectsVisibleHealthBoostThroughSimulation(t *testing.T) {
+	state := newTestGameState()
+	state.Mode = ModeTeamDeathmatch
+	state.State = GameStateWaiting
+	state.MatchStartedAt = combatScenarioEpochMs
+	state.GameEndsAt = combatScenarioEpochMs + 120_000
+	state.botAI = newTeamBattleBotStrategy()
+	state.PlayerAdd("bot", "Bot", "Needle")
+	state.PlayerAdd("enemy", "Enemy", "Kaze")
+	state.State = GameStateGame
+	bot := state.Players["bot"]
+	enemy := state.Players["enemy"]
+	bot.IsBot = true
+	bot.SetTeam("Blue")
+	bot.X, bot.Y = 100, 100
+	enemy.SetTeam("Red")
+	enemy.X, enemy.Y = 900, 900
+	reward := prop.NewProp("health_boost", 180, 100, 12)
+	state.Props = append(state.Props, reward)
+
+	runner := NewCombatScenarioRunner("team-bot-health-boost-collection", 672, ModeTeamDeathmatch, state)
+	if err := runner.AdvanceTo(1_500); err != nil {
+		t.Fatalf("advance health boost collection: %v", err)
+	}
+	if bot.HealthBoosts != 1 || bot.CubeClaims != 1 || reward.Active {
+		t.Fatalf("team bot did not collect health boost through simulation: state=%v mode=%v stacks=%d claims=%d active=%v position=(%.1f,%.1f) move=(%.2f,%.2f) map=%v", state.State, state.Mode, bot.HealthBoosts, bot.CubeClaims, reward.Active, bot.X, bot.Y, bot.MoveX, bot.MoveY, state.Map != nil)
+	}
+}
+
+func TestDeathmatchBotEngagesVisibleBatThroughSimulation(t *testing.T) {
+	state := newScenarioSoloState("Kaze", "Needle")
+	state.Walls = nil
+	state.Props = nil
+	state.Players["hero"].IsBot = true
+	state.Players["hero"].X, state.Players["hero"].Y = 100, 100
+	state.Players["target"].X, state.Players["target"].Y = 900, 900
+	state.Players["target"].MaxLives, state.Players["target"].Lives = 100_000, 100_000
+	state.Monsters = map[string]*monster.Monster{}
+	state.Monsters["bat"] = monster.NewMonster(180, 100, 16, 1000, 1000, monster.MonsterLives)
+	state.botAI = newBotAIStrategy(ModeDeathmatch)
+
+	runner := NewCombatScenarioRunner("deathmatch-bot-visible-bat", 673, ModeDeathmatch, state)
+	if err := runner.AdvanceTo(1_000); err != nil {
+		t.Fatalf("advance deathmatch visible bat: %v", err)
+	}
+	metrics := state.BotAIMetricsSnapshot()
+	bat := state.Monsters["bat"]
+	if metrics.AttackAttempts == 0 {
+		t.Fatalf("deathmatch bot did not attack visible bat: state=%v attempts=%d metrics=%#v", state.State, metrics.AttackAttempts, metrics)
+	}
+	if bat != nil && bat.Lives >= bat.MaxLives {
+		t.Fatalf("deathmatch bot did not damage visible bat: state=%v attempts=%d batLives=%d/%d metrics=%#v", state.State, metrics.AttackAttempts, bat.Lives, bat.MaxLives, metrics)
 	}
 }
 

@@ -18,7 +18,7 @@ type MapProviderRegistry struct {
 
 func NewMapProviderRegistry() *MapProviderRegistry {
 	registry := &MapProviderRegistry{providers: make(map[string]MapProviderFactory)}
-	for _, name := range []string{"small", "huge", "arena", "battle-royale", "team-battle"} {
+	for _, name := range []string{"small", "huge", "arena", "battle-royale", "team-battle", "team-battle-northern"} {
 		mapName := name
 		registry.Register(mapName, func() (*gamemap.GameMap, error) { return gamemap.LoadMap(mapName) })
 	}

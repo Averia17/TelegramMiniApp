@@ -1223,23 +1223,38 @@ func TestDirectionChangeKeepsMovementContinuous(t *testing.T) {
 	}
 }
 
-func TestGameplayTempoAppliesMovementAttackAndProjectilePacing(t *testing.T) {
+func TestGameplayTempoUsesCatalogAttackAndProjectilePacing(t *testing.T) {
 	hero := GetHeroByName("Needle")
 	p := hero.CreatePlayer("p1", "Alice", 100, 100)
 	if p.Speed != float64(hero.Speed)*RuntimeMovementSpeedScale {
 		t.Fatalf("player speed = %.2f, want %.2f", p.Speed, float64(hero.Speed)*RuntimeMovementSpeedScale)
 	}
-	if p.AttackRate != int64(math.Round(float64(hero.AttackRate)*AttackRateScale)) {
-		t.Fatalf("attack rate = %d, want scaled rate from %d", p.AttackRate, hero.AttackRate)
+	if p.AttackRate != hero.AttackRate {
+		t.Fatalf("attack rate = %d, want catalog rate %d without a hidden global multiplier", p.AttackRate, hero.AttackRate)
 	}
-	if p.ReloadTime != int64(math.Round(float64(hero.ReloadTime)*ReloadTimeScale)) {
-		t.Fatalf("reload time = %d, want scaled reload from %d", p.ReloadTime, hero.ReloadTime)
+	if p.ReloadTime != hero.ReloadTime {
+		t.Fatalf("reload time = %d, want catalog reload %d without a hidden global multiplier", p.ReloadTime, hero.ReloadTime)
 	}
 
 	gs := newTestGameState()
 	shot := gs.spawnAttackBullet(p, 0, "test", 1, p.BulletSpd, 4, 500, 0, false, false)
 	if shot.Speed != float64(hero.BulletSpeed)*RuntimeProjectileSpeedScale {
 		t.Fatalf("projectile speed = %.2f, want %.2f", shot.Speed, float64(hero.BulletSpeed)*RuntimeProjectileSpeedScale)
+	}
+}
+
+func TestResetPlayerMatchStateUsesCatalogCadenceAcrossRoster(t *testing.T) {
+	gs := newTestGameState()
+	for _, hero := range Heroes {
+		p := hero.CreatePlayer("reset-"+hero.Name, "Reset", 100, 100)
+		p.AttackRate = 1
+		p.ReloadTime = 1
+
+		gs.resetPlayerMatchState(p)
+
+		if p.AttackRate != hero.AttackRate || p.ReloadTime != hero.ReloadTime {
+			t.Fatalf("%s reset cadence = %d/%d, want catalog %d/%d", hero.Name, p.AttackRate, p.ReloadTime, hero.AttackRate, hero.ReloadTime)
+		}
 	}
 }
 
@@ -1352,15 +1367,23 @@ func TestAmmoIsServerAuthoritativeAndReloadsSequentially(t *testing.T) {
 		t.Fatalf("projectiles after firing with empty ammo = %d, want 3", len(gs.Bullets))
 	}
 
-	gs.reloadAmmo(p, 3_195)
+	// Reload uses the catalog value directly. Brock's first shell returns
+	// exactly one catalog reload interval after the first accepted shot.
+	firstReloadAt := int64(1_000) + p.ReloadTime
+	gs.reloadAmmo(p, firstReloadAt-1)
 	if p.Ammo != 0 {
 		t.Fatalf("ammo reloaded early: %d", p.Ammo)
 	}
-	gs.reloadAmmo(p, 3_196)
+	gs.reloadAmmo(p, firstReloadAt)
 	if p.Ammo != 1 {
 		t.Fatalf("ammo after first reload = %d, want 1", p.Ammo)
 	}
-	gs.reloadAmmo(p, 5_392)
+	secondReloadAt := firstReloadAt + p.ReloadTime
+	gs.reloadAmmo(p, secondReloadAt-1)
+	if p.Ammo != 1 {
+		t.Fatalf("second ammo reloaded early: %d", p.Ammo)
+	}
+	gs.reloadAmmo(p, secondReloadAt)
 	if p.Ammo != 2 {
 		t.Fatalf("ammo after second reload = %d, want 2", p.Ammo)
 	}
@@ -1516,6 +1539,16 @@ func TestSetPlayersActiveStartsEveryPlayerWithFreshMatchAbilityState(t *testing.
 	}
 	if p.RegenCarry != 0 || p.LastDamageAt != 0 || p.LastRegenAt != 0 || p.RespawnAt != 0 || p.RespawnCount != 0 || p.LastContactAt != 0 || p.LastContactBy != "" || p.HitImpulseX != 0 || p.HitImpulseY != 0 {
 		t.Fatalf("match history survived reset: regen=%.1f damage=%d regenAt=%d respawn=%d/%d contact=%d/%q impulse=%.1f/%.1f", p.RegenCarry, p.LastDamageAt, p.LastRegenAt, p.RespawnAt, p.RespawnCount, p.LastContactAt, p.LastContactBy, p.HitImpulseX, p.HitImpulseY)
+	}
+}
+
+func TestPlayerAbilityClampsGadgetChargesToProfileCapacity(t *testing.T) {
+	p := &player.Player{GadgetCharges: MaxGadgetCharges + 7}
+
+	normalizeGadgetCharges(p)
+
+	if p.GadgetCharges != MaxGadgetCharges {
+		t.Fatalf("gadget charges = %d, want profile capacity %d", p.GadgetCharges, MaxGadgetCharges)
 	}
 }
 

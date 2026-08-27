@@ -1,0 +1,14 @@
+{
+  "source": "pre-2026-08-27 runtime effective cadence",
+  "note": "Historical comparison only. These values include the removed hidden AttackRateScale=1.55 and ReloadTimeScale=1.22; they are not a runtime profile.",
+  "heroes": {
+    "Needle": {"attackRateMs": 651, "reloadMs": 2135},
+    "Mandy": {"attackRateMs": 651, "reloadMs": 2013},
+    "Fairy Mina": {"attackRateMs": 651, "reloadMs": 1891},
+    "Brock Zeus": {"attackRateMs": 806, "reloadMs": 2196},
+    "Kaze": {"attackRateMs": 434, "reloadMs": 1281},
+    "Wukong Mico": {"attackRateMs": 1008, "reloadMs": 2135},
+    "Persephone Lumi": {"attackRateMs": 729, "reloadMs": 1952},
+    "Katty": {"attackRateMs": 806, "reloadMs": 2074}
+  }
+}

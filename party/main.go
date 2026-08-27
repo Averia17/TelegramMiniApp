@@ -31,6 +31,7 @@ const inviteStatusTopic = "party-invite-status"
 const inviteTTL = 5 * time.Minute
 const inviteStatusDisplayTTL = 5 * time.Second
 const partyBattleStartTTL = 45 * time.Second
+const defaultPartyBattleMap = "team-battle-northern"
 const accountRequestTimeout = 5 * time.Second
 const kafkaPublishTimeout = 5 * time.Second
 const maxJSONBodyBytes = 1 << 20
@@ -53,6 +54,7 @@ type Party struct {
 	BattleNonce     string   `json:"battleNonce,omitempty"`
 	BattleStartedAt int64    `json:"battleStartedAt,omitempty"`
 	BattleTicket    string   `json:"battleTicket,omitempty"`
+	BattleMap       string   `json:"battleMap,omitempty"`
 }
 
 type battleTicketClaims struct {
@@ -326,6 +328,7 @@ func partyViewFor(p *Party, playerID string) *Party {
 	if view.BattleStartedAt == 0 || time.Since(time.UnixMilli(view.BattleStartedAt)) > partyBattleStartTTL {
 		view.BattleNonce = ""
 		view.BattleStartedAt = 0
+		view.BattleMap = ""
 		return view
 	}
 	if playerID != "" && partyHasMember(view, playerID) {
@@ -847,6 +850,7 @@ func (s *store) leave(partyID, playerID string) (*Party, error) {
 	party.Members = append(party.Members[:memberIndex], party.Members[memberIndex+1:]...)
 	party.BattleNonce = ""
 	party.BattleStartedAt = 0
+	party.BattleMap = ""
 	if len(party.Members) <= 1 {
 		delete(s.parties, partyID)
 		s.persistLocked()
@@ -887,6 +891,7 @@ func (s *store) kick(partyID, ownerID, targetID string) (*Party, error) {
 	party.Members = append(party.Members[:memberIndex], party.Members[memberIndex+1:]...)
 	party.BattleNonce = ""
 	party.BattleStartedAt = 0
+	party.BattleMap = ""
 	if len(party.Members) <= 1 {
 		delete(s.parties, partyID)
 		s.persistLocked()
@@ -897,7 +902,18 @@ func (s *store) kick(partyID, ownerID, targetID string) (*Party, error) {
 	return cloneParty(party), nil
 }
 
-func (s *store) startBattle(partyID, playerID string) (*Party, error) {
+func normalizePartyBattleMap(mapName string) string {
+	switch strings.ToLower(strings.TrimSpace(mapName)) {
+	case "team-battle":
+		return "team-battle"
+	case "team-battle-northern":
+		return "team-battle-northern"
+	default:
+		return defaultPartyBattleMap
+	}
+}
+
+func (s *store) startBattle(partyID, playerID string, requestedMap ...string) (*Party, error) {
 	party, ok := s.parties[partyID]
 	if !ok {
 		return nil, errors.New("party not found")
@@ -915,8 +931,13 @@ func (s *store) startBattle(partyID, playerID string) (*Party, error) {
 	if party.BattleNonce != "" && time.Since(time.UnixMilli(party.BattleStartedAt)) <= partyBattleStartTTL {
 		return cloneParty(party), nil
 	}
+	mapName := defaultPartyBattleMap
+	if len(requestedMap) > 0 {
+		mapName = normalizePartyBattleMap(requestedMap[0])
+	}
 	party.BattleNonce = s.next("battle")
 	party.BattleStartedAt = time.Now().UnixMilli()
+	party.BattleMap = mapName
 	s.touchParty(party)
 	s.persistLocked()
 	return cloneParty(party), nil
@@ -1685,8 +1706,15 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		partyID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/party/"), "/start")
+		var request struct {
+			MapName string `json:"mapName"`
+		}
+		if err := decode(r, &request); err != nil && err != io.EOF {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
 		s.state.mu.Lock()
-		p, err := s.state.startBattle(partyID, id)
+		p, err := s.state.startBattle(partyID, id, request.MapName)
 		s.state.mu.Unlock()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusConflict)

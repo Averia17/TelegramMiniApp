@@ -25,6 +25,23 @@ func (gs *GameState) recordBotAbilityUse() {
 	}
 }
 
+// recordBotAttackHit measures basic accuracy at command granularity. A
+// shotgun, pierce or splash attack can create several damage callbacks, but
+// it is still one successful basic attempt for AI telemetry.
+func (gs *GameState) recordBotAttackHit() {
+	if gs == nil || gs.activeBotAttackID == "" {
+		return
+	}
+	if gs.botMetrics.attackHitKeys == nil {
+		gs.botMetrics.attackHitKeys = make(map[string]struct{})
+	}
+	if _, seen := gs.botMetrics.attackHitKeys[gs.activeBotAttackID]; seen {
+		return
+	}
+	gs.botMetrics.attackHitKeys[gs.activeBotAttackID] = struct{}{}
+	gs.botMetrics.AttackHits++
+}
+
 // recordBotBatContestResponse attributes a live bat contest response to the
 // bot's finite combat role. Player IDs and hero names stay out of metrics.
 func (gs *GameState) recordBotBatContestResponse(bot *player.Player) {

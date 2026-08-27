@@ -53,6 +53,12 @@ runWithBrowser(
     for (const [hero, skills] of heroEntries) {
       const context = await browser.newContext({viewport: {width: 1100, height: 900}, deviceScaleFactor: 1})
       const page = await context.newPage()
+      const consoleErrors = []
+      const pageErrors = []
+      page.on("console", message => {
+        if (message.type() === "error") consoleErrors.push(message.text())
+      })
+      page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
       await page.goto(`${baseUrl}/test/glb-hero-harness?hero=${encodeURIComponent(hero)}`, {waitUntil: "domcontentloaded", timeout: 30000})
       await page.waitForFunction(() => document.querySelector("#status")?.classList.contains("ready"), {timeout: 30000})
       await page.waitForTimeout(260)
@@ -123,9 +129,14 @@ runWithBrowser(
         })
         results.push({hero, skill, kind, screenshot, ...roles})
       }
+      results.push({hero, audit: "runtime-errors", consoleErrors, pageErrors})
       await context.close()
     }
     fs.writeFileSync(path.join(output, "report.json"), JSON.stringify(results, null, 2))
+    const runtimeErrors = results.filter(result => result.audit === "runtime-errors" && (result.consoleErrors.length || result.pageErrors.length))
+    if (runtimeErrors.length) {
+      throw new Error(`hero effect visual audit found runtime errors: ${JSON.stringify(runtimeErrors)}`)
+    }
     console.log(JSON.stringify({output, results}, null, 2))
   },
   {maxRuntimeMs: 600000},

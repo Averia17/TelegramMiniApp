@@ -5,7 +5,10 @@ const {chromium} = require(path.resolve(__dirname, "../../frontend/node_modules/
 const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cjs")
 
 const baseUrl = process.env.MAP_QA_URL || "http://127.0.0.1"
-const output = path.resolve(__dirname, "../../output/playwright/abandoned-city-map/global-audit")
+const selectedMap = process.env.MAP_QA_MAP === "team-battle" ? "team-battle" : "team-battle-northern"
+const expectedMapId = selectedMap === "team-battle" ? "team-battle@20260816" : "team-battle-northern@20260827"
+const expectedCityObjectBlockingCount = selectedMap === "team-battle" ? 56 : 122
+const output = path.resolve(__dirname, "../../output/playwright/abandoned-city-map", selectedMap, "global-audit")
 
 const sectors = [
   ["north-west", .25, .25], ["north", .5, .16], ["north-east", .75, .25],
@@ -13,33 +16,41 @@ const sectors = [
   ["south-west", .25, .75], ["south", .5, .84], ["south-east", .75, .75],
 ]
 const baseViews = [
-  ["base-blue", 16.5, 63.5],
-  ["base-red", 63.5, 16.5],
+  ["base-blue", 11.5, 58.5],
+  ["base-red", 58.5, 11.5],
 ]
 const cityViews = [
-  ["city-depot-detail", 13, 52],
-  ["city-market-detail", 30, 47],
-  ["city-apartments-detail", 44, 60],
-  ["city-north-gate-detail", 16, 31],
-  ["city-south-ward-detail", 49, 64],
+  ["city-depot-detail", 8, 47],
+  ["city-market-detail", 25, 42],
+  ["city-apartments-detail", 39, 55],
+  ["city-north-gate-detail", 11, 26],
+  ["city-south-ward-detail", 44, 59],
 ]
 const vineViews = [
   ["vine-clump-west", 10, 47],
   ["vine-clump-grove", 25, 65],
 ]
 const detailViews = [
-  ["city-street-detail", 20, 27],
-  ["city-plaza-detail", 42, 48],
-  ["city-watchtower-detail", 35, 44],
-  ["base-workshop-detail", 11.5, 59.5],
-  ["base-well-detail", 11.5, 66],
-  ["base-wagon-detail", 20.5, 69],
-  ["base-barracks-detail", 13, 57.5],
-  ["base-storehouse-detail", 21, 65],
-  ["base-stable-detail", 23, 63],
-  ["base-chapel-detail", 16, 69],
-  ["base-courtyard-detail", 16.5, 63.5],
+  ["city-street-detail", 15, 22],
+  ["city-plaza-detail", 37, 43],
+  ["city-watchtower-detail", 30, 39],
+  ["base-workshop-detail", 6.5, 54.5],
+  ["base-well-detail", 6.5, 61],
+  ["base-wagon-detail", 15.5, 64],
+  ["base-barracks-detail", 8, 52.5],
+  ["base-storehouse-detail", 16, 60],
+  ["base-stable-detail", 18, 58],
+  ["base-chapel-detail", 11, 64],
+  ["base-courtyard-detail", 11.5, 58.5],
 ]
+const castleViews = selectedMap === "team-battle-northern"
+  ? [
+      ["castle-keep-detail", 25, 42], ["castle-gate-detail", 25, 47], ["castle-courtyard-detail", 25, 44],
+      ["castle-ward-house-detail", 18, 36], ["castle-ward-market-detail", 25, 35],
+      ["castle-ward-street-detail", 25, 48], ["castle-ward-bastion-detail", 15, 33],
+      ["castle-ward-gate-detail", 25, 51],
+    ]
+  : []
 
 runWithBrowser(
   () => launchHeadlessChromium(chromium, {headless: true}),
@@ -51,7 +62,7 @@ runWithBrowser(
     page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()) })
     page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
 
-    await page.goto(`${baseUrl}/test/map-environment-harness.html?mode=team`, {waitUntil: "commit", timeout: 30_000})
+    await page.goto(`${baseUrl}/test/map-environment-harness.html?mode=team&map=${selectedMap}`, {waitUntil: "commit", timeout: 30_000})
     await page.waitForFunction(() => document.querySelector("#status")?.classList.contains("is-ready"), {timeout: 30_000})
     await page.evaluate(() => document.querySelector("#toggle-panel")?.click())
     await page.evaluate(() => {
@@ -172,9 +183,9 @@ runWithBrowser(
       }
     })
 
-    assert.equal(metrics.map.id, "team-battle@20260816")
+    assert.equal(metrics.map.id, expectedMapId)
     assert.equal(metrics.duplicateCollisionCells.length, 0, `duplicate collision cells: ${metrics.duplicateCollisionCells.join(", ")}`)
-    assert.equal(collisionProbe.cityObjectBlockingCount, 56)
+    assert.equal(collisionProbe.cityObjectBlockingCount, expectedCityObjectBlockingCount)
     assert.equal(collisionProbe.endX <= collisionProbe.expectedContactX + .5, true, `city object probe crossed collider: ${JSON.stringify(collisionProbe)}`)
     assert.equal(collisionProbe.endX > collisionProbe.startX + 1, true, `city object probe did not approach collider: ${JSON.stringify(collisionProbe)}`)
     assert.equal(collisionProbe.roofEndX <= collisionProbe.expectedRoofContactX + .5, true, `roof probe crossed collider: ${JSON.stringify(collisionProbe)}`)
@@ -183,6 +194,11 @@ runWithBrowser(
     assert.equal(metrics.vineCells >= 24, true)
     assert.deepEqual(metrics.vineBlockingCells, [])
     assert.equal(metrics.cityFeatures >= 11, true)
+    assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_keep || 0) === 0 : metrics.featureSummary.castle_keep === 2, true)
+    assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_gate || 0) === 0 : metrics.featureSummary.castle_gate === 4, true)
+    assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_house || 0) === 0 : metrics.featureSummary.castle_house === 8, true)
+    assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_market || 0) === 0 : metrics.featureSummary.castle_market === 2, true)
+    assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_bastion || 0) === 0 : metrics.featureSummary.castle_bastion === 8, true)
     assert.equal(metrics.baseFeatures, 16)
     assert.deepEqual(metrics.baseFeatureSummary, {base_well: 2, base_workshop: 2, base_wagon: 2, base_barracks: 2, base_storehouse: 2, base_stable: 2, base_chapel: 2, base_courtyard: 2})
     assert.deepEqual(consoleErrors, [])
@@ -261,16 +277,26 @@ runWithBrowser(
       await page.waitForTimeout(220)
       await page.screenshot({path: path.join(output, `${name}.png`), fullPage: true})
     }
+    for (const [name, x, y] of castleViews) {
+      await page.evaluate(({name, x, y}) => {
+        const target = {x: x * 40, y: y * 40}
+        window.qa.updatePosition(target.x, target.y, name)
+        window.qa.battleRenderer.cameraRig.follow(target, {width: window.qa.map.width, height: window.qa.map.height}, 1)
+        window.qa.battleRenderer.render()
+      }, {name, x, y})
+      await page.waitForTimeout(220)
+      await page.screenshot({path: path.join(output, `${name}.png`), fullPage: true})
+    }
 
     const report = {
       generatedAt: new Date().toISOString(),
       metrics,
       scope: {
         staticTopology: "complete",
-        dynamicResourceRoutes: "pending",
-        note: "Cube/bat contest timing and safe drops require a live combat scenario; this report covers the canonical map collision, reachability and visual topology.",
+        dynamicResourceRoutes: "covered_by_battle_resource_topology_report",
+        note: "Cube/bat contest timing and safe drops are covered by the authoritative battle resource-topology report; this browser report covers the canonical map collision, reachability and visual topology.",
       },
-      screenshots: sectors.map(([name]) => path.join(output, `${name}.png`)).concat(path.join(output, "overview.png"), baseViews.map(([name]) => path.join(output, `${name}.png`)), cityViews.map(([name]) => path.join(output, `${name}.png`)), vineViews.map(([name]) => path.join(output, `${name}.png`)), detailViews.map(([name]) => path.join(output, `${name}.png`))),
+      screenshots: sectors.map(([name]) => path.join(output, `${name}.png`)).concat(path.join(output, "overview.png"), baseViews.map(([name]) => path.join(output, `${name}.png`)), cityViews.map(([name]) => path.join(output, `${name}.png`)), vineViews.map(([name]) => path.join(output, `${name}.png`)), detailViews.map(([name]) => path.join(output, `${name}.png`)), castleViews.map(([name]) => path.join(output, `${name}.png`))),
       consoleErrors,
       pageErrors,
     }

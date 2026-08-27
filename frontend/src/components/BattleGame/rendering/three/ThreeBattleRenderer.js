@@ -90,6 +90,8 @@ export class ThreeBattleRenderer {
     if (!state) return
     const perfToken = startBattlePerformance("renderer.setState")
     this.state = state
+    const teamBattle = String(state.game?.mode || "").toLowerCase().replace(/[_-]/g, " ") === "team deathmatch"
+    this.sceneRoot.setTeamAtmosphere(teamBattle, state.map?.name || state.map?.id)
     const focusPlayer = state.players?.[this.localPlayerId] || Object.values(state.players || {})[0]
     if (focusPlayer) this.mapRenderer.setFocus?.(focusPlayer.x, focusPlayer.y)
     const mapSyncToken = startBattlePerformance("renderer.map.sync")
@@ -107,7 +109,6 @@ export class ThreeBattleRenderer {
     this.mapRenderer.syncObjectives?.(state.objectives)
     endBattlePerformance(islandSyncToken)
     const active = new Set()
-    const teamBattle = String(state.game?.mode || "").toLowerCase().replace(/[_-]/g, " ") === "team deathmatch"
     const localTeam = state.players?.[this.localPlayerId]?.team || ""
     Object.entries(state.players || {}).forEach(([id, player]) => {
       const existingView = this.players.get(String(id))

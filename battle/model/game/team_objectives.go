@@ -5,6 +5,7 @@ import (
 	"battle/model/player"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 )
 
@@ -66,7 +67,8 @@ func (gs *GameState) initializeTeamObjectives() {
 }
 
 func (gs *GameState) objectiveTowersAlive(team string) bool {
-	for _, objective := range gs.Objectives {
+	for _, objectiveID := range sortedObjectiveStateIDs(gs.Objectives) {
+		objective := gs.Objectives[objectiveID]
 		if objective.Team == team && objective.Type == "tower" && objective.Lives > 0 {
 			return true
 		}
@@ -116,7 +118,8 @@ func (gs *GameState) updateTeamObjectivesAt(now int64) {
 	if gs.Mode != ModeTeamDeathmatch || gs.State != GameStateGame {
 		return
 	}
-	for _, objective := range gs.Objectives {
+	for _, objectiveID := range sortedObjectiveStateIDs(gs.Objectives) {
+		objective := gs.Objectives[objectiveID]
 		if objective == nil || objective.Type != "tower" || objective.Lives <= 0 {
 			continue
 		}
@@ -137,7 +140,8 @@ func (gs *GameState) updateTeamObjectivesAt(now int64) {
 		}
 		var target *player.Player
 		best := teamTowerRange
-		for _, candidate := range gs.Players {
+		for _, playerID := range sortedTeamPlayerIDs(gs.Players) {
+			candidate := gs.Players[playerID]
 			if candidate == nil || !candidate.IsAlive() || candidate.Team == objective.Team {
 				continue
 			}
@@ -201,7 +205,8 @@ func (gs *GameState) updateTeamRespawns(now int64) {
 	if gs.Mode != ModeTeamDeathmatch || gs.State != GameStateGame {
 		return
 	}
-	for _, p := range gs.Players {
+	for _, playerID := range sortedTeamPlayerIDs(gs.Players) {
+		p := gs.Players[playerID]
 		if p == nil || p.IsAlive() || p.RespawnAt == 0 || p.RespawnAt > now || gs.teamHallDestroyed(p.Team) {
 			continue
 		}
@@ -211,6 +216,9 @@ func (gs *GameState) updateTeamRespawns(now int64) {
 		}
 		spawner := spawners[p.RespawnCount%len(spawners)]
 		p.RespawnCount++
+		if p.LastDeathAt > 0 && now >= p.LastDeathAt {
+			p.RespawnDowntimeMs += now - p.LastDeathAt
+		}
 		p.X, p.Y = spawner.X+PlayerSize/2, spawner.Y+PlayerSize/2
 		p.MoveX, p.MoveY, p.Aiming, p.Ack = 0, 0, false, 0
 		p.HitImpulseX, p.HitImpulseY = 0, 0
@@ -248,6 +256,7 @@ func resetPlayerRespawnCombatState(p *player.Player) {
 	p.KazeCombo, p.KazeComboUntil = 0, 0
 	p.LastPrimaryAt, p.LastSecondaryAt = 0, 0
 	p.LastAbilityTick, p.LastAbilityID, p.LastAbilityOK = 0, "", false
+	p.LastDeathAt, p.LastMovementAt, p.LastEffectiveHealAt = 0, 0, 0
 }
 
 func (gs *GameState) teamRespawnDelayAt(now int64) time.Duration {
@@ -261,7 +270,8 @@ func (gs *GameState) teamRespawnDelayAt(now int64) time.Duration {
 }
 
 func (gs *GameState) teamHallDestroyed(team string) bool {
-	for _, objective := range gs.Objectives {
+	for _, objectiveID := range sortedObjectiveStateIDs(gs.Objectives) {
+		objective := gs.Objectives[objectiveID]
 		if objective.Team == team && objective.Type == "town_hall" {
 			return objective.Lives <= 0
 		}
@@ -272,7 +282,8 @@ func (gs *GameState) teamHallDestroyed(team string) bool {
 func (gs *GameState) objectiveWinner() string {
 	blueDestroyed := false
 	redDestroyed := false
-	for _, objective := range gs.Objectives {
+	for _, objectiveID := range sortedObjectiveStateIDs(gs.Objectives) {
+		objective := gs.Objectives[objectiveID]
 		if objective == nil || objective.Type != "town_hall" || objective.Lives > 0 {
 			continue
 		}
@@ -293,10 +304,32 @@ func (gs *GameState) objectiveWinner() string {
 }
 
 func (gs *GameState) objectiveBattleDecided() bool {
-	for _, objective := range gs.Objectives {
+	for _, objectiveID := range sortedObjectiveStateIDs(gs.Objectives) {
+		objective := gs.Objectives[objectiveID]
 		if objective != nil && objective.Type == "town_hall" && objective.Lives <= 0 {
 			return true
 		}
 	}
 	return false
+}
+
+// The authoritative loop must not let Go map iteration choose which tower or
+// player wins a same-distance tie. Besides making gameplay reproducible, this
+// keeps combat-event IDs stable in deterministic scenario reports.
+func sortedObjectiveStateIDs(objectives map[string]*ObjectiveState) []string {
+	ids := make([]string, 0, len(objectives))
+	for id := range objectives {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func sortedTeamPlayerIDs(players map[string]*player.Player) []string {
+	ids := make([]string, 0, len(players))
+	for id := range players {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }

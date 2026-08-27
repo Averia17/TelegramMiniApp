@@ -125,6 +125,7 @@ func (gs *GameState) recordBatDamage(id string, source *player.Player, dealt int
 		if previous := gs.batDamageTeams[id]; previous != "" && previous != team && !gs.batContested[id] {
 			gs.batContested[id] = true
 			gs.batMetrics.ContestStarts++
+			source.BatContests++
 			gs.appendBatTimeline(BatTimelineEvent{BatID: id, Kind: "contest", SourceID: source.PlayerId, Team: team, Role: role})
 		}
 		gs.batDamageTeams[id] = team

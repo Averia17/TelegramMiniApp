@@ -1,6 +1,7 @@
 package game
 
 import (
+	"battle/model/player"
 	"math"
 	"reflect"
 	"testing"
@@ -177,5 +178,104 @@ func TestScenarioPackRosterBasicTTKIsFiniteAndReplayable(t *testing.T) {
 	first, second := run(), run()
 	if !reflect.DeepEqual(first, second) {
 		t.Fatalf("roster TTK reports differ:\nfirst=%#v\nsecond=%#v", first, second)
+	}
+}
+
+func runRosterTeamBasicOutcome(t *testing.T, trial rosterOutcomeTrial) CombatScenarioReport {
+	t.Helper()
+	state := newScenarioTeamState()
+	state.Walls = nil
+	// This matrix measures hero-to-hero parity in the team rules. Disable the
+	// objective subsystem so tower targeting cannot turn a basic-attack sample
+	// into a map-order-dependent objective encounter.
+	state.Objectives = nil
+	state.Players = make(map[string]*player.Player)
+	// Keep PlayerAdd from filling a live team lobby with random bots. This is a
+	// two-actor parity fixture, so the team state is started after its roster is
+	// explicitly constructed.
+	state.State = GameStateWaiting
+	state.PlayerAdd("hero", "Hero", trial.hero)
+	state.PlayerAdd("target", "Target", "Kaze")
+	state.State = GameStateGame
+	attacker, target := state.Players["hero"], state.Players["target"]
+	attacker.SetTeam("Blue")
+	target.SetTeam("Red")
+	attacker.X, attacker.Y = 160, 160
+	target.X, target.Y = attacker.X+trial.targetDistance, attacker.Y
+	target.MaxLives, target.Lives = 650, 650
+	attacker.Ammo, attacker.MaxAmmo = 3, 3
+	attackRate, reloadTime := attacker.AttackRate, attacker.ReloadTime
+	runner := NewCombatScenarioRunner("outcome-team-basic-"+trial.hero, 642, ModeTeamDeathmatch, state)
+	for index := 0; index < attacker.MaxAmmo; index++ {
+		atMs := int64(index) * attackRate
+		if err := runner.ApplyInput(CombatScenarioInput{AtMs: atMs, PlayerID: attacker.PlayerId, Type: "team_full_ammo_basic"}, func(gs *GameState, _ CombatScenarioInput) {
+			gs.playerShoot(attacker.PlayerId, gs.nowMs(), screenAngleFromWorld(0), trial.targetDistance)
+		}); err != nil {
+			t.Fatalf("apply team %s basic shot %d: %v", trial.hero, index, err)
+		}
+	}
+	windowMs := int64(math.Max(float64(3_000), float64(2*attackRate+reloadTime)))
+	if err := runner.AdvanceTo(windowMs); err != nil {
+		t.Fatalf("advance team %s basic outcome: %v", trial.hero, err)
+	}
+	damage := 650 - target.Lives
+	if err := runner.RecordMetric("basicDamage", float64(damage)); err != nil {
+		t.Fatalf("record team %s basic damage: %v", trial.hero, err)
+	}
+	if err := runner.RecordMetric("shotsFired", float64(attacker.AttackPulse)); err != nil {
+		t.Fatalf("record team %s shots: %v", trial.hero, err)
+	}
+	if err := runner.RecordMetric("attackRateMs", float64(attackRate)); err != nil {
+		t.Fatalf("record team %s attack rate: %v", trial.hero, err)
+	}
+	if err := runner.RecordMetric("reloadMs", float64(reloadTime)); err != nil {
+		t.Fatalf("record team %s reload: %v", trial.hero, err)
+	}
+	return runner.Report()
+}
+
+func TestScenarioPackRosterSoloAndTeamOutcomeMatrixIsReplayable(t *testing.T) {
+	trials := []rosterOutcomeTrial{
+		{hero: "Needle", targetDistance: 120},
+		{hero: "Mandy", targetDistance: 60},
+		{hero: "Fairy Mina", targetDistance: 120},
+		{hero: "Brock Zeus", targetDistance: 120},
+		{hero: "Kaze", targetDistance: 60},
+		{hero: "Wukong Mico", targetDistance: 70},
+		{hero: "Persephone Lumi", targetDistance: 120},
+		{hero: "Katty", targetDistance: 120},
+	}
+	run := func() (solo, team []CombatScenarioReport) {
+		for _, trial := range trials {
+			soloReport := runRosterBasicOutcome(t, trial)
+			teamReport := runRosterTeamBasicOutcome(t, trial)
+			for _, report := range []CombatScenarioReport{soloReport, teamReport} {
+				if err := ValidateCombatScenarioReport(report); err != nil {
+					t.Fatalf("%s %s outcome report invalid: %v", trial.hero, report.Mode, err)
+				}
+				damage, damageOK := scenarioMetric(report, "basicDamage")
+				shots, shotsOK := scenarioMetric(report, "shotsFired")
+				if !damageOK || damage <= 0 || !shotsOK || shots != 3 {
+					t.Fatalf("%s %s outcome is incomplete: damage=%.1f shots=%.1f report=%#v", trial.hero, report.Mode, damage, shots, report)
+				}
+			}
+			solo = append(solo, soloReport)
+			team = append(team, teamReport)
+		}
+		return solo, team
+	}
+	firstSolo, firstTeam := run()
+	for index, trial := range trials {
+		soloDamage, soloOK := scenarioMetric(firstSolo[index], "basicDamage")
+		teamDamage, teamOK := scenarioMetric(firstTeam[index], "basicDamage")
+		if !soloOK || !teamOK || soloDamage != teamDamage {
+			t.Fatalf("%s solo/team basic fairness drifted: soloDamage=%.1f teamDamage=%.1f", trial.hero, soloDamage, teamDamage)
+		}
+	}
+	for replay := 2; replay <= 20; replay++ {
+		nextSolo, nextTeam := run()
+		if !reflect.DeepEqual(firstSolo, nextSolo) || !reflect.DeepEqual(firstTeam, nextTeam) {
+			t.Fatalf("solo/team outcome matrix reports differ on replay %d:\nfirstSolo=%#v\nnextSolo=%#v\nfirstTeam=%#v\nnextTeam=%#v", replay, firstSolo, nextSolo, firstTeam, nextTeam)
+		}
 	}
 }

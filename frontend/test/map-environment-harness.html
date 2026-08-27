@@ -124,6 +124,11 @@
         <option value="solo" data-map-mode="solo">Battle Royale</option>
         <option value="team" data-map-mode="team">Team Battle · 2 × 3</option>
       </select>
+      <label class="section-title" for="team-map">Командная карта</label>
+      <select id="team-map" aria-label="Командная карта">
+        <option value="team-battle-northern">Северный Пепел · новая</option>
+        <option value="team-battle">Каменный Перекрёсток · классика</option>
+      </select>
       <div class="stats">
         <div class="stat"><small>Seed</small><strong id="seed">—</strong></div>
         <div class="stat"><small>Объекты</small><strong id="objects">—</strong></div>
@@ -160,15 +165,26 @@
     const inspector = document.querySelector("#inspector")
     const togglePanel = document.querySelector("#toggle-panel")
     try {
-      const selectedMode = new URLSearchParams(location.search).get("mode") === "team" ? "team" : "solo"
+      const query = new URLSearchParams(location.search)
+      const selectedMode = query.get("mode") === "team" ? "team" : "solo"
+      const selectedMap = query.get("map") === "team-battle" ? "team-battle" : "team-battle-northern"
       document.querySelector("#map-mode").value = selectedMode
+      document.querySelector("#team-map").value = selectedMap
+      document.querySelector("#team-map").hidden = selectedMode !== "team"
       document.querySelector("#map-mode").addEventListener("change", event => {
         const url = new URL(location.href)
         if (event.target.value === "team") url.searchParams.set("mode", "team")
         else url.searchParams.delete("mode")
         location.href = url.toString()
       })
-      const map = await loadCanonicalBattleMap(fetch, selectedMode)
+      document.querySelector("#team-map").addEventListener("change", event => {
+        const url = new URL(location.href)
+        url.searchParams.set("mode", "team")
+        url.searchParams.set("map", event.target.value)
+        location.href = url.toString()
+      })
+      const map = await loadCanonicalBattleMap(fetch, selectedMode, selectedMap)
+      document.querySelector("h1").textContent = map.name === "team-battle" ? "Каменный Перекрёсток" : map.name === "team-battle-northern" ? "Северный Пепел" : "Проверка карты"
       status.textContent = "Загрузка боевого рендерера…"
       await assetRegistry.preloadHeroes(["Kaze"])
 
@@ -185,7 +201,12 @@
       const collisionIndex = createCollisionIndex(map.walls)
       const battleState = {
         map,
-        game: {islandName: selectedMode === "team" ? "team-battle" : "Остров Первого Испытания", phase: "landing", stormRadius: 0},
+        game: {
+          mode: selectedMode === "team" ? "team deathmatch" : "deathmatch",
+          islandName: selectedMode === "team" ? selectedMap : "Остров Первого Испытания",
+          phase: "landing",
+          stormRadius: 0,
+        },
         players: {"map-inspector": player},
         objectives: (map.objectives || []).map(objective => ({...objective, lives: objective.type === "town_hall" ? 2000 : 1000, maxLives: objective.type === "town_hall" ? 2000 : 1000})),
         monsters: {}, props: [], bullets: [], effects: [],

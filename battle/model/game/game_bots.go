@@ -64,12 +64,30 @@ func (gs *GameState) setBotsPositionAtFreeSpawns() {
 
 func (gs *GameState) fillMissingBots() {
 	humans := 0
+	for _, p := range gs.Players {
+		if !p.IsBot {
+			humans++
+		}
+	}
+	gs.fillMissingBotsForHumans(humans)
+}
+
+// EnsureTeamRoster keeps the visible team match full when a human transport
+// disconnects. Disconnected human state is intentionally retained for
+// reconnect/recovery, so the normal state-map human count cannot be used for
+// the public 3v3 roster target.
+func (gs *GameState) EnsureTeamRoster(activeHumans int) {
+	if gs == nil || gs.Mode != ModeTeamDeathmatch || gs.State != GameStateGame || activeHumans <= 0 {
+		return
+	}
+	gs.fillMissingBotsForHumans(activeHumans)
+}
+
+func (gs *GameState) fillMissingBotsForHumans(humans int) {
 	bots := make([]string, 0)
 	for _, p := range gs.Players {
 		if p.IsBot {
 			bots = append(bots, p.PlayerId)
-		} else {
-			humans++
 		}
 	}
 	// Below 50% capacity add at most three bots. At 50% or more the match stays human-only.
@@ -579,7 +597,7 @@ func botShouldKite(bot *player.Player, target *botTarget) bool {
 	}
 	healthRatio := float64(bot.Lives) / float64(bot.MaxLives)
 	targetHealthRatio := float64(target.player.Lives) / math.Max(1, float64(target.player.MaxLives))
-	if healthRatio >= .28 || targetHealthRatio < .2 {
+	if healthRatio >= BotLowHealthRetreatFraction || targetHealthRatio < BotCriticalHealthFraction {
 		return false
 	}
 	dangerDistance := botAttackRange(bot) * .55
@@ -670,10 +688,10 @@ func (gs *GameState) botPickupTarget(bot *player.Player) *prop.Prop {
 		}
 		switch candidate.Type {
 		case "health_boost":
-			if bot.HealthBoosts >= 5 {
+			if bot.HealthBoosts >= HealthBoostMaxStacks {
 				continue
 			}
-		case "power", "lunar_speed", "lunar_damage", "lunar_shield", "lunar_cooldown":
+		case "lunar_speed", "lunar_damage", "lunar_shield", "lunar_cooldown":
 		default:
 			continue
 		}
@@ -683,7 +701,7 @@ func (gs *GameState) botPickupTarget(bot *player.Player) *prop.Prop {
 		}
 		score := -distance
 		if candidate.Type == "health_boost" {
-			score += 260 + float64(5-bot.HealthBoosts)*70
+			score += 260 + float64(HealthBoostMaxStacks-bot.HealthBoosts)*70
 		}
 		if score > bestScore {
 			best, bestScore = candidate, score
@@ -696,11 +714,18 @@ func (gs *GameState) botShouldCollectPickup(bot *player.Player, pickup *prop.Pro
 	if bot == nil || pickup == nil || !pickup.Active {
 		return false
 	}
+	switch pickup.Type {
+	case "health_boost", "lunar_speed", "lunar_damage", "lunar_shield", "lunar_cooldown":
+		// These are the only pickup types admitted by the current combat
+		// profile. Legacy power props must never become an implicit bot goal.
+	default:
+		return false
+	}
 	if target == nil {
 		return true
 	}
 	if pickup.Type == "health_boost" {
-		return bot.HealthBoosts < 5 && target.distance > BotVisionRange*.45
+		return bot.HealthBoosts < HealthBoostMaxStacks && target.distance > BotVisionRange*.45
 	}
 	return target.distance > BotVisionRange*.72 &&
 		math.Hypot(pickup.X-bot.X, pickup.Y-bot.Y) < BotVisionRange*.35
@@ -770,13 +795,9 @@ func (gs *GameState) updateBattleRoyaleBots() {
 			botIndex++
 			continue
 		}
-		if threat, flee := gs.botMonsterThreat(bot); threat != nil {
+		if threat, flee := gs.botMonsterThreat(bot); threat != nil && flee {
 			gs.recordBotHardInterrupt()
-			if flee {
-				gs.botRetreatFrom(id, bot, threat.X, threat.Y, now)
-			} else {
-				gs.botEngageTarget(id, bot, &botTarget{kind: "monster", id: "threat", monster: threat, x: threat.X, y: threat.Y, distance: math.Hypot(threat.X-bot.X, threat.Y-bot.Y)}, now)
-			}
+			gs.botRetreatFrom(id, bot, threat.X, threat.Y, now)
 			botIndex++
 			continue
 		}
@@ -904,6 +925,11 @@ func (gs *GameState) botEngageTarget(id string, bot *player.Player, target *botT
 		approach := 0.0
 		if target.distance > preferred {
 			approach = 1
+		} else if !melee && bot.Ammo == 0 {
+			// A ranged bot with an empty magazine must create reload space. A
+			// pure strafe here reads as orbiting the target and can leave the bot
+			// circling without contributing damage until the next decision tick.
+			approach = -.65
 		} else if !melee && target.distance < reach*.38 {
 			approach = -.85
 		}
@@ -1060,7 +1086,7 @@ func (gs *GameState) botTryAbility(id string, bot *player.Player, target *botTar
 	if secondaryReady {
 		secondaryScore = scoreBotAbility(gs.botUtilityContextFor(bot, target, nil, now), botAbilityGadget)
 	}
-	primaryReady := SuperChargePercent(bot, now) >= 100 && primaryUseful
+	primaryReady := SuperChargePercent(bot, now) >= SuperMaxChargePercent && primaryUseful
 	usePrimary := primaryReady && (secondaryScore == math.Inf(-1) || primaryScore >= secondaryScore)
 	if usePrimary {
 		bot.AimDistance = primaryTarget.distance
@@ -1243,7 +1269,7 @@ func (gs *GameState) botMonsterThreat(bot *player.Player) (*monster.Monster, boo
 		return nil, false
 	}
 	healthRatio := float64(bot.Lives) / math.Max(1, float64(bot.MaxLives))
-	return threat, healthRatio < .35 || (bot.Ammo == 0 && closest < 170)
+	return threat, healthRatio < BotLowHealthRetreatFraction || (bot.Ammo == 0 && closest < 170)
 }
 
 func botWallApproachPoint(bot *player.Player, wall *geometry.WallTile) (float64, float64) {

@@ -236,6 +236,30 @@ test("map renderer fades only the nearest tiles inside one large grass field", (
   mapRenderer.dispose()
 })
 
+test("team atmosphere rebuilds vegetation with a muted northern palette", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  const map = {
+    width: 240,
+    height: 180,
+    walls: [{minX: 100, minY: 100, maxX: 140, maxY: 140, type: "bush"}],
+  }
+
+  mapRenderer.sync(map)
+  const soloField = [...mapRenderer.objects.values()][0]
+  const soloBase = soloField.getObjectByName("bush-field-base")
+  const soloRed = soloBase.instanceColor.getX(0)
+
+  mapRenderer.ground.setTheme("team")
+  mapRenderer.sync(map)
+  const teamField = [...mapRenderer.objects.values()][0]
+  const teamBase = teamField.getObjectByName("bush-field-base")
+  assert.ok(teamBase.instanceColor.getX(0) < soloRed)
+  assert.ok(teamBase.instanceColor.getY(0) < soloBase.instanceColor.getY(0))
+
+  mapRenderer.dispose()
+})
+
 test("separate bush clearings keep independent local transparency", () => {
   const walls = [
     {minX: 20, minY: 20, maxX: 80, maxY: 60, type: "bush"},

@@ -36,6 +36,7 @@ type ScheduledShot struct {
 
 type DamageZone struct {
 	Owner        string
+	CommandID    string
 	X, Y         float64
 	Radius       float64
 	Damage       int
@@ -51,6 +52,7 @@ type DamageZone struct {
 
 type PendingMandySuper struct {
 	Owner     string
+	CommandID string
 	X, Y      float64
 	Angle     float64
 	TriggerAt int64
@@ -290,10 +292,12 @@ func mandyStrikeDamage(base int, focused, gadgetArmed bool) int {
 func (MandyKit) Super(gs *GameState, source *player.Player, ts int64, angle, _ float64) bool {
 	const windup = int64(800)
 	source.CastUntil = ts + windup
-	source.ShieldHP = int(math.Ceil(float64(source.MaxLives) * .30))
+	shield := int(math.Ceil(float64(source.MaxLives) * .30))
+	source.ShieldHP = shield
+	source.ShieldProvided += shield
 	source.MandySuperShieldUntil = ts + windup
 	cast := &PendingMandySuper{
-		Owner: source.PlayerId, X: source.X, Y: source.Y, Angle: angle, TriggerAt: ts + windup,
+		Owner: source.PlayerId, CommandID: gs.activeCommandID, X: source.X, Y: source.Y, Angle: angle, TriggerAt: ts + windup,
 	}
 	cast.Visual = gs.addEffect("mandy_super_charge", source.X, source.Y, 0, 0, 80, angle, 0, 0, "#ffd84d", 0, windup)
 	gs.PendingMandySupers = append(gs.PendingMandySupers, cast)
@@ -342,27 +346,29 @@ func (gs *GameState) updatePendingMandySupers() {
 			kept = append(kept, cast)
 			continue
 		}
-		source.SuperPulse++
-		reach := math.Hypot(gs.Map.WidthInPixels, gs.Map.HeightInPixels) + TileSize
-		for _, target := range gs.Players {
-			if !target.CanBulletHurt(source.PlayerId, source.Team) || !insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {
-				continue
+		gs.withCombatCommand(cast.CommandID, cast.Owner, "primary", func() {
+			source.SuperPulse++
+			reach := math.Hypot(gs.Map.WidthInPixels, gs.Map.HeightInPixels) + TileSize
+			for _, target := range gs.Players {
+				if !target.CanBulletHurt(source.PlayerId, source.Team) || !insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {
+					continue
+				}
+				along := math.Abs((target.X-cast.X)*math.Cos(cast.Angle) + (target.Y-cast.Y)*math.Sin(cast.Angle))
+				progress := math.Min(1, along/math.Max(1, reach))
+				gs.dealPlayerDamage(source, target, int(math.Round(140*(1+progress*.57))))
+				if target.IsAlive() {
+					target.StunUntil = max(target.StunUntil, now+MandySuperStunDuration.Milliseconds())
+					addSuperChargeForControl(source, target, MandySuperStunDuration.Milliseconds())
+				}
 			}
-			along := math.Abs((target.X-cast.X)*math.Cos(cast.Angle) + (target.Y-cast.Y)*math.Sin(cast.Angle))
-			progress := math.Min(1, along/math.Max(1, reach))
-			gs.dealPlayerDamage(source, target, int(math.Round(140*(1+progress*.57))))
-			if target.IsAlive() {
-				target.StunUntil = max(target.StunUntil, now+MandySuperStunDuration.Milliseconds())
-				addSuperChargeForControl(source, target, MandySuperStunDuration.Milliseconds())
+			for id, target := range gs.Monsters {
+				if target != nil && target.IsAlive() && insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {
+					gs.damageMonster(id, target, 140, cast.Owner)
+				}
 			}
-		}
-		for id, target := range gs.Monsters {
-			if target != nil && target.IsAlive() && insideBeam(cast.X, cast.Y, target.X, target.Y, target.Radius, cast.Angle, reach, 50) {
-				gs.damageMonster(id, target, 140, cast.Owner)
-			}
-		}
-		gs.destroyWallsInBeam(cast.X, cast.Y, cast.Angle, reach, 50)
-		gs.addEffect("mandy_super_wave", cast.X, cast.Y, cast.X+math.Cos(cast.Angle)*reach, cast.Y+math.Sin(cast.Angle)*reach, 50, cast.Angle, reach, 0, "#ffd84d", 140, 700)
+			gs.destroyWallsInBeam(cast.X, cast.Y, cast.Angle, reach, 50)
+			gs.addEffect("mandy_super_wave", cast.X, cast.Y, cast.X+math.Cos(cast.Angle)*reach, cast.Y+math.Sin(cast.Angle)*reach, 50, cast.Angle, reach, 0, "#ffd84d", 140, 700)
+		})
 	}
 	gs.PendingMandySupers = kept
 }
@@ -439,23 +445,25 @@ func (gs *GameState) updateDamageZones() {
 			continue
 		}
 		for zone.TicksLeft > 0 && now >= zone.NextTickAt {
-			if zone.Kind == "katty_paint_puddle" {
-				gs.damageKattyPuddle(zone)
-			} else if zone.Group == "" {
-				damage := zone.Damage
-				if zone.PercentMaxHP > 0 {
-					gs.radialDamagePercentMaxHP(zone.Owner, zone.X, zone.Y, zone.Radius, zone.PercentMaxHP)
+			gs.withCombatCommand(zone.CommandID, zone.Owner, "primary", func() {
+				if zone.Kind == "katty_paint_puddle" {
+					gs.damageKattyPuddle(zone)
+				} else if zone.Group == "" {
+					damage := zone.Damage
+					if zone.PercentMaxHP > 0 {
+						gs.radialDamagePercentMaxHP(zone.Owner, zone.X, zone.Y, zone.Radius, zone.PercentMaxHP)
+					} else {
+						gs.radialDamage(zone.Owner, zone.X, zone.Y, zone.Radius, damage)
+					}
 				} else {
-					gs.radialDamage(zone.Owner, zone.X, zone.Y, zone.Radius, damage)
+					hit := damagedByGroup[zone.Group]
+					if hit == nil {
+						hit = make(map[string]bool)
+						damagedByGroup[zone.Group] = hit
+					}
+					gs.radialDamageOnce(zone.Owner, zone.X, zone.Y, zone.Radius, zone.Damage, hit)
 				}
-			} else {
-				hit := damagedByGroup[zone.Group]
-				if hit == nil {
-					hit = make(map[string]bool)
-					damagedByGroup[zone.Group] = hit
-				}
-				gs.radialDamageOnce(zone.Owner, zone.X, zone.Y, zone.Radius, zone.Damage, hit)
-			}
+			})
 			zone.TicksLeft--
 			zone.NextTickAt += zone.Interval
 		}

@@ -39,6 +39,7 @@ func TestNewGameStateUsesInjectedMapAndHeroDependencies(t *testing.T) {
 	catalog := architectureHeroCatalog{hero: Heroes[0]}
 
 	state := NewGameState(GameConfig{
+		MatchID:    "match-1",
 		RoomName:   "room-1",
 		MapName:    "future-map",
 		MaxPlayers: 4,

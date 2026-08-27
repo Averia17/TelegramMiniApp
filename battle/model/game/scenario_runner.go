@@ -408,14 +408,21 @@ type combatStateHashEvent struct {
 	Accepted, Resolved                          bool
 }
 
+type combatStateHashAbilityResolution struct {
+	CommandID, SourceID, Slot string
+	ResolveAt                 int64
+	Hit                       bool
+}
+
 type combatStateHashProjection struct {
-	State      string
-	Mode       GameMode
-	Players    []combatStateHashPlayer
-	Monsters   []combatStateHashMonster
-	Respawns   []combatStateHashRespawn
-	Objectives []combatStateHashObjective
-	Events     []combatStateHashEvent
+	State       string
+	Mode        GameMode
+	Players     []combatStateHashPlayer
+	Monsters    []combatStateHashMonster
+	Respawns    []combatStateHashRespawn
+	Objectives  []combatStateHashObjective
+	Events      []combatStateHashEvent
+	Resolutions []combatStateHashAbilityResolution
 }
 
 // HashCombatState creates a deterministic comparison key for replay checkpoints.
@@ -476,6 +483,21 @@ func HashCombatState(state *GameState) string {
 		}
 		for _, event := range state.CombatEvents {
 			projection.Events = append(projection.Events, combatStateHashEvent{ID: event.ID, Kind: event.Kind, Phase: event.Phase, SourceID: event.SourceID, TargetType: event.TargetType, TargetID: event.TargetID, Damage: event.Damage, Accepted: event.Accepted, Resolved: event.Resolved})
+		}
+		resolutionIDs := make([]string, 0, len(state.abilityResolutions))
+		for commandID := range state.abilityResolutions {
+			resolutionIDs = append(resolutionIDs, commandID)
+		}
+		sort.Strings(resolutionIDs)
+		for _, commandID := range resolutionIDs {
+			resolution := state.abilityResolutions[commandID]
+			if resolution == nil {
+				continue
+			}
+			projection.Resolutions = append(projection.Resolutions, combatStateHashAbilityResolution{
+				CommandID: resolution.CommandID, SourceID: resolution.SourceID, Slot: resolution.Slot,
+				ResolveAt: resolution.ResolveAt, Hit: resolution.Hit,
+			})
 		}
 	}
 	data, _ := json.Marshal(projection)

@@ -1,4 +1,5 @@
 import {normalizeEightWayMove, quantizeAngleToSectors, worldAngleToProtocolScreen} from "./direction.js"
+import {buildAbilityInput, getHeroAbilityInputContract} from "./abilityInputContract.js"
 
 const AUTO_AIM_GESTURE_DRAG_LIMIT = 10
 const MIN_ATTACK_INPUT_DEBOUNCE_MS = 90
@@ -356,6 +357,18 @@ export class Input {
   update() {
     this.sendKeyboardMove()
 
+  }
+
+  useAbility(slot) {
+    const {player} = this.getAttackContext()
+    if (!player || !this.client?.ability) return null
+    const contract = getHeroAbilityInputContract(player.hero || player.heroName, slot)
+    if (contract.mode === "self") return this.client.ability(slot, undefined, buildAbilityInput({contract}))
+    const rect = this.canvas.getBoundingClientRect()
+    const origin = this.getAimOrigin(rect, player)
+    const angle = this.resolveAimAngle(this.mouseX, this.mouseY, player, origin)
+    const distance = this.resolveAimDistance(this.mouseX, this.mouseY, origin)
+    return this.client.ability(slot, undefined, buildAbilityInput({contract, aimAngle: angle, aimDistance: distance}))
   }
 
   sendKeyboardMove() {

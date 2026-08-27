@@ -219,13 +219,14 @@ const useTouchPressHandlers = onUse => {
   return {onClick: activateClick, onPointerUp: activateTouch, onTouchEnd: activateTouch}
 }
 
-export const AbilityButton = ({keyName, label, description, cooldown = 0, charge = 100, isSuper = false, disabled = false, onUse}) => {
+export const AbilityButton = ({keyName, label, description, cooldown = 0, charge = 100, isSuper = false, casting = false, disabled = false, onUse}) => {
   const pressHandlers = useTouchPressHandlers(onUse)
+  const cancelLabel = casting ? "ОТМЕНИТЬ" : label
   return (
-    <button className={`battle-ability${isSuper && charge >= 100 ? " battle-ability--ready" : ""}`} title={`${label}: ${description}`} aria-label={`${label}: ${description}`} disabled={disabled || cooldown > 0 || (isSuper && charge < 100)} {...pressHandlers} style={isSuper ? {"--charge": `${charge}%`} : undefined}>
+    <button className={`battle-ability${isSuper && charge >= 100 ? " battle-ability--ready" : ""}${casting ? " battle-ability--casting" : ""}`} title={casting ? "Отменить текущий каст" : `${label}: ${description}`} aria-label={casting ? "Отменить текущий каст" : `${label}: ${description}`} disabled={!casting && (disabled || cooldown > 0 || (isSuper && charge < 100))} {...pressHandlers} style={isSuper ? {"--charge": `${charge}%`} : undefined}>
       {isSuper && <i className="battle-ability__charge"/>}
-      <b>{cooldown > 0 ? cooldown.toFixed(1) : isSuper && charge < 100 ? `${Math.round(charge)}%` : keyName}</b>
-      <span>{label}</span>
+      <b>{casting ? "✕" : cooldown > 0 ? cooldown.toFixed(1) : isSuper && charge < 100 ? `${Math.round(charge)}%` : keyName}</b>
+      <span>{cancelLabel}</span>
     </button>
   )
 }
