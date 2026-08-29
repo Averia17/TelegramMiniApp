@@ -19,8 +19,8 @@
 
 - Remote — GitHub, но workflow’ов CI пока нет.
 - Релизных тегов нет; следующий релиз должен стать `v0.0.1`.
-- Production запускается через `docker-compose.prod.yml`, gateway публикует
-  `8081:80`, а часть образов строится непосредственно на сервере.
+- Production запускается через `docker-compose.prod.yml`, Nginx публикует только
+  `127.0.0.1:8081`, а публичный вход выполняется через Cloudflare Tunnel.
 - У сервисов есть `/health`; у battle есть `/metrics`, readiness/drain-контракта
   нет.
 - Battle rooms и matchmaking queue находятся в памяти процесса. Принудительный
@@ -311,7 +311,7 @@ Frontend лучше собирать в CI и включать `dist` в immutab
 - удалить hardcoded production DB passwords из
   `bot/docker-compose.prod.yml:44` и `shop/docker-compose.prod.yml:56`; брать их
   только из secret store/env с fail-closed проверкой;
-- зафиксировать все image versions/digests, убрать `latest` для ngrok/Kafka UI;
+- зафиксировать все image versions/digests, включая Cloudflare Tunnel/Kafka UI;
 - в production публиковать только nginx; Prometheus/Grafana/Kafka UI — без
   `ports`, через internal network и SSH tunnel или protected management ingress;
 - для каждого app service оставить `expose`, не `ports`;
@@ -320,8 +320,8 @@ Frontend лучше собирать в CI и включать `dist` в immutab
 - добавить non-root users в Go/Python/Node runtime images, writable только
   необходимые data volumes и `/tmp` tmpfs;
 - не монтировать Docker socket в application containers;
-- продвинуть nginx к реальному TLS/домену; текущий ngrok оставить для
-  development/staging, не считать его production security boundary;
+- продвинуть nginx к реальному TLS/домену через Cloudflare Named Tunnel;
+  Quick Tunnel использовать только для локальной проверки;
 - добавить CSP, `nosniff`, frame-ancestors/clickjacking policy, strict referrer
   policy, rate limit на auth и WebSocket handshake;
 - для nginx credentials использовать Basic Auth только на management paths.
@@ -407,7 +407,8 @@ runbook прямо отмечает, что approved historical rollback ref п�
 1. Подтвердить GitHub Actions как CI provider и GHCR как registry.
 2. Уточнить, что означает «к SSH подключению nginx креды»: Basic Auth на
    management paths или отдельные SSH credentials/политика доступа к серверу.
-3. Выбрать реальный production domain/TLS вместо постоянного ngrok.
+3. Подключить Cloudflare Named Tunnel token и hostname; Quick Tunnel не считать
+   постоянным production ingress.
 4. Задать допустимый drain timeout и policy компенсации при emergency force.
 5. Решить, принимаем ли весь текущий dirty scope в `v0.0.1` или делим его до
    запуска release-команды.

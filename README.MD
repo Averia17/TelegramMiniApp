@@ -53,15 +53,28 @@ The production-like contour is isolated in its own Compose project named
 `prod`. Its containers use the `prod-*` prefix while dev containers use the
 `dev-*` prefix. It uses
 different containers, networks, volumes, Postgres databases, Redis instances,
-and a production frontend build. Its gateway is published on port 8081 and the
-ngrok container forwards the reserved Telegram domain to it:
+and a production frontend build. Nginx binds only to localhost on port 8081;
+the Cloudflare Tunnel container forwards the public hostname to `nginx:8080`
+without exposing another host port:
 
 ```bash
 copy .env.prod.example .env.prod
-# Fill APP_AUTH_SECRET and NGROK_AUTHTOKEN in .env.prod.
-docker compose -f docker-compose.prod.yml up -d --build
-# https://factual-herring-driven.ngrok-free.app
+# Fill every production value, including APP_AUTH_SECRET and the public hostname.
+docker compose --profile cloudflare --env-file .env.prod -f docker-compose.prod.yml up -d --build
+# https://your-cloudflare-hostname.example.com
 ```
+
+For a local temporary Cloudflare Quick Tunnel, run the hardened stack without
+the profile and start Cloudflare from the host:
+
+```powershell
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+cloudflared tunnel --url http://localhost:8081
+```
+
+Quick Tunnel hostnames are temporary and cannot be chosen or guaranteed. To
+keep a stable hostname, use a named Cloudflare Tunnel and set its token in
+`CLOUDFLARE_TUNNEL_TOKEN`.
 
 Only one polling process may use a Telegram bot token. The dev bot is disabled
 by default; run it only when the production bot is stopped:
@@ -69,6 +82,31 @@ by default; run it only when the production bot is stopped:
 ```bash
 docker compose --profile dev-bot up -d bot
 ```
+
+### Release and deployment flow
+
+Releases are immutable SemVer tags. Patch versions advance automatically from
+`v0.0.1`; set `RELEASE_MAJOR` or `RELEASE_MINOR` in the ignored
+`deploy/release.env` when starting a new series:
+
+```bash
+copy deploy/release.env.example deploy/release.env
+python deploy/release.py --dry-run
+python deploy/release.py
+```
+
+The second command creates the commit/tag and deploys the production-like
+stack locally at `http://127.0.0.1:8081`. To publish the tag for the remote
+GitHub staging/production workflow instead, use `python deploy/release.py --push`;
+it does not start the local stack.
+
+The tag workflow builds only changed service images, preserves unchanged image
+digests, deploys to protected staging first, and then production. The deployer
+announces maintenance, drains active battles, creates database backups, runs
+locked migrations, recreates only affected containers, verifies readiness, and
+can restore the previous image manifest without deleting volumes. Configure
+the host secrets and GitHub `staging`/`production` environments according to
+the [production deploy runbook](docs/production-deploy-runbook.md).
 
 ### Up project
 ```bash

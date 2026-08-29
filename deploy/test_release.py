@@ -1,8 +1,15 @@
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
-from deploy.release import commit_message, parse_release_settings, secret_scan
+from deploy.release import (
+    commit_message,
+    load_dotenv,
+    local_compose_environment,
+    parse_release_settings,
+    secret_scan,
+)
 
 
 class ReleaseCommandTests(unittest.TestCase):
@@ -39,6 +46,36 @@ class ReleaseCommandTests(unittest.TestCase):
                 "DEPLOY_ADMIN_TOKEN: actual-token-value\n", encoding="utf-8"
             )
             self.assertEqual(secret_scan([str(path)]), [str(path)])
+
+    def test_load_dotenv_reads_simple_values_without_overwriting_shell_state(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text(
+                '# comment\nAPP_VERSION=v0.0.9\nQUOTED="value"\nINVALID-KEY=ignored\n',
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                load_dotenv(path), {"APP_VERSION": "v0.0.9", "QUOTED": "value"}
+            )
+
+    def test_local_compose_environment_reads_only_the_selected_production_file(self):
+        with TemporaryDirectory() as directory:
+            production_env = Path(directory) / ".env.prod"
+            production_env.write_text(
+                "PRODUCTION_ONLY=present\nAPP_VERSION=old\n",
+                encoding="utf-8",
+            )
+            with patch.dict("os.environ", {}, clear=True):
+                with patch("deploy.release.git", return_value="sha-local"):
+                    environment = local_compose_environment(
+                        "v0.0.2", env_file=production_env
+                    )
+
+        self.assertEqual(environment["PRODUCTION_ONLY"], "present")
+        self.assertNotIn("LOCAL_ONLY", environment)
+        self.assertEqual(environment["APP_VERSION"], "v0.0.2")
+        self.assertEqual(environment["GIT_SHA"], "sha-local")
+        self.assertEqual(environment["COMPOSE_PROFILES"], "")
 
 
 if __name__ == "__main__":

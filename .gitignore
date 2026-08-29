@@ -89,6 +89,7 @@ venv.bak/
 .idea/
 .env
 .env.prod
+.env.staging
 deploy/release.env
 .release/
 cache/

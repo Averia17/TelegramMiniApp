@@ -1,7 +1,8 @@
-"""Create an immutable release commit/tag from the current working tree.
+"""Create and deploy a local immutable release from the current working tree.
 
-The command is intentionally dry-run by default. Use ``--execute`` only after
-reviewing the staged scope; use ``--push`` separately to publish to the remote.
+The default command is the local release flow. Use ``--dry-run`` when only a
+preview is wanted. ``--push`` publishes the tag for the remote GitHub flow and
+does not also deploy the local checkout.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from deploy.versioning import next_release_tag
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_ENV = ROOT / "deploy" / "release.env"
 SECRET_VALUE = re.compile(
-    r"(?:BOT_TOKEN|NGROK_AUTHTOKEN|APP_AUTH_SECRET|POSTGRES_PASSWORD|REDIS_PASSWORD|"
+    r"(?:BOT_TOKEN|CLOUDFLARE_TUNNEL_TOKEN|APP_AUTH_SECRET|POSTGRES_PASSWORD|REDIS_PASSWORD|"
     r"DEPLOY_ADMIN_TOKEN|GRAFANA_ADMIN_PASSWORD|GRAFANA_API_KEY)"
     r"\s*[:=]\s*([^\s#\"']+)"
 )
@@ -67,6 +68,59 @@ def load_release_settings() -> tuple[int, int]:
         {key: value for key, value in os.environ.items() if key.startswith("RELEASE_")}
     )
     return parse_release_settings(values)
+
+
+def load_dotenv(path: Path) -> dict[str, str]:
+    """Read simple KEY=VALUE files without requiring python-dotenv."""
+
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            continue
+        values[key] = value.strip().strip("\"'")
+    return values
+
+
+def local_compose_environment(tag: str, env_file: Path | None = None) -> dict[str, str]:
+    """Load the independent production env for Compose; shell vars dominate."""
+
+    environment = load_dotenv(env_file or ROOT / ".env.prod")
+    environment.update(os.environ)
+    environment["APP_VERSION"] = tag
+    environment.setdefault("GIT_SHA", git("rev-parse", "HEAD").strip())
+    # The Cloudflare service is behind an explicit Compose profile. Keep local
+    # no-tunnel deploys valid even when the optional token is not configured.
+    environment["COMPOSE_PROFILES"] = ""
+    environment.setdefault("CLOUDFLARE_TUNNEL_TOKEN", "disabled-for-local-deploy")
+    return environment
+
+
+def deploy_local(tag: str) -> None:
+    """Build and run the production-like stack locally without a tunnel."""
+
+    compose_file = ROOT / "docker-compose.prod.yml"
+    command = [
+        "docker",
+        "compose",
+        "--env-file",
+        str(ROOT / ".env.prod"),
+        "-f",
+        str(compose_file),
+        "up",
+        "-d",
+        "--build",
+    ]
+    print("Deploying local release", tag)
+    result = subprocess.run(command, cwd=ROOT, env=local_compose_environment(tag))
+    if result.returncode:
+        raise RuntimeError("local Docker Compose deployment failed")
 
 
 def candidate_paths() -> list[str]:
@@ -146,25 +200,40 @@ def execute_release(tag: str, push: bool) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--execute", action="store_true", help="create commit and annotated tag"
+        "--dry-run", action="store_true", help="preview without commit or deployment"
+    )
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="explicitly execute the default local release flow",
     )
     parser.add_argument(
         "--push", action="store_true", help="push the new commit and tag to origin"
     )
+    parser.add_argument(
+        "--no-local-deploy",
+        action="store_true",
+        help="create the commit/tag without starting local Compose",
+    )
     args = parser.parse_args()
-    if args.push and not args.execute:
-        parser.error("--push requires --execute")
+    if args.dry_run and (args.execute or args.push or args.no_local_deploy):
+        parser.error("--dry-run cannot be combined with execution options")
 
     tag, plan, findings = release_preview()
     print(json.dumps({"tag": tag, "plan": plan, "secret_findings": findings}, indent=2))
     if findings:
         print("Release blocked by secret scan", file=sys.stderr)
         return 2
-    if not args.execute:
-        print("Dry-run only; no commit, tag, or push was created.")
+    if args.dry_run:
+        print("Dry-run only; no commit, tag, or deployment was created.")
         return 0
     execute_release(tag, args.push)
     print(f"Created {tag} with {commit_message(tag)}")
+    if args.push:
+        print("Tag pushed; the remote GitHub release workflow owns deployment.")
+    elif not args.no_local_deploy:
+        deploy_local(tag)
+        print(f"Local release {tag} is running on http://127.0.0.1:8081")
     return 0
 
 

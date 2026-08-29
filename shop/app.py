@@ -18,7 +18,6 @@ prefix_router = APIRouter(prefix="/api")
 
 
 origins = [
-    # "https://factual-herring-driven.ngrok-free.app",
     # "http://localhost:80",
     # "http://localhost",
 ]

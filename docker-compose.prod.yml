@@ -13,9 +13,9 @@ services:
   db:
     container_name: prod-db
     environment:
-      POSTGRES_USER: "${POSTGRES_USER:-someusername}"
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER must be set for prod}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set for prod}"
-      POSTGRES_DB: "${POSTGRES_DB:-bot}"
+      POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB must be set for prod}"
 
   redis:
     container_name: prod-redis
@@ -38,9 +38,9 @@ services:
   shop-db:
     container_name: prod-shop-db
     environment:
-      POSTGRES_USER: "${POSTGRES_USER:-someusername}"
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER must be set for prod}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set for prod}"
-      POSTGRES_DB: "${POSTGRES_DB:-bot}"
+      POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB must be set for prod}"
 
   battle:
     container_name: prod-battle
@@ -66,9 +66,9 @@ services:
   news-db:
     container_name: prod-news-db
     environment:
-      POSTGRES_USER: "${POSTGRES_USER:-someusername}"
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER must be set for prod}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set for prod}"
-      POSTGRES_DB: "${NEWS_DB_NAME:-news}"
+      POSTGRES_DB: "${NEWS_DB_NAME:?NEWS_DB_NAME must be set for prod}"
 
   frontend:
     container_name: prod-frontend
@@ -107,7 +107,7 @@ services:
       context: ./nginx
       dockerfile: Dockerfile
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"
     restart: unless-stopped
     volumes:
       - frontend-dist:/src/public:ro
@@ -131,12 +131,20 @@ services:
     networks:
       - app-net
 
-  ngrok:
-    image: ngrok/ngrok@sha256:14d80d083e5b53145f416bbbd36238336c9de4016c43fd950eb2eb845670583b
-    container_name: prod-ngrok
-    command: ["http", "--url=https://factual-herring-driven.ngrok-free.app", "nginx:8080"]
-    env_file:
-      - ./.env.prod
+  cloudflared:
+    profiles: [cloudflare]
+    image: cloudflare/cloudflared:2026.7.3@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf
+    container_name: prod-cloudflared
+    user: "65532:65532"
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    command: ["tunnel", "run"]
+    environment:
+      TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN must be set for Cloudflare Tunnel}"
     depends_on:
       - nginx
     restart: unless-stopped

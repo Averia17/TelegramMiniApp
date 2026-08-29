@@ -5,12 +5,14 @@
 From the reviewed checkout:
 
 ```powershell
+python deploy/release.py --dry-run
 python deploy/release.py
-python deploy/release.py --execute --push
 ```
 
-`--execute` creates `deploy commit: vX.Y.Z`, an annotated tag, and (with
-`--push`) pushes both to `origin`. `RELEASE_MAJOR` and `RELEASE_MINOR` come
+The second command creates `deploy commit: vX.Y.Z`, an annotated tag and
+deploys the local production-like Compose stack without a tunnel. `--push`
+publishes the tag for the remote GitHub workflow instead of starting local
+Compose. `RELEASE_MAJOR` and `RELEASE_MINOR` come
 from the ignored `deploy/release.env`; patch is calculated automatically.
 The first release is `v0.0.1`. Review the dry-run carefully when the checkout
 contains unrelated dirty work.
@@ -23,9 +25,11 @@ runtime uses a shared `frontend-dist` volume.
 ## Production host prerequisites
 
 - The host has a clean Git checkout of this repository and Docker Compose v2.
-- Production uses `.env.prod`; staging uses the same hardened compose file with
-  `.env.staging`. Both files exist only on their respective host and contain a
-  random `DEPLOY_ADMIN_TOKEN` and Grafana admin password.
+- Production uses the complete, independent `.env.prod`; staging uses the same
+  hardened compose file with its own complete, independent `.env.staging`.
+  Neither file inherits values from `.env`. Both files exist only on their
+  respective host and contain a random `DEPLOY_ADMIN_TOKEN`, Grafana admin
+  password and the corresponding `CLOUDFLARE_TUNNEL_TOKEN`.
 - The host can pull private GHCR images using its Docker credential helper.
 - GitHub environment `production` requires an approval and has secrets
   `PROD_HOST`, `PROD_PORT` (optional, defaults to 22), `PROD_USER`,

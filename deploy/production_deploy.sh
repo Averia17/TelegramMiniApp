@@ -9,7 +9,8 @@ cd "$ROOT"
 RELEASE_ROOT="${RELEASE_ROOT:-$ROOT/.release}"
 DEPLOY_COMPOSE_FILE="${DEPLOY_COMPOSE_FILE:-$ROOT/docker-compose.prod.yml}"
 DEPLOY_ENV_FILE="${DEPLOY_ENV_FILE:-$ROOT/.env.prod}"
-COMPOSE=(docker compose --env-file "$RELEASE_ROOT/compose.env" -f "$DEPLOY_COMPOSE_FILE")
+DEPLOY_COMPOSE_PROFILE="${DEPLOY_COMPOSE_PROFILE:-cloudflare}"
+COMPOSE=(docker compose --profile "$DEPLOY_COMPOSE_PROFILE" --env-file "$RELEASE_ROOT/compose.env" -f "$DEPLOY_COMPOSE_FILE")
 
 usage() {
   echo "Usage: $0 <tag> <manifest.json>" >&2
@@ -43,21 +44,13 @@ mkdir -p "$TARGET_DIR"
 cp "$MANIFEST" "$TARGET_DIR/manifest.json"
 
 python -m deploy.compose_env --manifest "$MANIFEST" --output "$RELEASE_ROOT/compose.images.env"
-if [[ -f "$ROOT/.env" ]]; then
-  cp "$ROOT/.env" "$RELEASE_ROOT/compose.env"
-else
-  : > "$RELEASE_ROOT/compose.env"
-fi
-if [[ -f "$DEPLOY_ENV_FILE" ]]; then
-  cat "$DEPLOY_ENV_FILE" >> "$RELEASE_ROOT/compose.env"
-fi
-cat "$RELEASE_ROOT/compose.images.env" >> "$RELEASE_ROOT/compose.env"
-chmod 600 "$RELEASE_ROOT/compose.env"
-
 if [[ ! -f "$DEPLOY_ENV_FILE" ]]; then
   echo "missing $DEPLOY_ENV_FILE; deployment is refused" >&2
   exit 4
 fi
+cp "$DEPLOY_ENV_FILE" "$RELEASE_ROOT/compose.env"
+cat "$RELEASE_ROOT/compose.images.env" >> "$RELEASE_ROOT/compose.env"
+chmod 600 "$RELEASE_ROOT/compose.env"
 
 ADMIN_TOKEN="${DEPLOY_ADMIN_TOKEN:-}"
 if [[ -z "$ADMIN_TOKEN" ]]; then
@@ -179,7 +172,7 @@ wait_ready() {
   local deadline=$((SECONDS + ${SERVICE_TIMEOUT_SECONDS:-180}))
   while (( SECONDS < deadline )); do
     status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || true)"
-    if [[ "$status" == "healthy" || ( "$unit" == "frontend" && "$status" == "exited" && "$(docker inspect -f '{{.State.ExitCode}}' "$container")" == "0" ) || ( "$status" == "running" && ( "$unit" == "nginx" || "$unit" == "prometheus" || "$unit" == "grafana" || "$unit" == "kafka-ui" || "$unit" == "ngrok" ) ) ]]; then
+    if [[ "$status" == "healthy" || ( "$unit" == "frontend" && "$status" == "exited" && "$(docker inspect -f '{{.State.ExitCode}}' "$container")" == "0" ) || ( "$status" == "running" && ( "$unit" == "nginx" || "$unit" == "prometheus" || "$unit" == "grafana" || "$unit" == "kafka-ui" || "$unit" == "cloudflared" ) ) ]]; then
       return 0
     fi
     [[ "$status" == "unhealthy" || "$status" == "dead" ]] && break
@@ -201,6 +194,13 @@ deploy_units() {
     "${COMPOSE[@]}" up -d --no-build --no-deps --force-recreate "$unit"
     wait_ready "$unit"
   done
+}
+
+ensure_tunnel() {
+  if has_service cloudflared; then
+    "${COMPOSE[@]}" up -d --no-build --no-deps cloudflared
+    wait_ready cloudflared
+  fi
 }
 
 run_migrations() {
@@ -247,8 +247,7 @@ rollback() {
   if [[ -f "$PREVIOUS_MANIFEST" ]]; then
     echo "release failed; restoring previous manifest" >&2
     python -m deploy.compose_env --manifest "$PREVIOUS_MANIFEST" --output "$RELEASE_ROOT/rollback.images.env"
-    cp "$ROOT/.env" "$RELEASE_ROOT/compose.env"
-    cat "$DEPLOY_ENV_FILE" >> "$RELEASE_ROOT/compose.env"
+    cp "$DEPLOY_ENV_FILE" "$RELEASE_ROOT/compose.env"
     cat "$RELEASE_ROOT/rollback.images.env" >> "$RELEASE_ROOT/compose.env"
     chmod 600 "$RELEASE_ROOT/compose.env"
     mapfile -t rollback_units < <(python - "$MANIFEST" <<'PY'
@@ -309,6 +308,7 @@ wait_for_drain
 backup_databases
 run_migrations
 deploy_units
+ensure_tunnel
 
 cp "$TARGET_DIR/manifest.json" "$RELEASE_ROOT/current/manifest.json"
 python - "$TARGET_DIR/manifest.json" "$RELEASE_ROOT/current/release.json" <<'PY'
