@@ -9,10 +9,11 @@ python deploy/release.py --dry-run
 python deploy/release.py
 ```
 
-The second command creates `deploy commit: vX.Y.Z`, an annotated tag and
-deploys the local production-like Compose stack without a tunnel. `--push`
-publishes the tag for the remote GitHub workflow instead of starting local
-Compose. `RELEASE_MAJOR` and `RELEASE_MINOR` come
+The second command first deploys the candidate tag and creates `deploy commit:
+vX.Y.Z` plus an annotated tag only after local Compose succeeds. If it fails,
+Git remains at the previous commit and the script attempts to rebuild that
+commit from a temporary worktree. `--push` publishes the tag for the remote
+GitHub workflow instead of starting local Compose. `RELEASE_MAJOR` and `RELEASE_MINOR` come
 from the ignored `deploy/release.env`; patch is calculated automatically.
 The first release is `v0.0.1`. Review the dry-run carefully when the checkout
 contains unrelated dirty work.

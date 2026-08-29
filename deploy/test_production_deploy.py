@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -53,6 +54,67 @@ class ProductionDeploySafetyTests(unittest.TestCase):
         self.assertIn("profiles: [cloudflare]", compose)
         self.assertIn("TUNNEL_TOKEN:", compose)
         self.assertIn('"127.0.0.1:8081:8080"', compose)
+        self.assertIn('"127.0.0.1:19090:9090"', compose)
+        self.assertIn('"127.0.0.1:13000:3000"', compose)
+        self.assertIn("${COMPOSE_BIND_ROOT:-.}/.release/current", compose)
+        self.assertIn("${COMPOSE_BIND_ROOT:-.}/observability/prometheus.yml", compose)
+
+    def test_local_migration_jobs_have_build_contexts(self):
+        for service in ("bot", "shop", "news"):
+            compose = (
+                SCRIPT.parents[1] / service / "docker-compose.prod.yml"
+            ).read_text(encoding="utf-8")
+            migration = re.search(
+                rf"^  {service}-migrate:\n(?P<section>.*?)(?=^  [A-Za-z0-9_-]+:|\Z)",
+                compose,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+            self.assertIsNotNone(migration)
+            self.assertRegex(
+                migration.group("section"),
+                r"(?m)^    build:\n      context: \.$",
+            )
+
+    def test_frontend_build_has_writable_vite_tempfs_with_read_only_root(self):
+        compose = COMPOSE.read_text(encoding="utf-8")
+        frontend = re.search(
+            r"^  frontend:\n(?P<section>.*?)(?=^  nginx:)",
+            compose,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(frontend)
+        section = frontend.group("section")
+        self.assertIn("read_only: true", section)
+        self.assertIn(
+            "/home/node/app/node_modules/.vite-temp:uid=1000,gid=1000,mode=700",
+            section,
+        )
+
+    def test_nginx_image_contains_bind_mount_target_for_external_hero_assets(self):
+        dockerfile = (SCRIPT.parents[1] / "nginx" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("RUN mkdir -p /src/hero-assets", dockerfile)
+        compose = COMPOSE.read_text(encoding="utf-8")
+        self.assertIn(
+            "${COMPOSE_BIND_ROOT:-.}/frontend/public/assets/heroes:/src/hero-assets:ro",
+            compose,
+        )
+        nginx = (SCRIPT.parents[1] / "nginx" / "prod.conf").read_text(encoding="utf-8")
+        self.assertIn("alias /src/hero-assets/$1;", nginx)
+
+    def test_nginx_tmpfs_directories_are_writable_by_the_non_root_user(self):
+        compose = COMPOSE.read_text(encoding="utf-8")
+        nginx = re.search(
+            r"^  nginx:\n(?P<section>.*?)(?=^  cloudflared:)",
+            compose,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(nginx)
+        section = nginx.group("section")
+        self.assertIn('user: "101:101"', section)
+        self.assertIn("/var/cache/nginx:uid=101,gid=101,mode=700", section)
+        self.assertIn("/var/run:uid=101,gid=101,mode=755", section)
 
 
 if __name__ == "__main__":

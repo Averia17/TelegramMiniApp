@@ -95,17 +95,20 @@ python deploy/release.py --dry-run
 python deploy/release.py
 ```
 
-The second command creates the commit/tag and deploys the production-like
-stack locally at `http://127.0.0.1:8081`. To publish the tag for the remote
-GitHub staging/production workflow instead, use `python deploy/release.py --push`;
-it does not start the local stack.
+The second command first deploys the candidate tag and creates the commit/tag
+only after Compose succeeds. If local deployment fails, the commit and tag are
+not created and the previous commit is rebuilt from a temporary worktree. To
+publish the tag for the remote GitHub staging/production workflow instead, use
+`python deploy/release.py --push`; it does not start the local stack.
 
 The tag workflow builds only changed service images, preserves unchanged image
 digests, deploys to protected staging first, and then production. The deployer
 announces maintenance, drains active battles, creates database backups, runs
 locked migrations, recreates only affected containers, verifies readiness, and
-can restore the previous image manifest without deleting volumes. Configure
-the host secrets and GitHub `staging`/`production` environments according to
+can restore the previous image manifest without deleting volumes when a rollout
+fails. Published Git commits/tags are immutable; remote rollback restores the
+previous runtime manifest instead of rewriting Git history. Configure the host
+secrets and GitHub `staging`/`production` environments according to
 the [production deploy runbook](docs/production-deploy-runbook.md).
 
 ### Up project

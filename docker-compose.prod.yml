@@ -75,7 +75,9 @@ services:
     user: "1000:1000"
     init: true
     read_only: true
-    tmpfs: [/tmp]
+    tmpfs:
+      - /tmp
+      - /home/node/app/node_modules/.vite-temp:uid=1000,gid=1000,mode=700
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     pids_limit: 512
@@ -98,7 +100,10 @@ services:
     user: "101:101"
     init: true
     read_only: true
-    tmpfs: [/var/cache/nginx, /var/run, /tmp]
+    tmpfs:
+      - /var/cache/nginx:uid=101,gid=101,mode=700
+      - /var/run:uid=101,gid=101,mode=755
+      - /tmp:uid=101,gid=101,mode=1777
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     pids_limit: 256
@@ -111,8 +116,8 @@ services:
     restart: unless-stopped
     volumes:
       - frontend-dist:/src/public:ro
-      - ./.release/current:/src/release:ro
-      - ./frontend/public/assets/heroes:/src/public/assets/heroes:ro
+      - ${COMPOSE_BIND_ROOT:-.}/.release/current:/src/release:ro
+      - ${COMPOSE_BIND_ROOT:-.}/frontend/public/assets/heroes:/src/hero-assets:ro
     depends_on:
       account:
         condition: service_healthy
@@ -166,10 +171,10 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
     ports:
-      - "127.0.0.1:9090:9090"
+      - "127.0.0.1:19090:9090"
     volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./observability/alerts:/etc/prometheus/alerts:ro
+      - ${COMPOSE_BIND_ROOT:-.}/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${COMPOSE_BIND_ROOT:-.}/observability/alerts:/etc/prometheus/alerts:ro
       - prometheus-data:/prometheus
     depends_on:
       battle:
@@ -189,14 +194,14 @@ services:
     security_opt: [no-new-privileges:true]
     pids_limit: 256
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:13000:3000"
     environment:
       GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER must be set}"
       GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
     volumes:
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ${COMPOSE_BIND_ROOT:-.}/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ${COMPOSE_BIND_ROOT:-.}/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     depends_on:
       prometheus:

@@ -11,8 +11,10 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 if __package__ in (None, ""):
@@ -23,6 +25,20 @@ from deploy.versioning import next_release_tag
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_ENV = ROOT / "deploy" / "release.env"
+ROLLBACK_DEPLOYMENT_FILES = (
+    "docker-compose.prod.yml",
+    "account/docker-compose.prod.yml",
+    "battle/docker-compose.prod.yml",
+    "bot/docker-compose.prod.yml",
+    "leaderboard/docker-compose.prod.yml",
+    "news/docker-compose.prod.yml",
+    "party/docker-compose.prod.yml",
+    "shop/docker-compose.prod.yml",
+    "nginx/Dockerfile",
+    "nginx/nginx.conf",
+    "nginx/prod.conf",
+    "nginx/proxy_params",
+)
 SECRET_VALUE = re.compile(
     r"(?:BOT_TOKEN|CLOUDFLARE_TUNNEL_TOKEN|APP_AUTH_SECRET|POSTGRES_PASSWORD|REDIS_PASSWORD|"
     r"DEPLOY_ADMIN_TOKEN|GRAFANA_ADMIN_PASSWORD|GRAFANA_API_KEY)"
@@ -88,16 +104,23 @@ def load_dotenv(path: Path) -> dict[str, str]:
     return values
 
 
-def local_compose_environment(tag: str, env_file: Path | None = None) -> dict[str, str]:
+def local_compose_environment(
+    tag: str,
+    env_file: Path | None = None,
+    git_sha: str | None = None,
+    compose_bind_root: Path | None = None,
+) -> dict[str, str]:
     """Load the independent production env for Compose; shell vars dominate."""
 
     environment = load_dotenv(env_file or ROOT / ".env.prod")
     environment.update(os.environ)
     environment["APP_VERSION"] = tag
-    environment.setdefault("GIT_SHA", git("rev-parse", "HEAD").strip())
+    environment.setdefault("GIT_SHA", git_sha or git("rev-parse", "HEAD").strip())
     # The Cloudflare service is behind an explicit Compose profile. Keep local
     # no-tunnel deploys valid even when the optional token is not configured.
     environment["COMPOSE_PROFILES"] = ""
+    if compose_bind_root:
+        environment["COMPOSE_BIND_ROOT"] = str(compose_bind_root).replace("\\", "/")
     environment.setdefault("CLOUDFLARE_TUNNEL_TOKEN", "disabled-for-local-deploy")
     return environment
 
@@ -120,7 +143,108 @@ def deploy_local(tag: str) -> None:
     print("Deploying local release", tag)
     result = subprocess.run(command, cwd=ROOT, env=local_compose_environment(tag))
     if result.returncode:
+        diagnostics = [
+            "docker",
+            "compose",
+            "--env-file",
+            str(ROOT / ".env.prod"),
+            "-f",
+            str(compose_file),
+        ]
+        subprocess.run(
+            [*diagnostics, "ps", "-a"], cwd=ROOT, env=os.environ.copy(), check=False
+        )
+        subprocess.run(
+            [*diagnostics, "logs", "--no-color", "--tail=120"],
+            cwd=ROOT,
+            env=os.environ.copy(),
+            check=False,
+        )
         raise RuntimeError("local Docker Compose deployment failed")
+
+
+def release_tag_at(commit: str) -> str | None:
+    """Return the newest SemVer release tag pointing at a commit, if any."""
+
+    tags = [
+        value
+        for value in git("tag", "--points-at", commit).splitlines()
+        if re.fullmatch(r"v\d+\.\d+\.\d+", value)
+    ]
+    return sorted(tags)[-1] if tags else None
+
+
+def rollback_local(previous_head: str, previous_tag: str | None) -> bool:
+    """Rebuild the previous commit in a temporary worktree after local failure."""
+
+    rollback_root = Path(tempfile.mkdtemp(prefix="telegramminiapp-rollback-"))
+    worktree_added = False
+    try:
+        add = subprocess.run(
+            ["git", "worktree", "add", "--detach", str(rollback_root), previous_head],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if add.returncode:
+            print(
+                f"local rollback worktree failed: {add.stderr.strip()}", file=sys.stderr
+            )
+            return False
+        worktree_added = True
+
+        # The previous commit can predate deployment-only safety fixes. Keep
+        # application source at the previous commit, but reuse the current
+        # Compose/Nginx contract so rollback itself is not blocked by an old
+        # read-only or mount configuration bug.
+        for relative in ROLLBACK_DEPLOYMENT_FILES:
+            source = ROOT / relative
+            target = rollback_root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+
+        production_env = ROOT / ".env.prod"
+        if not production_env.exists():
+            print("local rollback skipped: .env.prod is missing", file=sys.stderr)
+            return False
+        shutil.copy2(production_env, rollback_root / ".env.prod")
+
+        rollback_tag = previous_tag or "previous"
+        environment = local_compose_environment(
+            rollback_tag,
+            env_file=rollback_root / ".env.prod",
+            git_sha=previous_head,
+            compose_bind_root=ROOT,
+        )
+        command = [
+            "docker",
+            "compose",
+            "--env-file",
+            str(rollback_root / ".env.prod"),
+            "-f",
+            str(rollback_root / "docker-compose.prod.yml"),
+            "up",
+            "-d",
+            "--build",
+        ]
+        print(f"Rolling back local stack to {rollback_tag}")
+        result = subprocess.run(command, cwd=rollback_root, env=environment)
+        if result.returncode:
+            print("local rollback Compose deployment failed", file=sys.stderr)
+            return False
+        return True
+    finally:
+        if worktree_added:
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(rollback_root)],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        elif rollback_root.exists():
+            shutil.rmtree(rollback_root, ignore_errors=True)
 
 
 def candidate_paths() -> list[str]:
@@ -178,23 +302,43 @@ def release_preview() -> tuple[str, dict[str, object], list[str]]:
     return tag, affected_units(paths), findings
 
 
-def execute_release(tag: str, push: bool) -> None:
+def execute_release(tag: str, push: bool) -> str:
+    previous_head = git("rev-parse", "HEAD").strip()
+    commit_created = False
+    tag_created = False
+    commit_sha = ""
     if secret_scan(candidate_paths()):
         raise RuntimeError("secret scan failed; no commit or tag was created")
-    git("add", ".")
-    staged = git("diff", "--cached", "--name-only").splitlines()
-    findings = secret_scan(staged)
-    if findings:
-        raise RuntimeError(
-            "secret scan failed after git add; no commit or tag was created"
-        )
-    if not staged:
-        raise RuntimeError("nothing is staged for release")
-    git("commit", "-m", commit_message(tag))
-    git("tag", "-a", tag, "-m", f"Release {tag}")
-    if push:
-        git("push", "origin", "HEAD")
-        git("push", "origin", tag)
+    try:
+        git("add", ".")
+        staged = git("diff", "--cached", "--name-only").splitlines()
+        findings = secret_scan(staged)
+        if findings:
+            raise RuntimeError(
+                "secret scan failed after git add; no commit or tag was created"
+            )
+        if not staged:
+            raise RuntimeError("nothing is staged for release")
+        git("commit", "-m", commit_message(tag))
+        commit_created = True
+        commit_sha = git("rev-parse", "HEAD").strip()
+        git("tag", "-a", tag, "-m", f"Release {tag}")
+        tag_created = True
+        if push:
+            git("push", "origin", "HEAD")
+            git("push", "origin", tag)
+        return commit_sha
+    except Exception:
+        # Local releases have not been published yet, so restore the pre-release
+        # branch state without deleting the user's working-tree changes. A
+        # pushed commit/tag is immutable and is intentionally left for the
+        # remote rollback path to handle.
+        if not push:
+            if tag_created:
+                git("tag", "-d", tag)
+            if commit_created and git("rev-parse", "HEAD").strip() == commit_sha:
+                git("reset", "--mixed", previous_head)
+        raise
 
 
 def main() -> int:
@@ -227,12 +371,33 @@ def main() -> int:
     if args.dry_run:
         print("Dry-run only; no commit, tag, or deployment was created.")
         return 0
-    execute_release(tag, args.push)
-    print(f"Created {tag} with {commit_message(tag)}")
     if args.push:
+        execute_release(tag, True)
+        print(f"Created {tag} with {commit_message(tag)}")
         print("Tag pushed; the remote GitHub release workflow owns deployment.")
-    elif not args.no_local_deploy:
-        deploy_local(tag)
+    elif args.no_local_deploy:
+        execute_release(tag, False)
+        print(f"Created {tag} with {commit_message(tag)}")
+    else:
+        previous_head = git("rev-parse", "HEAD").strip()
+        previous_tag = release_tag_at(previous_head)
+        try:
+            deploy_local(tag)
+        except Exception as exc:
+            print(f"Local release failed before commit/tag: {exc}", file=sys.stderr)
+            if not rollback_local(previous_head, previous_tag):
+                print("Local rollback was not fully verified.", file=sys.stderr)
+            return 1
+        try:
+            execute_release(tag, False)
+        except Exception as exc:
+            print(
+                f"Release bookkeeping failed after deployment: {exc}", file=sys.stderr
+            )
+            if not rollback_local(previous_head, previous_tag):
+                print("Local rollback was not fully verified.", file=sys.stderr)
+            return 1
+        print(f"Created {tag} with {commit_message(tag)}")
         print(f"Local release {tag} is running on http://127.0.0.1:8081")
     return 0
 

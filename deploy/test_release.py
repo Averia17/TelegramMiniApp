@@ -5,8 +5,10 @@ from unittest.mock import patch
 
 from deploy.release import (
     commit_message,
+    execute_release,
     load_dotenv,
     local_compose_environment,
+    main,
     parse_release_settings,
     secret_scan,
 )
@@ -76,6 +78,71 @@ class ReleaseCommandTests(unittest.TestCase):
         self.assertEqual(environment["APP_VERSION"], "v0.0.2")
         self.assertEqual(environment["GIT_SHA"], "sha-local")
         self.assertEqual(environment["COMPOSE_PROFILES"], "")
+
+    def test_local_compose_environment_can_pin_runtime_bind_mounts(self):
+        with TemporaryDirectory() as directory:
+            production_env = Path(directory) / ".env.prod"
+            production_env.write_text("APP_VERSION=old\n", encoding="utf-8")
+            with patch.dict("os.environ", {}, clear=True):
+                with patch("deploy.release.git", return_value="sha-local"):
+                    environment = local_compose_environment(
+                        "v0.0.2",
+                        env_file=production_env,
+                        compose_bind_root=Path("C:/stable/runtime"),
+                    )
+
+        self.assertEqual(environment["COMPOSE_BIND_ROOT"], "C:/stable/runtime")
+
+    def test_local_release_unwinds_commit_when_tag_creation_fails(self):
+        calls = []
+        rev_parse_calls = 0
+
+        def fake_git(*args):
+            nonlocal rev_parse_calls
+            calls.append(args)
+            if args == ("rev-parse", "HEAD"):
+                rev_parse_calls += 1
+                return "old-head" if rev_parse_calls == 1 else "new-head"
+            if args == ("diff", "--cached", "--name-only"):
+                return "tracked.py\n"
+            if args == ("tag", "-a", "v0.0.2", "-m", "Release v0.0.2"):
+                raise RuntimeError("tag failed")
+            return ""
+
+        with patch("deploy.release.git", side_effect=fake_git):
+            with patch("deploy.release.candidate_paths", return_value=["tracked.py"]):
+                with patch("deploy.release.secret_scan", return_value=[]):
+                    with self.assertRaisesRegex(RuntimeError, "tag failed"):
+                        execute_release("v0.0.2", push=False)
+
+        self.assertIn(("reset", "--mixed", "old-head"), calls)
+
+    def test_local_release_failure_rolls_back_before_any_commit(self):
+        with patch("sys.argv", ["release.py"]):
+            with patch(
+                "deploy.release.release_preview",
+                return_value=("v0.0.2", {}, []),
+            ):
+                with patch("deploy.release.git", return_value="old-head"):
+                    with patch(
+                        "deploy.release.deploy_local",
+                        side_effect=RuntimeError("compose failed"),
+                    ):
+                        with patch(
+                            "deploy.release.rollback_local", return_value=True
+                        ) as rollback:
+                            with patch("deploy.release.execute_release") as execute:
+                                self.assertEqual(main(), 1)
+
+        rollback.assert_called_once_with("old-head", None)
+        execute.assert_not_called()
+
+    def test_local_rollback_reuses_current_deployment_safety_files(self):
+        from deploy.release import ROLLBACK_DEPLOYMENT_FILES
+
+        self.assertIn("docker-compose.prod.yml", ROLLBACK_DEPLOYMENT_FILES)
+        self.assertIn("nginx/Dockerfile", ROLLBACK_DEPLOYMENT_FILES)
+        self.assertIn("nginx/prod.conf", ROLLBACK_DEPLOYMENT_FILES)
 
 
 if __name__ == "__main__":

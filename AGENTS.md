@@ -37,6 +37,9 @@
   cloudflared tunnel --url http://localhost:8081
   ```
 
+- Production monitoring stays local-only on `127.0.0.1:19090` (Prometheus) and
+  `127.0.0.1:13000` (Grafana), so it does not collide with the dev ports.
+
 - A stable hostname requires a Cloudflare Named Tunnel token in the ignored
   `.env.prod` as `CLOUDFLARE_TUNNEL_TOKEN`; start it with:
 
@@ -48,11 +51,14 @@
   Keep `FRONTEND_URL` and `ALLOWED_ORIGINS` equal to the current public
   hostname used by Telegram.
 - Local release flow: optionally review `python deploy/release.py --dry-run`,
-  then run `python deploy/release.py`. That one command creates the commit/tag,
-  loads only the independent `.env.prod` for Compose interpolation, and deploys
-  locally without a tunnel. Use `python deploy/release.py --push` only
-  for the remote GitHub staging/production workflow. Never delete named
-  database, Redis, Kafka, party, frontend, Prometheus or Grafana volumes.
+  then run `python deploy/release.py`. It deploys the candidate tag first and
+  creates the commit/tag only after local Compose succeeds; on failure it
+  rebuilds the previous commit from a temporary worktree and leaves Git
+  unchanged. It loads only the independent `.env.prod` for Compose
+  interpolation and deploys locally without a tunnel. Use
+  `python deploy/release.py --push` only for the remote GitHub
+  staging/production workflow. Never delete named database, Redis, Kafka,
+  party, frontend, Prometheus or Grafana volumes.
 - SSH deployment is intentionally not part of the local flow yet. Do not put
   `.env`, `.env.prod`, `.env.staging`, tunnel tokens or database credentials in
   Git, commits, image layers or logs.
@@ -60,3 +66,7 @@
   environment and must not inherit values from `.env`; `.env.staging` follows
   the same rule for staging. Keep the files duplicated and rotate production
   database credentials only together with an explicit database migration.
+- Remote commits/tags are immutable after `--push`. A failed remote rollout
+  restores the previous image manifest and containers; database migrations must
+  remain backward-compatible and are not automatically destructively rolled
+  back.
