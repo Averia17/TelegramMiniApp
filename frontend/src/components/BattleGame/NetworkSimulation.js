@@ -36,6 +36,17 @@ const worldAngleFromScreen = angle => Math.atan2(Math.sin(angle) / SCREEN_DEPTH_
 
 const angleDelta = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b))
 
+const isAuthoritativeAbilityDisplacement = (previous, next) => {
+  if (!previous || !next) return false
+  const positionDelta = Math.hypot(
+    (Number(next.x) || 0) - (Number(previous.x) || 0),
+    (Number(next.y) || 0) - (Number(previous.y) || 0),
+  )
+  if (positionDelta <= 1) return false
+  return Number(next.superPulse || 0) !== Number(previous.superPulse || 0) ||
+    Number(next.gadgetPulse || 0) !== Number(previous.gadgetPulse || 0)
+}
+
 const canDamage = (source, target, battleMode = createBattleMode()) =>
   battleMode.canDamage(source, target)
 
@@ -237,7 +248,7 @@ const resolveDynamicProps = (position, radius, props) => {
 
 const vineSpeedMultiplierAt = (position, map) => {
   if (!position || !Array.isArray(map?.walls)) return 1
-  return map.walls.some(wall => wall?.type === "vine" &&
+  return map.walls.some(wall => (wall?.type === "vine" || wall?.type === "thorn_vine") &&
     position.x >= Number(wall.minX) && position.x <= Number(wall.maxX) &&
     position.y >= Number(wall.minY) && position.y <= Number(wall.maxY)) ? .68 : 1
 }
@@ -508,6 +519,12 @@ export class NetworkSimulation {
     this.predictionTime = Math.max(this.predictionTime ?? snapshotLocalTime, snapshotLocalTime)
     if ((localPlayerRespawned || matchStarted) && nextLocalPlayer) {
       this.resetLocalPresentationAtAuthoritativePosition(nextLocalPlayer, snapshotLocalTime)
+    } else if (isAuthoritativeAbilityDisplacement(previousLocalPlayer, nextLocalPlayer)) {
+      // A dash/leap is an intentional authoritative teleport, not network
+      // drift. Do not preserve the old pose as a reconciliation offset or the
+      // ability will appear to leave the hero standing at its origin.
+      this.predicted = {x: Number(nextLocalPlayer.x) || 0, y: Number(nextLocalPlayer.y) || 0}
+      this.correction = {x: 0, y: 0}
     }
     this.reconcile()
     endBattlePerformance(perfToken)

@@ -1,10 +1,13 @@
 import asyncio
+import hmac
 import logging
 import os
 from contextlib import asynccontextmanager
 
 from consumers import consume_battle_results
-from fastapi import FastAPI
+from deployment import begin, resume, snapshot
+from fastapi import FastAPI, Header
+from fastapi.responses import JSONResponse
 from routes import auth_router, economy_router, payments_router, users_router
 from routes.deps import session_pool
 from starlette.middleware.cors import CORSMiddleware
@@ -30,6 +33,34 @@ app = FastAPI(lifespan=lifespan)
 @app.get("/health", include_in_schema=False)
 async def health():
     return {"status": "ok"}
+
+
+def deployment_admin_authorized(token: str) -> bool:
+    expected = os.getenv("DEPLOY_ADMIN_TOKEN", "")
+    return bool(expected and token and hmac.compare_digest(expected, token))
+
+
+@app.post("/internal/deployment/drain", include_in_schema=False)
+async def deployment_drain(x_deployment_token: str = Header(default="")):
+    if not deployment_admin_authorized(x_deployment_token):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    begin("Идёт обновление. Новые бои временно недоступны.")
+    return snapshot()
+
+
+@app.post("/internal/deployment/resume", include_in_schema=False)
+async def deployment_resume(x_deployment_token: str = Header(default="")):
+    if not deployment_admin_authorized(x_deployment_token):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    resume()
+    return snapshot()
+
+
+@app.get("/internal/deployment/status", include_in_schema=False)
+async def deployment_status(x_deployment_token: str = Header(default="")):
+    if not deployment_admin_authorized(x_deployment_token):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return snapshot()
 
 
 allowed_origins = ["*"]

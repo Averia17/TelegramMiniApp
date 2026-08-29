@@ -47,10 +47,14 @@ runWithBrowser(
     const page = await browser.newPage({viewport: {width: 1400, height: 900}})
     const consoleErrors = []
     const pageErrors = []
+    const glbRequests = []
     page.on("console", message => {
       if (message.type() === "error") consoleErrors.push(message.text())
     })
     page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
+    page.on("request", request => {
+      if (new URL(request.url()).pathname.endsWith(".glb")) glbRequests.push(request.url())
+    })
 
     await page.route("**/api/**", async route => {
       const pathname = new URL(route.request().url()).pathname
@@ -75,6 +79,11 @@ runWithBrowser(
     await page.locator(".hero-roster-button").click()
     const cards = page.locator(".hero-roster .hero-card")
     await cards.first().waitFor()
+    await page.waitForFunction(
+      () => document.querySelectorAll(".hero-card .hero-model-preview--loading").length === 0,
+      null,
+      {timeout: 30_000},
+    )
 
     const cardCount = await cards.count()
     const cardTexts = await cards.allInnerTexts()
@@ -110,11 +119,19 @@ runWithBrowser(
       nameFontSize: "14px",
     })
     assert.equal(selectedChecks, 1)
+
+    const initialCanvasCount = await page.locator(".hero-roster .hero-model-canvas").count()
+    await page.locator(".hero-roster-header button").click()
+    await page.locator(".hero-roster--hidden").waitFor({state: "attached"})
+    await page.locator(".hero-roster-button").click()
+    await page.locator(".hero-roster .hero-card").first().waitFor()
+    assert.equal(await page.locator(".hero-roster .hero-model-canvas").count(), initialCanvasCount)
+    assert.equal(new Set(glbRequests).size, glbRequests.length)
     assert.deepEqual(consoleErrors, [])
     assert.deepEqual(pageErrors, [])
 
     fs.mkdirSync(path.dirname(output), {recursive: true})
     await page.screenshot({path: output, fullPage: true})
-    console.log(JSON.stringify({cardCount, cardTexts, combatTypes, footerLayout, selectedChecks, screenshot: output}, null, 2))
+    console.log(JSON.stringify({cardCount, cardTexts, combatTypes, footerLayout, selectedChecks, glbRequests: glbRequests.length, screenshot: output}, null, 2))
   },
 )

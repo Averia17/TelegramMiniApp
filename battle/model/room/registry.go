@@ -259,6 +259,31 @@ func ResetRooms() {
 	observability.Default.SetGauge("battle_active_rooms", "Currently registered battle rooms", 0, nil)
 }
 
+// ActiveBattleCount is used by deployment drain status. Waiting/lobby rooms
+// are intentionally excluded: they are not running a battle and new joins
+// are blocked separately by the battle handler while draining.
+func ActiveBattleCount() int {
+	roomsMu.RLock()
+	defer roomsMu.RUnlock()
+	active := 0
+	for _, r := range rooms {
+		r.mu.RLock()
+		if r.State != nil && r.State.State == game.GameStateGame {
+			active++
+		}
+		r.mu.RUnlock()
+	}
+	return active
+}
+
+func BroadcastMaintenance(message string) {
+	roomsMu.RLock()
+	defer roomsMu.RUnlock()
+	for _, r := range rooms {
+		r.BroadcastMsg("maintenance", map[string]string{"message": message})
+	}
+}
+
 func ListRoomsFromStore() ([]provider.RoomRecord, error) {
 	store := currentStore()
 	if store == nil {

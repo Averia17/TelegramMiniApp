@@ -1,7 +1,14 @@
 services:
   leaderboard:
     container_name: leaderboard
-    image: leaderboard
+    user: "65532:65532"
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    image: "${LEADERBOARD_IMAGE:-leaderboard}"
     build:
       context: .
       dockerfile: Dockerfile
@@ -10,6 +17,8 @@ services:
     environment:
       - REDIS_ADDR=leaderboard-redis:6379
       - KAFKA_ADDR=kafka:9092
+      - APP_VERSION=${APP_VERSION:-dev}
+      - GIT_SHA=${GIT_SHA:-unknown}
     restart: always
     depends_on:
       leaderboard-redis:
@@ -27,7 +36,7 @@ services:
 
   leaderboard-redis:
     container_name: leaderboard-redis
-    image: redis:7-alpine
+    image: redis@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     restart: always
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

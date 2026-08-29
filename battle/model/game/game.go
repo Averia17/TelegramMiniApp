@@ -1821,7 +1821,7 @@ func TerrainMovementMultiplier(mapValue *gamemap.GameMap, x, y float64) float64 
 		return 1
 	}
 	for _, wall := range mapValue.Collisions {
-		if wall == nil || wall.Type != "vine" || x < wall.MinX || x > wall.MaxX || y < wall.MinY || y > wall.MaxY {
+		if wall == nil || (wall.Type != "vine" && wall.Type != "thorn_vine") || x < wall.MinX || x > wall.MaxX || y < wall.MinY || y > wall.MaxY {
 			continue
 		}
 		return .68
@@ -1848,7 +1848,17 @@ func (gs *GameState) updatePlayerMovement(elapsed ...time.Duration) {
 	blockingCrates := gs.activeCrateBodies()
 	for _, p := range gs.Players {
 		gs.expirePlayerFlight(p, now, blockingCrates)
-		if !p.IsAlive() || p.StunUntil > now || p.ChannelUntil > now || (p.MoveX == 0 && p.MoveY == 0) {
+		if !p.IsAlive() {
+			continue
+		}
+		// Pickup collection is independent of movement and control locks. A
+		// player can be standing on a reward when a stun/channel starts, and
+		// the reward must still be claimed on the authoritative tick.
+		gs.collectPickups(p)
+		if p.StunUntil > now || p.ChannelUntil > now {
+			continue
+		}
+		if p.MoveX == 0 && p.MoveY == 0 {
 			continue
 		}
 		speed := EffectiveMovementSpeedAt(p, now, gs.Map, p.X, p.Y) * step
@@ -2264,10 +2274,6 @@ func (gs *GameState) playerAbility(id string, ts int64, slot string, clientID ..
 		emitAbilityEvent(true, "accepted")
 		return
 	}
-	if primary && SuperChargePercent(p, ts) < SuperMaxChargePercent {
-		emitAbilityEvent(false, "super_not_ready")
-		return
-	}
 	if primary {
 		if kit := gs.combatKitFor(p.HeroName); kit != nil {
 			aimDistance := p.AimDistance
@@ -2398,26 +2404,14 @@ func (gs *GameState) playerAbilityCancel(id string, ts int64, clientID string, t
 }
 
 func AbilityCooldownMs(heroName, slot string) int64 {
+	if cooldown, ok := profileAbilityCooldownMs(heroName, slot); ok {
+		return cooldown
+	}
+	// Unknown heroes are rejected by the catalog contract, but keep a safe
+	// generic fallback for compatibility fixtures that exercise this helper
+	// without a roster entry.
 	if slot == "secondary" {
 		return 6500
-	}
-	switch heroName {
-	case "Needle":
-		return 12000
-	case "Mandy":
-		return 15000
-	case "Fairy Mina":
-		return 12000
-	case "Brock Zeus":
-		return 14000
-	case "Kaze":
-		return 10000
-	case "Wukong Mico":
-		return 11000
-	case "Persephone Lumi":
-		return 13000
-	case "Katty":
-		return 12000
 	}
 	return 12000
 }

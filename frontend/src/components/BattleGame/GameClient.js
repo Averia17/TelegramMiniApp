@@ -15,6 +15,7 @@ const GAME_MESSAGES = new Set([
   "battle_recovered",
   "party_state",
   "taunt",
+  "maintenance",
 ])
 
 import {recordBattleMetric} from "./rendering/shared/performance.js"

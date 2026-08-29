@@ -6,6 +6,16 @@ export const normalizeRecoveredBattleResult = result => ({
 })
 
 export const BATTLE_RECOVERY_TIMEOUT_MS = 10_000
+export const BATTLE_RECONNECT_INITIAL_DELAY_MS = 1_000
+export const BATTLE_RECONNECT_MAX_DELAY_MS = 5_000
+
+export const getBattleReconnectDelay = (attempt = 0) => {
+  const normalizedAttempt = Math.max(0, Math.floor(Number(attempt) || 0))
+  return Math.min(
+    BATTLE_RECONNECT_MAX_DELAY_MS,
+    BATTLE_RECONNECT_INITIAL_DELAY_MS * (2 ** normalizedAttempt),
+  )
+}
 
 export const getBattleRecoveryTimeoutDecision = ({startNewBattle = false} = {}) => (
   startNewBattle ? {kind: "new"} : {kind: "menu"}

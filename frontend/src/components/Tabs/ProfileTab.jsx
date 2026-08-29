@@ -3,6 +3,7 @@ import axios from "axios"
 import {API_URL, BATTLE_URL, LB_URL} from "../../utils/urls.js"
 import {mergeBattleHistory, readActiveBattle, readBattleHistory, normalizeBattleHistory} from "../../utils/battleHistory.js"
 import {BattleHistory} from "./BattleHistory.jsx"
+import {fetchRelease} from "../../utils/release.js"
 import "./Tabs.css"
 
 export const ProfileTab = ({id, onNicknameChange}) => {
@@ -12,6 +13,7 @@ export const ProfileTab = ({id, onNicknameChange}) => {
   const [nicknameDraft, setNicknameDraft] = useState("")
   const [savingNickname, setSavingNickname] = useState(false)
   const [nicknameError, setNicknameError] = useState("")
+  const [release, setRelease] = useState(null)
   const [battleHistory, setBattleHistory] = useState(() => readBattleHistory(id))
   const [historyPage, setHistoryPage] = useState({cursor: "", hasMore: false, loading: false, error: ""})
   const historyLoadingRef = useRef(false)
@@ -54,6 +56,12 @@ export const ProfileTab = ({id, onNicknameChange}) => {
     }).finally(() => active && setLoading(false))
     return () => { active = false }
   }, [id, telegramUser?.first_name])
+
+  useEffect(() => {
+    let active = true
+    fetchRelease().then(value => active && setRelease(value))
+    return () => { active = false }
+  }, [])
 
   const loadMoreBattleHistory = useCallback(async () => {
     if (!historyPage.hasMore || historyLoadingRef.current) return
@@ -147,6 +155,11 @@ export const ProfileTab = ({id, onNicknameChange}) => {
       historyError={historyPage.error}
       onLoadMore={loadMoreBattleHistory}
     />
+    <div className="bs-release-badge" data-testid="installed-release">
+      <span>ВЕРСИЯ УСТАНОВКИ</span>
+      <strong>{release?.tag || "..."}</strong>
+      {release?.commit && <small>{release.commit.slice(0, 7)}</small>}
+    </div>
   </section>
 }
 

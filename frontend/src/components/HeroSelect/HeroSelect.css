@@ -1,5 +1,6 @@
 .hero-select { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; min-height: 100%; }
 .hero-select:has(.hero-roster) { z-index: 100; }
+.hero-select:has(.hero-roster--hidden) { z-index: 2; }
 .hero-select-loading { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 55vh; color: #fff; font: 900 14px/1 system-ui; text-shadow: 0 2px #1d2d6c; }
 .hero-select-loading span { width: 22px; height: 22px; border: 4px solid rgba(255,255,255,.28); border-top-color: #ffe142; border-radius: 50%; animation: hero-spin .7s linear infinite; }
 @keyframes hero-spin { to { transform: rotate(360deg); } }
@@ -61,6 +62,7 @@
 .hero-mode-picker{position:relative}.hero-mode-button{display:flex;align-items:center;gap:7px;height:100%;min-width:112px;padding:6px 10px;border:3px solid rgba(255,255,255,.8);border-radius:10px;background:linear-gradient(#5f8cea,#3157bc);color:#fff;box-shadow:0 5px #203b8f;text-align:left;cursor:pointer}.hero-mode-button span{display:block;color:#cfe1ff;font:900 7px/1 system-ui;letter-spacing:.8px}.hero-mode-button strong{font:950 11px/1 system-ui;text-shadow:0 2px #213b8e}.hero-mode-button i{margin-left:auto;color:#ffe143;font-style:normal}.hero-mode-button--team{border-color:#ffe143;background:linear-gradient(#8b4dc5,#56218c)}.hero-mode-menu{position:absolute;right:0;bottom:calc(100% + 9px);display:grid;gap:5px;width:210px;padding:7px;border:2px solid rgba(255,255,255,.65);border-radius:12px;background:#172d78;box-shadow:0 7px #0e1c51}.hero-mode-menu button{display:grid;gap:3px;border:0;border-radius:8px;padding:9px;background:transparent;color:#fff;text-align:left;cursor:pointer}.hero-mode-menu button:hover,.hero-mode-menu button.is-active{background:rgba(255,225,67,.17)}.hero-mode-menu strong{font:950 11px/1 system-ui}.hero-mode-menu small{color:#bcd3ff;font:700 9px/1.2 system-ui}
 
 .hero-roster { position: fixed; inset: 0; z-index: 100; overflow-y: auto; padding: max(14px,env(safe-area-inset-top)) 12px calc(25px + env(safe-area-inset-bottom)); color: #fff; background: radial-gradient(circle at 50% -20%, #4068d2, transparent 42%), linear-gradient(#263e9e,#162865); }
+.hero-roster--hidden { visibility: hidden; opacity: 0; pointer-events: none; }
 .hero-roster::before { content: ''; position: fixed; inset: 0; pointer-events: none; opacity: .09; background-image: repeating-linear-gradient(45deg, transparent 0 20px,#fff 21px 23px); }
 .hero-roster-header { position: relative; display: flex; justify-content: space-between; align-items: center; max-width: 760px; margin: 0 auto 12px; text-shadow: 0 3px #172759; }.hero-roster-header small { color: #a9c9ff; font: 900 9px system-ui; letter-spacing: 2px; }.hero-roster-header h2 { margin: 1px 0 0; font: 950 30px/1 Impact,system-ui; letter-spacing: 1px; }.hero-roster-header h2 span { color: #ffe143; font: 900 14px system-ui; }.hero-roster-header button { width: 43px; height: 43px; border: 3px solid #fff; border-radius: 11px; color: #fff; background: linear-gradient(#f66,#ce304b); box-shadow: 0 5px #8a2039; font-size: 18px; font-weight: 900; }
 .hero-roster-filter { position: relative; display: flex; justify-content: space-between; max-width: 760px; margin: 0 auto 10px; padding: 9px 12px; border: 2px solid rgba(255,255,255,.35); border-radius: 8px; background: rgba(16,31,86,.55); font: 800 10px system-ui; }
@@ -118,7 +120,7 @@
 .hero-portrait--stage:has(.hero-model-canvas) { width:300px; height:340px; transform:none; animation:model-stage-float 2.4s ease-in-out infinite; }
 .hero-model-canvas { display:block; width:100%; height:100%; }
 .hero-model-preview { position:relative; width:100%; height:100%; }
-.hero-model-preview--loading::before { content:""; position:absolute; z-index:1; left:50%; top:50%; width:24px; height:24px; margin:-16px 0 0 -16px; border:4px solid rgba(255,255,255,.3); border-top-color:#ffe143; border-radius:50%; animation:hero-spin .7s linear infinite; pointer-events:none; }
+.hero-model-loader { position:absolute; z-index:1; left:50%; top:50%; width:24px; height:24px; margin:-16px 0 0 -16px; border:4px solid rgba(255,255,255,.3); border-top-color:#ffe143; border-radius:50%; animation:hero-spin .7s linear infinite; pointer-events:none; }
 .hero-model-preview--loading .hero-model-canvas { opacity:0; }
 .hero-portrait:has(.hero-model-canvas) .hp-shadow { display:none; }
 .hero-card .hero-portrait:has(.hero-model-canvas) { top:3px; transform:translateX(-50%) scale(.74); transform-origin:50% 0; }

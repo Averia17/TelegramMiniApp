@@ -39,6 +39,21 @@ test("does not show a timed effect that would render as zero seconds", () => {
   assert.deepEqual(effects, [])
 })
 
+test("shows passable vine terrain as a visible slowdown effect", () => {
+  const effects = getActiveStatusEffects({terrainMultiplier: 0.68})
+
+  assert.deepEqual(effects.map(effect => [effect.id, effect.label, effect.icon, effect.remaining]), [
+    ["vineTerrain", "ЛОЗА: ЗАМЕДЛЕНИЕ", "🌿", null],
+  ])
+})
+
+test("does not show ground slowdown while flying over vines", () => {
+  const effects = getActiveStatusEffects({terrainMultiplier: 0.68, flying: 1.2})
+
+  assert.equal(effects.some(effect => effect.id === "vineTerrain"), false)
+  assert.equal(effects.some(effect => effect.id === "flying"), true)
+})
+
 test("keeps persistent effects visible without inventing a timer", () => {
   const effects = getActiveStatusEffects({poisoned: true, lunarShield: true}, {inBush: false})
 

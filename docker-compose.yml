@@ -5,11 +5,60 @@ include:
   - ./battle/docker-compose.yml
   - ./leaderboard/docker-compose.yml
   - ./party/docker-compose.yml
+  - ./news/docker-compose.yml
+
+name: dev
 
 services:
+  account:
+    container_name: dev-account
+    image: dev-account
+
+  bot:
+    container_name: dev-bot
+    image: dev-bot
+
+  db:
+    container_name: dev-db
+
+  redis:
+    container_name: dev-redis
+
+  shop:
+    container_name: dev-shop
+    image: dev-shop
+
+  shop-db:
+    container_name: dev-shop-db
+
+  battle:
+    container_name: dev-battle
+    image: dev-battle
+
+  battle-redis:
+    container_name: dev-battle-redis
+
+  leaderboard:
+    container_name: dev-leaderboard
+    image: dev-leaderboard
+
+  leaderboard-redis:
+    container_name: dev-leaderboard-redis
+
+  party:
+    container_name: dev-party
+    image: dev-party
+
+  news:
+    container_name: dev-news
+    image: dev-news
+
+  news-db:
+    container_name: dev-news-db
+
   frontend:
-    container_name: frontend
-    image: frontend
+    container_name: dev-frontend
+    image: dev-frontend
     restart: unless-stopped
     build:
       context: ./frontend
@@ -41,8 +90,8 @@ services:
       - app-net
 
   nginx:
-    container_name: nginx
-    image: nginx
+    container_name: dev-nginx
+    image: dev-nginx
     build:
       context: ./nginx
       dockerfile: Dockerfile
@@ -64,12 +113,14 @@ services:
         condition: service_healthy
       party:
         condition: service_healthy
+      news:
+        condition: service_started
     networks:
       - app-net
 
   prometheus:
     image: prom/prometheus:v2.54.1
-    container_name: prometheus
+    container_name: dev-prometheus
     restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -88,7 +139,7 @@ services:
 
   grafana:
     image: grafana/grafana:11.1.0
-    container_name: grafana
+    container_name: dev-grafana
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -103,7 +154,7 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.4.10
-    container_name: kafka
+    container_name: dev-kafka
     restart: unless-stopped
     expose:
       - "9092"
@@ -138,7 +189,7 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     restart: always
-    container_name: kafka-ui
+    container_name: dev-kafka-ui
     depends_on:
       kafka:
         condition: service_healthy
@@ -155,6 +206,28 @@ networks:
 
 volumes:
   frontend-node-modules:
+    name: telegramminiapp_frontend-node-modules
   kafka-data:
+    name: telegramminiapp_kafka-data
   prometheus-data:
+    name: telegramminiapp_prometheus-data
   grafana-data:
+    name: telegramminiapp_grafana-data
+  db-data:
+    name: telegramminiapp_db-data
+  redis-data:
+    name: telegramminiapp_redis-data
+  battle-redis-data:
+    name: telegramminiapp_battle-redis-data
+  battle-tmp:
+    name: telegramminiapp_battle-tmp
+  shop-db-data:
+    name: telegramminiapp_shop-db-data
+  leaderboard-redis-data:
+    name: telegramminiapp_leaderboard-redis-data
+  party-data:
+    name: telegramminiapp_party-data
+  news-db-data:
+    name: telegramminiapp_news-db-data
+  party-tmp:
+    name: telegramminiapp_party-tmp

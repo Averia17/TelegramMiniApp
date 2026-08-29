@@ -125,7 +125,7 @@ progression. Переносим только проверяемые принци
 | Super | `SuperChargePercent` фактически считает время от `LastPrimaryAt`; после reset герой стартует с `SuperCharge = 100` | Super ощущается как периодический таймер, а не как боевой payoff; стартовый бой может решаться готовым skill |
 | Gadget | Для большинства героев используется один глобальный cooldown `6500 ms` | Сила и частота разных гаджетов не оплачиваются одинаково |
 | Balance matrix | `combat_balance.go` считает только basic burst/DPS/range/HP/speed | В таблице отсутствуют control, mobility, sustain, setup и skill payoff; «сильный» hero может выглядеть слабым или наоборот |
-| Ростер | Аудит нашёл номинальный full-ammo burst Mina 495 при support-роле; в profile revision `2026-08-27-cadence-window` он снижен до 360 | Одно и то же число попаданий не означает одинаковый бой; sustain/peel/mark остаются источниками силы Mina, а Katty/Lumi/Needle зарабатывают силу через setup |
+| Ростер | Аудит нашёл номинальный full-ammo burst Mina 495 при support-роле; в profile revision `2026-08-27-skill-cooldown-source` он снижен до 360 | Одно и то же число попаданий не означает одинаковый бой; sustain/peel/mark остаются источниками силы Mina, а Katty/Lumi/Needle зарабатывают силу через setup |
 | Pickup economy | Legacy `health_crate`/`potion-red` pipeline удалён; hero и bat defeat создают только `health_boost` | Новый профиль имеет один HP-ресурс; осталось проверить budget/contest metrics и safe drop positions |
 | Боты | `updateBattleRoyaleBots` и team strategy используют приоритетную цепочку условий, а не общую utility-модель | Ситуация «низкое HP + видимый враг + рядом зелёный куб» не сравнивается как единый выбор |
 | Боты и HP-ресурс | `botPickupTarget` учитывает незаполненный cap `health_boost`; team и solo policies умеют идти к cube, а bat wind-up даёт hard retreat interrupt | Нужны role-aware action scores, hysteresis, assignments и contest metrics |
@@ -1051,8 +1051,10 @@ scenario report и помечается по роли, режиму и уров�
   проверкой wind-up и feedback phase; найден и исправлен незарегистрированный
   `kaze_dash`, который ошибочно попадал в fallback `cast` phase;
 - добавлена skill-conversion matrix для всех восьми героев: basic-vs-Super
-  delta и отдельный control/support signal; miss-path smoke подтверждает, что
-  ошибочный basic aim не наносит скрытый урон ни одному герою;
+  delta и отдельный control/support signal; skill-enabled round теперь также
+  требует положительный skill contribution и больший total outcome против
+  basic-only control; miss-path smoke подтверждает, что ошибочный basic aim не
+  наносит скрытый урон ни одному герою;
 - contract benchmark matrix теперь исполняет все 16 документированных matchup
   карт в solo и team и проверяет базовый impact обеих сторон; это runtime
   coverage contract cards, а не подмена human win-rate evidence;
@@ -1065,9 +1067,12 @@ scenario report и помечается по роли, режиму и уров�
   attack range создаёт радиальную дистанцию до перезарядки, а не остаётся в
   чистом strafe/orbit; guard повторно проходит вместе с counter-role steering;
 - после отдельного cadence-аудита per-hero reload values снижены и зафиксированы
-  в profile revision `2026-08-27-cadence-window`; каждый герой теперь имеет
+  в profile revision `2026-08-27-skill-cooldown-source`; каждый герой теперь имеет
   `reloadDeadTimeFraction <= 0.60`, а source/catalog/generated views
   проходят fingerprint validation;
+- per-hero Super/Gadget cooldown values теперь обязательны в CombatProfile и
+  читаются authoritative runtime из generated views; hardcoded hero cooldown
+  drift закрыт profile/runtime parity test;
 - balance/regression report дополнен `sustainedBasicDps`: это full-cycle
   значение с учётом reload, отделённое от burst-window DPS, чтобы cadence
   tuning не маскировал реальную длительную threat силу героя;
@@ -1095,8 +1100,8 @@ scenario report и помечается по роли, режиму и уров�
   synthetic combat feedback, team battle shell на 9 mobile viewport и
   touch-управление без overlap/overflow; static topology audit сохранил
   метрики и screenshots в `output/playwright/abandoned-city-map/team-battle-northern/global-audit`.
-- финальный automated sweep после `2026-08-27-cadence-window` прошёл:
-  `go test ./... -count=1`, 65 Python tooling tests, 600 frontend tests
+- финальный automated sweep после `2026-08-27-skill-cooldown-source` прошёл:
+  `go test ./... -count=1`, 67 Python tooling tests, 600 frontend tests
   (596 pass, 4 skipped), lint, build, catalog/profile/contract/generated-view
   validators и `git diff --check`;
   свежие mobile input/cancel, bat lifecycle и полный roster effect-phase
@@ -1104,7 +1109,7 @@ scenario report и помечается по роли, режиму и уров�
 - после финального sweep health-boost policy вынесена в generated profile:
   `teamFraction`, `maxActivePickups` и runtime parity test добавлены; свежий
   fingerprint и текущие playtest/rollout scaffolds должны использоваться из
-  `output/*-v8`/`report-v5`, а прежние версии считаются историческими.
+  `output/*-v9`/`report-v6`, а прежние версии считаются историческими.
 
 ## Оставшиеся gates и ограничения evidence
 
@@ -1366,7 +1371,7 @@ catalog generator и renderer contracts должны иметь одного в�
 ## Решения, закрытые перед Phase 1
 
 1. Phase-1 default profile утверждён и версионирован как
-   `2026-08-27-cadence-window`; актуальный fingerprint находится в
+   `2026-08-27-skill-cooldown-source`; актуальный fingerprint находится в
    `docs/combat-profile.fingerprint.json`.
 2. Схема generated Go/JS views утверждена: редактируемым source of truth
    остаётся `docs/combat-profile.json`, views и fingerprint проверяются

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"party/deployment"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -1357,6 +1359,18 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		return
 	}
+	if r.URL.Path == "/ready" {
+		if deployment.IsDraining() {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "draining"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/internal/deployment/") {
+		s.handleDeployment(w, r)
+		return
+	}
 	if r.Method == "GET" && r.URL.Path == "/party/ws" {
 		s.handleInviteWebSocket(w, r)
 		return
@@ -1701,6 +1715,10 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "POST" && strings.HasPrefix(r.URL.Path, "/party/") && strings.HasSuffix(r.URL.Path, "/start") {
+		if deployment.IsDraining() {
+			http.Error(w, "Идёт обновление. Новые бои временно недоступны.", http.StatusServiceUnavailable)
+			return
+		}
 		id := s.requireUser(w, r)
 		if id == "" {
 			return
@@ -1773,6 +1791,27 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.NotFound(w, r)
+}
+
+func (s *server) handleDeployment(w http.ResponseWriter, r *http.Request) {
+	expected := os.Getenv("DEPLOY_ADMIN_TOKEN")
+	provided := r.Header.Get("X-Deployment-Token")
+	if expected == "" || provided == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) != 1 {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	message := "Идёт обновление. Новые бои временно недоступны."
+	switch {
+	case r.Method == http.MethodPost && r.URL.Path == "/internal/deployment/drain":
+		deployment.Begin(message)
+	case r.Method == http.MethodPost && r.URL.Path == "/internal/deployment/resume":
+		deployment.Resume()
+	case r.Method == http.MethodGet && r.URL.Path == "/internal/deployment/status":
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, deployment.SnapshotState())
 }
 
 func consumeResults(state *store, addr string) {

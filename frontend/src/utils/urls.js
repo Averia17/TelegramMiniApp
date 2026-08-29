@@ -14,6 +14,7 @@ export const WS_URL = `${import.meta.env.VITE_WEBSOCKET_URL || getBaseUrl()}/api
 export const LB_URL = `${import.meta.env.VITE_LEADERBOARD_URL || getHttpUrl()}/api/leaderboard`
 export const PARTY_URL = `${import.meta.env.VITE_PARTY_URL || getHttpUrl()}/api/party`
 export const PARTY_WS_URL = `${import.meta.env.VITE_PARTY_WS_URL || getBaseUrl()}/api/party/ws`
+export const NEWS_URL = `${import.meta.env.VITE_NEWS_URL || getHttpUrl()}/api/news`
 const configuredPartySize = Number(import.meta.env.VITE_MAX_PARTY_SIZE)
 export const MAX_PARTY_SIZE = Number.isInteger(configuredPartySize) && configuredPartySize >= 2 && configuredPartySize <= 9
   ? configuredPartySize

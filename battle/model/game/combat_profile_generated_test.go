@@ -109,3 +109,23 @@ func TestCombatRuntimeAbilityDefaultsAreDeclaredInGeneratedProfile(t *testing.T)
 		t.Fatalf("runtime AI defaults=%v/%v/%v/%v, profile=%v/%v/%v/%v", BotLowHealthRetreatFraction, BotCriticalHealthFraction, BotSuperUseAdvantageFraction, BotPickupContestHealthFraction, profile.Defaults.AI.LowHealthRetreatFraction, profile.Defaults.AI.CriticalHealthRetreatFraction, profile.Defaults.AI.SuperUseAdvantageFraction, profile.Defaults.AI.PickupContestHealthFraction)
 	}
 }
+
+func TestAbilityCooldownsAreReadFromGeneratedHeroContracts(t *testing.T) {
+	if len(loadedCombatProfileRuntimeDefaults.Heroes) != len(Heroes) {
+		t.Fatalf("generated hero cooldown contracts=%d, want %d", len(loadedCombatProfileRuntimeDefaults.Heroes), len(Heroes))
+	}
+	for heroName, heroID := range combatProfileHeroIDs {
+		contract, ok := loadedCombatProfileRuntimeDefaults.Heroes[heroID]
+		if !ok {
+			t.Fatalf("missing generated cooldown contract for %s (%s)", heroName, heroID)
+		}
+		primary, primaryOK := profileAbilityCooldownMs(heroName, "primary")
+		secondary, secondaryOK := profileAbilityCooldownMs(heroName, "secondary")
+		if !primaryOK || !secondaryOK || primary != contract.Super.CooldownMs || secondary != contract.Gadget.CooldownMs {
+			t.Fatalf("%s cooldowns=%d/%d, generated=%d/%d, ok=%v/%v", heroName, primary, secondary, contract.Super.CooldownMs, contract.Gadget.CooldownMs, primaryOK, secondaryOK)
+		}
+		if AbilityCooldownMs(heroName, "primary") != contract.Super.CooldownMs || AbilityCooldownMs(heroName, "secondary") != contract.Gadget.CooldownMs {
+			t.Fatalf("public cooldown helper drifted for %s", heroName)
+		}
+	}
+}

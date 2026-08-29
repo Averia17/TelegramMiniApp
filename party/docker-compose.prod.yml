@@ -1,0 +1,54 @@
+services:
+  party:
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    image: "${PARTY_IMAGE:-party}"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+      - ../.env.prod
+    expose:
+      - "8002"
+    environment:
+      PORT: 8002
+      KAFKA_ADDR: kafka:9092
+      ACCOUNT_URL: http://account:8000
+      MAX_PARTY_SIZE: "${MAX_PARTY_SIZE:-3}"
+      PARTY_STORE_PATH: /data/party-store.json
+      ENVIRONMENT: production
+      DEPLOY_ADMIN_TOKEN: "${DEPLOY_ADMIN_TOKEN:?DEPLOY_ADMIN_TOKEN must be set for prod}"
+      APP_VERSION: "${APP_VERSION:-dev}"
+      GIT_SHA: "${GIT_SHA:-unknown}"
+    restart: always
+    depends_on:
+      kafka:
+        condition: service_healthy
+      account:
+        condition: service_healthy
+    volumes:
+      - party-data:/data
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8002/health | grep -q 'status'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+
+networks:
+  app-net:
+
+volumes:
+  party-data:

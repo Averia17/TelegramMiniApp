@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"battle/deployment"
 	"battle/model/game"
 	mroom "battle/model/room"
 	"battle/observability"
 	"battle/provider"
 	sroom "battle/service/room"
+	"crypto/subtle"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -68,9 +71,14 @@ func NewHandler() *Handler {
 func (h *Handler) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/ws", h.HandleWebSocket)
 	mux.HandleFunc("/health", h.HandleHealth)
+	mux.HandleFunc("/ready", h.HandleReady)
+	mux.HandleFunc("/admin/deployment/drain", h.HandleDeploymentDrain)
+	mux.HandleFunc("/admin/deployment/resume", h.HandleDeploymentResume)
+	mux.HandleFunc("/admin/deployment/status", h.HandleDeploymentStatus)
 	mux.HandleFunc("/heroes", h.HandleHeroes)
 	mux.HandleFunc("/map-preview", h.HandleMapPreview)
 	mux.HandleFunc("/history", h.HandleBattleHistory)
+	mux.HandleFunc("/maintenance", h.HandleMaintenance)
 	mux.Handle("/metrics", observability.Default)
 }
 
@@ -96,6 +104,125 @@ func (h *Handler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"ok"}`))
+}
+
+func (h *Handler) HandleReady(w http.ResponseWriter, r *http.Request) {
+	if deployment.IsDraining() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "draining"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
+
+func (h *Handler) HandleDeploymentDrain(w http.ResponseWriter, r *http.Request) {
+	if !deploymentAdminAuthorized(r) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	message := "Идёт обновление. Новые бои временно недоступны."
+	var request struct {
+		Tag string `json:"tag"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&request)
+	}
+	if validReleaseTag(request.Tag) {
+		message += " Загружается " + request.Tag + "."
+	}
+	if deployment.Begin(message) {
+		mroom.BroadcastMaintenance(message)
+	}
+	writeDeploymentStatus(w)
+}
+
+func (h *Handler) HandleMaintenance(w http.ResponseWriter, _ *http.Request) {
+	snapshot := deployment.SnapshotState()
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"draining": snapshot.Draining,
+		"message":  snapshot.Message,
+	})
+}
+
+func validReleaseTag(tag string) bool {
+	if len(tag) < 6 || len(tag) > 32 || tag[0] != 'v' {
+		return false
+	}
+	parts := strings.Split(tag[1:], ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+		for index := 0; index < len(part); index++ {
+			if part[index] < '0' || part[index] > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (h *Handler) HandleDeploymentResume(w http.ResponseWriter, r *http.Request) {
+	if !deploymentAdminAuthorized(r) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	deployment.Resume()
+	writeDeploymentStatus(w)
+}
+
+func (h *Handler) HandleDeploymentStatus(w http.ResponseWriter, r *http.Request) {
+	if !deploymentAdminAuthorized(r) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	writeDeploymentStatus(w)
+}
+
+func deploymentAdminAuthorized(r *http.Request) bool {
+	expected := os.Getenv("DEPLOY_ADMIN_TOKEN")
+	provided := r.Header.Get("X-Deployment-Token")
+	return expected != "" && provided != "" && subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) == 1
+}
+
+func writeDeploymentStatus(w http.ResponseWriter) {
+	snapshot := deployment.SnapshotState()
+	activeMatches := mroom.ActiveBattleCount()
+	matchQueue := sroom.MatchQueueLength()
+	observability.Default.SetGauge("battle_active_matches", "Currently running battles", float64(activeMatches), nil)
+	observability.Default.SetGauge("battle_match_queue", "Clients waiting for matchmaking", float64(matchQueue), nil)
+	draining := 0.0
+	if snapshot.Draining {
+		draining = 1
+	}
+	observability.Default.SetGauge("deployment_draining", "Whether this battle instance is draining for deployment", draining, nil)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"draining":       snapshot.Draining,
+		"message":        snapshot.Message,
+		"started_at":     snapshot.StartedAt,
+		"active_matches": activeMatches,
+		"match_queue":    matchQueue,
+	})
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 func (h *Handler) HandleHeroes(w http.ResponseWriter, r *http.Request) {
@@ -280,6 +407,10 @@ func clientWritePump(c *mroom.Client) {
 }
 
 func HandleJoin(c *mroom.Client, data []byte) {
+	if deployment.IsDraining() {
+		sendError(c, "Обновление уже загружается, новые бои временно недоступны")
+		return
+	}
 	var req struct {
 		Type       string `json:"type"`
 		PlayerName string `json:"playerName"`
@@ -333,6 +464,10 @@ func HandleJoin(c *mroom.Client, data []byte) {
 }
 
 func HandleJoinById(c *mroom.Client, data []byte) {
+	if deployment.IsDraining() {
+		sendError(c, "Обновление уже загружается, новые бои временно недоступны")
+		return
+	}
 	var req struct {
 		Type       string `json:"type"`
 		RoomId     string `json:"roomId"`
@@ -477,6 +612,10 @@ func HandleRecoverBattle(c *mroom.Client, data []byte) {
 }
 
 func HandleFindMatch(c *mroom.Client, data []byte) {
+	if deployment.IsDraining() {
+		sendError(c, "Обновление уже загружается, новые бои временно недоступны")
+		return
+	}
 	var req struct {
 		Type        string `json:"type"`
 		PlayerName  string `json:"playerName"`

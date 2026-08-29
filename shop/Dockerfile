@@ -6,4 +6,4 @@ COPY pyproject.toml .
 COPY . .
 RUN pip install --no-cache-dir -e .
 
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

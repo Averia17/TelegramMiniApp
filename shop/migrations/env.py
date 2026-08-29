@@ -3,7 +3,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from config import load_config
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -59,10 +59,15 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
-
-    with context.begin_transaction():
-        context.run_migrations()
+    connection.execute(text("SELECT pg_advisory_lock(:lock_key)"), {"lock_key": 71102})
+    try:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+    finally:
+        connection.execute(
+            text("SELECT pg_advisory_unlock(:lock_key)"), {"lock_key": 71102}
+        )
 
 
 async def run_async_migrations() -> None:

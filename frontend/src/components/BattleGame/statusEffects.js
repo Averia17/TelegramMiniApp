@@ -27,6 +27,11 @@ export const getActiveStatusEffects = (player = {}, {inBush = false} = {}) => {
     addEffect(effects, {id: "bush", label: "СПРЯТАН В КУСТАХ", icon: "🌿", tone: "concealed"})
   }
 
+  const terrainMultiplier = Number(player.terrainMultiplier)
+  if (terrainMultiplier > 0 && terrainMultiplier < 0.999 && !(Number(player.flying) > 0)) {
+    addEffect(effects, {id: "vineTerrain", label: "ЛОЗА: ЗАМЕДЛЕНИЕ", icon: "🌿", tone: "negative"})
+  }
+
   for (const definition of TIMED_EFFECTS) {
     const remaining = Number(player[definition.property] || 0)
     if (remaining >= MIN_VISIBLE_TIMED_EFFECT_SECONDS) addEffect(effects, definition, remaining)

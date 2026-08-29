@@ -14,6 +14,7 @@ export const HeroSelect = ({onSelect, selectedHero, battleMode = "solo", onModeC
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [rosterOpen, setRosterOpen] = useState(false)
+  const [rosterVisited, setRosterVisited] = useState(false)
   const [modeOpen, setModeOpen] = useState(false)
 
   useEffect(() => {
@@ -45,6 +46,17 @@ export const HeroSelect = ({onSelect, selectedHero, battleMode = "solo", onModeC
     const timer = window.setTimeout(warm, 150)
     return () => window.clearTimeout(timer)
   }, [heroes, selectedHero])
+
+  useEffect(() => {
+    if (!heroes.length) return undefined
+    const warmRoster = () => assetRegistry.preloadHeroes(heroes.map(hero => hero.name), 2)
+    if (typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(warmRoster, {timeout: 1800})
+      return () => window.cancelIdleCallback?.(idleId)
+    }
+    const timer = window.setTimeout(warmRoster, 900)
+    return () => window.clearTimeout(timer)
+  }, [heroes])
 
   const selected = useMemo(
     () => heroes.find(hero => hero.name === selectedHero) || heroes[0],
@@ -118,7 +130,7 @@ export const HeroSelect = ({onSelect, selectedHero, battleMode = "solo", onModeC
       </div>
 
       <div className="hero-lobby-actions">
-        <button className="hero-roster-button" onClick={() => setRosterOpen(true)}>
+        <button className="hero-roster-button" onClick={() => { setRosterVisited(true); setRosterOpen(true) }}>
           <span className="hero-roster-grid"><i/><i/><i/><i/></span>
           БОЙЦЫ
           <b>{heroes.length}</b>
@@ -134,8 +146,8 @@ export const HeroSelect = ({onSelect, selectedHero, battleMode = "solo", onModeC
         </div>
       </div>
 
-      {rosterOpen && (
-        <div className="hero-roster">
+      {rosterVisited && (
+        <div className={`hero-roster ${rosterOpen ? "" : "hero-roster--hidden"}`} aria-hidden={!rosterOpen}>
           <header className="hero-roster-header">
             <div>
               <small>КОЛЛЕКЦИЯ</small>

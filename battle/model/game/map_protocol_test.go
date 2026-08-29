@@ -54,6 +54,22 @@ func TestNewMapJSONPublishesPassableTeamFeatures(t *testing.T) {
 	}
 }
 
+func TestNewMapJSONPublishesRoundTeamTowerColliders(t *testing.T) {
+	canonical := gamemap.GenerateTeamBattle(gamemap.CanonicalTeamBattleSeed)
+	got := NewMapJSON(gamemap.CanonicalTeamBattleNorthernID, canonical, 0, true)
+
+	towers := 0
+	for _, wall := range got.Walls {
+		if wall.Type != "objective" || wall.ColliderRadius <= 0 {
+			continue
+		}
+		towers++
+	}
+	if towers != 4 {
+		t.Fatalf("serialized round tower colliders = %d, want 4", towers)
+	}
+}
+
 func TestNewMapJSONPublishesNorthernTeamMapIdentity(t *testing.T) {
 	canonical := gamemap.GenerateTeamBattle(gamemap.CanonicalTeamBattleNorthernSeed)
 	got := NewMapJSON("team-battle-northern", canonical, 2, true)

@@ -934,10 +934,10 @@ test("mobile camera starts on the player and fits the map after rotation", () =>
   const mapWidth = 1024
   const mapHeight = 768
 
-  const portraitVertical = fitVerticalSpanToMap(27, portraitAspect, mapWidth, mapHeight)
+  const portraitVertical = fitVerticalSpanToMap(30, portraitAspect, mapWidth, mapHeight)
   const landscapeVertical = fitVerticalSpanToMap(31, landscapeAspect, mapWidth, mapHeight)
 
-  assert.equal(portraitVertical, 27)
+  assert.equal(portraitVertical, 30)
   assert.ok(landscapeVertical < 31)
   assert.ok(portraitVertical / Math.sin(THREE.MathUtils.degToRad(55)) <= mapHeight * WORLD_SCALE)
   assert.ok(landscapeVertical * landscapeAspect <= mapWidth * WORLD_SCALE)
@@ -949,16 +949,24 @@ test("mobile camera starts on the player and fits the map after rotation", () =>
   assert.equal(camera.target.z, 384 * WORLD_SCALE)
 })
 
+test("mobile camera uses a wider vertical frame to calm perceived movement", () => {
+  const camera = new CameraRig()
+
+  camera.resize(390, 844)
+
+  assert.equal(camera.preferredVertical, 30)
+})
+
 test("camera keeps the last hero position when the local hero dies", () => {
   const camera = new CameraRig()
   const map = {width: 1024, height: 768}
 
   camera.resize(390, 844)
-  camera.follow({x: 180, y: 260}, map, 1 / 60)
+  camera.follow({x: 180, y: 420}, map, 1 / 60)
   camera.follow(null, map, 1 / 60)
 
   assert.equal(camera.target.x, 180 * WORLD_SCALE)
-  assert.equal(camera.target.z, 260 * WORLD_SCALE)
+  assert.equal(camera.target.z, 420 * WORLD_SCALE)
 })
 
 test("camera can be panned with a screen drag without moving the tracked hero", () => {
@@ -2723,6 +2731,23 @@ test("team structures mount world-space HP bars and protect the town hall visual
   assert.equal(tower.getObjectByName("team-tower-broken-roof").visible, true)
   assert.ok(tower.getObjectByName("team-tower-broken-crack"))
   assert.equal(hall.userData.objectiveProtection.visible, false)
+  renderer.dispose()
+})
+
+test("destroyed team towers hide their attack range mesh", () => {
+  const root = new THREE.Group()
+  const renderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+  const towerState = {id: "red-tower", type: "tower", team: "Red", x: 700, y: 300, lives: 1000, maxLives: 1000, attackRange: 620}
+
+  renderer.syncObjectives([towerState])
+  const tower = renderer.objectiveObjects.get("red-tower")
+  const rangeRing = tower.userData.objectiveRangeRing
+  assert.equal(rangeRing.visible, true)
+
+  renderer.syncObjectives([{...towerState, lives: 0}])
+
+  assert.equal(rangeRing.visible, false)
+  assert.equal(rangeRing.material.opacity, 0)
   renderer.dispose()
 })
 

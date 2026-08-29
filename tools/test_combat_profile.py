@@ -3,13 +3,12 @@ import sys
 import unittest
 from pathlib import Path
 
-
 TOOLS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS_DIR))
 
 from generate_combat_profile import validate_generated_artifacts
-from validate_hero_combat_contracts import validate as validate_hero_combat_contracts
 from validate_combat_profile import read_catalog, read_profile, validate_profile
+from validate_hero_combat_contracts import validate as validate_hero_combat_contracts
 
 
 class CombatProfileValidationTests(unittest.TestCase):
@@ -20,7 +19,11 @@ class CombatProfileValidationTests(unittest.TestCase):
         self.assertEqual(validate_profile(profile, catalog), [])
         self.assertEqual(
             set(profile["heroes"]),
-            {hero["id"] for hero in catalog["heroes"] if hero.get("status") == "active"},
+            {
+                hero["id"]
+                for hero in catalog["heroes"]
+                if hero.get("status") == "active"
+            },
         )
 
     def test_profile_separates_green_hp_cube_from_optional_non_hp_loot(self):
@@ -39,6 +42,23 @@ class CombatProfileValidationTests(unittest.TestCase):
         self.assertEqual(health_boost["ttlMs"], 30000)
         self.assertFalse(health_boost["healsCurrentLives"])
 
+    def test_every_hero_ability_cooldown_is_profile_owned(self):
+        profile = read_profile()
+
+        for hero_id, contract in profile["heroes"].items():
+            self.assertIsInstance(contract["super"]["cooldownMs"], int, hero_id)
+            self.assertGreater(contract["super"]["cooldownMs"], 0, hero_id)
+            self.assertIsInstance(contract["gadget"]["cooldownMs"], int, hero_id)
+            self.assertGreater(contract["gadget"]["cooldownMs"], 0, hero_id)
+
+    def test_validator_rejects_missing_ability_cooldown(self):
+        profile = copy.deepcopy(read_profile())
+        profile["heroes"]["needle"]["super"].pop("cooldownMs")
+
+        errors = validate_profile(profile, read_catalog())
+
+        self.assertTrue(any("needle.super.cooldownMs" in error for error in errors))
+
     def test_validator_rejects_health_boost_that_heals_current_lives(self):
         profile = copy.deepcopy(read_profile())
         profile["defaults"]["healthBoost"]["healsCurrentLives"] = True
@@ -53,7 +73,9 @@ class CombatProfileValidationTests(unittest.TestCase):
 
         errors = validate_profile(profile, read_catalog())
 
-        self.assertTrue(any("teamFraction must be <= fraction" in error for error in errors))
+        self.assertTrue(
+            any("teamFraction must be <= fraction" in error for error in errors)
+        )
 
     def test_validator_rejects_ai_fraction_outside_normalized_range(self):
         profile = copy.deepcopy(read_profile())
@@ -61,7 +83,9 @@ class CombatProfileValidationTests(unittest.TestCase):
 
         errors = validate_profile(profile, read_catalog())
 
-        self.assertTrue(any("criticalHealthRetreatFraction" in error for error in errors))
+        self.assertTrue(
+            any("criticalHealthRetreatFraction" in error for error in errors)
+        )
 
     def test_validator_rejects_a_second_health_pickup_type(self):
         profile = copy.deepcopy(read_profile())
@@ -89,7 +113,15 @@ class CombatProfileValidationTests(unittest.TestCase):
 
     def test_every_hero_declares_a_role_power_budget_vector(self):
         profile = read_profile()
-        budget_keys = {"threat", "control", "safety", "mobility", "sustain", "information", "objectiveValue"}
+        budget_keys = {
+            "threat",
+            "control",
+            "safety",
+            "mobility",
+            "sustain",
+            "information",
+            "objectiveValue",
+        }
 
         for hero_id, contract in profile["heroes"].items():
             vector = contract.get("powerBudgetVector")

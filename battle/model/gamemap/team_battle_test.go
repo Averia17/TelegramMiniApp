@@ -135,6 +135,21 @@ func TestTeamBattlePublishesBlockingCollisionForEveryObjective(t *testing.T) {
 	}
 }
 
+func TestTeamBattleTowerCollidersCoverVisibleFoundations(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	for _, wall := range mapValue.Collisions {
+		if wall == nil || wall.Type != "objective" || wall.ColliderRadius <= 0 {
+			continue
+		}
+		// The live tower foundation is wider than its shaft. Keep the
+		// authoritative body outside that visible base instead of allowing the
+		// hero to stand inside the ring shown in the battle view.
+		if wall.ColliderRadius < 34 {
+			t.Fatalf("tower collider radius = %.1f, want at least 34 for visible foundation", wall.ColliderRadius)
+		}
+	}
+}
+
 func TestTeamBattleObjectiveCollidersDoNotExpandToWholeTileCells(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
 
@@ -159,6 +174,51 @@ func TestTeamBattleObjectiveCollidersDoNotExpandToWholeTileCells(t *testing.T) {
 			t.Fatalf("objective %s collider = (%.1f,%.1f)-(%.1f,%.1f), want exact radius %.1f",
 				objective.ID, collider.MinX, collider.MinY, collider.MaxX, collider.MaxY, collisionRadius)
 		}
+	}
+}
+
+func TestTeamBattleTowerLeavesAUsableLaneBesideBaseCover(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	var tower *MapObjective
+	for index := range mapValue.Objectives {
+		if mapValue.Objectives[index].ID == "blue-tower-east" {
+			tower = &mapValue.Objectives[index]
+			break
+		}
+	}
+	if tower == nil {
+		t.Fatal("blue tower was not generated")
+	}
+
+	var towerCollider *geometry.WallTile
+	for _, wall := range mapValue.Collisions {
+		if wall.Type == "objective" && tower.X >= wall.MinX && tower.X <= wall.MaxX && tower.Y >= wall.MinY && tower.Y <= wall.MaxY {
+			towerCollider = wall
+			break
+		}
+	}
+	if towerCollider == nil {
+		t.Fatal("blue tower has no collider")
+	}
+	if towerCollider.ColliderRadius <= 0 {
+		t.Fatal("blue tower collider must follow the round tower footprint")
+	}
+
+	// This is the narrow lane beside the eastern tower. A 16 px hero needs
+	// 32 px for its body; keep a small eight-pixel control margin too.
+	const heroDiameterWithMargin = 40.0
+	nearestCoverMaxX := -math.MaxFloat64
+	for _, wall := range mapValue.Collisions {
+		if wall.Type != teamBattleCityObjectCollisionType || wall.MaxX >= towerCollider.MinX || wall.MaxY < towerCollider.MinY || wall.MinY > towerCollider.MaxY {
+			continue
+		}
+		nearestCoverMaxX = math.Max(nearestCoverMaxX, wall.MaxX)
+	}
+	if nearestCoverMaxX == -math.MaxFloat64 {
+		t.Fatal("blue tower lane has no adjacent base cover")
+	}
+	if gap := towerCollider.MinX - nearestCoverMaxX; gap < heroDiameterWithMargin {
+		t.Fatalf("tower lane is only %.1f px wide, want at least %.1f px", gap, heroDiameterWithMargin)
 	}
 }
 
@@ -641,6 +701,43 @@ func TestTeamBattleAddsMirroredRuinsVinesAndNearbyBatLairs(t *testing.T) {
 	}
 }
 
+func TestTeamBattleAddsContinuousThornVinePerimetersAroundRuins(t *testing.T) {
+	mapValue := GenerateTeamBattleClassic(CanonicalTeamBattleSeed)
+	byCell := make(map[[2]int]string)
+	for _, wall := range mapValue.Collisions {
+		if wall == nil {
+			continue
+		}
+		byCell[[2]int{int(wall.MinX / 40), int(wall.MinY / 40)}] = wall.Type
+	}
+
+	// The published map is cropped by five design cells on every side.
+	anchors := [][2]int{{13, 39}, {24, 53}, {38, 62}}
+	for _, anchor := range anchors {
+		foundRun := false
+		for _, y := range []int{anchor[1] - 2, anchor[1] + 2} {
+			run := 0
+			for x := anchor[0] - 3; x <= anchor[0]+3; x++ {
+				if byCell[[2]int{x, y}] == "thorn_vine" {
+					run++
+					if run >= 5 {
+						foundRun = true
+						break
+					}
+				} else {
+					run = 0
+				}
+			}
+			if foundRun {
+				break
+			}
+		}
+		if !foundRun {
+			t.Fatalf("ruin at published cell (%d,%d) has no continuous thorn-vine perimeter run", anchor[0], anchor[1])
+		}
+	}
+}
+
 func TestTeamBattleAddsPassableSlowVineClumps(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
 	vines := 0
@@ -724,8 +821,8 @@ func TestNorthernTeamBattleAddsEnterableCastleCompound(t *testing.T) {
 			}
 		}
 	}
-	if counts["castle_keep"] != 2 || counts["castle_gate"] != 4 || counts["castle_courtyard"] != 2 || counts["castle_detail"] != 4 || counts["castle_house"] != 8 || counts["castle_market"] != 2 || counts["castle_street"] != 2 || counts["castle_bastion"] != 8 {
-		t.Fatalf("castle features = %#v, want keep/gate/courtyard/detail/house/market/street/bastion 2/4/2/4/8/2/2/8", counts)
+	if counts["castle_keep"] != 2 || counts["castle_gate"] != 4 || counts["castle_courtyard"] != 2 || counts["castle_detail"] != 4 || counts["castle_house"] != 8 || counts["castle_market"] != 2 || counts["castle_street"] != 2 || counts["castle_bastion"] != 0 {
+		t.Fatalf("castle features = %#v, want keep/gate/courtyard/detail/house/market/street/bastion 2/4/2/4/8/2/2/0", counts)
 	}
 	for _, feature := range classic.Features {
 		if feature.Type == "castle_keep" || feature.Type == "castle_gate" || feature.Type == "castle_courtyard" || feature.Type == "castle_detail" || feature.Type == "castle_house" || feature.Type == "castle_market" || feature.Type == "castle_street" || feature.Type == "castle_bastion" {
@@ -807,6 +904,32 @@ func TestTeamBattleAddsLivingMirroredBaseDressing(t *testing.T) {
 	}
 }
 
+func TestNorthernTeamBattleRemovesCastleRubbleAndBastions(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	for _, feature := range mapValue.Features {
+		if feature.Type == "castle_bastion" {
+			t.Fatalf("castle bastion %s should not be generated", feature.ID)
+		}
+	}
+	castleRubbleCells := [][2]int{
+		{19, 47}, {31, 47}, {47, 19}, {47, 31},
+		{19, 37}, {31, 37}, {37, 19}, {37, 31},
+		{21, 48}, {29, 48}, {48, 21}, {48, 29},
+		{20, 36}, {30, 36}, {36, 20}, {36, 30},
+	}
+	for _, wall := range mapValue.Collisions {
+		if wall == nil || wall.Type != "building_rubble" {
+			continue
+		}
+		cell := [2]int{int(wall.MinX / 40), int(wall.MinY / 40)}
+		for _, castleCell := range castleRubbleCells {
+			if cell == castleCell {
+				t.Fatalf("castle rubble remains at %v", cell)
+			}
+		}
+	}
+}
+
 func TestTeamBattleCityFramesEveryBridgeApproach(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
 	bridges := [][2]int{{17, 17}, {34, 34}, {52, 52}}
@@ -837,6 +960,56 @@ func TestTeamBattleCityFramesEveryBridgeApproach(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("missing authored city district %q", id)
+		}
+	}
+}
+
+func TestTeamBattleKeepsCastleBastionsOutOfBridgeClearance(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleSeed)
+	var bridges []MapFeature
+	for _, feature := range mapValue.Features {
+		if feature.Type == "river_bridge" {
+			bridges = append(bridges, feature)
+		}
+	}
+	for _, feature := range mapValue.Features {
+		if feature.Type != "castle_bastion" {
+			continue
+		}
+		for _, bridge := range bridges {
+			distance := math.Hypot(feature.X-bridge.X, feature.Y-bridge.Y) / 40
+			if distance <= 5 {
+				t.Fatalf("castle bastion %s is too close to bridge %s: %.1f tiles", feature.ID, bridge.ID, distance)
+			}
+		}
+	}
+}
+
+func TestNorthernTeamBattleKeepsCastleRoadCornersClear(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	for _, cell := range [][2]int{{31, 47}, {47, 31}} {
+		for _, wall := range mapValue.Collisions {
+			if wall == nil || wall.Type != "building_rubble" {
+				continue
+			}
+			if int(wall.MinX/40) == cell[0] && int(wall.MinY/40) == cell[1] {
+				t.Fatalf("castle road corner %v is occupied by brown rubble", cell)
+			}
+		}
+	}
+}
+
+func TestNorthernCastleStreetKeepsCentralGateApproachOpen(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	for _, cell := range [][2]int{{25, 47}, {25, 48}, {25, 49}, {25, 50}, {25, 51}} {
+		point := &geometry.CircleBody{X: (float64(cell[0]) + .5) * 40, Y: (float64(cell[1]) + .5) * 40, Radius: 14}
+		for _, wall := range mapValue.Collisions {
+			if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
+				continue
+			}
+			if geometry.CollidesCircleWithWall(point, wall) {
+				t.Fatalf("central castle street cell %v is blocked by %s", cell, wall.Type)
+			}
 		}
 	}
 }
@@ -908,8 +1081,54 @@ func TestTeamBattleCityObjectCollidersAreTightAndBlocking(t *testing.T) {
 			t.Fatalf("city circle collider bounds do not match radius: %+v", wall)
 		}
 	}
-	if count != 122 {
-		t.Fatalf("city object colliders = %d, want 122 authored hard-prop, structural building, castle, base-dressing and roof footprints", count)
+	if count != 148 {
+		t.Fatalf("city object colliders = %d, want 148 authored hard-prop, structural building, castle and base-dressing footprints", count)
+	}
+}
+
+func TestTeamBattleEveryPhysicalFeatureHasBlockingFootprint(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	features := make(map[string]MapFeature, len(mapValue.Features))
+	for _, feature := range mapValue.Features {
+		features[feature.ID] = feature
+	}
+
+	// Probe the visible ground contact of every feature family that contains a
+	// solid gameplay prop. Gate centres, roads, courtyards, castle details, and
+	// plazas are intentionally omitted because those are authored as walkable
+	// spaces or route dressing.
+	probes := []struct {
+		id     string
+		localX float64
+		localY float64
+		label  string
+	}{
+		{id: "castle-ashen-ward-gate", localX: -1.55, label: "castle gate tower"},
+		{id: "city-watchtower", label: "city watchtower"},
+		{id: "city-shrine-crossroads", label: "roadside shrine"},
+		{id: "city-detail-wagon-yard", label: "wagon yard"},
+		{id: "city-detail-ruined-cottage", label: "ruined cottage"},
+	}
+	for _, probe := range probes {
+		feature, ok := features[probe.id]
+		if !ok {
+			t.Fatalf("missing physical feature %q", probe.id)
+		}
+		scale := feature.Scale
+		cos, sin := math.Cos(feature.Rotation), math.Sin(feature.Rotation)
+		worldX := feature.X + (probe.localX*scale*cos-probe.localY*scale*sin)*40
+		worldY := feature.Y + (probe.localX*scale*sin+probe.localY*scale*cos)*40
+		body := &geometry.CircleBody{X: worldX, Y: worldY, Radius: .1}
+		blocked := false
+		for _, wall := range mapValue.Collisions {
+			if wall != nil && geometry.IsBlockingWall(wall.Type) && geometry.CollidesCircleWithWall(body, wall) {
+				blocked = true
+				break
+			}
+		}
+		if !blocked {
+			t.Fatalf("%s at (%.0f,%.0f) has no blocking footprint", probe.label, worldX, worldY)
+		}
 	}
 }
 
@@ -986,6 +1205,89 @@ func TestTeamBattleCityRoofFootprintsAreBlockingWithoutSealingCourtyards(t *test
 		}
 		if !blocked {
 			t.Fatalf("%s center (%.0f,%.0f) is visually covered but walkable", roof.label, worldX, worldY)
+		}
+	}
+}
+
+func TestNorthernTeamBattleLeavesWideAlternateCastlePassages(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	for _, passage := range []struct {
+		label string
+		cells [][2]int
+	}{
+		{label: "outer ward west gate", cells: [][2]int{{15, 42}, {15, 43}, {42, 15}, {43, 15}}},
+		{label: "inner keep west gate", cells: [][2]int{{20, 42}, {20, 43}, {42, 20}, {43, 20}}},
+	} {
+		for _, cell := range passage.cells {
+			body := &geometry.CircleBody{X: (float64(cell[0]) + .5) * 40, Y: (float64(cell[1]) + .5) * 40, Radius: 14}
+			for _, wall := range mapValue.Collisions {
+				if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
+					continue
+				}
+				if geometry.CollidesCircleWithWall(body, wall) {
+					t.Fatalf("%s cell %v is too narrow for a hero: blocked by %s bounds=(%.0f,%.0f)-(%.0f,%.0f)", passage.label, cell, wall.Type, wall.MinX, wall.MinY, wall.MaxX, wall.MaxY)
+				}
+			}
+		}
+	}
+}
+
+func TestNorthernTeamBattleLeavesSecondCastleSidePassages(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	for _, cell := range [][2]int{{30, 42}, {30, 43}, {35, 42}, {35, 43}, {42, 30}, {43, 30}, {42, 35}, {43, 35}} {
+		body := &geometry.CircleBody{X: (float64(cell[0]) + .5) * 40, Y: (float64(cell[1]) + .5) * 40, Radius: 14}
+		for _, wall := range mapValue.Collisions {
+			if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
+				continue
+			}
+			if geometry.CollidesCircleWithWall(body, wall) {
+				t.Fatalf("second castle passage cell %v is too narrow for a hero: blocked by %s bounds=(%.0f,%.0f)-(%.0f,%.0f)", cell, wall.Type, wall.MinX, wall.MinY, wall.MaxX, wall.MaxY)
+			}
+		}
+	}
+}
+
+func TestNorthernTeamBattleLeavesWideRubbleBypasses(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	for _, cell := range [][2]int{{23, 48}, {41, 58}, {36, 55}, {8, 24}, {48, 23}, {58, 41}, {55, 36}, {24, 8}} {
+		body := &geometry.CircleBody{X: (float64(cell[0]) + .5) * 40, Y: (float64(cell[1]) + .5) * 40, Radius: 14}
+		for _, wall := range mapValue.Collisions {
+			if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
+				continue
+			}
+			if geometry.CollidesCircleWithWall(body, wall) {
+				t.Fatalf("rubble bypass cell %v is too narrow for a hero: blocked by %s bounds=(%.0f,%.0f)-(%.0f,%.0f)", cell, wall.Type, wall.MinX, wall.MinY, wall.MaxX, wall.MaxY)
+			}
+		}
+	}
+}
+
+func TestNorthernTeamBattleLeavesMoreOuterDistrictBypasses(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	for _, cell := range [][2]int{{5, 45}, {11, 47}, {14, 24}, {41, 53}, {29, 48}, {47, 57}, {45, 5}, {47, 11}, {24, 14}, {53, 41}, {48, 29}, {57, 47}} {
+		body := &geometry.CircleBody{X: (float64(cell[0]) + .5) * 40, Y: (float64(cell[1]) + .5) * 40, Radius: 14}
+		for _, wall := range mapValue.Collisions {
+			if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
+				continue
+			}
+			if geometry.CollidesCircleWithWall(body, wall) {
+				t.Fatalf("district bypass cell %v is too narrow for a hero: blocked by %s bounds=(%.0f,%.0f)-(%.0f,%.0f)", cell, wall.Type, wall.MinX, wall.MinY, wall.MaxX, wall.MaxY)
+			}
+		}
+	}
+}
+
+func TestNorthernTeamBattleLeavesBaseAndBridgeSidePassages(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	for _, cell := range [][2]int{{4, 55}, {5, 55}, {25, 13}, {26, 14}, {29, 40}, {31, 38}, {55, 4}, {55, 5}, {13, 25}, {14, 26}, {40, 29}, {38, 31}} {
+		body := &geometry.CircleBody{X: (float64(cell[0]) + .5) * 40, Y: (float64(cell[1]) + .5) * 40, Radius: 14}
+		for _, wall := range mapValue.Collisions {
+			if wall == nil || wall.Type == "objective" || !geometry.IsBlockingWall(wall.Type) {
+				continue
+			}
+			if geometry.CollidesCircleWithWall(body, wall) {
+				t.Fatalf("base/bridge bypass cell %v is too narrow for a hero: blocked by %s bounds=(%.0f,%.0f)-(%.0f,%.0f)", cell, wall.Type, wall.MinX, wall.MinY, wall.MaxX, wall.MaxY)
+			}
 		}
 	}
 }

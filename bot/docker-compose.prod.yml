@@ -1,15 +1,26 @@
 services:
   bot:
     container_name: bot
-    image: bot
+    user: "65532:65532"
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    image: "${BOT_IMAGE:-bot}"
     build:
       context: .
       dockerfile: Dockerfile
-    env_file: ../.env
+    env_file:
+      - ../.env
+      - ../.env.prod
     environment:
       DB_HOST: db
       REDIS_HOST: redis
-    command: ["sh", "-c", "alembic upgrade head && exec python -m bot"]
+      APP_VERSION: "${APP_VERSION:-dev}"
+      GIT_SHA: "${GIT_SHA:-unknown}"
+    command: ["python", "-m", "bot"]
     restart: always
     depends_on:
       db:
@@ -24,23 +35,46 @@ services:
         max-size: "200k"
         max-file: "10"
 
+  bot-migrate:
+    container_name: bot-migrate
+    user: "65532:65532"
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    image: "${BOT_IMAGE:-bot}"
+    env_file:
+      - ../.env
+      - ../.env.prod
+    environment:
+      DB_HOST: db
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-net
+
   db:
     container_name: db
-    image: postgres:13-alpine
+    image: postgres@sha256:fb9065b6e3e213bdc07edd372a5b2a26245840b7fb65d1fd8b6700106d51805c
     restart: always
     volumes:
       - db-data:/var/lib/postgresql/data
     command: "postgres -c max_connections=150 -c shared_buffers=512MB"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U someusername -d bot"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 12
       start_period: 10s
     environment:
-      POSTGRES_USER: someusername
-      POSTGRES_PASSWORD: postgres_pass12345
-      POSTGRES_DB: bot
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER must be set}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+      POSTGRES_DB: "${POSTGRES_DB:-bot}"
     networks:
       - app-net
     logging:
@@ -51,11 +85,13 @@ services:
 
   redis:
     container_name: redis
-    image: redis:7-alpine
+    image: redis@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     restart: always
-    command: redis-server --port 6388 --save 20 1 --loglevel warning --requirepass someredispass
+    command: ["sh", "-c", "exec redis-server --port 6388 --save 20 1 --loglevel warning --requirepass \"$${REDIS_PASSWORD}\""]
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -p 6388 -a someredispass ping | grep -q PONG"]
+      test: ["CMD-SHELL", "redis-cli -p 6388 -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
       interval: 5s
       timeout: 5s
       retries: 12

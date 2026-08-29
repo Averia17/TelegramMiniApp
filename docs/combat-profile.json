@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "schemaVersion": 1,
   "profileId": "combat-profile",
-  "profileRevision": "2026-08-27-cadence-window",
+  "profileRevision": "2026-08-29-kaze-cadence",
   "purpose": "Версионируемый контракт authoritative combat core и его runtime-представлений.",
   "modes": ["deathmatch", "team deathmatch"],
   "defaults": {
@@ -64,64 +64,64 @@
       "powerBudget": 1.0,
       "powerBudgetVector": {"threat": 0.55, "control": 0.95, "safety": 0.55, "mobility": 0.75, "sustain": 0.35, "information": 0.85, "objectiveValue": 0.65},
       "basic": {"abilityId": "spore_thorn", "attackType": "spore", "attackDamage": 60, "attackCooldownMs": 420, "reloadTimeMs": 1200, "maxAmmo": 3, "archetype": "projectile", "range": 620},
-      "super": {"abilityId": "hunter_root", "chargeWeight": 1.0},
-      "gadget": {"abilityId": "spore_escape", "maxCharges": 3}
+      "super": {"abilityId": "hunter_root", "chargeWeight": 1.0, "cooldownMs": 12000},
+      "gadget": {"abilityId": "spore_escape", "maxCharges": 3, "cooldownMs": 6500}
     },
     "mandy": {
       "role": "Fighter",
       "powerBudget": 1.0,
       "powerBudgetVector": {"threat": 0.85, "control": 0.70, "safety": 0.65, "mobility": 0.50, "sustain": 0.55, "information": 0.25, "objectiveValue": 0.70},
       "basic": {"abilityId": "staff_strike", "attackType": "mandy_staff", "attackDamage": 100, "attackCooldownMs": 420, "reloadTimeMs": 1150, "maxAmmo": 3, "archetype": "melee_cone", "range": 110},
-      "super": {"abilityId": "devastation_wave", "chargeWeight": 1.0},
-      "gadget": {"abilityId": "unyielding_stance", "maxCharges": 3}
+      "super": {"abilityId": "devastation_wave", "chargeWeight": 1.0, "cooldownMs": 15000},
+      "gadget": {"abilityId": "unyielding_stance", "maxCharges": 3, "cooldownMs": 6500}
     },
     "fairy-mina": {
       "role": "Support",
       "powerBudget": 1.0,
       "powerBudgetVector": {"threat": 0.55, "control": 0.55, "safety": 0.75, "mobility": 0.50, "sustain": 0.95, "information": 0.45, "objectiveValue": 0.50},
       "basic": {"abilityId": "star_fan", "attackType": "mina_star_fan", "attackDamage": 40, "attackCooldownMs": 420, "reloadTimeMs": 1100, "maxAmmo": 3, "archetype": "shotgun", "range": 510},
-      "super": {"abilityId": "star_cocoon", "chargeWeight": 1.0},
-      "gadget": {"abilityId": "repelling_wave", "maxCharges": 3}
+      "super": {"abilityId": "star_cocoon", "chargeWeight": 1.0, "cooldownMs": 12000},
+      "gadget": {"abilityId": "repelling_wave", "maxCharges": 3, "cooldownMs": 6500}
     },
     "brock-zeus": {
       "role": "Sharpshooter",
       "powerBudget": 1.0,
       "powerBudgetVector": {"threat": 0.95, "control": 0.40, "safety": 0.30, "mobility": 0.35, "sustain": 0.25, "information": 0.65, "objectiveValue": 0.55},
       "basic": {"abilityId": "thunder_projectile", "attackType": "zeus_lightning", "attackDamage": 85, "attackCooldownMs": 520, "reloadTimeMs": 1300, "maxAmmo": 3, "archetype": "projectile", "range": 760},
-      "super": {"abilityId": "gods_hammer", "chargeWeight": 1.0},
-      "gadget": {"abilityId": "discharge_cable", "maxCharges": 3}
+      "super": {"abilityId": "gods_hammer", "chargeWeight": 1.0, "cooldownMs": 14000},
+      "gadget": {"abilityId": "discharge_cable", "maxCharges": 3, "cooldownMs": 6500}
     },
     "kaze": {
       "role": "Assassin",
       "powerBudget": 1.0,
       "powerBudgetVector": {"threat": 0.90, "control": 0.55, "safety": 0.35, "mobility": 0.95, "sustain": 0.25, "information": 0.50, "objectiveValue": 0.35},
-      "basic": {"abilityId": "cross_slash", "attackType": "kaze_cross_slash", "attackDamage": 85, "attackCooldownMs": 280, "reloadTimeMs": 800, "maxAmmo": 3, "archetype": "melee_cone", "range": 125},
-      "super": {"abilityId": "piercing_dash", "chargeWeight": 1.0},
-      "gadget": {"abilityId": "vanish", "maxCharges": 3}
+      "basic": {"abilityId": "cross_slash", "attackType": "kaze_cross_slash", "attackDamage": 85, "attackCooldownMs": 360, "reloadTimeMs": 800, "maxAmmo": 3, "archetype": "melee_cone", "range": 125},
+      "super": {"abilityId": "piercing_dash", "chargeWeight": 1.0, "cooldownMs": 10000},
+      "gadget": {"abilityId": "vanish", "maxCharges": 3, "cooldownMs": 6500}
     },
     "wukong-mico": {
       "role": "Tank",
       "powerBudget": 1.0,
       "powerBudgetVector": {"threat": 0.70, "control": 0.60, "safety": 0.95, "mobility": 0.45, "sustain": 0.75, "information": 0.25, "objectiveValue": 0.60},
       "basic": {"abilityId": "heavy_staff", "attackType": "mico_staff", "attackDamage": 100, "attackCooldownMs": 650, "reloadTimeMs": 1400, "maxAmmo": 3, "archetype": "melee_cone", "range": 140},
-      "super": {"abilityId": "vengeance_vortex", "chargeWeight": 1.0},
-      "gadget": {"abilityId": "stone_armor", "maxCharges": 3}
+      "super": {"abilityId": "vengeance_vortex", "chargeWeight": 1.0, "cooldownMs": 11000},
+      "gadget": {"abilityId": "stone_armor", "maxCharges": 3, "cooldownMs": 6500}
     },
     "persephone-lumi": {
       "role": "Controller",
       "powerBudget": 1.0,
       "powerBudgetVector": {"threat": 0.65, "control": 0.90, "safety": 0.45, "mobility": 0.45, "sustain": 0.60, "information": 0.75, "objectiveValue": 0.65},
       "basic": {"abilityId": "luminous_flower", "attackType": "lumi_orb", "attackDamage": 60, "attackCooldownMs": 470, "reloadTimeMs": 1250, "maxAmmo": 3, "archetype": "projectile", "range": 520},
-      "super": {"abilityId": "root_garden", "chargeWeight": 1.0},
-      "gadget": {"abilityId": "flower_burst", "maxCharges": 3}
+      "super": {"abilityId": "root_garden", "chargeWeight": 1.0, "cooldownMs": 13000},
+      "gadget": {"abilityId": "flower_burst", "maxCharges": 3, "cooldownMs": 6500}
     },
     "katty": {
       "role": "Controller",
       "powerBudget": 1.0,
       "powerBudgetVector": {"threat": 0.60, "control": 0.90, "safety": 0.60, "mobility": 0.80, "sustain": 0.30, "information": 0.65, "objectiveValue": 0.75},
       "basic": {"abilityId": "paint_spray", "attackType": "katty_paint_spray", "attackDamage": 55, "attackCooldownMs": 520, "reloadTimeMs": 1300, "maxAmmo": 3, "archetype": "projectile", "range": 220},
-      "super": {"abilityId": "paint_grenade", "chargeWeight": 1.0},
-      "gadget": {"abilityId": "paint_flight", "maxCharges": 3}
+      "super": {"abilityId": "paint_grenade", "chargeWeight": 1.0, "cooldownMs": 12000},
+      "gadget": {"abilityId": "paint_flight", "maxCharges": 3, "cooldownMs": 6500}
     }
   }
 }

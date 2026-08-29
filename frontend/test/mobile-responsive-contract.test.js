@@ -10,6 +10,7 @@ test("document opts into phone safe areas and interactive viewport resizing", ()
   assert.match(html, /width=device-width/)
   assert.match(html, /viewport-fit=cover/)
   assert.match(html, /interactive-widget=resizes-content/)
+  assert.match(html, /name="screen-orientation" content="portrait"/)
 })
 
 test("application shell owns the full dynamic viewport without horizontal overflow", () => {

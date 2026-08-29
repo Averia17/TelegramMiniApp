@@ -397,6 +397,69 @@ func botProximityScore(distance, maxDistance, weight float64) float64 {
 
 const botBatContestRadius = 220.0
 
+// Brock's hammer may look for a useful strike point farther than the normal
+// combat decision radius, but it must remain a local search rather than a
+// map-wide query. The ability itself clamps the impact distance to the same
+// range, so every selected target can actually be reached by the reticle.
+const botBrockSuperTargetRange = 500.0
+
+func (gs *GameState) botBrockSuperTarget(bot *player.Player, now int64) *botTarget {
+	if gs == nil || bot == nil || bot.HeroName != "Brock Zeus" {
+		return nil
+	}
+	var nearestHero *botTarget
+	for id, candidate := range gs.Players {
+		if candidate == nil || candidate.PlayerId == bot.PlayerId || candidate.InvulnerableUntil > now ||
+			!candidate.CanBulletHurt(bot.PlayerId, bot.Team) || !gs.botCanSee(bot, candidate, now) {
+			continue
+		}
+		distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
+		if distance > botBrockSuperTargetRange {
+			continue
+		}
+		potential := &botTarget{kind: "player", id: id, player: candidate, x: candidate.X, y: candidate.Y, distance: distance}
+		if nearestHero == nil || potential.distance < nearestHero.distance ||
+			potential.distance == nearestHero.distance && potential.id < nearestHero.id {
+			nearestHero = potential
+		}
+	}
+	if nearestHero != nil {
+		return nearestHero
+	}
+
+	var nearestMonster *botTarget
+	for id, candidate := range gs.Monsters {
+		if candidate == nil || !candidate.IsAlive() || !gs.botCanSeeMonster(bot, candidate) {
+			continue
+		}
+		distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
+		if distance > botBrockSuperTargetRange {
+			continue
+		}
+		potential := &botTarget{kind: "monster", id: id, monster: candidate, x: candidate.X, y: candidate.Y, distance: distance}
+		if nearestMonster == nil || potential.distance < nearestMonster.distance ||
+			potential.distance == nearestMonster.distance && potential.id < nearestMonster.id {
+			nearestMonster = potential
+		}
+	}
+	if nearestMonster != nil {
+		return nearestMonster
+	}
+
+	// With no visible combat target, keep the super useful by placing a local
+	// reticle at a fresh point. It is deliberately bounded around the bot and
+	// clamped to the map so this fallback cannot become a hidden map-wide shot.
+	distance := rand.Float64() * botBrockSuperTargetRange
+	angle := rand.Float64() * math.Pi * 2
+	x := bot.X + math.Cos(angle)*distance
+	y := bot.Y + math.Sin(angle)*distance
+	if gs.Map != nil {
+		clamped := gs.Map.ClampCircle(&geometry.CircleBody{X: x, Y: y, Radius: 0})
+		x, y = clamped.X, clamped.Y
+	}
+	return &botTarget{kind: "point", id: "random", x: x, y: y, distance: math.Hypot(x-bot.X, y-bot.Y)}
+}
+
 // botMonsterContestedByEnemy is deliberately perception-limited. A camp is
 // contested only when the bot can currently see a live enemy close enough to
 // contest the bat; map-wide player coordinates must not turn neutral farming
@@ -780,6 +843,13 @@ func (gs *GameState) updateBattleRoyaleBots() {
 	botIndex := 0
 	for _, id := range sortedBotIDs(gs.Players) {
 		bot := gs.Players[id]
+		if bot.HeroName == "Brock Zeus" && bot.ChannelUntil > now {
+			// Keep the last movement intent during a channel. Movement simulation
+			// already pauses the body, and replacing the intent with a zero input
+			// would make a fallback hammer cast strand the bot at its spawn.
+			botIndex++
+			continue
+		}
 		if dodgeX, dodgeY, threatened := gs.botProjectileDodge(bot); threatened {
 			gs.recordBotHardInterrupt()
 			gs.playerMove(id, now, dodgeX, dodgeY)
@@ -804,6 +874,8 @@ func (gs *GameState) updateBattleRoyaleBots() {
 		visibleTarget := gs.botSelectTarget(bot, now)
 		gs.recordBotTargetSelection(id, visibleTarget)
 		if visibleTarget == nil && gs.botTryAbility(id, bot, nil, now) {
+			// botTryAbility preserves Brock's roam intent before his hammer
+			// channel starts; do not send another movement command this tick.
 			botIndex++
 			continue
 		}
@@ -1064,11 +1136,31 @@ func (gs *GameState) botTryAbility(id string, bot *player.Player, target *botTar
 	if bot == nil {
 		return false
 	}
+	secondaryTarget := target
+	secondaryTargetless := gs.botSecondaryUsefulWithoutTarget(bot, now)
+	if secondaryTargetless && (target == nil || !botSecondaryUseful(bot, target)) {
+		// Self/setup gadgets do not need the currently selected combat entity.
+		// Drop an unusable monster/objective target instead of letting it poison
+		// the utility score or the point-aim state.
+		secondaryTarget = nil
+	}
+	if bot.HeroName == "Brock Zeus" {
+		// The hammer has its own strict priority: nearest visible hero, then
+		// nearest visible monster, then a local random reticle. This is separate
+		// from the general bot score so neutral farming cannot beat a hero.
+		target = gs.botBrockSuperTarget(bot, now)
+		if target == nil {
+			return false
+		}
+		bot.Rotation = math.Atan2(target.y-bot.Y, target.x-bot.X)
+		bot.AimDistance = target.distance
+	}
+	fallbackPoint := target != nil && target.kind == "point"
 	minaTarget := gs.botMinaSuperTarget(bot, now)
-	if target == nil && minaTarget == nil {
+	if target == nil && minaTarget == nil && !secondaryTargetless {
 		return false
 	}
-	if target != nil && target.kind == "objective" && minaTarget == nil {
+	if target != nil && target.kind == "objective" && minaTarget == nil && secondaryTarget == target {
 		// Current supers are authored around player control effects. Basic
 		// attacks can damage objectives, but spending a super here produces no
 		// useful objective damage for most heroes.
@@ -1082,13 +1174,24 @@ func (gs *GameState) botTryAbility(id string, bot *player.Player, target *botTar
 	ctx := gs.botUtilityContextFor(bot, primaryTarget, nil, now)
 	primaryScore := scoreBotAbility(ctx, botAbilitySuper)
 	secondaryScore := math.Inf(-1)
-	secondaryReady := target != nil && bot.GadgetCharges > 0 && now-bot.LastSecondaryAt >= AbilityCooldownMs(bot.HeroName, "secondary") && botSecondaryUseful(bot, target)
+	secondaryReady := bot.GadgetCharges > 0 && now-bot.LastSecondaryAt >= AbilityCooldownMs(bot.HeroName, "secondary") &&
+		((secondaryTarget != nil && botSecondaryUseful(bot, secondaryTarget)) || secondaryTargetless)
 	if secondaryReady {
-		secondaryScore = scoreBotAbility(gs.botUtilityContextFor(bot, target, nil, now), botAbilityGadget)
+		if secondaryTarget == nil {
+			secondaryScore = botTargetlessGadgetScore(bot)
+		} else {
+			secondaryScore = scoreBotAbility(gs.botUtilityContextFor(bot, secondaryTarget, nil, now), botAbilityGadget)
+		}
 	}
-	primaryReady := SuperChargePercent(bot, now) >= SuperMaxChargePercent && primaryUseful
+	primaryReady := (bot.LastPrimaryAt == 0 || now-bot.LastPrimaryAt >= AbilityCooldownMs(bot.HeroName, "primary")) && primaryUseful
 	usePrimary := primaryReady && (secondaryScore == math.Inf(-1) || primaryScore >= secondaryScore)
 	if usePrimary {
+		if fallbackPoint {
+			// The hammer cast channels Brock briefly. Preserve his roam intent
+			// before the cast so a no-target fallback does not make him appear
+			// frozen until the channel ends.
+			gs.botExplore(id, bot, now)
+		}
 		bot.AimDistance = primaryTarget.distance
 		if minaTarget != nil {
 			if gs.AbilityTargets == nil {
@@ -1101,6 +1204,11 @@ func (gs *GameState) botTryAbility(id string, bot *player.Player, target *botTar
 			delete(gs.AbilityTargets, id)
 		}
 		if bot.LastAbilityOK {
+			if fallbackPoint {
+				// A blind fallback is a low-commitment area denial shot. Keep
+				// the bot mobile instead of immobilising it for an empty reticle.
+				bot.ChannelUntil = now
+			}
 			gs.recordBotAbilityUse()
 			return true
 		}
@@ -1111,7 +1219,9 @@ func (gs *GameState) botTryAbility(id string, bot *player.Player, target *botTar
 	if secondaryScore < 18 {
 		return false
 	}
-	bot.AimDistance = target.distance
+	if secondaryTarget != nil {
+		bot.AimDistance = secondaryTarget.distance
+	}
 	gs.playerAbility(id, now, "secondary")
 	if bot.LastAbilityOK {
 		gs.recordBotAbilityUse()
@@ -1134,9 +1244,12 @@ func botPrimaryUseful(bot *player.Player, target *botTarget) bool {
 	if bot == nil || target == nil {
 		return false
 	}
+	if target.kind == "point" {
+		return bot.HeroName == "Brock Zeus"
+	}
 	if target.kind == "monster" {
 		switch bot.HeroName {
-		case "Needle", "Kaze":
+		case "Needle", "Kaze", "Persephone Lumi":
 			return false
 		}
 	}
@@ -1159,7 +1272,7 @@ func botPrimaryUseful(bot *player.Player, target *botTarget) bool {
 	case "Persephone Lumi":
 		return target.distance <= 520+target.radius()
 	case "Katty":
-		return target.distance <= KattySuperRadius+target.radius()
+		return target.distance <= KattySuperRange+target.radius()
 	default:
 		return target.distance <= botAttackRange(bot)+target.radius()
 	}
@@ -1190,6 +1303,43 @@ func botSecondaryUseful(bot *player.Player, target *botTarget) bool {
 		return target.distance <= 200+target.radius()
 	default:
 		return target.distance <= botAttackRange(bot)+target.radius()
+	}
+}
+
+func (gs *GameState) botSecondaryUsefulWithoutTarget(bot *player.Player, now int64) bool {
+	if bot == nil {
+		return false
+	}
+	switch bot.HeroName {
+	case "Fairy Mina":
+		return bot.SlowUntil > now || bot.PoisonUntil > now || bot.BlindUntil > now || bot.AntiHealUntil > now
+	case "Persephone Lumi":
+		for _, zone := range gs.HeroZones {
+			if zone != nil && zone.Owner == bot.PlayerId && (zone.Kind == "lumi_roots" || zone.Kind == "lumi_flower") && zone.ExpiresAt > now {
+				return true
+			}
+		}
+		return false
+	case "Needle", "Mandy", "Wukong Mico", "Kaze", "Katty":
+		healthFraction := float64(bot.Lives) / math.Max(1, float64(bot.MaxLives))
+		return healthFraction <= .65 || bot.LastDamageAt > 0 && now-bot.LastDamageAt <= BotRecentThreatDuration.Milliseconds()
+	default:
+		return false
+	}
+}
+
+func botTargetlessGadgetScore(bot *player.Player) float64 {
+	if bot == nil {
+		return math.Inf(-1)
+	}
+	healthFraction := float64(bot.Lives) / math.Max(1, float64(bot.MaxLives))
+	switch bot.HeroName {
+	case "Persephone Lumi":
+		return 42
+	case "Fairy Mina":
+		return 40
+	default:
+		return 26 + (1-healthFraction)*20
 	}
 }
 

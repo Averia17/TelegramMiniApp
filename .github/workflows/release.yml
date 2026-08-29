@@ -1,0 +1,304 @@
+name: Build and deploy release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ghcr.io/${{ github.repository_owner }}/telegramminiapp
+
+jobs:
+  plan:
+    name: Calculate selective release plan
+    runs-on: ubuntu-latest
+    outputs:
+      build_matrix: ${{ steps.plan.outputs.build_matrix }}
+      previous_tag: ${{ steps.previous.outputs.tag }}
+      has_previous_manifest: ${{ steps.previous.outputs.has_manifest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Find previous release
+        id: previous
+        env:
+          CURRENT_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous_tag="$(git tag --sort=-version:refname | awk -v current="$CURRENT_TAG" '$0 != current {print; exit}')"
+          echo "tag=$previous_tag" >> "$GITHUB_OUTPUT"
+          mkdir -p .release
+          if [[ -n "$previous_tag" ]] && gh release download "$previous_tag" --pattern release-manifest.json --dir .release; then
+            echo "has_manifest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_manifest=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Calculate plan
+        id: plan
+        env:
+          PREVIOUS_TAG: ${{ steps.previous.outputs.tag }}
+        run: |
+          args=(--head "$GITHUB_SHA" --output release-plan.json)
+          if [[ -n "$PREVIOUS_TAG" && -f .release/release-manifest.json ]]; then
+            args+=(--previous-tag "$PREVIOUS_TAG" --previous-manifest .release/release-manifest.json)
+          fi
+          python -m deploy.release_plan "${args[@]}"
+          build_matrix="$(python -c 'import json; print(json.dumps(json.load(open("release-plan.json"))["plan"]["build"]))')"
+          echo "build_matrix=$build_matrix" >> "$GITHUB_OUTPUT"
+      - name: Upload plan
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-plan
+          path: release-plan.json
+          if-no-files-found: error
+      - name: Upload previous manifest
+        if: steps.previous.outputs.has_manifest == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: previous-release-manifest
+          path: .release/release-manifest.json
+          if-no-files-found: error
+      - name: Seed empty image digest set
+        run: echo '{}' > empty-built-images.json
+      - name: Upload empty image digest set
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: built-image-empty
+          path: empty-built-images.json
+          if-no-files-found: error
+
+  build:
+    name: Build ${{ matrix.service }} image
+    needs: plan
+    if: needs.plan.outputs.build_matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.plan.outputs.build_matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build and push immutable image
+        id: push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ./${{ matrix.service }}
+          file: ./${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_NAMESPACE }}/${{ matrix.service }}:${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+      - name: Save image digest
+        env:
+          SERVICE: ${{ matrix.service }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          IMAGE_NAMESPACE: ${{ env.IMAGE_NAMESPACE }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-images"
+          python -c 'import json, os; json.dump({os.environ["SERVICE"]: os.environ["IMAGE_NAMESPACE"] + "/" + os.environ["SERVICE"] + "@" + os.environ["DIGEST"]}, open(os.path.join(os.environ["RUNNER_TEMP"], "release-images", os.environ["SERVICE"] + ".json"), "w"))'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: built-image-${{ matrix.service }}
+          path: ${{ runner.temp }}/release-images/${{ matrix.service }}.json
+          if-no-files-found: error
+
+  manifest:
+    name: Publish release manifest
+    needs: [plan, build]
+    if: always() && needs.plan.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-plan
+          path: .artifacts/plan
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: needs.plan.outputs.has_previous_manifest == 'true'
+        with:
+          pattern: previous-release-manifest
+          path: .artifacts/previous
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: built-image-*
+          path: .artifacts/images
+          merge-multiple: true
+      - name: Merge built image digests
+        run: |
+          python -c 'import json, pathlib; result = {}; [result.update(json.loads(path.read_text())) for path in pathlib.Path(".artifacts/images").glob("*.json")]; pathlib.Path("built-images.json").write_text(json.dumps(result))'
+      - name: Create complete manifest
+        env:
+          PREVIOUS_TAG: ${{ needs.plan.outputs.previous_tag }}
+        run: |
+          args=(--tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --plan .artifacts/plan/release-plan.json --built-images built-images.json --output release-manifest.json)
+          if [[ -f .artifacts/previous/release-manifest.json ]]; then
+            args+=(--previous-manifest .artifacts/previous/release-manifest.json)
+          fi
+          python -m deploy.create_manifest "${args[@]}"
+      - name: Create GitHub release and upload manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-manifest.json --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-manifest.json --title "$GITHUB_REF_NAME" --generate-notes
+          fi
+      - name: Upload manifest for production deploy
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: production-release-manifest
+          path: release-manifest.json
+          if-no-files-found: error
+
+  deploy-staging:
+    name: Deploy and smoke test staging
+    needs: manifest
+    if: needs.manifest.result == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: staging-deploy
+      cancel-in-progress: false
+    environment:
+      name: staging
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: production-release-manifest
+          path: .release
+      - name: Start staging SSH agent
+        env:
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+        run: |
+          test -n "$STAGING_SSH_KEY"
+          test -n "$STAGING_HOST"
+          test -n "$STAGING_KNOWN_HOSTS"
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$STAGING_SSH_KEY" > "$RUNNER_TEMP/staging-key"
+          chmod 600 "$RUNNER_TEMP/staging-key"
+          eval "$(ssh-agent -s)"
+          ssh-add "$RUNNER_TEMP/staging-key"
+          printf '%s\n' "$STAGING_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+      - name: Copy manifest to staging host
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+          STAGING_DEPLOY_DIR: ${{ secrets.STAGING_DEPLOY_DIR }}
+          STAGING_PORT: ${{ secrets.STAGING_PORT }}
+        run: |
+          test -n "$STAGING_USER"
+          test -n "$STAGING_DEPLOY_DIR"
+          port="${STAGING_PORT:-22}"
+          ssh -p "$port" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ServerAliveInterval=30 -o ServerAliveCountMax=3 "$STAGING_USER@$STAGING_HOST" "mkdir -p '$STAGING_DEPLOY_DIR/.release/incoming'"
+          scp -P "$port" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" .release/release-manifest.json "$STAGING_USER@$STAGING_HOST:$STAGING_DEPLOY_DIR/.release/incoming/${GITHUB_REF_NAME}.json"
+      - name: Checkout exact release and deploy staging safely
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+          STAGING_DEPLOY_DIR: ${{ secrets.STAGING_DEPLOY_DIR }}
+          STAGING_PORT: ${{ secrets.STAGING_PORT }}
+        run: |
+          port="${STAGING_PORT:-22}"
+          ssh -p "$port" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ServerAliveInterval=30 -o ServerAliveCountMax=3 "$STAGING_USER@$STAGING_HOST" bash -s -- "$GITHUB_REF_NAME" "$STAGING_DEPLOY_DIR" <<'REMOTE'
+          set -Eeuo pipefail
+          tag="$1"
+          deploy_dir="$2"
+          cd "$deploy_dir"
+          git fetch --tags origin "$tag"
+          test -z "$(git status --porcelain --untracked-files=all)" || { echo "staging checkout is dirty" >&2; exit 1; }
+          git checkout --detach "$tag"
+          DEPLOY_ENV_FILE="$deploy_dir/.env.staging" RELEASE_ROOT="$deploy_dir/.release" DEPLOY_COMPOSE_FILE="$deploy_dir/docker-compose.prod.yml" bash deploy/production_deploy.sh "$tag" "$deploy_dir/.release/incoming/$tag.json"
+          REMOTE
+
+  deploy-production:
+    name: Deploy to production
+    needs: [manifest, deploy-staging]
+    if: needs.manifest.result == 'success' && needs.deploy-staging.result == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    environment:
+      name: production
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: production-release-manifest
+          path: .release
+      - name: Start SSH agent
+        env:
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_KNOWN_HOSTS: ${{ secrets.PROD_KNOWN_HOSTS }}
+        run: |
+          test -n "$PROD_SSH_KEY"
+          test -n "$PROD_HOST"
+          test -n "$PROD_KNOWN_HOSTS"
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$PROD_SSH_KEY" > "$RUNNER_TEMP/prod-key"
+          chmod 600 "$RUNNER_TEMP/prod-key"
+          eval "$(ssh-agent -s)"
+          ssh-add "$RUNNER_TEMP/prod-key"
+          printf '%s\n' "$PROD_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+      - name: Copy manifest to production host
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_DEPLOY_DIR: ${{ secrets.PROD_DEPLOY_DIR }}
+          PROD_PORT: ${{ secrets.PROD_PORT }}
+        run: |
+          test -n "$PROD_USER"
+          test -n "$PROD_DEPLOY_DIR"
+          port="${PROD_PORT:-22}"
+          ssh -p "$port" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ServerAliveInterval=30 -o ServerAliveCountMax=3 "$PROD_USER@$PROD_HOST" "mkdir -p '$PROD_DEPLOY_DIR/.release/incoming'"
+          scp -P "$port" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" .release/release-manifest.json "$PROD_USER@$PROD_HOST:$PROD_DEPLOY_DIR/.release/incoming/${GITHUB_REF_NAME}.json"
+      - name: Checkout exact release and deploy safely
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_DEPLOY_DIR: ${{ secrets.PROD_DEPLOY_DIR }}
+          PROD_PORT: ${{ secrets.PROD_PORT }}
+        run: |
+          port="${PROD_PORT:-22}"
+          ssh -p "$port" -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ServerAliveInterval=30 -o ServerAliveCountMax=3 "$PROD_USER@$PROD_HOST" bash -s -- "$GITHUB_REF_NAME" "$PROD_DEPLOY_DIR" <<'REMOTE'
+          set -Eeuo pipefail
+          tag="$1"
+          deploy_dir="$2"
+          cd "$deploy_dir"
+          git fetch --tags origin "$tag"
+          test -z "$(git status --porcelain --untracked-files=all)" || { echo "production checkout is dirty" >&2; exit 1; }
+          git checkout --detach "$tag"
+          bash deploy/production_deploy.sh "$tag" "$deploy_dir/.release/incoming/$tag.json"
+          REMOTE

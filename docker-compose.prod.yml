@@ -4,11 +4,82 @@ include:
   - ./shop/docker-compose.prod.yml
   - ./battle/docker-compose.prod.yml
   - ./leaderboard/docker-compose.prod.yml
+  - ./party/docker-compose.prod.yml
+  - ./news/docker-compose.prod.yml
+
+name: prod
 
 services:
+  db:
+    container_name: prod-db
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-someusername}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set for prod}"
+      POSTGRES_DB: "${POSTGRES_DB:-bot}"
+
+  redis:
+    container_name: prod-redis
+
+  bot:
+    container_name: prod-bot
+    depends_on:
+      bot-migrate:
+        condition: service_completed_successfully
+
+  account:
+    container_name: prod-account
+
+  shop:
+    container_name: prod-shop
+    depends_on:
+      shop-migrate:
+        condition: service_completed_successfully
+
+  shop-db:
+    container_name: prod-shop-db
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-someusername}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set for prod}"
+      POSTGRES_DB: "${POSTGRES_DB:-bot}"
+
+  battle:
+    container_name: prod-battle
+
+  battle-redis:
+    container_name: prod-battle-redis
+
+  leaderboard:
+    container_name: prod-leaderboard
+
+  leaderboard-redis:
+    container_name: prod-leaderboard-redis
+
+  party:
+    container_name: prod-party
+
+  news:
+    container_name: prod-news
+
+  news-migrate:
+    container_name: prod-news-migrate
+
+  news-db:
+    container_name: prod-news-db
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-someusername}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set for prod}"
+      POSTGRES_DB: "${NEWS_DB_NAME:-news}"
+
   frontend:
-    container_name: frontend
-    image: frontend
+    container_name: prod-frontend
+    user: "1000:1000"
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 512
+    image: "${FRONTEND_IMAGE:-frontend}"
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -23,18 +94,25 @@ services:
       - app-net
 
   nginx:
-    container_name: nginx
-    image: nginx
+    container_name: prod-nginx
+    user: "101:101"
+    init: true
+    read_only: true
+    tmpfs: [/var/cache/nginx, /var/run, /tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    image: "${NGINX_IMAGE:-nginx}"
     build:
       context: ./nginx
       dockerfile: Dockerfile
     ports:
-      - "80:80"
+      - "8081:8080"
     restart: unless-stopped
     volumes:
       - frontend-dist:/src/public:ro
-      # Runtime GLB files live outside the image and can be replaced without a rebuild.
-      - ./frontend/public/assets:/src/public/assets:ro
+      - ./.release/current:/src/release:ro
+      - ./frontend/public/assets/heroes:/src/public/assets/heroes:ro
     depends_on:
       account:
         condition: service_healthy
@@ -46,12 +124,81 @@ services:
         condition: service_healthy
       leaderboard:
         condition: service_healthy
+      party:
+        condition: service_healthy
+      news:
+        condition: service_healthy
+    networks:
+      - app-net
+
+  ngrok:
+    image: ngrok/ngrok@sha256:14d80d083e5b53145f416bbbd36238336c9de4016c43fd950eb2eb845670583b
+    container_name: prod-ngrok
+    command: ["http", "--url=https://factual-herring-driven.ngrok-free.app", "nginx:8080"]
+    env_file:
+      - ./.env.prod
+    depends_on:
+      - nginx
+    restart: unless-stopped
+    networks:
+      - app-net
+
+  prometheus:
+    image: prom/prometheus@sha256:f6639335d34a77d9d9db382b92eeb7fc00934be8eae81dbc03b31cfe90411a94
+    container_name: prod-prometheus
+    user: "65534:65534"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts:/etc/prometheus/alerts:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      battle:
+        condition: service_healthy
+    networks:
+      - app-net
+
+  grafana:
+    image: grafana/grafana@sha256:079600c9517b678c10cda6006b4487d3174512fd4c6cface37df7822756ed7a5
+    container_name: prod-grafana
+    user: "472:472"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER must be set}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_started
     networks:
       - app-net
 
   kafka:
-    image: confluentinc/cp-kafka:7.4.10
-    container_name: kafka
+    image: confluentinc/cp-kafka@sha256:88c430304d033c4a1f5bb48798461f7aebbf0a492a8116e13cc0a53516eb1749
+    container_name: prod-kafka
     restart: unless-stopped
     expose:
       - "9092"
@@ -84,9 +231,9 @@ services:
       - app-net
 
   kafka-ui:
-    image: provectuslabs/kafka-ui:latest
+    image: provectuslabs/kafka-ui@sha256:8f2ff02d64b0a7a2b71b6b3b3148b85f66d00ec20ad40c30bdcd415d46d31818
     restart: always
-    container_name: kafka-ui
+    container_name: prod-kafka-ui
     depends_on:
       kafka:
         condition: service_healthy
@@ -103,4 +250,24 @@ networks:
 
 volumes:
   frontend-dist:
+    name: telegramminiapp-prod_frontend-dist
   kafka-data:
+    name: telegramminiapp-prod_kafka-data
+  db-data:
+    name: telegramminiapp-prod_db-data
+  redis-data:
+    name: telegramminiapp-prod_redis-data
+  shop-db-data:
+    name: telegramminiapp-prod_shop-db-data
+  battle-redis-data:
+    name: telegramminiapp-prod_battle-redis-data
+  leaderboard-redis-data:
+    name: telegramminiapp-prod_leaderboard-redis-data
+  party-data:
+    name: telegramminiapp-prod_party-data
+  news-db-data:
+    name: telegramminiapp-prod_news-db-data
+  prometheus-data:
+    name: telegramminiapp-prod_prometheus-data
+  grafana-data:
+    name: telegramminiapp-prod_grafana-data

@@ -37,7 +37,9 @@ export class CameraRig {
     this.width = Math.max(1, Math.round(width))
     this.height = Math.max(1, Math.round(height))
     this.aspect = this.width / this.height
-    this.preferredVertical = this.width < 700 ? 27 : 31
+    // A slightly wider phone frame makes the same world-space movement read
+    // less aggressively on the small screens used for the main client.
+    this.preferredVertical = this.width < 700 ? 30 : 31
     this.setVerticalSpan(this.preferredVertical)
   }
 

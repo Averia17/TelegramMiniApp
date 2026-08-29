@@ -96,7 +96,7 @@ func TestKattyPaintSprayMissDoesNotLeaveACloud(t *testing.T) {
 	}
 }
 
-func TestKattySuperCreatesAPuddleAroundKattyThenPaintsEachEnemyEnteringIt(t *testing.T) {
+func TestKattySuperCreatesAPuddleAtTheSelectedPointThenPaintsEachEnemyEnteringIt(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("katty", "Katty", "Katty")
@@ -117,8 +117,9 @@ func TestKattySuperCreatesAPuddleAroundKattyThenPaintsEachEnemyEnteringIt(t *tes
 		t.Fatalf("super zones=%#v, want one radius-220 puddle", gs.HeroZones)
 	}
 	zone := gs.HeroZones[0]
-	if zone.X != source.X || zone.Y != source.Y {
-		t.Fatalf("super puddle center=(%.1f,%.1f), want Katty position (%.1f,%.1f)", zone.X, zone.Y, source.X, source.Y)
+	wantX, wantY := source.X+120, source.Y
+	if zone.X != wantX || zone.Y != wantY {
+		t.Fatalf("super puddle center=(%.1f,%.1f), want selected point (%.1f,%.1f)", zone.X, zone.Y, wantX, wantY)
 	}
 	if got := gs.HeroZones[0].ExpiresAt - now; got != KattySuperDuration.Milliseconds() {
 		t.Fatalf("super duration=%dms, want %dms", got, KattySuperDuration.Milliseconds())

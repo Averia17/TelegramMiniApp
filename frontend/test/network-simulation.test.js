@@ -103,6 +103,38 @@ test("display state exposes the current local movement direction immediately", (
   assert.equal(displayed.moveY, -1)
 })
 
+test("authoritative Kaze dash is presented at its new position instead of cancelled by correction", () => {
+  const simulation = new NetworkSimulation({interpolationDelay: 0})
+  const base = {
+    type: "state",
+    map: {width: 2000, height: 2000, walls: []},
+    monsters: {},
+    bullets: [],
+    game: {state: "game"},
+  }
+  const player = {
+    playerId: "local",
+    hero: "Kaze",
+    x: 400,
+    y: 400,
+    radius: 12,
+    speed: 16,
+    movementSpeed: 16,
+    lives: 650,
+    moveX: 0,
+    moveY: 0,
+    superPulse: 0,
+  }
+
+  simulation.ingest({...base, ts: 1000, players: {local: player}}, 0, 1000)
+  simulation.setLocalPlayerId("local")
+  simulation.ingest({...base, ts: 1100, players: {
+    local: {...player, x: 720, superPulse: 1},
+  }}, 0, 1100)
+
+  assert.equal(simulation.getDisplayState(1100, {copyEntities: true}).players.local.x, 720)
+})
+
 test("tap auto-aim immediately turns a melee hero toward an enemy behind", () => {
   const simulation = new NetworkSimulation({interpolationDelay: 0})
   simulation.ingest({
@@ -241,6 +273,37 @@ test("local prediction sweeps through the same blocking wall geometry as the bac
   assert.equal(next.y, 80)
 })
 
+test("local prediction treats an authoritative tower collider as blocking", () => {
+  const wall = {minX: 100, minY: 60, maxX: 156, maxY: 116, type: "objective", blocking: true}
+  const map = {width: 500, height: 500, walls: [wall]}
+  const next = movePosition(
+    {x: 50, y: 88},
+    {x: 1, y: 0},
+    {radius: 10, movementSpeed: 320},
+    1,
+    map,
+    createCollisionIndex(map.walls),
+  )
+
+  assert.equal(next.x, 90)
+  assert.equal(next.y, 88)
+})
+
+test("local prediction keeps the corners of a round tower passable", () => {
+  const wall = {minX: 100, minY: 60, maxX: 156, maxY: 116, type: "objective", blocking: true, colliderRadius: 28}
+  const map = {width: 500, height: 500, walls: [wall]}
+  const next = movePosition(
+    {x: 80, y: 40},
+    {x: 1, y: 1},
+    {radius: 10, movementSpeed: 320},
+    1,
+    map,
+    createCollisionIndex(map.walls),
+  )
+
+  assert.ok(next.x > 100 && next.y > 60, `round tower corner trapped the hero at (${next.x},${next.y})`)
+})
+
 test("passable vine clumps slow local prediction without becoming collision walls", () => {
   const map = {
     width: 400,
@@ -254,6 +317,20 @@ test("passable vine clumps slow local prediction without becoming collision wall
   assert.ok(outside.x > 89)
   assert.ok(inside.x < 119)
   assert.ok(Math.abs(inside.x - 116.8) < 0.000001)
+})
+
+test("passable thorn vines slow local prediction without becoming collision walls", () => {
+  const map = {
+    width: 400,
+    height: 200,
+    walls: [{minX: 100, minY: 80, maxX: 140, maxY: 120, type: "thorn_vine", blocking: false}],
+  }
+  const player = {x: 110, y: 100, radius: 10, speed: 100, movementSpeed: 100, lives: 100}
+  const index = createCollisionIndex(map.walls)
+  const next = movePosition({x: 110, y: 100}, {x: 1, y: 0}, player, .1, map, index)
+
+  assert.ok(next.x > 110)
+  assert.ok(Math.abs(next.x - 116.8) < 0.000001)
 })
 
 test("local prediction stops a hero at an opaque city roof footprint without over-padding it", () => {

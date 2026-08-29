@@ -4,7 +4,7 @@
 
 Цель — проверить, что игрок понимает бой без wiki, а не только то, что
 автоматический сценарий получил урон. Playtest проводится на profile
-`combat-profile`, rules version `2026-08-27-cadence-window`.
+`combat-profile`, rules version `2026-08-27-skill-cooldown-source`.
 
 ## Правила сессии
 

@@ -11,6 +11,13 @@ const FULL_BODY_OVERLAYS = new Set(["attack", "super", "gadget", "aimGadget", "h
 const UPPER_BONE = /(spine|chest|neck|head|shoulder|clavicle|arm|hand|finger|weapon)/i
 const LOWER_BONE = /(root|hips?|pelvis|leg|thigh|calf|foot|toe)/i
 
+const actionWallTimeRemaining = action => {
+  if (!action) return 0
+  const clipRemaining = Math.max(0, action.getClip().duration - action.time)
+  const timeScale = Math.max(.001, Math.abs(action.getEffectiveTimeScale?.() || 1))
+  return clipRemaining / timeScale
+}
+
 const trackNodeName = trackName => {
   const propertyAt = trackName.lastIndexOf(".")
   const path = propertyAt >= 0 ? trackName.slice(0, propertyAt) : trackName
@@ -980,7 +987,7 @@ export class GLBHeroController {
       overlayAction.isRunning() &&
       !this.overlayBlendOutScheduled
     ) {
-      const remaining = overlayAction.getClip().duration - overlayAction.time
+      const remaining = actionWallTimeRemaining(overlayAction)
       if (remaining <= OVERLAY_FADE) {
         this.overlayBlendOutScheduled = true
         overlayAction.fadeOut(Math.max(.001, remaining))
@@ -993,7 +1000,7 @@ export class GLBHeroController {
       spawnAction.isRunning() &&
       !this.spawnBlendOutScheduled
     ) {
-      const remaining = spawnAction.getClip().duration - spawnAction.time
+      const remaining = actionWallTimeRemaining(spawnAction)
       if (remaining <= LOCOMOTION_FADE) {
         this.spawnBlendOutScheduled = true
         spawnAction.fadeOut(Math.max(.001, remaining))

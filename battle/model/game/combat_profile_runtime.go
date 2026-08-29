@@ -31,6 +31,14 @@ type combatProfileRuntimeDefaults struct {
 			PickupContestHealthFraction   float64 `json:"pickupContestHealthFraction"`
 		} `json:"ai"`
 	} `json:"defaults"`
+	Heroes map[string]struct {
+		Super struct {
+			CooldownMs int64 `json:"cooldownMs"`
+		} `json:"super"`
+		Gadget struct {
+			CooldownMs int64 `json:"cooldownMs"`
+		} `json:"gadget"`
+	} `json:"heroes"`
 }
 
 func loadCombatProfileRuntimeDefaults() combatProfileRuntimeDefaults {
@@ -67,7 +75,38 @@ func loadCombatProfileRuntimeDefaults() combatProfileRuntimeDefaults {
 		defaults.Defaults.AI.PickupContestHealthFraction > 1 {
 		panic("generated combat profile has invalid AI runtime defaults")
 	}
+	for heroID, contract := range defaults.Heroes {
+		if contract.Super.CooldownMs <= 0 || contract.Gadget.CooldownMs <= 0 {
+			panic("generated combat profile has invalid ability cooldown for " + heroID)
+		}
+	}
 	return defaults
 }
 
 var loadedCombatProfileRuntimeDefaults = loadCombatProfileRuntimeDefaults()
+
+var combatProfileHeroIDs = map[string]string{
+	"Needle":          "needle",
+	"Mandy":           "mandy",
+	"Fairy Mina":      "fairy-mina",
+	"Brock Zeus":      "brock-zeus",
+	"Kaze":            "kaze",
+	"Wukong Mico":     "wukong-mico",
+	"Persephone Lumi": "persephone-lumi",
+	"Katty":           "katty",
+}
+
+func profileAbilityCooldownMs(heroName, slot string) (int64, bool) {
+	heroID, ok := combatProfileHeroIDs[heroName]
+	if !ok {
+		return 0, false
+	}
+	contract, ok := loadedCombatProfileRuntimeDefaults.Heroes[heroID]
+	if !ok {
+		return 0, false
+	}
+	if slot == "secondary" {
+		return contract.Gadget.CooldownMs, contract.Gadget.CooldownMs > 0
+	}
+	return contract.Super.CooldownMs, contract.Super.CooldownMs > 0
+}

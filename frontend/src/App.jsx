@@ -5,10 +5,16 @@ import {API_URL} from "./utils/urls.js"
 import {authenticate} from "./utils/auth.js"
 import {BattleLoading} from "./components/BattleLoading/BattleLoading.jsx"
 import {loadBattleHero} from "./utils/battlePreferences.js"
+import {isMobileLandscape, requestPortraitOrientationLock} from "./utils/orientation.js"
 
 const BattleGame = lazy(() => import("./components/BattleGame/BattleGame.jsx").then(module => ({default: module.BattleGame})))
 const LandingPage = lazy(() => import("./pages/landing-page.jsx"))
 const KattyLab = lazy(() => import("./pages/katty-lab.jsx"))
+
+const AppLoading = () => {
+  const navigate = useNavigate()
+  return <BattleLoading progress={18} status="Загружаем интерфейс..." onCancel={() => navigate("/", {replace: true})}/>
+}
 
 const BattlePage = ({id}) => {
   const {roomId} = useParams()
@@ -53,10 +59,46 @@ const BattlePage = ({id}) => {
     }).catch(() => {})
   }, [])
   return (
-    <Suspense fallback={<BattleLoading progress={32} status="Загружаем арену..." />}>
+    <Suspense fallback={<BattleLoading progress={32} status="Загружаем арену..." onCancel={() => navigate("/", {replace: true})} />}>
       <BattleGame playerId={id} playerName={playerName} roomId={roomId} heroName={hero} mode={mode} mapName={mapName} partyId={partyId} partyTicket={partyTicket} tauntActive={tauntActive} startNewBattle={startNewBattle}/>
     </Suspense>
   )
+}
+
+const getMobileLandscapeState = () => isMobileLandscape({
+  width: window.innerWidth,
+  height: window.innerHeight,
+  coarsePointer: window.matchMedia?.("(pointer: coarse)")?.matches,
+})
+
+const PortraitOrientationGuard = ({children}) => {
+  const [isLandscape, setIsLandscape] = useState(getMobileLandscapeState)
+
+  useEffect(() => {
+    requestPortraitOrientationLock()
+    const updateOrientation = () => setIsLandscape(getMobileLandscapeState())
+    window.addEventListener("resize", updateOrientation)
+    window.addEventListener("orientationchange", updateOrientation)
+    window.visualViewport?.addEventListener("resize", updateOrientation)
+    return () => {
+      window.removeEventListener("resize", updateOrientation)
+      window.removeEventListener("orientationchange", updateOrientation)
+      window.visualViewport?.removeEventListener("resize", updateOrientation)
+    }
+  }, [])
+
+  return <>
+    {children}
+    {isLandscape && (
+      <div className="portrait-orientation-guard" role="status" aria-live="polite">
+        <div className="portrait-orientation-guard__card">
+          <span className="portrait-orientation-guard__icon" aria-hidden="true">↻</span>
+          <h1>Поверните телефон вертикально</h1>
+          <p>Игра рассчитана на портретный режим.</p>
+        </div>
+      </div>
+    )}
+  </>
 }
 
 const App = () => {
@@ -77,15 +119,17 @@ const App = () => {
   }, [])
 
   return (
-    <BrowserRouter future={{v7_startTransition:true, v7_relativeSplatPath:true}}>
-      <Suspense fallback={<BattleLoading progress={18} status="Загружаем интерфейс..." />}>
-        <Routes>
-          <Route path="/katty-lab" element={<KattyLab/>}/>
-          <Route path="/" element={id ? <LandingPage id={id}/> : <div role="alert">{authError || "Авторизация…"}</div>}/>
-          <Route path="/battle/:roomId?" element={id ? <BattlePage id={id}/> : <></>}/>
-        </Routes>
-      </Suspense>
-    </BrowserRouter>
+    <PortraitOrientationGuard>
+      <BrowserRouter future={{v7_startTransition:true, v7_relativeSplatPath:true}}>
+        <Suspense fallback={<AppLoading />}>
+          <Routes>
+            <Route path="/katty-lab" element={<KattyLab/>}/>
+            <Route path="/" element={id ? <LandingPage id={id}/> : <div role="alert">{authError || "Авторизация…"}</div>}/>
+            <Route path="/battle/:roomId?" element={id ? <BattlePage id={id}/> : <></>}/>
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+    </PortraitOrientationGuard>
   )
 }
 

@@ -28,6 +28,12 @@ Open Grafana at `http://localhost:3000`. The dashboard is provisioned as
   outbound transport latency, saturation and payload pressure.
 - `battle_http_request_duration_seconds` and `battle_http_requests_total`: RED
   metrics for the HTTP surface.
+- `app_build_info{version,commit}` identifies the running release. The
+  `app_release_deployments_total{version,commit}` counter is used by the
+  Grafana dashboard as a release annotation trigger.
+- The release tag is also written to `/release.json` and the News record after
+  the smoke check, so the profile, Grafana marker, and user-facing update all
+  refer to the same immutable manifest.
 
 ## Runbook
 

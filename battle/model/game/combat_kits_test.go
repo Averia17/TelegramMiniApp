@@ -251,22 +251,24 @@ func TestSuperChargeDoesNotAdvanceByTime(t *testing.T) {
 	}
 }
 
-func TestRejectedAbilityEmitsReasonedCombatEvent(t *testing.T) {
+func TestAbilityCooldownEmitsReasonedCombatEvent(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("source", "Source", "Needle")
+	now := time.Now().UnixMilli()
 
-	gs.playerAbility("source", time.Now().UnixMilli(), "primary", "ability-1")
+	gs.playerAbility("source", now, "primary", "ability-accepted")
+	gs.playerAbility("source", now+1, "primary", "ability-1")
 
-	if len(gs.CombatEvents) != 1 {
-		t.Fatalf("combat events = %+v, want one rejected ability event", gs.CombatEvents)
+	if len(gs.CombatEvents) != 2 {
+		t.Fatalf("combat events = %+v, want accepted and rejected ability events", gs.CombatEvents)
 	}
-	event := gs.CombatEvents[0]
+	event := gs.CombatEvents[1]
 	if event.Kind != "ability" || event.CommandID != "ability-1" || event.AbilitySlot != "primary" {
 		t.Fatalf("ability event identity = %+v", event)
 	}
-	if event.Accepted || !event.Resolved || event.Reason != "super_not_ready" {
-		t.Fatalf("ability rejection = %+v, want resolved super_not_ready", event)
+	if event.Accepted || !event.Resolved || event.Reason != "ability_cooldown" {
+		t.Fatalf("ability rejection = %+v, want resolved ability_cooldown", event)
 	}
 }
 

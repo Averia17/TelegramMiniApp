@@ -1,5 +1,24 @@
 {
-  "annotations": {"list": []},
+  "annotations": {"list": [
+    {
+      "builtIn": 1,
+      "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+      "enable": true,
+      "hide": true,
+      "iconColor": "#5794F2",
+      "name": "Annotations & Alerts",
+      "type": "dashboard"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "battle-prometheus"},
+      "enable": true,
+      "expr": "increase(app_release_deployments_total[5m]) > 0",
+      "iconColor": "#FADE2A",
+      "name": "Release",
+      "titleFormat": "{{version}} ({{commit}})",
+      "type": "dashboard"
+    }
+  ]},
   "editable": false,
   "graphTooltip": 1,
   "panels": [
@@ -95,6 +114,15 @@
       "title": "Slow WebSocket writes",
       "type": "timeseries",
       "targets": [{"expr": "rate(battle_websocket_slow_writes_total[5m])", "legendFormat": "writes/s", "refId": "A"}]
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "battle-prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 32},
+      "id": 11,
+      "title": "Installed release",
+      "type": "stat",
+      "targets": [{"expr": "app_build_info", "legendFormat": "{{version}} / {{commit}}", "refId": "A"}]
     }
   ],
   "refresh": "5s",
@@ -106,5 +134,5 @@
   "timepicker": {},
   "title": "Battle Runtime",
   "uid": "battle-runtime",
-  "version": 2
+  "version": 3
 }

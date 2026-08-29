@@ -3,14 +3,16 @@ import sys
 import unittest
 from pathlib import Path
 
-
 TOOLS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS_DIR))
 
-from validate_combat_playtest import REQUIRED_CASES, validate_playtest_report  # noqa: E402
 from generate_combat_profile import profile_fingerprint  # noqa: E402
-from validate_combat_profile import read_profile  # noqa: E402
 from init_combat_playtest import build_playtest_template  # noqa: E402
+from validate_combat_playtest import (  # noqa: E402
+    REQUIRED_CASES,
+    validate_playtest_report,
+)
+from validate_combat_profile import read_profile  # noqa: E402
 
 
 def valid_case(case_id, mode, hero="Kaze"):
@@ -43,8 +45,22 @@ def valid_case(case_id, mode, hero="Kaze"):
 
 
 def valid_report():
-    modes = {"C1": "solo", "C2": "solo", "C3": "team", "C4": "team", "C5": "team", "C6": "solo"}
-    first_heroes = ["Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico"]
+    modes = {
+        "C1": "solo",
+        "C2": "solo",
+        "C3": "team",
+        "C4": "team",
+        "C5": "team",
+        "C6": "solo",
+    }
+    first_heroes = [
+        "Needle",
+        "Mandy",
+        "Fairy Mina",
+        "Brock Zeus",
+        "Kaze",
+        "Wukong Mico",
+    ]
     second_heroes = ["Persephone Lumi", "Katty", "Kaze", "Kaze", "Kaze", "Kaze"]
 
     def participant(participant_id, heroes):
@@ -61,11 +77,17 @@ def valid_report():
 
     return {
         "profileId": "combat-profile",
-        "combatRulesVersion": "2026-08-27-cadence-window",
+        "combatRulesVersion": "2026-08-27-skill-cooldown-source",
         "combatProfileFingerprint": profile_fingerprint(read_profile()),
         "heroCoverage": [
-            "Needle", "Mandy", "Fairy Mina", "Brock Zeus",
-            "Kaze", "Wukong Mico", "Persephone Lumi", "Katty",
+            "Needle",
+            "Mandy",
+            "Fairy Mina",
+            "Brock Zeus",
+            "Kaze",
+            "Wukong Mico",
+            "Persephone Lumi",
+            "Katty",
         ],
         "heroCoverageEvidence": [
             {"hero": "Needle", "participantId": "p-1", "caseId": "C1"},
@@ -113,9 +135,15 @@ class CombatPlaytestValidationTests(unittest.TestCase):
 
         errors = validate_playtest_report(report)
 
-        self.assertTrue(any("signature" in error and "placeholder" in error for error in errors))
-        self.assertTrue(any("evidence" in error and "placeholder" in error for error in errors))
-        self.assertTrue(any("answers" in error and "placeholder" in error for error in errors))
+        self.assertTrue(
+            any("signature" in error and "placeholder" in error for error in errors)
+        )
+        self.assertTrue(
+            any("evidence" in error and "placeholder" in error for error in errors)
+        )
+        self.assertTrue(
+            any("answers" in error and "placeholder" in error for error in errors)
+        )
 
     def test_rejects_negative_playtest_telemetry(self):
         report = valid_report()
@@ -131,7 +159,9 @@ class CombatPlaytestValidationTests(unittest.TestCase):
 
         errors = validate_playtest_report(report)
 
-        self.assertTrue(any("combatProfileFingerprint mismatch" in error for error in errors))
+        self.assertTrue(
+            any("combatProfileFingerprint mismatch" in error for error in errors)
+        )
 
     def test_rejects_incomplete_hero_coverage(self):
         report = valid_report()
@@ -151,15 +181,22 @@ class CombatPlaytestValidationTests(unittest.TestCase):
 
     def test_rejects_declared_hero_coverage_without_case_evidence(self):
         report = valid_report()
-        report["heroCoverageEvidence"] = [{
-            "hero": "Kaze",
-            "participantId": "p-1",
-            "caseId": "C1",
-        }]
+        report["heroCoverageEvidence"] = [
+            {
+                "hero": "Kaze",
+                "participantId": "p-1",
+                "caseId": "C1",
+            }
+        ]
 
         errors = validate_playtest_report(report)
 
-        self.assertTrue(any("heroCoverageEvidence is missing active heroes" in error for error in errors))
+        self.assertTrue(
+            any(
+                "heroCoverageEvidence is missing active heroes" in error
+                for error in errors
+            )
+        )
 
     def test_rejects_runtime_errors_and_missing_telemetry(self):
         report = valid_report()
@@ -167,7 +204,9 @@ class CombatPlaytestValidationTests(unittest.TestCase):
         del report["participants"][0]["cases"][0]["telemetry"]["combatUptime"]
         errors = validate_playtest_report(report)
         self.assertTrue(any("consoleErrors must be empty" in error for error in errors))
-        self.assertTrue(any("telemetry.combatUptime is required" in error for error in errors))
+        self.assertTrue(
+            any("telemetry.combatUptime is required" in error for error in errors)
+        )
 
     def test_rejects_missing_verbatim_answers(self):
         report = valid_report()
@@ -179,7 +218,9 @@ class CombatPlaytestValidationTests(unittest.TestCase):
         report = valid_report()
         for participant in report["participants"]:
             for case in participant["cases"]:
-                case["evidence"] = [f"https://example.test/{participant['participantId']}/{case['caseId']}.mp4"]
+                case["evidence"] = [
+                    f"https://example.test/{participant['participantId']}/{case['caseId']}.mp4"
+                ]
         self.assertEqual(
             validate_playtest_report(report, require_files=True, base_dir="."), []
         )

@@ -32,6 +32,45 @@ func TestCollectingHealthBoostAddsFivePercentOfOriginalHealth(t *testing.T) {
 	}
 }
 
+func TestStationaryPlayerCollectsHealthBoost(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("collector", "Collector", "Mandy")
+	gs.State = GameStateGame
+	collector := gs.Players["collector"]
+	reward := prop.NewProp("health_boost", collector.X, collector.Y, 12)
+	gs.Props = append(gs.Props, reward)
+
+	baseMaxLives := collector.MaxLives
+	gs.updatePlayerMovement()
+
+	if reward.Active {
+		t.Fatal("stationary player did not collect health boost")
+	}
+	if collector.MaxLives <= baseMaxLives {
+		t.Fatalf("stationary health boost did not increase max lives: got %d, want > %d", collector.MaxLives, baseMaxLives)
+	}
+}
+
+func TestControlledPlayerCollectsHealthBoostWhileStunned(t *testing.T) {
+	gs := newTestGameState()
+	gs.PlayerAdd("collector", "Collector", "Mandy")
+	gs.State = GameStateGame
+	collector := gs.Players["collector"]
+	collector.StunUntil = time.Now().Add(time.Second).UnixMilli()
+	reward := prop.NewProp("health_boost", collector.X, collector.Y, 12)
+	gs.Props = append(gs.Props, reward)
+
+	baseMaxLives := collector.MaxLives
+	gs.updatePlayerMovement()
+
+	if reward.Active {
+		t.Fatal("stunned player did not collect health boost")
+	}
+	if collector.MaxLives <= baseMaxLives {
+		t.Fatalf("stunned player health boost did not increase max lives: got %d, want > %d", collector.MaxLives, baseMaxLives)
+	}
+}
+
 func TestLegacyPowerPickupCannotHealOrBuffAPlayer(t *testing.T) {
 	gs := newTestGameState()
 	gs.PlayerAdd("collector", "Collector", "Mandy")

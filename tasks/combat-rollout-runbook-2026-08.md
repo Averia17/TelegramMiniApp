@@ -22,8 +22,8 @@ ref целиком; config-only kill switch для выбора профиля �
 тест падает на city collider count (56 вместо 54). Наличие profile JSON или
 проходящего отдельного package не заменяет release-level preflight.
 
-Текущий candidate: revision `2026-08-27-cadence-window`, fingerprint
-`FB04F651CBFF6F8FCBE7830CB752CBE1F52FC04976274D90B5C1CFD25CFF2488`.
+Текущий candidate: revision `2026-08-27-skill-cooldown-source`, fingerprint
+`518C5163DB2660DBD11B7A9550EA4C60F5627CA25B634DE05EE1150F37D84B94`.
 
 Последний dry-run rollback reference: `ba17770` прошёл полный Go suite, но не
 прошёл catalog fingerprint check в архивной копии. Поэтому rollback drill и
@@ -43,7 +43,7 @@ release-level preflight). Это подтверждает отсутствие �
 но не является operator approval.
 
 Машиночитаемый результат этого scan сохранён в
-`output/combat-rollback-scan-20260827-v2/combat-rollback-ref-scan.json` и должен
+`output/combat-rollback-scan-20260829-v3/combat-rollback-ref-scan.json` и должен
 перегенерироваться новой директорией после появления новых refs.
 
 ## Preflight gate

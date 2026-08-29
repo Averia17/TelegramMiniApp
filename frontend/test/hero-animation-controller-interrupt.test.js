@@ -143,3 +143,28 @@ test("full-body overlay blends out before its finished event leaves an empty fra
   assert.equal(controller.overlay, null)
   controller.dispose()
 })
+
+test("spawn restores locomotion when its time scale stretches the clip", () => {
+  const root = new THREE.Group()
+  const upper = new THREE.Bone()
+  upper.name = "Upper"
+  root.add(upper)
+  const idle = poseClip("Idle", 1)
+  const run = poseClip("Run", 1)
+  const spawn = poseClip("Spawn", .8)
+  const controller = new GLBHeroController(root, [idle, run, spawn], {
+    idle: "Idle",
+    run: "Run",
+    spawn: "Spawn",
+  }, {spawnOnLoad: false, spawnDuration: 1.6})
+
+  controller.playSpawn()
+  for (let index = 0; index < 140; index += 1) {
+    controller.update(1 / 60, {alive: true, moving: true, speed: 144, referenceSpeed: 144})
+  }
+
+  assert.equal(controller.state, "run")
+  assert.equal(controller.actions.get("run").getEffectiveWeight(), 1)
+  assert.equal(controller.actions.get("spawn").getEffectiveWeight(), 0)
+  controller.dispose()
+})

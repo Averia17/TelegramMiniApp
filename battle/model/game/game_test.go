@@ -1091,13 +1091,37 @@ func TestEffectiveMovementSpeedSlowsInsidePassableVineZone(t *testing.T) {
 	now := time.Now().UnixMilli()
 	p := &player.Player{Speed: 120}
 	mapValue := &gamemap.GameMap{Collisions: []*geometry.WallTile{
-		{MinX: 100, MinY: 100, MaxX: 140, MaxY: 140, Type: "vine"},
+		{MinX: 100, MinY: 100, MaxX: 140, MaxY: 140, Type: "thorn_vine"},
 	}}
 	if got := EffectiveMovementSpeedAt(p, now, mapValue, 120, 120); math.Abs(got-81.6) > .001 {
-		t.Fatalf("vine speed = %.2f, want 81.60", got)
+		t.Fatalf("thorn vine speed = %.2f, want 81.60", got)
 	}
 	if got := EffectiveMovementSpeedAt(p, now, mapValue, 80, 120); math.Abs(got-120) > .001 {
-		t.Fatalf("outside vine speed = %.2f, want 120", got)
+		t.Fatalf("outside thorn vine speed = %.2f, want 120", got)
+	}
+}
+
+func TestPlayerMovementAppliesPassableVineSlowdown(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	vine := &geometry.WallTile{MinX: 80, MinY: 80, MaxX: 120, MaxY: 120, Type: "thorn_vine"}
+	gs.Map = &gamemap.GameMap{WidthInPixels: 400, HeightInPixels: 240, Collisions: []*geometry.WallTile{vine}}
+	gs.Walls = geometry.NewSpatialHash(float64(TileSize))
+	gs.Walls.Insert(vine)
+	p := &player.Player{
+		CircleBody: geometry.CircleBody{X: 100, Y: 100, Radius: 12},
+		PlayerId:   "player",
+		Lives:      1,
+		MaxLives:   1,
+		Speed:      120,
+		MoveX:      1,
+	}
+	gs.Players = map[string]*player.Player{p.PlayerId: p}
+
+	gs.updatePlayerMovement(time.Second / 60)
+
+	if math.Abs(p.X-(100+120*.68/60)) > .001 {
+		t.Fatalf("thorn vine movement x = %.3f, want %.3f", p.X, 100+120*.68/60)
 	}
 }
 

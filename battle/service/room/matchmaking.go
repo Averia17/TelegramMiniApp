@@ -43,6 +43,12 @@ func RemoveFromMatchQueue(clientId string) {
 	matchQueue.Remove(clientId)
 }
 
+func MatchQueueLength() int {
+	matchQueue.mu.Lock()
+	defer matchQueue.mu.Unlock()
+	return len(matchQueue.queue)
+}
+
 type MatchQueue struct {
 	queue    []*room.Client
 	queuedAt map[string]time.Time

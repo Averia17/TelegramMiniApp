@@ -1,8 +1,8 @@
 {
   "profileId": "combat-profile",
   "schemaVersion": 1,
-  "profileRevision": "2026-08-27-cadence-window",
-  "fingerprint": "FB04F651CBFF6F8FCBE7830CB752CBE1F52FC04976274D90B5C1CFD25CFF2488",
+  "profileRevision": "2026-08-29-kaze-cadence",
+  "fingerprint": "71855712EC452A5D49764E89F199BE430A2ACD63CF8B99E380F7D97EC681F406",
   "generatedViews": [
     "battle/model/game/combat_profile_generated.go",
     "frontend/src/components/BattleGame/combatProfile.generated.js"

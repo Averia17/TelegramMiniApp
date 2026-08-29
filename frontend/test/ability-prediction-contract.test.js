@@ -199,7 +199,7 @@ test("auth advertises the combat profile and event schema capabilities", () => {
       type: "auth",
       token: "token",
       combatProfileId: "combat-profile",
-      combatRulesVersion: "2026-08-27-cadence-window",
+    combatRulesVersion: "2026-08-29-kaze-cadence",
       eventSchemaVersion: 1,
     })
     client.disconnect()

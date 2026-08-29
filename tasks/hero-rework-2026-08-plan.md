@@ -3,7 +3,7 @@
 > Исторический design draft. Исполняемый план и текущие значения находятся в
 > `tasks/combat-audit-2026-08-plan.md` и `docs/combat-profile.json`; этот файл
 > не является source of truth. В частности, актуальный профиль Mina использует
-> 40 урона за звезду в revision `2026-08-27-cadence-window`.
+> 40 урона за звезду в revision `2026-08-27-skill-cooldown-source`.
 
 ## 1. Цель
 

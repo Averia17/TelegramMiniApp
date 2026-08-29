@@ -4,16 +4,16 @@ package game
 const (
 	CombatProfileID            = "combat-profile"
 	CombatProfileSchemaVersion = 1
-	CombatProfileRevision      = "2026-08-27-cadence-window"
-	CombatRulesVersion         = "2026-08-27-cadence-window"
-	CombatProfileFingerprint   = "FB04F651CBFF6F8FCBE7830CB752CBE1F52FC04976274D90B5C1CFD25CFF2488"
+	CombatProfileRevision      = "2026-08-29-kaze-cadence"
+	CombatRulesVersion         = "2026-08-29-kaze-cadence"
+	CombatProfileFingerprint   = "71855712EC452A5D49764E89F199BE430A2ACD63CF8B99E380F7D97EC681F406"
 )
 
 const GeneratedCombatProfileJSON = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "schemaVersion": 1,
   "profileId": "combat-profile",
-  "profileRevision": "2026-08-27-cadence-window",
+  "profileRevision": "2026-08-29-kaze-cadence",
   "purpose": "Версионируемый контракт authoritative combat core и его runtime-представлений.",
   "modes": [
     "deathmatch",
@@ -109,11 +109,13 @@ const GeneratedCombatProfileJSON = `{
       },
       "super": {
         "abilityId": "hunter_root",
-        "chargeWeight": 1.0
+        "chargeWeight": 1.0,
+        "cooldownMs": 12000
       },
       "gadget": {
         "abilityId": "spore_escape",
-        "maxCharges": 3
+        "maxCharges": 3,
+        "cooldownMs": 6500
       }
     },
     "mandy": {
@@ -140,11 +142,13 @@ const GeneratedCombatProfileJSON = `{
       },
       "super": {
         "abilityId": "devastation_wave",
-        "chargeWeight": 1.0
+        "chargeWeight": 1.0,
+        "cooldownMs": 15000
       },
       "gadget": {
         "abilityId": "unyielding_stance",
-        "maxCharges": 3
+        "maxCharges": 3,
+        "cooldownMs": 6500
       }
     },
     "fairy-mina": {
@@ -171,11 +175,13 @@ const GeneratedCombatProfileJSON = `{
       },
       "super": {
         "abilityId": "star_cocoon",
-        "chargeWeight": 1.0
+        "chargeWeight": 1.0,
+        "cooldownMs": 12000
       },
       "gadget": {
         "abilityId": "repelling_wave",
-        "maxCharges": 3
+        "maxCharges": 3,
+        "cooldownMs": 6500
       }
     },
     "brock-zeus": {
@@ -202,11 +208,13 @@ const GeneratedCombatProfileJSON = `{
       },
       "super": {
         "abilityId": "gods_hammer",
-        "chargeWeight": 1.0
+        "chargeWeight": 1.0,
+        "cooldownMs": 14000
       },
       "gadget": {
         "abilityId": "discharge_cable",
-        "maxCharges": 3
+        "maxCharges": 3,
+        "cooldownMs": 6500
       }
     },
     "kaze": {
@@ -225,7 +233,7 @@ const GeneratedCombatProfileJSON = `{
         "abilityId": "cross_slash",
         "attackType": "kaze_cross_slash",
         "attackDamage": 85,
-        "attackCooldownMs": 280,
+        "attackCooldownMs": 360,
         "reloadTimeMs": 800,
         "maxAmmo": 3,
         "archetype": "melee_cone",
@@ -233,11 +241,13 @@ const GeneratedCombatProfileJSON = `{
       },
       "super": {
         "abilityId": "piercing_dash",
-        "chargeWeight": 1.0
+        "chargeWeight": 1.0,
+        "cooldownMs": 10000
       },
       "gadget": {
         "abilityId": "vanish",
-        "maxCharges": 3
+        "maxCharges": 3,
+        "cooldownMs": 6500
       }
     },
     "wukong-mico": {
@@ -264,11 +274,13 @@ const GeneratedCombatProfileJSON = `{
       },
       "super": {
         "abilityId": "vengeance_vortex",
-        "chargeWeight": 1.0
+        "chargeWeight": 1.0,
+        "cooldownMs": 11000
       },
       "gadget": {
         "abilityId": "stone_armor",
-        "maxCharges": 3
+        "maxCharges": 3,
+        "cooldownMs": 6500
       }
     },
     "persephone-lumi": {
@@ -295,11 +307,13 @@ const GeneratedCombatProfileJSON = `{
       },
       "super": {
         "abilityId": "root_garden",
-        "chargeWeight": 1.0
+        "chargeWeight": 1.0,
+        "cooldownMs": 13000
       },
       "gadget": {
         "abilityId": "flower_burst",
-        "maxCharges": 3
+        "maxCharges": 3,
+        "cooldownMs": 6500
       }
     },
     "katty": {
@@ -326,11 +340,13 @@ const GeneratedCombatProfileJSON = `{
       },
       "super": {
         "abilityId": "paint_grenade",
-        "chargeWeight": 1.0
+        "chargeWeight": 1.0,
+        "cooldownMs": 12000
       },
       "gadget": {
         "abilityId": "paint_flight",
-        "maxCharges": 3
+        "maxCharges": 3,
+        "cooldownMs": 6500
       }
     }
   }

@@ -340,6 +340,13 @@ func (s *teamBattleBotStrategy) Update(gs *GameState) {
 			index++
 			continue
 		}
+		if bot.HeroName == "Brock Zeus" && bot.ChannelUntil > now {
+			// Keep the last movement intent during a channel. Movement simulation
+			// already pauses the body, and replacing the intent with a zero input
+			// would make a fallback hammer cast strand the bot at its spawn.
+			index++
+			continue
+		}
 		if centerX, centerY, seekCenter := gs.botStormCenterTarget(bot); seekCenter {
 			gs.moveBotTo(id, bot, centerX, centerY, now)
 			index++
@@ -355,6 +362,8 @@ func (s *teamBattleBotStrategy) Update(gs *GameState) {
 			gs.recordBotBatContestResponse(bot)
 		}
 		if visible == nil && gs.botTryAbility(id, bot, nil, now) {
+			// botTryAbility preserves Brock's roam intent before his hammer
+			// channel starts; do not send another movement command this tick.
 			index++
 			continue
 		}

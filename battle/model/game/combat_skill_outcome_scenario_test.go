@@ -16,6 +16,8 @@ type skillOutcomeResult struct {
 	targetDamage    int
 	targetKilled    bool
 	selfDamageTaken int
+	basicDamage     int
+	skillDamage     int
 }
 
 func skillOutcomeState(hero, defender string, mode GameMode) (*GameState, *player.Player, *player.Player) {
@@ -111,6 +113,8 @@ func runSkillOutcomeTrial(t *testing.T, trial skillOutcomeTrial, mode GameMode, 
 		targetDamage:    targetLives - target.Lives,
 		targetKilled:    !target.IsAlive(),
 		selfDamageTaken: 1_000 - attacker.Lives,
+		basicDamage:     attacker.BasicDamage,
+		skillDamage:     attacker.SkillDamage,
 	}
 }
 
@@ -224,6 +228,28 @@ func TestScenarioPackSkillDisabledOutcomeChangesAcrossSoloAndTeam(t *testing.T) 
 		next := run()
 		if !reflect.DeepEqual(first, next) {
 			t.Fatalf("skill outcome reports differ on replay %d", replay)
+		}
+	}
+}
+
+func TestScenarioPackSkillEnabledRoundRecordsMeaningfulSkillContribution(t *testing.T) {
+	trials := []skillOutcomeTrial{
+		{hero: "Needle", targetDistance: 120},
+		{hero: "Mandy", targetDistance: 60},
+		{hero: "Fairy Mina", targetDistance: 120},
+		{hero: "Brock Zeus", targetDistance: 260},
+		{hero: "Kaze", targetDistance: 60},
+		{hero: "Wukong Mico", targetDistance: 70},
+		{hero: "Persephone Lumi", targetDistance: 120},
+		{hero: "Katty", targetDistance: 80},
+	}
+	for _, trial := range trials {
+		result := runSkillOutcomeTrial(t, trial, ModeDeathmatch, 400, true, false)
+		if result.skillDamage <= 0 {
+			t.Fatalf("%s skill-enabled round recorded no skill contribution: %#v", trial.hero, result)
+		}
+		if result.targetDamage <= result.basicDamage {
+			t.Fatalf("%s skill-enabled round did not make skills meaningful: total=%d basic=%d skill=%d", trial.hero, result.targetDamage, result.basicDamage, result.skillDamage)
 		}
 	}
 }

@@ -103,6 +103,40 @@ def validate_hero(hero: str) -> dict:
     else:
         if bpy.context.scene.get("hero_slug") != hero:
             failures.append("scene hero_slug metadata is missing or wrong")
+        connected = sorted(
+            bone.name for bone in armature.data.bones if bone.use_connect
+        )
+        if connected:
+            failures.append(
+                f"{hero}: authoring rig has connected bones; "
+                f"expected explicit disconnected rest pose, found {connected}"
+            )
+        if hero == "fairy-mina":
+            expected_body_parts = {
+                "body_GEO_torso",
+                "body_GEO_head",
+                "body_GEO_L_arm",
+                "body_GEO_R_arm",
+                "body_GEO_L_hand",
+                "body_GEO_R_hand",
+                "body_GEO_L_hand_detail",
+                "body_GEO_R_hand_detail",
+                "body_GEO_face",
+                "body_GEO_L_eyebrow",
+                "body_GEO_R_eyebrow",
+            }
+            body_parts = {
+                obj.name
+                for obj in bpy.context.scene.objects
+                if obj.type == "MESH" and obj.name.startswith("body_GEO_")
+            }
+            missing_body_parts = sorted(expected_body_parts - body_parts)
+            if bpy.data.objects.get("body_GEO") is not None or missing_body_parts:
+                failures.append(
+                    "fairy-mina: body_GEO must be split into logical mesh parts; "
+                    f"missing {missing_body_parts}, legacy body_GEO present="
+                    f"{bpy.data.objects.get('body_GEO') is not None}"
+                )
         for clip, action_name in actions_for(hero).items():
             matches = exact_actions(action_name)
             if len(matches) != 1:

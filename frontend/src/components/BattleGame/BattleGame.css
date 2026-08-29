@@ -203,6 +203,7 @@
 .network-status-notice small { overflow: hidden; color: rgba(255,255,255,.74); font: 700 8px/1.15 system-ui, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .network-status-notice--poor { border-color: rgba(255, 105, 108, .72); background: rgba(75, 28, 57, .92); }.network-status-notice--poor b { color: #ff9d9d; }.network-status-notice--poor .network-status-notice__signal i { background: #ff777d; }
 .network-status-notice--offline { border-color: rgba(255, 105, 108, .72); background: rgba(57, 24, 50, .94); }.network-status-notice--offline b { color: #ff9d9d; }.network-status-notice--offline .network-status-notice__signal i { background: #ff777d; }
+.network-status-notice--reconnected { border-color: rgba(75, 214, 135, .78); background: rgba(22, 86, 64, .94); }.network-status-notice--reconnected b { color: #9af2bd; }.network-status-notice--reconnected .network-status-notice__signal i { background: #5ee58e; }
 .battle-match-timer { display: flex; align-items: baseline; justify-content: center; min-width: 92px; gap: 5px; padding: 3px 8px; border: 1px solid rgba(255,255,255,.38); border-radius: 999px; color: #fff; background: rgba(19,24,62,.88); box-shadow: 0 2px 0 rgba(13,17,48,.65); pointer-events: none; text-shadow: 0 1px 0 #17265f; }
 .battle-match-timer span { color: rgba(255,255,255,.68); font: 900 7px/1 system-ui,sans-serif; letter-spacing: .8px; }
 .battle-match-timer strong { min-width: 31px; color: #fff2a0; font: 900 13px/1 Impact,sans-serif; font-variant-numeric: tabular-nums; letter-spacing: .5px; }
@@ -416,6 +417,7 @@
 
 .battle-messages { position: absolute; z-index: 8; left: 16px; bottom: 22px; display: flex; flex-direction: column; gap: 7px; color: #fff; pointer-events: none; }
 .battle-messages div { padding: 7px 11px; border: 2px solid rgba(255, 255, 255, 0.45); border-radius: 9px; background: rgba(19, 24, 59, 0.58); font: 800 11px system-ui, sans-serif; animation: message-pop 0.22s ease-out; }
+.battle-messages .msg-maintenance { border-color: #ffe55e; background: rgba(88, 55, 12, 0.84); color: #fff3a5; }
 @keyframes message-pop { from { opacity: 0; transform: translateX(-12px) scale(0.9); } }
 
 .battle-controls { position: absolute; z-index: 8; right: 16px; bottom: 14px; display: flex; gap: 6px; pointer-events: none; }
@@ -860,7 +862,7 @@
     max-height: clamp(64px, 12vh, 96px);
     gap: 3px;
   }
-  .battle-messages div {
+.battle-messages div {
     max-width: 100%;
     padding: 4px 7px;
     border-width: 1px;

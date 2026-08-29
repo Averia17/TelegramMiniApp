@@ -1,7 +1,8 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import {readFile} from "node:fs/promises"
 
-import {getBattleRecoveryDecision, getBattleRecoveryTimeoutDecision} from "../src/components/BattleGame/battleRecovery.js"
+import {getBattleRecoveryDecision, getBattleRecoveryTimeoutDecision, getBattleReconnectDelay} from "../src/components/BattleGame/battleRecovery.js"
 
 test("recovery resumes the authoritative active room even with a stale room hint", () => {
   assert.deepEqual(
@@ -45,4 +46,18 @@ test("recovery watchdog returns to the menu when the server never answers", () =
 
 test("recovery watchdog preserves an explicit new-battle intent", () => {
   assert.deepEqual(getBattleRecoveryTimeoutDecision({startNewBattle: true}), {kind: "new"})
+})
+
+test("reconnect delay backs off but stays within the user-visible retry budget", () => {
+  assert.equal(getBattleReconnectDelay(0), 1000)
+  assert.equal(getBattleReconnectDelay(1), 2000)
+  assert.equal(getBattleReconnectDelay(2), 4000)
+  assert.equal(getBattleReconnectDelay(8), 5000)
+})
+
+test("new-battle intent is consumed after the initial recovery decision", async () => {
+  const source = await readFile(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url), "utf8")
+  assert.match(source, /const startNewBattleRef = useRef\(startNewBattle\)/)
+  assert.match(source, /startNewBattle: startNewBattleRef\.current/)
+  assert.match(source, /startNewBattleRef\.current = false/)
 })

@@ -1,0 +1,1 @@
+"""Release news service package."""

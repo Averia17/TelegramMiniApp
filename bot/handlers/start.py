@@ -9,6 +9,6 @@ start_router = Router()
 @start_router.message(CommandStart())
 async def send_webapp(message: types.Message, config: Config):
     await message.answer(
-        "Welcome to TB Clicker!",
+        "Welcome to Game!",
         reply_markup=main_menu(domain=config.tg_bot.web_app_domain),
     )

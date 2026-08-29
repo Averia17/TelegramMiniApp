@@ -1,7 +1,7 @@
 {
   "profileId": "combat-profile",
-  "combatRulesVersion": "2026-08-27-cadence-window",
-  "combatProfileFingerprint": "FB04F651CBFF6F8FCBE7830CB752CBE1F52FC04976274D90B5C1CFD25CFF2488",
+  "combatRulesVersion": "2026-08-27-skill-cooldown-source",
+  "combatProfileFingerprint": "518C5163DB2660DBD11B7A9550EA4C60F5627CA25B634DE05EE1150F37D84B94",
   "heroCoverage": ["Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico", "Persephone Lumi", "Katty"],
   "heroCoverageEvidence": [
     {"hero": "Needle", "participantId": "replace-with-participant-id-1", "caseId": "C1"},

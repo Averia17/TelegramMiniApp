@@ -35,6 +35,13 @@ test("formats a targeted clown taunt", () => {
   )
 })
 
+test("formats the deployment maintenance notice", () => {
+  assert.equal(
+    formatBattleMessage({type: "maintenance", params: {message: "Обновление v0.0.2"}}),
+    "Обновление v0.0.2",
+  )
+})
+
 test("does not return a renderable message for unknown or intentionally hidden events", () => {
   assert.equal(formatBattleMessage({type: "island_voice", params: {text: "Look around"}}), "")
   assert.equal(formatBattleMessage({type: "future_event", params: {}}), "")

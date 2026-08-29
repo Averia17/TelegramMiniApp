@@ -7,7 +7,7 @@ const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cj
 const baseUrl = process.env.MAP_QA_URL || "http://127.0.0.1"
 const selectedMap = process.env.MAP_QA_MAP === "team-battle" ? "team-battle" : "team-battle-northern"
 const expectedMapId = selectedMap === "team-battle" ? "team-battle@20260816" : "team-battle-northern@20260827"
-const expectedCityObjectBlockingCount = selectedMap === "team-battle" ? 56 : 122
+const expectedCityObjectBlockingCount = selectedMap === "team-battle" ? 56 : 148
 const output = path.resolve(__dirname, "../../output/playwright/abandoned-city-map", selectedMap, "global-audit")
 
 const sectors = [
@@ -91,7 +91,7 @@ runWithBrowser(
         occupied.set(cellKey, wall)
         wallTypes.set(wall.type, (wallTypes.get(wall.type) || 0) + 1)
       }
-      const blockingTypes = new Set(["water", "river", "wall", "destructible", "tree", "dead_tree", "menhir", "crates", "ruin_wall", "thorn_vine", "building_wall", "building_rubble", "fortress_wall", "shipwreck", "pond", "rock"])
+      const blockingTypes = new Set(["water", "river", "wall", "destructible", "tree", "dead_tree", "menhir", "crates", "ruin_wall", "building_wall", "building_rubble", "fortress_wall", "shipwreck", "pond", "rock"])
       const isBlocking = wall => typeof wall?.blocking === "boolean" ? wall.blocking : blockingTypes.has(wall?.type)
       const blocked = new Set([...occupied].filter(([, wall]) => isBlocking(wall)).map(([cell]) => cell))
       const inBounds = (x, y) => x >= 0 && y >= 0 && x < width && y < height
@@ -121,6 +121,7 @@ runWithBrowser(
       const bridgeCells = [...occupied].filter(([, wall]) => wall.type === "river_bridge").map(([cell]) => cell)
       const vineCells = [...occupied].filter(([, wall]) => wall.type === "vine").map(([cell]) => cell)
       const vineBlockingCells = [...occupied].filter(([, wall]) => wall.type === "vine" && isBlocking(wall)).map(([cell]) => cell)
+      const thornVineBlockingCells = [...occupied].filter(([, wall]) => wall.type === "thorn_vine" && isBlocking(wall)).map(([cell]) => cell)
       const featureSummary = map.features.reduce((summary, feature) => {
         summary[feature.type] = (summary[feature.type] || 0) + 1
         return summary
@@ -142,6 +143,7 @@ runWithBrowser(
         bridgeCells: bridgeCells.length,
         vineCells: vineCells.length,
         vineBlockingCells,
+        thornVineBlockingCells,
         spawners,
         reachability,
         featureSummary,
@@ -193,12 +195,13 @@ runWithBrowser(
     assert.equal(metrics.bridgeCells > 0, true)
     assert.equal(metrics.vineCells >= 24, true)
     assert.deepEqual(metrics.vineBlockingCells, [])
+    assert.deepEqual(metrics.thornVineBlockingCells, [])
     assert.equal(metrics.cityFeatures >= 11, true)
     assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_keep || 0) === 0 : metrics.featureSummary.castle_keep === 2, true)
     assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_gate || 0) === 0 : metrics.featureSummary.castle_gate === 4, true)
     assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_house || 0) === 0 : metrics.featureSummary.castle_house === 8, true)
     assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_market || 0) === 0 : metrics.featureSummary.castle_market === 2, true)
-    assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_bastion || 0) === 0 : metrics.featureSummary.castle_bastion === 8, true)
+    assert.equal((metrics.featureSummary.castle_bastion || 0) === 0, true)
     assert.equal(metrics.baseFeatures, 16)
     assert.deepEqual(metrics.baseFeatureSummary, {base_well: 2, base_workshop: 2, base_wagon: 2, base_barracks: 2, base_storehouse: 2, base_stable: 2, base_chapel: 2, base_courtyard: 2})
     assert.deepEqual(consoleErrors, [])
@@ -209,7 +212,7 @@ runWithBrowser(
         const map = window.qa.map
         const tile = map.tileSize || 40
         const target = [Math.floor(map.width * x / tile), Math.floor(map.height * y / tile)]
-        const blockingTypes = new Set(["water", "river", "wall", "destructible", "tree", "dead_tree", "menhir", "crates", "ruin_wall", "thorn_vine", "building_wall", "building_rubble", "fortress_wall", "shipwreck", "pond", "rock"])
+        const blockingTypes = new Set(["water", "river", "wall", "destructible", "tree", "dead_tree", "menhir", "crates", "ruin_wall", "building_wall", "building_rubble", "fortress_wall", "shipwreck", "pond", "rock"])
         const blocked = new Set(map.walls.filter(wall => typeof wall.blocking === "boolean" ? wall.blocking : blockingTypes.has(wall.type)).map(wall => `${Math.floor(wall.minX / tile)}:${Math.floor(wall.minY / tile)}`))
         let candidate = target
         for (let radius = 0; radius <= 8; radius += 1) {

@@ -4,10 +4,23 @@ import {clone} from "three/addons/utils/SkeletonUtils.js"
 import {mergeGeometries} from "three/addons/utils/BufferGeometryUtils.js"
 import {HERO_ASSETS, getHeroAsset, resolveHeroName} from "./assetManifest.js"
 
+// Keep fetched GLB response buffers in Three.js' process-local cache. This
+// survives route/component changes and is cleared naturally on a full reload.
+THREE.Cache.enabled = true
+
 const loadWith = loader => url => loader.loadAsync(url)
 const runtimeAssetUrl = (asset, url) => asset?.cacheBust
   ? `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(asset.cacheBust)}`
   : url
+
+const cloneMaterials = root => root.traverse(child => {
+  if (Array.isArray(child.material)) child.material = child.material.map(material => material.clone())
+  else if (child.material) child.material = child.material.clone()
+})
+
+const markSharedGeometry = root => root.traverse(child => {
+  if (child.geometry) child.geometry.userData.assetRegistryShared = true
+})
 
 const ATTACHMENT_ROLES = new Set([
   "attack-cloud",
@@ -242,6 +255,8 @@ export class AssetRegistry {
     this.readyCompanions = new Set()
     this.heroAssets = new Map()
     this.companionAssets = new Map()
+    this.heroTemplates = new Map()
+    this.companionTemplates = new Map()
   }
 
   hasHero(name) {
@@ -349,10 +364,22 @@ export class AssetRegistry {
     }
     if (!gltf || !asset) return null
     const animations = gltf.animations || []
-    const root = clone(gltf.scene)
+    let heroTemplate = this.heroTemplates.get(asset.id)
+    if (!heroTemplate) {
+      heroTemplate = clone(gltf.scene)
+      cloneMaterials(heroTemplate)
+      normalizeHeroHeight(heroTemplate, asset.targetHeight || 2.45)
+      // Brock Zeus has rigidly authored elbow/hand pieces whose bind matrices
+      // must remain independent. Merging these SkinnedMeshes into one shared
+      // skeleton wrapper changes their visual seam in the lobby preview even
+      // though the source GLB skinning is correct.
+      if (resolvedName !== "Brock Zeus") mergeHeroRenderParts(heroTemplate)
+      markSharedGeometry(heroTemplate)
+      this.heroTemplates.set(asset.id, heroTemplate)
+    }
+    const root = clone(heroTemplate)
+    cloneMaterials(root)
     root.traverse(child => {
-      if (Array.isArray(child.material)) child.material = child.material.map(material => material.clone())
-      else if (child.material) child.material = child.material.clone()
       if (child.isMesh) {
         // Heroes already have a compact, texture-backed contact shadow in
         // HeroView. A second directional shadow follows the local player and
@@ -363,10 +390,15 @@ export class AssetRegistry {
     })
     let cloudRoot = null
     if (companionGltf?.scene) {
-      cloudRoot = clone(companionGltf.scene)
+      let cloudTemplate = this.companionTemplates.get(asset.id)
+      if (!cloudTemplate) {
+        cloudTemplate = clone(companionGltf.scene)
+        markSharedGeometry(cloudTemplate)
+        this.companionTemplates.set(asset.id, cloudTemplate)
+      }
+      cloudRoot = clone(cloudTemplate)
+      cloneMaterials(cloudRoot)
       cloudRoot.traverse(child => {
-        if (Array.isArray(child.material)) child.material = child.material.map(material => material.clone())
-        else if (child.material) child.material = child.material.clone()
         if (child.isMesh) {
           child.castShadow = false
           child.receiveShadow = true

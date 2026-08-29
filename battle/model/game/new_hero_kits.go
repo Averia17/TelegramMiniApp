@@ -24,6 +24,7 @@ const (
 	KattySprayCloudTicks      = 4
 	KattySprayCloudSlow       = .72
 	KattySuperRadius          = 220.0
+	KattySuperRange           = 520.0
 	KattySuperDuration        = 7500 * time.Millisecond
 	KattySuperPullDuration    = 500 * time.Millisecond
 	KattySuperPullDistance    = 18.0
@@ -164,10 +165,9 @@ func (KattyKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float6
 	gs.addEffect("katty_paint_spray", p.X, p.Y, 0, 0, KattyKit{}.AttackRange(), angle, 0, .20, p.Color, p.AttackDmg, 260)
 }
 
-func (KattyKit) Super(gs *GameState, p *player.Player, ts int64, _, _ float64) bool {
-	// Katty's super is a self-centered paint zone. Aim only controls her
-	// normal spray; the super must not reuse the last cursor distance.
-	x, y := p.X, p.Y
+func (KattyKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
+	distance = math.Max(80, math.Min(KattySuperRange, distance))
+	x, y := p.X+math.Cos(angle)*distance, p.Y+math.Sin(angle)*distance
 	duration := KattySuperDuration.Milliseconds()
 	gs.HeroZones = append(gs.HeroZones, &HeroZone{
 		Owner: p.PlayerId, CommandID: gs.activeCommandID, Kind: "katty_paint_puddle", X: x, Y: y, Radius: KattySuperRadius,
@@ -398,7 +398,7 @@ func (MinaKit) Super(gs *GameState, p *player.Player, ts int64, _, _ float64) bo
 	duration := cappedSkillDuration(4 * time.Second)
 	target.ShieldUntil = ts + duration
 	visual := gs.addEffect("mina_healing_aura", target.X, target.Y, 0, 0, MinaHealingAuraRadius, 0, 0, 0, "#ff9bea", MinaHealingAuraDamage, duration)
-	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, Target: target.PlayerId, Kind: "mina_heal", X: target.X, Y: target.Y, Radius: MinaHealingAuraRadius, CreatedAt: ts, ExpiresAt: ts + duration, NextTickAt: ts, Triggered: map[string]bool{}, Visual: visual})
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{Owner: p.PlayerId, CommandID: gs.activeCommandID, Target: target.PlayerId, Kind: "mina_heal", X: target.X, Y: target.Y, Radius: MinaHealingAuraRadius, CreatedAt: ts, ExpiresAt: ts + duration, NextTickAt: ts, Triggered: map[string]bool{}, Visual: visual})
 	return true
 }
 
@@ -589,13 +589,13 @@ func (NeedleKit) Basic(gs *GameState, p *player.Player, _ int64, angle, _ float6
 func (NeedleKit) AimShape() string     { return "line" }
 func (NeedleKit) AttackRange() float64 { return 620 }
 
-func needleRootTarget(gs *GameState, source *player.Player, angle, fallbackDistance float64) (float64, float64) {
+func needleRootTarget(gs *GameState, source *player.Player, angle, fallbackDistance float64, now int64) (float64, float64) {
 	maxDistance := 600.0
 	bestDistance := math.Inf(1)
 	var best *player.Player
 	if gs != nil && source != nil {
 		for _, candidate := range gs.Players {
-			if candidate == nil || !candidate.CanBulletHurt(source.PlayerId, source.Team) {
+			if candidate == nil || !candidate.CanBulletHurt(source.PlayerId, source.Team) || !gs.botCanSee(source, candidate, now) {
 				continue
 			}
 			dx, dy := candidate.X-source.X, candidate.Y-source.Y
@@ -620,7 +620,7 @@ func needleRootTarget(gs *GameState, source *player.Player, angle, fallbackDista
 }
 
 func (NeedleKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
-	x, y := needleRootTarget(gs, p, angle, distance)
+	x, y := needleRootTarget(gs, p, angle, distance, ts)
 	impactAt := ts + NeedleRootTelegraph.Milliseconds()
 	expiresAt := impactAt + NeedleRootDuration.Milliseconds()
 	gs.HeroZones = append(gs.HeroZones, &HeroZone{
@@ -856,11 +856,13 @@ func (gs *GameState) updateNewHeroSystems() {
 				}
 				applied := gs.healPlayerAt(owner, MinaHealingAuraHeal, now)
 				addSuperChargeForSupport(owner, applied, owner.MaxLives)
-				for _, target := range gs.Players {
-					if target.CanBulletHurt(owner.PlayerId, owner.Team) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {
-						gs.dealPlayerDamage(owner, target, MinaHealingAuraDamage)
+				gs.withCombatCommand(z.CommandID, z.Owner, "primary", func() {
+					for _, target := range gs.Players {
+						if target.CanBulletHurt(owner.PlayerId, owner.Team) && math.Hypot(target.X-z.X, target.Y-z.Y) <= z.Radius+target.Radius {
+							gs.dealPlayerDamage(owner, target, MinaHealingAuraDamage)
+						}
 					}
-				}
+				})
 			}
 			z.NextTickAt += 500
 		}

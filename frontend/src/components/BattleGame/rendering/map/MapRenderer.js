@@ -2701,8 +2701,12 @@ export class MapRenderer {
       object.visible = true
       const visualScale = .82 + ratio * .18
       object.scale.setScalar(visualScale)
-      if (object.userData.objectiveRangeRing) object.userData.objectiveRangeRing.scale.setScalar(1 / visualScale)
-      if (object.userData.objectiveRangeRing?.material) object.userData.objectiveRangeRing.material.opacity = lives > 0 ? .12 : 0
+      if (object.userData.objectiveRangeRing) {
+        const rangeVisible = lives > 0
+        object.userData.objectiveRangeRing.visible = rangeVisible
+        object.userData.objectiveRangeRing.scale.setScalar(1 / visualScale)
+        if (object.userData.objectiveRangeRing.material) object.userData.objectiveRangeRing.material.opacity = rangeVisible ? .12 : 0
+      }
       if (object.userData.objectiveHealthBar) {
         const badgeScale = Number(object.userData.objectiveHealthBar.userData.baseScale) || 1
         object.userData.objectiveHealthBar.scale.setScalar(badgeScale / visualScale)

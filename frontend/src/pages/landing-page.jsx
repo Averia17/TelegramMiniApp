@@ -4,8 +4,9 @@ import axios from "axios"
 import {Leaderboard} from "../components/Tabs/Leaderboard.jsx"
 import {ProfileTab} from "../components/Tabs/ProfileTab.jsx"
 import {StoreTab} from "../components/Tabs/StoreTab.jsx"
+import {NewsTab} from "../components/Tabs/NewsTab.jsx"
 import "./landing-page.css"
-import {API_URL, PARTY_URL} from "../utils/urls.js"
+import {API_URL, BATTLE_URL, PARTY_URL} from "../utils/urls.js"
 import {BattleLoading} from "../components/BattleLoading/BattleLoading.jsx"
 import {DEFAULT_TEAM_BATTLE_MAP, getBattleRoute, getTeamBattleMap, loadBattleHero, loadBattleMap, loadBattleMode, saveBattleHero, saveBattleMap, saveBattleMode, TEAM_BATTLE_MAPS} from "../utils/battlePreferences.js"
 import {PartyPanel} from "../components/Party/PartyPanel.jsx"
@@ -19,7 +20,7 @@ import {InteractivePopover} from "../components/InteractivePopover/InteractivePo
 
 const HeroSelect = lazy(() => import("../components/HeroSelect/HeroSelect.jsx").then(module => ({default: module.HeroSelect})))
 
-const TABS = ["play", "rating", "profile", "store"]
+const TABS = ["play", "rating", "profile", "store", "news"]
 
 const syncEconomy = data => ({...data, _syncedAt: Date.now()})
 
@@ -33,6 +34,7 @@ const LandingPage = ({id}) => {
   const [nickname, setNickname] = useState("")
   const [economy, setEconomy] = useState({energy:100,max_energy:100,gold:0,crystals:0,taunt_charges:0,next_energy_in:0,_syncedAt:Date.now()})
   const [playError, setPlayError] = useState(() => location.state?.battleError || "")
+  const [maintenance, setMaintenance] = useState(null)
   const [battleStarting, setBattleStarting] = useState(false)
   const [battleMode, setBattleMode] = useState(() => loadBattleMode(id))
   const [battleMap, setBattleMap] = useState(() => loadBattleMap(id))
@@ -52,6 +54,13 @@ const LandingPage = ({id}) => {
 
   const refreshEconomy = useCallback(() => axios.get(`${API_URL}/economy/me`).then(({data}) => setEconomy(syncEconomy(data))).catch(() => {}), [])
   useEffect(() => { refreshEconomy(); const timer=setInterval(refreshEconomy,30000); return () => clearInterval(timer) }, [refreshEconomy])
+  useEffect(() => {
+    let active = true
+    const refreshMaintenance = () => axios.get(`${BATTLE_URL}/maintenance`, {timeout: 5000}).then(({data}) => active && setMaintenance(data?.draining ? data : null)).catch(() => {})
+    refreshMaintenance()
+    const timer = window.setInterval(refreshMaintenance, 5000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [])
   const [energyClock, setEnergyClock] = useState(() => Date.now())
   useEffect(() => {
     const timer = window.setInterval(() => setEnergyClock(Date.now()), 1000)
@@ -311,6 +320,7 @@ const LandingPage = ({id}) => {
   return (
     <main className={`lp lp--${tab}`}>
       <PartyInviteNotifications id={id} selectedHero={selectedHero} onAccepted={handlePartyAccepted} onPartyUpdated={handlePartyReady} onInviteStatus={handleInviteUpdate} onIncomingInviteStatus={handleIncomingInviteStatus}/>
+      {maintenance?.draining && <div className="lp-maintenance" role="status" aria-live="polite">⚙ {maintenance.message || "Идёт обновление. Новые бои временно недоступны."}</div>}
       {tab === "play" && (
         <>
           <header className="lp-topbar">
@@ -333,7 +343,7 @@ const LandingPage = ({id}) => {
             <SideButton icon="▣" label="МАГАЗИН" badge="!" onClick={() => switchTab("store")}/>
             <SideButton icon="🏆" label="РЕЙТИНГ" onClick={() => switchTab("rating")}/>
             <SideButton icon="👤" label="ПРОФИЛЬ" onClick={() => switchTab("profile")}/>
-            <SideButton icon="☰" label="НОВОСТИ" badge="1"/>
+            <SideButton icon="☰" label="НОВОСТИ" badge="1" onClick={() => switchTab("news")}/>
           </nav>
 
           <div className="lp-content lp-content--play">
@@ -370,6 +380,7 @@ const LandingPage = ({id}) => {
             {tab === "rating" && <Leaderboard playerId={id}/>}
             {tab === "profile" && <ProfileTab id={id} onNicknameChange={setNickname}/>}
             {tab === "store" && <StoreTab userId={id} economy={economy} onEconomyChange={data => setEconomy(syncEconomy(data))}/>}
+            {tab === "news" && <NewsTab/>}
           </div>
         </>
       )}
@@ -390,6 +401,7 @@ const SideButton = ({icon, label, badge, onClick}) => (
 const PageTitle = ({tab}) => {
   if (tab === "rating") return <div><small>ЛУЧШИЕ ИГРОКИ</small><h1>РЕЙТИНГ</h1></div>
   if (tab === "store") return <div><small>ПРЕДЛОЖЕНИЯ АРЕНЫ</small><h1>МАГАЗИН</h1></div>
+  if (tab === "news") return <div><small>ИСТОРИЯ ОБНОВЛЕНИЙ</small><h1>НОВОСТИ</h1></div>
   return <div><small>КАРТОЧКА ИГРОКА</small><h1>ПРОФИЛЬ</h1></div>
 }
 

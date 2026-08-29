@@ -1,17 +1,29 @@
 services:
   battle:
     container_name: battle
-    image: battle
+    user: "65532:65532"
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 512
+    image: "${BATTLE_IMAGE:-battle}"
     build:
       context: .
       dockerfile: Dockerfile
+    env_file:
+      - ../.env
+      - ../.env.prod
     expose:
       - "8000"
     environment:
       - REDIS_ADDR=battle-redis:6379
-      - APP_AUTH_SECRET=${APP_AUTH_SECRET}
       - APP_ENV=production
       - ACCOUNT_URL=http://account:8000
+      - APP_VERSION=${APP_VERSION:-dev}
+      - GIT_SHA=${GIT_SHA:-unknown}
+      - DEPLOY_ADMIN_TOKEN=${DEPLOY_ADMIN_TOKEN:?DEPLOY_ADMIN_TOKEN must be set for prod}
     restart: unless-stopped
     depends_on:
       account:
@@ -31,7 +43,7 @@ services:
 
   battle-redis:
     container_name: battle-redis
-    image: redis:7-alpine
+    image: redis@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     restart: always
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

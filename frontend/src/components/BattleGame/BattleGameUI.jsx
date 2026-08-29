@@ -79,15 +79,18 @@ export const IslandVoiceNotice = ({voice}) => {
   )
 }
 
-export const NetworkStatusNotice = ({quality}) => {
-  if (!quality || quality.state === "good") return null
-  const detail = quality.rttMs === null || quality.state === "offline"
-    ? quality.detail
-    : `${quality.detail} · RTT ${Math.round(quality.rttMs)} мс`
+export const NetworkStatusNotice = ({quality, notice = null}) => {
+  if (!notice && (!quality || quality.state === "good")) return null
+  const status = notice || quality
+  const detail = notice
+    ? notice.detail
+    : quality.rttMs === null || quality.state === "offline"
+      ? quality.detail
+      : `${quality.detail} · RTT ${Math.round(quality.rttMs)} мс`
   return (
-    <aside className={`network-status-notice network-status-notice--${quality.state}`} role="status" aria-live="polite">
+    <aside className={`network-status-notice network-status-notice--${status.state}`} role="status" aria-live="polite">
       <span className="network-status-notice__signal" aria-hidden="true"><i/><i/><i/></span>
-      <span><b>{quality.label}</b><small>{detail}</small></span>
+      <span><b>{status.label}</b><small>{detail}</small></span>
     </aside>
   )
 }
@@ -219,13 +222,13 @@ const useTouchPressHandlers = onUse => {
   return {onClick: activateClick, onPointerUp: activateTouch, onTouchEnd: activateTouch}
 }
 
-export const AbilityButton = ({keyName, label, description, cooldown = 0, charge = 100, isSuper = false, casting = false, disabled = false, onUse}) => {
+export const AbilityButton = ({keyName, label, description, cooldown = 0, isSuper = false, casting = false, disabled = false, onUse}) => {
   const pressHandlers = useTouchPressHandlers(onUse)
   const cancelLabel = casting ? "ОТМЕНИТЬ" : label
+  const ready = !disabled && cooldown <= 0
   return (
-    <button className={`battle-ability${isSuper && charge >= 100 ? " battle-ability--ready" : ""}${casting ? " battle-ability--casting" : ""}`} title={casting ? "Отменить текущий каст" : `${label}: ${description}`} aria-label={casting ? "Отменить текущий каст" : `${label}: ${description}`} disabled={!casting && (disabled || cooldown > 0 || (isSuper && charge < 100))} {...pressHandlers} style={isSuper ? {"--charge": `${charge}%`} : undefined}>
-      {isSuper && <i className="battle-ability__charge"/>}
-      <b>{casting ? "✕" : cooldown > 0 ? cooldown.toFixed(1) : isSuper && charge < 100 ? `${Math.round(charge)}%` : keyName}</b>
+    <button className={`battle-ability${isSuper && ready ? " battle-ability--ready" : ""}${casting ? " battle-ability--casting" : ""}`} title={casting ? "Отменить текущий каст" : `${label}: ${description}`} aria-label={casting ? "Отменить текущий каст" : `${label}: ${description}`} disabled={!casting && (disabled || cooldown > 0)} {...pressHandlers}>
+      <b>{casting ? "✕" : cooldown > 0 ? cooldown.toFixed(1) : keyName}</b>
       <span>{cancelLabel}</span>
     </button>
   )

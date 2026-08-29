@@ -21,4 +21,4 @@ dependencies = [
 py-modules = ["app", "auth", "config", "constants", "consumers", "exeptions", "utils"]
 
 [tool.setuptools.packages.find]
-include = ["infrastructure*", "migrations*"]
+include = ["infrastructure*", "migrations*", "middlewares*", "routes*", "services*"]

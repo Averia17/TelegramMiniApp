@@ -17,6 +17,8 @@ export const HeroModelPreview = ({hero, stage = false}) => {
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
+    // Registry readiness means that the GLB is fetched, not that this preview
+    // has received and attached its own instance to the canvas yet.
     setLoaded(false)
   }, [hero?.name, stage])
 
@@ -121,7 +123,11 @@ export const HeroModelPreview = ({hero, stage = false}) => {
       }
 
       if (assetRegistry.hasHero(hero.name)) {
-        assetRegistry.instantiateHero(hero.name).then(instance => {
+        const readyInstance = assetRegistry.instantiateReadyHero(hero.name)
+        const instancePromise = readyInstance
+          ? Promise.resolve(readyInstance)
+          : assetRegistry.instantiateHero(hero.name)
+        instancePromise.then(instance => {
           if (!instance) return
           if (disposed || runtimeDisposed) {
             disposeObjectTree(instance.root)
@@ -177,7 +183,11 @@ export const HeroModelPreview = ({hero, stage = false}) => {
   }, [active, hero, stage])
 
   return (
-    <div className={`hero-model-preview ${loaded ? "" : "hero-model-preview--loading"}`}>
+    <div
+      className={`hero-model-preview ${loaded ? "" : "hero-model-preview--loading"}`}
+      aria-busy={!loaded}
+    >
+      {!loaded && <span className="hero-model-loader" role="status" aria-label="Загрузка 3D-модели"/>}
       <canvas
         key={hero?.name}
         ref={canvasRef}

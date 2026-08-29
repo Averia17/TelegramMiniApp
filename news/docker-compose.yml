@@ -1,0 +1,47 @@
+services:
+  news:
+    container_name: news
+    init: true
+    image: dev-news
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      NEWS_DB_HOST: news-db
+      POSTGRES_DB: news
+      DEPLOY_ADMIN_TOKEN: "${DEPLOY_ADMIN_TOKEN:-}"
+      APP_VERSION: "${APP_VERSION:-dev}"
+      GIT_SHA: "${GIT_SHA:-unknown}"
+    expose:
+      - "8000"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    depends_on:
+      news-db:
+        condition: service_healthy
+    networks:
+      - app-net
+
+  news-db:
+    container_name: news-db
+    image: postgres:13-alpine
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-local_user}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+      POSTGRES_DB: news
+    volumes:
+      - news-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - app-net
+
+networks:
+  app-net:
+
+volumes:
+  news-db-data:

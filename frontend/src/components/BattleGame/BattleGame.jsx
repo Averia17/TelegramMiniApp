@@ -24,7 +24,7 @@ import {getBattleLoadingProgress} from "./battleLoadingProgress.js"
 import {getBattleErrorMessage} from "./battleErrors.js"
 import {normalizeTeamBattleResult} from "./teamBattleUi.js"
 import {isTeamBattleMode} from "./battleMode.js"
-import {BATTLE_RECOVERY_TIMEOUT_MS, getBattleRecoveryDecision, getBattleRecoveryTimeoutDecision} from "./battleRecovery.js"
+import {BATTLE_RECOVERY_TIMEOUT_MS, getBattleReconnectDelay, getBattleRecoveryDecision, getBattleRecoveryTimeoutDecision} from "./battleRecovery.js"
 import {clearActiveBattle, saveActiveBattle, saveBattleHistoryRecord} from "../../utils/battleHistory.js"
 import {shouldSpendBattleEnergy} from "./battleEnergy.js"
 import {getTeamBattleMap, normalizeBattleMap} from "../../utils/battlePreferences.js"
@@ -63,6 +63,8 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
   const battleErrorHandledRef = useRef(false)
   const battleEnergySpentRef = useRef(false)
   const suppressDisconnectRef = useRef(false)
+  const startNewBattleRef = useRef(startNewBattle)
+  const connectionNoticeTimerRef = useRef(null)
   const battleContextRef = useRef({mode, partyId, mapName: mode === "team" ? normalizeBattleMap(mapName) : "battle-royale", mapId: ""})
   const [mobileMode, setMobileMode] = useState(() => window.matchMedia(MOBILE_INPUT_MEDIA_QUERY).matches)
   const [touchControls, setTouchControls] = useState({move: null, aim: null})
@@ -84,6 +86,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
   const [assetsReady, setAssetsReady] = useState(false)
   const [assetLoadError, setAssetLoadError] = useState(false)
   const [recoveryAction, setRecoveryAction] = useState(null)
+  const [connectionNotice, setConnectionNotice] = useState(null)
 
   const setView = useCallback((v) => {
     viewRef.current = v
@@ -210,10 +213,46 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
     let input = null
     let disposed = false
     let connectionTimer = null
+    let reconnectTimer = null
+    let reconnectAttempt = 0
+    let hasConnected = false
 
     const clearConnectionTimer = () => {
       if (connectionTimer) window.clearTimeout(connectionTimer)
       connectionTimer = null
+    }
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimer) window.clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+
+    const showConnectionNotice = notice => {
+      if (connectionNoticeTimerRef.current) window.clearTimeout(connectionNoticeTimerRef.current)
+      setConnectionNotice(notice)
+      if (!notice) {
+        connectionNoticeTimerRef.current = null
+        return
+      }
+      connectionNoticeTimerRef.current = window.setTimeout(() => {
+        connectionNoticeTimerRef.current = null
+        setConnectionNotice(null)
+      }, 4000)
+    }
+
+    const scheduleReconnect = () => {
+      if (disposed || suppressDisconnectRef.current || battleErrorHandledRef.current || savedResultRef.current || reconnectTimer) return
+      if (!connectionTimer) {
+        connectionTimer = window.setTimeout(() => {
+          connectionTimer = null
+          if (!disposed && !client?.connected) reportBattleError({kind: "connection_timeout"})
+        }, 30_000)
+      }
+      const delay = getBattleReconnectDelay(reconnectAttempt++)
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null
+        if (!disposed && !suppressDisconnectRef.current && !battleErrorHandledRef.current) client?.connect()
+      }, delay)
     }
 
     const startBattle = async () => {
@@ -295,12 +334,18 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
             }
           }
           if (msg.type === "battle_recovered") {
+            const isInitialNewBattle = startNewBattleRef.current
             const decision = getBattleRecoveryDecision({
               status: msg.params?.status,
               roomId: msg.params?.roomId,
               result: msg.params?.result,
-              startNewBattle,
+              startNewBattle: isInitialNewBattle,
             })
+            // The explicit new-battle request applies only to the initial
+            // recovery handshake. Reconnects must be allowed to resume the
+            // same room, while the prop remains true long enough to charge
+            // energy when the newly started match emits `start`.
+            startNewBattleRef.current = false
             if (msg.params?.playerId && !client.playerId) client.playerId = msg.params.playerId
             setRecoveryAction(decision.kind)
             if (decision.kind === "resume") {
@@ -389,13 +434,22 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
         },
         () => {
           clearConnectionTimer()
+          clearReconnectTimer()
+          reconnectAttempt = 0
+          if (hasConnected) {
+            showConnectionNotice({state: "reconnected", label: "СЕРВЕР ВОССТАНОВЛЕН", detail: "Возвращаем героев на арену"})
+          }
+          hasConnected = true
           setConnected(true)
         },
-        event => {
+        () => {
           setConnected(false)
           setNetworkQuality(client.getNetworkQuality())
+          showConnectionNotice(null)
+          joinedRef.current = false
+          setRecoveryAction(null)
           if (!disposed && !suppressDisconnectRef.current) {
-            reportBattleError({kind: "connection_closed", code: event?.code})
+            scheduleReconnect()
           }
         }
       )
@@ -405,7 +459,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
       client.connect()
       connectionTimer = window.setTimeout(() => {
         if (!disposed && !client.connected) reportBattleError({kind: "connection_timeout"})
-      }, 12_000)
+      }, 30_000)
 
       input = new Input(canvas, client, setTouchControls, (x, y, ack) => simulation.setInput(x, y, ack))
       inputRef.current = input
@@ -526,6 +580,9 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
       window.visualViewport?.removeEventListener("resize", resize)
       window.clearTimeout(startupTimer)
       clearConnectionTimer()
+      clearReconnectTimer()
+      if (connectionNoticeTimerRef.current) window.clearTimeout(connectionNoticeTimerRef.current)
+      connectionNoticeTimerRef.current = null
       if (deathRevealTimerRef.current) window.clearTimeout(deathRevealTimerRef.current)
       deathRevealTimerRef.current = null
       setDeathPresentation(false)
@@ -582,7 +639,8 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
     const client = clientRef.current
     client.recoverBattle(roomId || "")
     const timeout = window.setTimeout(() => {
-      const decision = getBattleRecoveryTimeoutDecision({startNewBattle})
+      const decision = getBattleRecoveryTimeoutDecision({startNewBattle: startNewBattleRef.current})
+      startNewBattleRef.current = false
       setRecoveryAction(decision.kind)
       if (decision.kind === "menu") {
         reportBattleError({kind: "connection_timeout"})
@@ -707,6 +765,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
           <BattleLoading
             progress={loadingProgress}
             status={loadingStatus}
+            onCancel={handleBackToMenu}
           />
 
         )}
@@ -781,7 +840,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
               </div>
               <div className="battle-alive"><i/> {alivePlayerCount} В БОЮ</div>
             </header>
-            <NetworkStatusNotice quality={networkQuality}/>
+            <NetworkStatusNotice quality={networkQuality} notice={connectionNotice}/>
             {!isTeamBattle && (
               <IslandPhaseHud state={gameState?.game}/>
             )}
@@ -826,7 +885,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
             )}
             {localPlayer && (
               <div className="battle-abilities">
-                <AbilityButton slot="primary" keyName="Q" label={getHeroSkill(localPlayer.hero, "primary").name} description={getHeroSkill(localPlayer.hero, "primary").description} cooldown={localPlayer.cooldowns?.primary} charge={localPlayer.superCharge || 0} isSuper casting={Number(localPlayer.channel) > 0} onUse={() => Number(localPlayer.channel) > 0 ? clientRef.current?.cancelAbility?.() : (inputRef.current?.useAbility?.("primary") || clientRef.current?.ability?.("primary"))}/>
+                <AbilityButton slot="primary" keyName="Q" label={getHeroSkill(localPlayer.hero, "primary").name} description={getHeroSkill(localPlayer.hero, "primary").description} cooldown={localPlayer.cooldowns?.primary} isSuper casting={Number(localPlayer.channel) > 0} onUse={() => Number(localPlayer.channel) > 0 ? clientRef.current?.cancelAbility?.() : (inputRef.current?.useAbility?.("primary") || clientRef.current?.ability?.("primary"))}/>
                 <AbilityButton slot="secondary" keyName="E" label={`${getHeroSkill(localPlayer.hero, "secondary").name} · ${localPlayer.gadgetCharges || 0}`} description={getHeroSkill(localPlayer.hero, "secondary").description} cooldown={localPlayer.cooldowns?.secondary} disabled={!localPlayer.gadgetCharges || localPlayer.gadgetArmed} onUse={() => inputRef.current?.useAbility?.("secondary") || clientRef.current?.ability?.("secondary")}/>
               </div>
             )}

@@ -16,17 +16,17 @@ signed human playtest и clean release evidence.
 | Backend static checks | `cd battle; go vet ./...` | pass |
 | Frontend regression | `cd frontend; npm test` | 600 tests, 596 pass, 0 fail, 4 skipped |
 | Frontend quality/build | `npm run lint`, `npm run build` | pass; only known Sass/chunk-size warnings |
-| Tooling regression | `python -m unittest discover -s tools -p 'test*.py'` | 65/65 pass; release, playtest, staged-rollout, template-init и rollback-scan validators |
-| Deterministic combat | `combat-regression-report`, roster solo/team matrix, skill-disabled matrix, benchmark matrix, 3x3 team mirror | pass; replay/state-hash gates green; isolated 1v1 `basicDamage` is exactly equal between solo/team for all 8 heroes across 20 replays |
+| Tooling regression | `python -m unittest discover -s tools -p 'test*.py'` | 67/67 pass; release, playtest, staged-rollout, template-init и rollback-scan validators |
+| Deterministic combat | `combat-regression-report`, roster solo/team matrix, skill-disabled matrix, benchmark matrix, 3x3 team mirror | pass; replay/state-hash gates green; isolated 1v1 `basicDamage` is exactly equal between solo/team for all 8 heroes across 20 replays; every skill-enabled benchmark records positive skill contribution and a higher total outcome than its basic-only control |
 | Resource topology | `resource-topology-report` | pass; 168 routes, 0 unreachable, 0 unsafe drops |
 | Static map browser audit | `global-team-map-browser-audit.cjs` | pass; current `team-battle-northern@20260827`, symmetric reachability, 0 console/page errors |
 | Browser combat | roster effect audit, bat lifecycle, mobile input/cancel | pass; 49 visual cases, 0 console errors, 0 page errors |
 | HP pickup visual contract | health boost renderer/unit contract | pass; cube/halo use green palette, legacy crate/potion renderer removed |
 | Legacy pickup safety | backend `power` pickup regression tests | pass; stale power props are discarded without heal, MaxHP or damage multiplier |
 | Rollout evidence contract | `validate_combat_rollout.py` + 17 tests | pass; template and strict Stage 0–3/rollback validator added; manifest commit identity, validated rollback object/ref, historical baseline profile fingerprint/metric scope and numeric before/after deltas, local playtest contents, profile fingerprint, hero coverage, per-case hero evidence links and numeric rollback counters are cross-checked; no operator report is fabricated |
-| Playtest template initialization | `init_combat_playtest.py` + 6 tests | pass; current revision/fingerprint, concrete signature/timestamp fields, two participant scaffolds covering all C1–C6 and all active heroes with create-once protection; generated v8 keeps human fields empty while prewiring hero-coverage evidence links |
+| Playtest template initialization | `init_combat_playtest.py` + 6 tests | pass; current revision/fingerprint, concrete signature/timestamp fields, two participant scaffolds covering all C1–C6 and all active heroes with create-once protection; generated v9 keeps human fields empty while prewiring hero-coverage evidence links |
 | Rollout template initialization | `init_combat_rollout.py` + 3 tests | pass; current revision/fingerprint and verified Stage 0–1 evidence generated, external stages remain not_run |
-| Rollback history scan | `scan_combat_rollback_refs.py` | pass; 16 historical refs checked, 0 eligible targets; current report saved under `output/combat-rollback-scan-20260827-v2/` |
+| Rollback history scan | `scan_combat_rollback_refs.py` | pass; 17 historical refs checked, 0 eligible targets; current report saved under `output/combat-rollback-scan-20260829-v3/` |
 | Diff hygiene | `git diff --check` | pass; only line-ending warnings |
 
 ## Fresh final verification sweep
@@ -34,7 +34,7 @@ signed human playtest и clean release evidence.
 На 2026-08-27 20:33 MSK после миграции health-boost policy повторно
 подтверждены профильные и runtime gates:
 
-- `python -m unittest discover tools -p 'test_combat_profile.py'` — 14/14
+- `python -m unittest discover tools -p 'test_combat_profile.py'` — 16/16
   pass;
 - `python tools/validate_combat_profile.py` и
   `python tools/generate_combat_profile.py --check` — pass;
@@ -48,16 +48,22 @@ signed human playtest и clean release evidence.
 - runtime parity дополнен Super/Gadget/AI defaults, а authoritative ability
   path ограничивает stale Gadget charges profile capacity; focused regression
   test `TestPlayerAbilityClampsGadgetChargesToProfileCapacity` проходит;
+- per-hero Super/Gadget cooldowns теперь читаются из generated profile
+  contracts; `TestAbilityCooldownsAreReadFromGeneratedHeroContracts` и
+  profile validator проверяют отсутствие hardcoded cooldown drift;
+- delayed Fairy Mina Super aura damage теперь сохраняет исходный command/slot
+  и попадает в `SkillDamage`; новая skill-contribution gate не позволяет
+  support Super исчезать из attribution metrics;
 - playtest/rollout evidence validators теперь отклоняют placeholder metadata,
   participant signature/timestamp без concrete capture и отрицательную
-  telemetry; актуальный create-once playtest scaffold — v8;
+  telemetry; актуальный create-once playtest scaffold — v9;
 - свежий fingerprint профиля:
-  `FB04F651CBFF6F8FCBE7830CB752CBE1F52FC04976274D90B5C1CFD25CFF2488`;
+  `518C5163DB2660DBD11B7A9550EA4C60F5627CA25B634DE05EE1150F37D84B94`;
 - обновлённый diagnostic manifest:
-  `output/combat-release-diagnostic-20260827-v4/combat-release-manifest.json`.
+  `output/combat-release-diagnostic-20260827-v5/combat-release-manifest.json`.
 - актуальные create-once scaffolds пересозданы после смены fingerprint:
-  `output/playtest/combat-clarity-20260827/generated-template-v8.json` и
-  `output/rollout/combat-rollout-2026-08-27/report-v5.json`; их validators
+  `output/playtest/combat-clarity-20260827/generated-template-v9.json` и
+  `output/rollout/combat-rollout-2026-08-27/report-v6.json`; их validators
   отвергают только незаполненные signed human/operator и rollout fields.
 - после обновления source fingerprint текущий release preflight снова проходит
   без ошибок; catalog и manifest теперь согласованы.
@@ -70,10 +76,10 @@ signed human playtest и clean release evidence.
 - `npm test` — 600 тестов, 596 pass, 0 fail, 4 skipped;
 - `npm run lint` и `npm run build` — pass; остаются только известные Sass
   deprecation и chunk-size warnings;
-- Python tooling — 65/65 pass;
+- Python tooling — 67/67 pass;
 - `output/playwright/hero-effect-visual-audit/report.json` — 49 visual cases,
   8 runtime summaries, 0 console/page errors;
-- `output/combat-regression-report-20260827.json` — свежий профильный balance,
+- `output/combat-regression-report-20260827-v2.json` — свежий профильный balance,
   power-budget и cadence report с fingerprint текущего профиля;
 - team bot AI дополнительно проверен на обычный видимый bat: здоровый бот
   выбирает явное `farm_bat`-решение и пишет farm telemetry, а emergency остаётся
@@ -104,7 +110,7 @@ Backend tests дополнительно подтверждают, что отм
 является rollout artifact.
 
 Диагностический manifest текущего кандидата сохранён в
-`output/combat-release-diagnostic-20260827-v4/combat-release-manifest.json`;
+`output/combat-release-diagnostic-20260827-v5/combat-release-manifest.json`;
 он фиксирует profile fingerprint и SHA-256 critical files, но явно содержит
 `releaseEligible=false` и не заменяет clean release artifact.
 

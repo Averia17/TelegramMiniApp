@@ -64,7 +64,7 @@ var Heroes = withSelectionMetadata(withHeroKits(withAttackConfigs([]Hero{
 	{Name: "Mandy", Color: "#F4C542", Radius: 14, MaxLives: 700, Speed: 15, AttackDamage: 100, AttackRate: 420, ReloadTime: 1150, MaxAmmo: 3, AttackType: "mandy_staff", Role: "Fighter", RegenRate: .010, Desc: "Focused melee fighter with a map-wide ground-wave Super"},
 	{Name: "Fairy Mina", Color: "#FF8FE8", Radius: 13, MaxLives: 650, Speed: 14, AttackDamage: 40, AttackRate: 420, ReloadTime: 1100, MaxAmmo: 3, BulletSpeed: 30, BulletSize: 7, AttackType: "mina_star_fan", Role: "Support", RegenRate: .008, Desc: "Self-sustaining star fan with a dangerous aura"},
 	{Name: "Brock Zeus", Color: "#62C8FF", Radius: 14, MaxLives: 600, Speed: 12, AttackDamage: 85, AttackRate: 520, ReloadTime: 1300, MaxAmmo: 3, BulletSpeed: 36, BulletSize: 8, AttackType: "zeus_lightning", Role: "Sharpshooter", RegenRate: .009, Desc: "Explosive lightning and a wall-breaking storm"},
-	{Name: "Kaze", Color: "#B88CFF", Radius: 12, MaxLives: 650, Speed: 16, AttackDamage: 85, AttackRate: 280, ReloadTime: 800, MaxAmmo: 3, AttackType: "kaze_cross_slash", Role: "Assassin", RegenRate: .011, Desc: "Rapid combo slashes and a follow-up-priming dash"},
+	{Name: "Kaze", Color: "#B88CFF", Radius: 12, MaxLives: 650, Speed: 16, AttackDamage: 85, AttackRate: 360, ReloadTime: 800, MaxAmmo: 3, AttackType: "kaze_cross_slash", Role: "Assassin", RegenRate: .011, Desc: "Rapid combo slashes and a follow-up-priming dash"},
 	{Name: "Wukong Mico", Color: "#FFB33E", Radius: 15, MaxLives: 900, Speed: 14, AttackDamage: 100, AttackRate: 650, ReloadTime: 1400, MaxAmmo: 3, AttackType: "mico_staff", Role: "Tank", RegenRate: .010, Desc: "Heavy close-range staff swings without forced movement"},
 	{Name: "Persephone Lumi", Color: "#D954A8", Radius: 13, MaxLives: 680, Speed: 15, AttackDamage: 60, AttackRate: 470, ReloadTime: 1250, MaxAmmo: 3, BulletSpeed: 28, BulletSize: 8, AttackType: "lumi_orb", Role: "Controller", RegenRate: .010, Desc: "Tactical flower projectiles build a damaging garden and root enemies"},
 	{Name: "Katty", Color: "#FF5C9A", Radius: 13, MaxLives: 640, Speed: 14, AttackDamage: 55, AttackRate: 520, ReloadTime: 1300, MaxAmmo: 3, AttackType: "katty_paint_spray", Role: "Controller", RegenRate: .010, Desc: "Street artist who controls space with layered paint"},
@@ -107,7 +107,7 @@ func RandomHero() Hero {
 func withHeroKits(heroes []Hero) []Hero {
 	heroKits["Katty"] = HeroKit{
 		Basic:  AbilityDefinition{"paint_spray", "Краска-пшик", "Короткий направленный пшик наносит 55 урона в радиусе 65 и оставляет облако краски; третий слой даёт +45% урона и оглушение.", "basic", "server"},
-		Super:  AbilityDefinition{"paint_grenade", "Красящая лужа", "Katty создаёт под собой лужу радиусом 220: после активации она наносит 70 урона, наносит третий слой краски и замедляет врагов.", "primary", "server"},
+		Super:  AbilityDefinition{"paint_grenade", "Красящая лужа", "Katty создаёт в выбранной точке лужу радиусом 220: после активации она наносит 70 урона, наносит третий слой краски и замедляет врагов.", "primary", "server"},
 		Gadget: AbilityDefinition{"paint_flight", "Красколёт", "Рывок оставляет след краски, замедляющий врагов и ускоряющий Кэтти.", "secondary", "server"},
 	}
 	for index := range heroes {

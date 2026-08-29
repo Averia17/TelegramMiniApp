@@ -37,6 +37,8 @@ export const formatBattleMessage = message => {
     return params.phase ? `Island phase: ${params.phase}` : "Island phase changed"
   case "taunt":
     return `${params.playerName || "Боец"} 🤡${params.targetName ? ` ${params.targetName}` : ""}`
+  case "maintenance":
+    return params.message || "Идёт обновление. Новые бои временно недоступны."
   default:
     return ""
   }

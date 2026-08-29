@@ -31,3 +31,8 @@ test("ability buttons have a direct touch activation fallback for WebViews", () 
   assert.match(ui, /onPointerUp:\s*activateTouch/, "ability buttons must handle touch pointer release directly")
   assert.match(ui, /onTouchEnd:\s*activateTouch/, "ability buttons must handle legacy WebView touch release")
 })
+
+test("primary ability readiness is controlled by cooldown instead of hit charge", () => {
+  assert.doesNotMatch(ui, /cooldown\s*>\s*0\s*\|\|\s*\(isSuper\s*&&\s*charge\s*<\s*100\)/, "Super must not require hit-built charge")
+  assert.doesNotMatch(ui, /battle-ability__charge/, "Super must not render a hit-charge progress overlay")
+})

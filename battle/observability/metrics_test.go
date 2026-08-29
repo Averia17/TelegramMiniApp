@@ -35,6 +35,22 @@ func TestRegistryWritesCountersGaugesAndHistograms(t *testing.T) {
 	}
 }
 
+func TestSetBuildInfoPublishesVersionLabelsAndDeploymentMarker(t *testing.T) {
+	registry := NewRegistry()
+	SetBuildInfo(registry, "v0.0.7", "abcdef1")
+	record := httptest.NewRecorder()
+	registry.ServeHTTP(record, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := record.Body.String()
+	for _, want := range []string{
+		`app_build_info{commit="abcdef1",version="v0.0.7"} 1`,
+		`app_release_deployments_total{commit="abcdef1",version="v0.0.7"} 1`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("release metric missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestHTTPMiddlewareRecordsBoundedREDSeries(t *testing.T) {
 	registry := NewRegistry()
 	handler := HTTPMiddleware(registry, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -105,7 +105,7 @@
   hero, which contradicted the support contract's low solo-burst tradeoff.
 - **Metric:** `basicBurst <= 360` for Support and Super/peel/support metrics
   remain covered by the skill-centrality and role scenario packs.
-- **Status:** accepted in profile revision `2026-08-27-cadence-window`.
+- **Status:** accepted in profile revision `2026-08-27-skill-cooldown-source`.
 
 ## D-010 — Empty-ammo ranged reposition
 
@@ -119,7 +119,7 @@
   движение должно иметь положительную проекцию от цели, а deterministic
   counter-role и roster bot suites должны оставаться зелёными.
 - **Status:** accepted; реализовано в `botEngageTarget` для profile revision
-  `2026-08-27-cadence-window`.
+  `2026-08-27-skill-cooldown-source`.
 
 ## D-011 — Legacy power pickup quarantine
 
@@ -144,7 +144,7 @@
   цикла без возможности стрелять.
 - **Metric:** `CombatBalanceRow.ReloadDeadTimeFraction <= 0.60` для каждого
   героя; contract/profile/catalog и regression report должны совпадать.
-- **Status:** accepted in profile revision `2026-08-27-cadence-window`.
+- **Status:** accepted in profile revision `2026-08-27-skill-cooldown-source`.
 
 ## D-012 — Generated profile owns health-boost runtime policy
 
@@ -163,7 +163,7 @@
 - **Metric:** generated artifact check, profile validator and runtime parity
   test must agree on `fraction`, `teamFraction`, `maxStacks`,
   `maxActivePickups`, `ttlMs` and `healsCurrentLives=false`.
-- **Status:** accepted in profile revision `2026-08-27-cadence-window`; all
+- **Status:** accepted in profile revision `2026-08-27-skill-cooldown-source`; all
   local tests and validators pass after the migration.
 
 ## D-013 — Generated profile owns ability and AI defaults
@@ -182,7 +182,7 @@
   the runtime follow the versioned contract.
 - **Metric:** generated/runtime parity test covers Super, Gadget and AI
   defaults; no gameplay path may reintroduce a second source for these shared
-  thresholds. Profile revision `2026-08-27-cadence-window` remains the
+  thresholds. Profile revision `2026-08-27-skill-cooldown-source` remains the
   evidence key.
 - **Status:** accepted; local Go/Python regression and profile validators pass
   after the migration.
@@ -200,15 +200,16 @@
   сравнивает solo/team `basicDamage` по всему roster и повторяет матрицу 20
   раз с deterministic report/state behavior.
 - **Status:** accepted; parity regression проходит в profile revision
-  `2026-08-27-cadence-window`.
+  `2026-08-27-skill-cooldown-source`.
 
 ## Нерешённые A/B-вопросы
 
 1. T11 сравнит charge formula без diminishing return и с diminishing return на
    повторный урон по одной цели; победитель определяется `superConversionRate`
    и fairness между ролями.
-2. T11 сравнит per-hero Gadget cooldown против текущего переходного значения
-   6500 ms; ограничение — одинаковое `valuePerCharge`, а не одинаковый cooldown.
+2. Per-hero Super/Gadget cooldown теперь является обязательным полем
+   CombatProfile; текущая версия сохраняет проверенные значения, а дальнейший
+   tuning должен идти через profile diff и outcome evidence.
 3. T15 выберет точные acceptance thresholds для 100/60/30% accuracy после
    первого deterministic baseline, чтобы не выдать произвольные числа за
    баланс.

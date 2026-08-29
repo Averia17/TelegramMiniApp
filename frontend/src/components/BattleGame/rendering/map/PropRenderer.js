@@ -884,7 +884,7 @@ export const createProp = (wall, index, waterTexture) => {
   const depth = Math.max(2, wall.maxY - wall.minY) * WORLD_SCALE
   const group = new THREE.Group()
   group.userData.visualType = wall.type
-  if (wall.type === "vine") group.userData.softTerrain = true
+  if (wall.type === "vine" || wall.type === "thorn_vine") group.userData.softTerrain = true
   group.position.set(
     (wall.minX + wall.maxX) * 0.5 * WORLD_SCALE,
     0,

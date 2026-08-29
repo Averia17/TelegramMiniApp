@@ -19,6 +19,15 @@ import (
 
 func main() {
 	cfg := config.Load()
+	version := os.Getenv("APP_VERSION")
+	if version == "" {
+		version = "dev"
+	}
+	commit := os.Getenv("GIT_SHA")
+	if commit == "" {
+		commit = "unknown"
+	}
+	observability.SetBuildInfo(observability.Default, version, commit)
 	sroom.ConfigureTeamMatchConfig(sroom.TeamMatchConfig{TeamSize: cfg.TeamSize, PartyMaxSize: cfg.PartyMaxSize})
 
 	store := provider.NewRedisProvider(cfg.RedisAddr)

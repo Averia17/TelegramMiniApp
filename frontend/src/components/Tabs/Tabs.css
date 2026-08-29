@@ -53,3 +53,7 @@
   .bs-ranked-card span{font-size:7px;}
   .bs-active-battle__link{padding-inline:6px;}
 }
+
+.bs-release-badge{display:flex;align-items:center;gap:8px;width:max-content;max-width:100%;margin:22px auto 0;padding:7px 10px;border:2px solid #ffffff55;border-radius:8px;background:#12255fcc;color:#bcd3ff;font-size:8px;font-weight:900;letter-spacing:.5px;box-shadow:0 3px 0 #0d1a46}.bs-release-badge strong{color:#ffe55e;font:900 14px Impact,sans-serif;letter-spacing:1px}.bs-release-badge small{color:#8faee9;font:700 9px ui-monospace,monospace}
+.bs-news{display:grid;gap:12px;width:100%;max-width:680px;margin:0 auto;padding:4px 0 34px}.bs-news-card{padding:16px;border:3px solid #ffffff99;border-radius:14px;background:linear-gradient(145deg,#344f9d,#192d6d);box-shadow:0 5px 0 #101d4d}.bs-news-card__meta{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#bcd3ff;font-size:9px;font-weight:900;letter-spacing:1px}.bs-news-card__meta strong{color:#ffe55e;font:900 18px Impact,sans-serif;letter-spacing:1px}.bs-news-card h2{margin:12px 0 7px;font:900 22px Impact,sans-serif;letter-spacing:.5px}.bs-news-card p{margin:0;color:#d6e2ff;font-size:12px;font-weight:700;line-height:1.45}.bs-news-card time{display:block;margin-top:12px;color:#8faee9;font-size:9px;font-weight:800}.bs-news-state{min-height:320px}
+.bs-news-more{justify-self:center;padding:10px 16px;border:3px solid #fff;border-radius:9px;color:#243268;background:#ffe45c;box-shadow:0 4px #a85c21;font-size:10px;font-weight:900}.bs-news-more:disabled{opacity:.65}

@@ -1,7 +1,7 @@
 version: 2
 authtoken: <your-ngrok-token>
 tunnels:
-  first:
-    addr: app:5173
+  telegramminiapp-prod:
+    addr: 8081
     proto: http
-    hostname: your-ngrok-hostname.ngrok-free.app
+    hostname: factual-herring-driven.ngrok-free.app

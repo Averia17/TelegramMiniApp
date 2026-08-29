@@ -10,7 +10,7 @@
     "lastReviewedAt": "2026-08-27"
   },
   "sourceFingerprints": {
-    "battle/model/game/heroes.go": "AF9633EFB40456051579D6C1C292B0A7BC0A509C33B24C1CCF544D21B71AC84A",
+    "battle/model/game/heroes.go": "F386A5FE475A56AFAF4295851BE7F0C2D5E86A48DB37285011D80ED62419E895",
     "battle/model/game/attack_config.go": "8397876405246401B0EC9BE518400E909249D90797E8444827EAC89A3295FE1D",
     "tools/blender/hero_animation_scene_manifest.json": "0F4C03F98AFB1EC2E04E169CA65AE7F45771D702129CB33CA64C23DA417E765A"
   },
@@ -116,7 +116,7 @@
       "status": "active",
       "identity": {"role": "Assassin", "color": "#B88CFF", "radius": 12},
       "description": "Быстрый ассасин с двойным ударом, пробивающим рывком и невидимостью.",
-      "balance": {"maxLives": 650, "speed": 16, "attackDamage": 85, "attackRateMs": 280, "reloadTimeMs": 800, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.011, "attackType": "kaze_cross_slash"},
+      "balance": {"maxLives": 650, "speed": 16, "attackDamage": 85, "attackRateMs": 360, "reloadTimeMs": 800, "maxAmmo": 3, "bulletSpeed": 0, "bulletSize": 0, "regenRate": 0.011, "attackType": "kaze_cross_slash"},
       "basicAttack": {"archetype": "melee_cone", "aimShape": "cone", "range": 125, "halfArcDegrees": 60, "modifier": "kaze_double"},
       "abilities": {
         "basic": {"id": "cross_slash", "name": "Косые удары", "description": "Два успешных попадания открывают усиленный третий удар; по цели ниже 30% HP он получает ещё +20% урона.", "slot": "basic", "prediction": "melee", "mechanics": ["одна зона урона за взмах", "окно комбо 2 секунды", "третий удар наносит 150% урона", "+20% против цели ниже 30% HP"]},
@@ -174,7 +174,7 @@
       "basicAttack": {"archetype": "projectile", "aimShape": "line", "range": 220, "projectileKind": "katty_paint_spray", "splashRadius": 65, "modifier": "katty_paint_cloud"},
       "abilities": {
         "basic": {"id": "paint_spray", "name": "Краска-пшик", "description": "Короткий направленный пшик наносит 55 урона в радиусе 65, накладывает слой краски и оставляет облако; третий слой даёт +45% урона и оглушение.", "slot": "basic", "prediction": "server", "mechanics": ["один снаряд дальностью 220", "55 урона в радиусе 65", "облако радиусом 65 на 1,8 секунды", "внутри облака 6 урона каждые 400 мс", "третий слой: +45% урона и оглушение 0,8 секунды"]},
-        "super": {"id": "paint_grenade", "name": "Красящая лужа", "description": "Лужа радиусом 220 слегка притягивает врагов, наносит 70 урона, наносит третий слой, ослепляет и замедляет их.", "slot": "primary", "prediction": "server", "mechanics": ["притяжение 25% в течение 0,5 секунды", "активация через 500 мс", "взрыв 70 урона", "лужа радиусом 220 на 7,5 секунды", "12 урона каждые 600 мс", "ослепление 2,5 секунды"]},
+        "super": {"id": "paint_grenade", "name": "Красящая лужа", "description": "Лужа радиусом 220 в выбранной точке слегка притягивает врагов, наносит 70 урона, наносит третий слой, ослепляет и замедляет их.", "slot": "primary", "prediction": "server", "mechanics": ["дальность выбора точки 520", "притяжение 25% в течение 0,5 секунды", "активация через 500 мс", "взрыв 70 урона", "лужа радиусом 220 на 7,5 секунды", "12 урона каждые 600 мс", "ослепление 2,5 секунды"]},
         "gadget": {"id": "paint_flight", "name": "Красколёт", "description": "На 2,2 секунды ускоряет Katty и позволяет перелетать стены, оставляя след; повторное касание следа взрывает его на 40 урона и 2 слоя краски.", "slot": "secondary", "prediction": "server", "mechanics": ["полёт 2,2 секунды", "скорость ×1,15", "след на 4 секунды", "взрыв при касании: 40 урона и 2 слоя"]}
       },
       "animations": {"manifestSlug": "katty", "available": ["idle", "run", "attack", "super", "aim", "aim-super", "hit", "death", "spawn", "victory"], "abilityClips": {"basic": "Attack", "super": "super", "gadget": "Gadget"}, "gadgetStatus": "authored"},

@@ -45,7 +45,7 @@ T3, T11, T12, T15 и T16 можно выполнять параллельно п
 проходят `validate_hero_catalog.py`, `validate_combat_profile.py`,
 `validate_hero_combat_contracts.py`, generated-view check, ESLint, production
 build и `git diff --check`. После balance revision
-`2026-08-27-cadence-window` browser captures input/cancel и bat
+`2026-08-27-skill-cooldown-source` browser captures input/cancel и bat
 patrol→notice→windup→despawn также зелёные.
 
 ## Phase 1 — общий combat contract
@@ -182,7 +182,7 @@ patrol→notice→windup→despawn также зелёные.
       `tools/validate_combat_rollout.py`, template находится в
       `tasks/rollout/combat-rollout-report-template.json`,
       history scan сохранён в
-      `output/combat-rollback-scan-20260827-v2/combat-rollback-ref-scan.json`,
+      `output/combat-rollback-scan-20260829-v3/combat-rollback-ref-scan.json`,
       release preflight теперь блокирует dirty working tree и отсутствие
       passing rollback ref; rollout validator также cross-checks validated
       rollback object/ref in the local manifest, historical baseline before/

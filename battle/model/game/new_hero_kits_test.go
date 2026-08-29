@@ -3,6 +3,7 @@ package game
 import (
 	"battle/model/monster"
 	"battle/model/prop"
+	"battle/service/geometry"
 	"math"
 	"testing"
 	"time"
@@ -18,6 +19,23 @@ func TestNewHeroCombatKitsAreRegistered(t *testing.T) {
 		if kit == nil || kit.AimShape() != shape {
 			t.Fatalf("%s kit=%#v shape=%q, want %q", name, kit, kit.AimShape(), shape)
 		}
+	}
+}
+
+func TestKazeSuperMovesTheAuthoritativeHero(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("kaze", "Kaze", "Kaze")
+	kaze := gs.Players["kaze"]
+	kaze.X, kaze.Y = 400, 400
+	kaze.SuperCharge = 100
+	kaze.Rotation = 0
+	startX, startY := kaze.X, kaze.Y
+
+	gs.playerAbility(kaze.PlayerId, time.Now().UnixMilli(), "primary", "kaze-dash-movement")
+
+	if math.Hypot(kaze.X-startX, kaze.Y-startY) < 1 {
+		t.Fatalf("Kaze super left the hero at %.1f,%.1f; start was %.1f,%.1f", kaze.X, kaze.Y, startX, startY)
 	}
 }
 
@@ -192,13 +210,13 @@ func TestSkillDurationIsCappedAtFifteenSeconds(t *testing.T) {
 	}
 }
 
-func TestNeedleSuperRequiresCombatChargeWithoutHits(t *testing.T) {
+func TestNeedleSuperUsesCooldownWithoutCombatCharge(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
 	gs.PlayerAdd("needle", "Needle", "Needle")
 	p := gs.Players["needle"]
 	now := time.Now().UnixMilli()
-	p.SuperCharge = 100
+	p.SuperCharge = 0
 
 	gs.playerAbility(p.PlayerId, now, "primary")
 	if len(gs.HeroZones) != 1 {
@@ -214,8 +232,8 @@ func TestNeedleSuperRequiresCombatChargeWithoutHits(t *testing.T) {
 		t.Fatalf("root recast before cooldown zones=%d, want 1", len(gs.HeroZones))
 	}
 	gs.playerAbility(p.PlayerId, now+cooldown, "primary")
-	if len(gs.HeroZones) != 1 {
-		t.Fatalf("root recast after cooldown zones=%d, want 1 without combat charge", len(gs.HeroZones))
+	if len(gs.HeroZones) != 2 {
+		t.Fatalf("root recast after cooldown zones=%d, want 2 without combat charge", len(gs.HeroZones))
 	}
 }
 
@@ -265,6 +283,25 @@ func TestNeedleSuperTargetsAnEnemyInItsAimDirection(t *testing.T) {
 	zone := gs.HeroZones[0]
 	if math.Abs(zone.X-enemy.X) > .001 || math.Abs(zone.Y-enemy.Y) > .001 {
 		t.Fatalf("needle root target=(%.0f,%.0f), want enemy=(%.0f,%.0f)", zone.X, zone.Y, enemy.X, enemy.Y)
+	}
+}
+
+func TestNeedleSuperDoesNotAutoTargetAnEnemyThroughAWall(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.Walls.Insert(&geometry.WallTile{MinX: 240, MinY: 320, MaxX: 280, MaxY: 480, Type: "wall"})
+	gs.PlayerAdd("needle", "Needle", "Needle")
+	gs.PlayerAdd("enemy", "Enemy", "Mandy")
+	needle, enemy := gs.Players["needle"], gs.Players["enemy"]
+	needle.Team, enemy.Team = "green", "blue"
+	needle.X, needle.Y = 100, 400
+	enemy.X, enemy.Y = 400, 400
+
+	NeedleKit{}.Super(gs, needle, time.Now().UnixMilli(), 0, 100)
+	zone := gs.HeroZones[0]
+	if math.Abs(zone.X-enemy.X) < .001 && math.Abs(zone.Y-enemy.Y) < .001 {
+		t.Fatalf("needle root targeted enemy through wall at (%.0f,%.0f)", zone.X, zone.Y)
 	}
 }
 

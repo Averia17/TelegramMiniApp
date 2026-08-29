@@ -1,4 +1,5 @@
 from auth import AuthenticatedUser, current_user
+from deployment import is_draining
 from fastapi import APIRouter, Depends, HTTPException
 from infrastructure import Repo
 from services import (
@@ -26,6 +27,10 @@ async def get_my_economy(
 async def start_my_battle(
     repo: Repo = Depends(get_repo), user: AuthenticatedUser = Depends(current_user)
 ):
+    if is_draining():
+        raise HTTPException(
+            status_code=503, detail="Идёт обновление. Новые бои временно недоступны."
+        )
     try:
         return await spend_battle_energy(repo.session, user.user_id)
     except ValueError as err:
@@ -94,6 +99,10 @@ async def start_battle(
 ):
     if user.user_id != user_id:
         raise HTTPException(status_code=403, detail="Cannot access another user")
+    if is_draining():
+        raise HTTPException(
+            status_code=503, detail="Идёт обновление. Новые бои временно недоступны."
+        )
     try:
         return await spend_battle_energy(repo.session, user_id)
     except ValueError as err:

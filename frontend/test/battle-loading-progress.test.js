@@ -30,3 +30,22 @@ test("battle loading uses a neutral matchmaking signal instead of the old brand 
   assert.match(component, /ПОИСК СОПЕРНИКА/)
   assert.match(styles, /\.battle-loading__radar\s*\{/)
 })
+
+test("battle loading lets the player cancel matchmaking", () => {
+  const component = readFileSync(new URL("../src/components/BattleLoading/BattleLoading.jsx", import.meta.url), "utf8")
+  const styles = readFileSync(new URL("../src/components/BattleLoading/BattleLoading.css", import.meta.url), "utf8")
+  const battleGame = readFileSync(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url), "utf8")
+  const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8")
+
+  assert.match(component, /onCancel/)
+  assert.match(component, /battle-loading__close/)
+  assert.match(component, /aria-label="Отменить поиск соперника"/)
+  assert.doesNotMatch(component, /ОТМЕНИТЬ ПОИСК/)
+  assert.match(styles, /\.battle-loading__close\s*\{/)
+  assert.doesNotMatch(styles, /\.battle-loading__cancel/)
+  assert.match(battleGame, /<BattleLoading[\s\S]*onCancel=\{handleBackToMenu\}/)
+  assert.match(app, /const AppLoading = \(\) => \{/)
+  assert.match(app, /<BattleLoading[\s\S]*onCancel=\{\(\) => navigate\("\/", \{replace: true\}\)\}/)
+  assert.match(app, /<Suspense fallback=\{<BattleLoading[\s\S]*onCancel=\{\(\) => navigate\("\/", \{replace: true\}\)\}/)
+  assert.match(app, /<Suspense fallback=\{<AppLoading \/>\}/)
+})

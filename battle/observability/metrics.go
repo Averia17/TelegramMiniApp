@@ -39,6 +39,18 @@ func NewRegistry() *Registry {
 	return &Registry{families: make(map[string]*metricFamily)}
 }
 
+func SetBuildInfo(registry *Registry, version, commit string) {
+	if strings.TrimSpace(version) == "" {
+		version = "dev"
+	}
+	if strings.TrimSpace(commit) == "" {
+		commit = "unknown"
+	}
+	labels := map[string]string{"version": version, "commit": commit}
+	registry.SetGauge("app_build_info", "Build information for the running release", 1, labels)
+	registry.IncCounter("app_release_deployments_total", "Release process starts observed by the service", labels)
+}
+
 func (r *Registry) IncCounter(name, help string, labels map[string]string) {
 	r.AddCounter(name, help, 1, labels)
 }
@@ -327,6 +339,10 @@ func routeName(path string) string {
 	switch path {
 	case "/health":
 		return "health"
+	case "/ready":
+		return "ready"
+	case "/admin/deployment/drain", "/admin/deployment/resume", "/admin/deployment/status":
+		return "deployment_admin"
 	case "/heroes":
 		return "heroes"
 	case "/ws":

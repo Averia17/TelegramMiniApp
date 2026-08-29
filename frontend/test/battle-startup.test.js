@@ -38,3 +38,10 @@ test("BattleGame shows compact death feedback during the result delay", () => {
   assert.match(battleGameSource, /battle-player-card--dead/)
   assert.doesNotMatch(battleGameSource, /className="battle-death-impact"/)
 })
+
+test("BattleGame retries a dropped socket and exposes the recovered connection notice", () => {
+  assert.match(battleGameSource, /getBattleReconnectDelay/)
+  assert.match(battleGameSource, /setConnectionNotice/)
+  assert.match(battleGameSource, /client\.connect\(\)/)
+  assert.match(battleGameSource, /client\.recoverBattle\(roomId \|\| ""\)/)
+})

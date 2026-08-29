@@ -45,3 +45,32 @@ func TestHeroBurstBudgetLeavesCounterplay(t *testing.T) {
 		}
 	}
 }
+
+func TestKazeBasicCadenceLeavesRoomForAssassinExecutionPower(t *testing.T) {
+	kaze := GetHeroByName("Kaze")
+	if kaze == nil {
+		t.Fatal("missing Kaze")
+	}
+	if kaze.AttackRate < 360 {
+		t.Fatalf("Kaze attack recovery=%dms, want at least 360ms", kaze.AttackRate)
+	}
+
+	matrix := BuildCombatBalanceMatrix()
+	kazeRow := CombatBalanceRow{}
+	maxOtherSustainedDPS := 0.0
+	for _, row := range matrix {
+		if row.Hero == "Kaze" {
+			kazeRow = row
+			continue
+		}
+		if row.SustainedBasicDPS > maxOtherSustainedDPS {
+			maxOtherSustainedDPS = row.SustainedBasicDPS
+		}
+	}
+	if kazeRow.Hero == "" {
+		t.Fatal("Kaze is missing from the combat balance matrix")
+	}
+	if kazeRow.SustainedBasicDPS >= maxOtherSustainedDPS {
+		t.Fatalf("Kaze sustained basic DPS=%v must stay below roster ceiling=%v", kazeRow.SustainedBasicDPS, maxOtherSustainedDPS)
+	}
+}

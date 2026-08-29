@@ -36,8 +36,8 @@ approval всё ещё обязательны:
 
 - backend Go tests и vet: pass;
 - frontend: 600 tests, 596 pass, 0 fail, 4 skipped; lint/build pass;
-- Python combat tooling: 65/65 pass;
+- Python combat tooling: 67/67 pass;
 - browser combat/map evidence: 49 visual cases, 0 console/page errors;
 - release diagnostic:
-  `output/combat-release-diagnostic-20260827-v4/combat-release-manifest.json`,
+  `output/combat-release-diagnostic-20260827-v5/combat-release-manifest.json`,
   `releaseEligible=false` из-за dirty worktree и отсутствия approved rollback.
