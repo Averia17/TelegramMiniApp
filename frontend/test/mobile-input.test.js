@@ -44,3 +44,34 @@ test("mobile input does not register keyboard bindings", () => {
     else globalThis.window = previousWindow
   }
 })
+
+test("inactive input stops movement and ignores new movement commands", () => {
+  const previousWindow = globalThis.window
+  const moves = []
+  globalThis.window = {
+    matchMedia: () => ({matches: true}),
+    addEventListener() {},
+  }
+
+  try {
+    const input = new Input(createCanvas(), {
+      move: (x, y) => {
+        moves.push([x, y])
+        return null
+      },
+    })
+
+    input.sendMove(1, 0)
+    input.setActive(false)
+    input.sendMove(1, 0)
+    assert.deepEqual(moves, [[1, 0], [0, 0]])
+
+    input.setActive(true)
+    input.sendMove(1, 0)
+    assert.deepEqual(moves, [[1, 0], [0, 0], [1, 0]])
+    input.destroy()
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window
+    else globalThis.window = previousWindow
+  }
+})

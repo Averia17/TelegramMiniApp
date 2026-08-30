@@ -4,6 +4,7 @@ import {
   enterTelegramBattleMode,
   isTelegramVersionAtLeast,
   leaveTelegramBattleMode,
+  setupTelegramActivity,
   setupTelegramWebApp,
 } from "../src/utils/telegramWebApp.js"
 
@@ -63,6 +64,31 @@ test("Telegram setup mirrors safe areas and stable viewport height into CSS", ()
 
   cleanup()
 
+  assert.equal(handlers.size, 0)
+})
+
+test("Telegram activity follows isActive and cleans up activated/deactivated handlers", () => {
+  const handlers = new Map()
+  const activity = []
+  const webApp = {
+    isActive: false,
+    onEvent(name, handler) {
+      handlers.set(name, handler)
+    },
+    offEvent(name, handler) {
+      assert.equal(handlers.get(name), handler)
+      handlers.delete(name)
+    },
+  }
+
+  const cleanup = setupTelegramActivity({Telegram: {WebApp: webApp}}, active => activity.push(active))
+
+  assert.deepEqual(activity, [false])
+  handlers.get("activated")()
+  handlers.get("deactivated")()
+  assert.deepEqual(activity, [false, true, false])
+
+  cleanup()
   assert.equal(handlers.size, 0)
 })
 

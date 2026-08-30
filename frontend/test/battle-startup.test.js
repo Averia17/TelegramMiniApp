@@ -45,3 +45,10 @@ test("BattleGame retries a dropped socket and exposes the recovered connection n
   assert.match(battleGameSource, /client\.connect\(\)/)
   assert.match(battleGameSource, /client\.recoverBattle\(roomId \|\| ""\)/)
 })
+
+test("BattleGame pauses prediction/rendering while Telegram Mini App is inactive", () => {
+  assert.match(battleGameSource, /setupTelegramActivity/)
+  assert.match(battleGameSource, /inputRef\.current\?\.setActive\(active\)/)
+  assert.match(battleGameSource, /if \(!telegramActiveRef\.current\)/)
+  assert.match(battleGameSource, /previousFrameAt = performance\.now\(\)/)
+})

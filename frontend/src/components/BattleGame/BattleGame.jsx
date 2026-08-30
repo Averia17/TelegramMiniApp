@@ -28,7 +28,7 @@ import {BATTLE_RECOVERY_TIMEOUT_MS, getBattleReconnectDelay, getBattleRecoveryDe
 import {clearActiveBattle, saveActiveBattle, saveBattleHistoryRecord} from "../../utils/battleHistory.js"
 import {shouldSpendBattleEnergy} from "./battleEnergy.js"
 import {getTeamBattleMap, normalizeBattleMap} from "../../utils/battlePreferences.js"
-import {enterTelegramBattleMode, leaveTelegramBattleMode} from "../../utils/telegramWebApp.js"
+import {enterTelegramBattleMode, leaveTelegramBattleMode, setupTelegramActivity} from "../../utils/telegramWebApp.js"
 import "./BattleGame.css"
 
 const DEATH_RESULT_DELAY_MS = 2000
@@ -52,6 +52,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
   const rendererRef = useRef(null)
   const inputRef = useRef(null)
   const animFrameRef = useRef(null)
+  const telegramActiveRef = useRef(true)
   const joinedRef = useRef(false)
   const viewRef = useRef("connecting")
   const latestStateRef = useRef(null)
@@ -182,9 +183,14 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
     const query = window.matchMedia(MOBILE_INPUT_MEDIA_QUERY)
     const updateMode = () => setMobileMode(query.matches)
     query.addEventListener?.("change", updateMode)
+    const cleanupTelegramActivity = setupTelegramActivity(window, active => {
+      telegramActiveRef.current = active
+      inputRef.current?.setActive(active)
+    })
     enterTelegramBattleMode()
     return () => {
       query.removeEventListener?.("change", updateMode)
+      cleanupTelegramActivity()
       leaveTelegramBattleMode()
     }
   }, [])
@@ -466,6 +472,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
       }, 30_000)
 
       input = new Input(canvas, client, setTouchControls, (x, y, ack) => simulation.setInput(x, y, ack))
+      input.setActive(telegramActiveRef.current)
       inputRef.current = input
 
       if (import.meta.env.DEV) {
@@ -522,6 +529,11 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
       let renderedSnapshotTimestamp = null
       let previousFrameAt = performance.now()
       const gameLoop = () => {
+        if (!telegramActiveRef.current) {
+          previousFrameAt = performance.now()
+          animFrameRef.current = requestAnimationFrame(gameLoop)
+          return
+        }
         const loopStartedAt = performance.now()
         const frameAt = performance.now()
         const frameInterval = frameAt - previousFrameAt

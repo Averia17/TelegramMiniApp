@@ -59,6 +59,7 @@ export class Input {
     this.getState = null
     this.getPlayerScreenPosition = null
     this.events = new AbortController()
+    this.active = true
     this.keyboardEnabled = !isMobileInputDevice()
     this.lastMoveX = null
     this.lastMoveY = null
@@ -82,6 +83,26 @@ export class Input {
     this.getState = typeof stateGetter === "function" ? stateGetter : () => stateGetter
     this.getPlayerScreenPosition = screenPositionGetter
     this.getAimAngleFromScreen = aimAngleGetter
+  }
+
+  setActive(active) {
+    const nextActive = Boolean(active)
+    if (this.active === nextActive) return
+    this.active = nextActive
+    if (nextActive) return
+
+    this.keys = {}
+    this.touchStart = null
+    this.touchMove = null
+    this.moveTouchId = null
+    this.aimTouchId = null
+    this.aimStart = null
+    this.aimCurrent = null
+    this.attackPointerStart = null
+    if (this.attackAiming) this.client.setAiming?.(false)
+    this.attackAiming = false
+    this.sendMove(0, 0)
+    this.emitTouchControls()
   }
 
   resolveAimAngle(screenX, screenY, player, origin) {
@@ -124,7 +145,7 @@ export class Input {
   }
 
   startAiming() {
-    if (this.attackAiming || !this.canAttack()) return false
+    if (!this.active || this.attackAiming || !this.canAttack()) return false
     this.attackAiming = true
     this.client.setAiming?.(true)
     return true
@@ -289,7 +310,7 @@ export class Input {
   }
 
   sendMoveFromTouch() {
-    if (!this.touchStart || !this.touchMove) return
+    if (!this.active || !this.touchStart || !this.touchMove) return
 
     const dx = this.touchMove.x - this.touchStart.x
     const dy = this.touchMove.y - this.touchStart.y
@@ -305,9 +326,10 @@ export class Input {
   }
 
   sendMove(dx, dy) {
+    const moving = Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001
+    if (!this.active && moving) return
     const now = performance.now()
     const changed = this.lastMoveX !== dx || this.lastMoveY !== dy
-    const moving = Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001
     if (!changed && (!moving || now - this.lastMoveSentAt < this.moveSendInterval)) return
     this.lastMoveX = dx
     this.lastMoveY = dy
@@ -317,7 +339,7 @@ export class Input {
   }
 
   sendRotation() {
-    if (!this.localPlayerId || !this.getState) return
+    if (!this.active || !this.localPlayerId || !this.getState) return
 
     const state = this.getState()
     const player = state?.players?.[this.localPlayerId]
@@ -340,6 +362,7 @@ export class Input {
   }
 
   tryShoot(autoAim = false) {
+    if (!this.active) return
     const {state, player} = this.getAttackContext()
     const now = Date.now()
     if (!canStartAttack(player, now, this.lastShotAt, state?.game?.state)) return
@@ -355,11 +378,13 @@ export class Input {
   }
 
   update() {
+    if (!this.active) return
     this.sendKeyboardMove()
 
   }
 
   useAbility(slot) {
+    if (!this.active) return null
     const {player} = this.getAttackContext()
     if (!player || !this.client?.ability) return null
     const contract = getHeroAbilityInputContract(player.hero || player.heroName, slot)
@@ -372,6 +397,7 @@ export class Input {
   }
 
   sendKeyboardMove() {
+    if (!this.active) return
     const {x: dx, y: dy} = getKeyboardMoveDirection(this.keys)
     if (this.moveTouchId === null) this.sendMove(dx, dy)
     else this.sendMove(this.lastMoveX || 0, this.lastMoveY || 0)

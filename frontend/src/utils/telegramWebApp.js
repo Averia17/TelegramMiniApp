@@ -71,6 +71,23 @@ export const setupTelegramWebApp = (platform = globalThis) => {
   return () => events.forEach(eventName => webApp.offEvent?.(eventName, sync))
 }
 
+export const setupTelegramActivity = (platform = globalThis, onChange = () => {}) => {
+  const webApp = getTelegramWebApp(platform)
+  if (!webApp) return () => {}
+
+  const setActive = active => onChange(Boolean(active))
+  const activated = () => setActive(true)
+  const deactivated = () => setActive(false)
+  setActive(webApp.isActive !== false)
+  webApp.onEvent?.("activated", activated)
+  webApp.onEvent?.("deactivated", deactivated)
+
+  return () => {
+    webApp.offEvent?.("activated", activated)
+    webApp.offEvent?.("deactivated", deactivated)
+  }
+}
+
 const callSafely = (webApp, method) => {
   if (typeof webApp?.[method] !== "function") return false
   try {
