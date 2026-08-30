@@ -1,9 +1,9 @@
 .battle-game {
-  --battle-safe-top: max(8px, env(safe-area-inset-top));
-  --battle-safe-right: max(10px, env(safe-area-inset-right));
-  --battle-safe-bottom: max(12px, env(safe-area-inset-bottom));
-  --battle-safe-left: max(10px, env(safe-area-inset-left));
-  --battle-viewport-height: 100dvh;
+  --battle-safe-top: max(8px, env(safe-area-inset-top), var(--telegram-safe-top, 0px));
+  --battle-safe-right: max(10px, env(safe-area-inset-right), var(--telegram-safe-right, 0px));
+  --battle-safe-bottom: max(12px, env(safe-area-inset-bottom), var(--telegram-safe-bottom, 0px));
+  --battle-safe-left: max(10px, env(safe-area-inset-left), var(--telegram-safe-left, 0px));
+  --battle-viewport-height: var(--telegram-viewport-height, 100dvh);
   --battle-font-family: "Nunito", "Arial Rounded MT Bold", Arial, sans-serif;
   --battle-touch-stick-size: clamp(76px, 19vw, 84px);
   --battle-touch-stick-radius: calc(var(--battle-touch-stick-size) / 2);

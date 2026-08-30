@@ -28,6 +28,7 @@ import {BATTLE_RECOVERY_TIMEOUT_MS, getBattleReconnectDelay, getBattleRecoveryDe
 import {clearActiveBattle, saveActiveBattle, saveBattleHistoryRecord} from "../../utils/battleHistory.js"
 import {shouldSpendBattleEnergy} from "./battleEnergy.js"
 import {getTeamBattleMap, normalizeBattleMap} from "../../utils/battlePreferences.js"
+import {enterTelegramBattleMode, leaveTelegramBattleMode} from "../../utils/telegramWebApp.js"
 import "./BattleGame.css"
 
 const DEATH_RESULT_DELAY_MS = 2000
@@ -181,8 +182,11 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
     const query = window.matchMedia(MOBILE_INPUT_MEDIA_QUERY)
     const updateMode = () => setMobileMode(query.matches)
     query.addEventListener?.("change", updateMode)
-    window.Telegram?.WebApp?.expand?.()
-    return () => query.removeEventListener?.("change", updateMode)
+    enterTelegramBattleMode()
+    return () => {
+      query.removeEventListener?.("change", updateMode)
+      leaveTelegramBattleMode()
+    }
   }, [])
 
   useEffect(() => {

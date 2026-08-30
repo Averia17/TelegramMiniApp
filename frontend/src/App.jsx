@@ -6,6 +6,7 @@ import {authenticate} from "./utils/auth.js"
 import {BattleLoading} from "./components/BattleLoading/BattleLoading.jsx"
 import {loadBattleHero} from "./utils/battlePreferences.js"
 import {isMobileLandscape, requestPortraitOrientationLock} from "./utils/orientation.js"
+import {setupTelegramWebApp} from "./utils/telegramWebApp.js"
 
 const BattleGame = lazy(() => import("./components/BattleGame/BattleGame.jsx").then(module => ({default: module.BattleGame})))
 const LandingPage = lazy(() => import("./pages/landing-page.jsx"))
@@ -104,6 +105,8 @@ const PortraitOrientationGuard = ({children}) => {
 const App = () => {
   const [id, setId] = useState(undefined)
   const [authError, setAuthError] = useState("")
+
+  useEffect(() => setupTelegramWebApp(), [])
 
   useEffect(() => {
     if (window.location.pathname === "/katty-lab") return undefined

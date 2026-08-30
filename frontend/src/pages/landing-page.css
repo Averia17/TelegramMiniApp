@@ -1,4 +1,4 @@
-.lp { --page-safe-left:max(8px,env(safe-area-inset-left)); --page-safe-right:max(8px,env(safe-area-inset-right)); position: relative; width: 100%; height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; color: #fff; background: #3159b7; font-family: Arial,system-ui,sans-serif; isolation: isolate; }
+.lp { --page-safe-left:max(8px,env(safe-area-inset-left),var(--telegram-safe-left,0px)); --page-safe-right:max(8px,env(safe-area-inset-right),var(--telegram-safe-right,0px)); position: relative; width: 100%; height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; color: #fff; background: #3159b7; font-family: Arial,system-ui,sans-serif; isolation: isolate; }
 .lp button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
 .lp-lobby-backdrop { position: absolute; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(circle at 50% 42%,#7098f1 0 18%,transparent 48%),linear-gradient(160deg,#3e6fd3,#223f9b); }
 .lp-lobby-backdrop::before { content: ''; position: absolute; inset: 0; opacity: .11; background-image: repeating-linear-gradient(45deg,transparent 0 25px,#fff 26px 29px); }
