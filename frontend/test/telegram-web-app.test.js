@@ -2,8 +2,10 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import {
   enterTelegramBattleMode,
+  buildTelegramInviteLink,
   isTelegramVersionAtLeast,
   leaveTelegramBattleMode,
+  shareTelegramBattleResult,
   setupTelegramBackButton,
   setupTelegramActivity,
   setupTelegramWebApp,
@@ -131,6 +133,47 @@ test("Telegram haptics call the supported feedback channel and no-op elsewhere",
   assert.equal(triggerTelegramHaptic(platform, "selection"), true)
   assert.equal(triggerTelegramHaptic({}, "impact", "light"), false)
   assert.deepEqual(calls, [["impact", "light"], ["notification", "success"], ["selection"]])
+})
+
+test("Telegram battle sharing builds a referral deep link and opens the native share dialog", async () => {
+  assert.equal(
+    buildTelegramInviteLink(12345),
+    "https://t.me/TestUpMiniAppBot?startapp=inviterId12345",
+  )
+  assert.equal(buildTelegramInviteLink(""), "")
+
+  let sharedUrl = ""
+  const platform = {
+    Telegram: {
+      WebApp: {
+        openTelegramLink: url => { sharedUrl = url },
+      },
+    },
+  }
+
+  assert.equal(await shareTelegramBattleResult(platform, {
+    playerId: 12345,
+    result: {won: true},
+  }), true)
+  assert.match(sharedUrl, /^https:\/\/t\.me\/share\/url\?url=/)
+  assert.match(decodeURIComponent(sharedUrl), /startapp=inviterId12345/)
+  assert.match(decodeURIComponent(sharedUrl), /победил/i)
+})
+
+test("Telegram battle sharing falls back to the browser share API", async () => {
+  let shared = null
+  const platform = {
+    navigator: {
+      share: async payload => { shared = payload },
+    },
+  }
+
+  assert.equal(await shareTelegramBattleResult(platform, {
+    playerId: 7,
+    result: {draw: true},
+  }), true)
+  assert.equal(shared.url, "https://t.me/TestUpMiniAppBot?startapp=inviterId7")
+  assert.match(shared.text, /ничья/i)
 })
 
 test("battle mode opts into fullscreen and prevents accidental vertical swipe dismissal", () => {

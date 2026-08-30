@@ -1,5 +1,6 @@
 const TELEGRAM_FULLSCREEN_VERSION = "8.0"
 const TELEGRAM_VERTICAL_SWIPE_VERSION = "7.7"
+const TELEGRAM_BOT_USERNAME = "TestUpMiniAppBot"
 const INSET_SIDES = ["top", "right", "bottom", "left"]
 
 export const getTelegramWebApp = (platform = globalThis) => platform?.Telegram?.WebApp || null
@@ -126,6 +127,60 @@ export const triggerTelegramHaptic = (platform = globalThis, kind, value) => {
   } catch (_error) {
     return false
   }
+}
+
+export const buildTelegramInviteLink = (playerId) => {
+  const normalizedPlayerId = String(playerId ?? "").trim()
+  if (!/^\d+$/.test(normalizedPlayerId)) return ""
+  return `https://t.me/${TELEGRAM_BOT_USERNAME}?startapp=${encodeURIComponent(`inviterId${normalizedPlayerId}`)}`
+}
+
+const getBattleShareText = result => {
+  if (result?.draw) return "У нас ничья в TestUp Arena. Попробуй переиграть меня!"
+  if (result?.won) return "Я победил в TestUp Arena. Попробуй меня одолеть!"
+  return "Я сыграл в TestUp Arena. Заходи и попробуй победить меня!"
+}
+
+export const shareTelegramBattleResult = async (platform = globalThis, {playerId, result} = {}) => {
+  const inviteLink = buildTelegramInviteLink(playerId)
+  if (!inviteLink) return false
+
+  const text = getBattleShareText(result)
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(text)}`
+  const webApp = getTelegramWebApp(platform)
+  if (typeof webApp?.openTelegramLink === "function") {
+    try {
+      webApp.openTelegramLink(shareUrl)
+      return true
+    } catch (_error) {
+      // Fall through to browser sharing when the Telegram client rejects the link.
+    }
+  }
+
+  const navigator = platform?.navigator
+  if (typeof navigator?.share === "function") {
+    try {
+      await navigator.share({title: "TestUp Arena", text, url: inviteLink})
+      return true
+    } catch (_error) {
+      return false
+    }
+  }
+
+  if (typeof platform?.open === "function") {
+    platform.open(shareUrl, "_blank", "noopener,noreferrer")
+    return true
+  }
+
+  if (typeof navigator?.clipboard?.writeText === "function") {
+    try {
+      await navigator.clipboard.writeText(inviteLink)
+      return true
+    } catch (_error) {
+      return false
+    }
+  }
+  return false
 }
 
 const callSafely = (webApp, method) => {

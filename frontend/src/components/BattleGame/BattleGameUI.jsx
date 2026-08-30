@@ -152,7 +152,7 @@ export const BattleRewardNotice = ({result}) => {
   return message ? <p className="battle-reward-notice">{message}</p> : null
 }
 
-export const BattleResultCard = ({result, timedOut = false, onBack}) => {
+export const BattleResultCard = ({result, timedOut = false, onBack, onShare}) => {
   if (!result) return null
   const teamBattle = Boolean(result.teamBattle)
   const draw = Boolean(result.draw)
@@ -183,7 +183,10 @@ export const BattleResultCard = ({result, timedOut = false, onBack}) => {
       <BattleRewardNotice result={result}/>
       <div className="battle-result-section-label">ТВОЙ ВКЛАД</div>
       <BattleResultStats result={result}/>
-      <button className="battle-result-button" autoFocus onClick={onBack}><span>В МЕНЮ</span><kbd>ENTER</kbd></button>
+      <div className="battle-result-actions">
+        {onShare && <button className="battle-result-share-button" type="button" onClick={onShare}>ПОДЕЛИТЬСЯ РЕЗУЛЬТАТОМ</button>}
+        <button className="battle-result-button" autoFocus onClick={onBack}><span>В МЕНЮ</span><kbd>ENTER</kbd></button>
+      </div>
     </div>
   </div>
 }

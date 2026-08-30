@@ -28,7 +28,7 @@ import {BATTLE_RECOVERY_TIMEOUT_MS, getBattleReconnectDelay, getBattleRecoveryDe
 import {clearActiveBattle, saveActiveBattle, saveBattleHistoryRecord} from "../../utils/battleHistory.js"
 import {shouldSpendBattleEnergy} from "./battleEnergy.js"
 import {getTeamBattleMap, normalizeBattleMap} from "../../utils/battlePreferences.js"
-import {enterTelegramBattleMode, leaveTelegramBattleMode, setupTelegramActivity, setupTelegramBackButton, triggerTelegramHaptic} from "../../utils/telegramWebApp.js"
+import {enterTelegramBattleMode, leaveTelegramBattleMode, setupTelegramActivity, setupTelegramBackButton, shareTelegramBattleResult, triggerTelegramHaptic} from "../../utils/telegramWebApp.js"
 import "./BattleGame.css"
 
 const DEATH_RESULT_DELAY_MS = 2000
@@ -698,6 +698,15 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
 
   useEffect(() => setupTelegramBackButton(window, handleBackToMenu), [handleBackToMenu])
 
+  const handleShareBattleResult = useCallback(async () => {
+    const shared = await shareTelegramBattleResult(window, {
+      playerId: effectivePlayerId,
+      result: battleResult,
+    })
+    if (shared) triggerTelegramHaptic(window, "impact", "light")
+    return shared
+  }, [battleResult, effectivePlayerId])
+
   const localPlayer = clientRef.current?.playerId
     ? gameState?.players?.[clientRef.current.playerId]
     : null
@@ -928,11 +937,11 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
         )}
 
         {view === "result" && (
-          <BattleResultCard result={battleResult} onBack={handleBackToMenu}/>
+          <BattleResultCard result={battleResult} onBack={handleBackToMenu} onShare={handleShareBattleResult}/>
         )}
 
         {view === "timeout" && (
-          <BattleResultCard result={battleResult} timedOut onBack={handleBackToMenu}/>
+          <BattleResultCard result={battleResult} timedOut onBack={handleBackToMenu} onShare={handleShareBattleResult}/>
         )}
 
         <div className="battle-messages">

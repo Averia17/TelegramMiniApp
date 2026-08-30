@@ -57,6 +57,17 @@ test("BattleGame reports battle outcomes through Telegram haptics", () => {
   assert.match(battleGameSource, /triggerTelegramHaptic\(\s*window,\s*"notification"/)
 })
 
+test("BattleGame exposes the referral share action on battle results", () => {
+  assert.match(battleGameSource, /shareTelegramBattleResult/)
+  assert.match(battleGameSource, /onShare=\{handleShareBattleResult\}/)
+})
+
+test("BattleResultCard renders a dedicated share action", async () => {
+  const resultCardSource = await readFile(new URL("../src/components/BattleGame/BattleGameUI.jsx", import.meta.url), "utf8")
+  assert.match(resultCardSource, /onShare/)
+  assert.match(resultCardSource, /battle-result-share-button/)
+})
+
 test("BattleGame pauses prediction/rendering while Telegram Mini App is inactive", () => {
   assert.match(battleGameSource, /setupTelegramActivity/)
   assert.match(battleGameSource, /inputRef\.current\?\.setActive\(active\)/)
