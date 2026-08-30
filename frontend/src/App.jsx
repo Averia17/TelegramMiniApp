@@ -6,7 +6,7 @@ import {authenticate} from "./utils/auth.js"
 import {BattleLoading} from "./components/BattleLoading/BattleLoading.jsx"
 import {loadBattleHero} from "./utils/battlePreferences.js"
 import {isMobileLandscape, requestPortraitOrientationLock} from "./utils/orientation.js"
-import {setupTelegramWebApp} from "./utils/telegramWebApp.js"
+import {setupTelegramBackButton, setupTelegramWebApp} from "./utils/telegramWebApp.js"
 
 const BattleGame = lazy(() => import("./components/BattleGame/BattleGame.jsx").then(module => ({default: module.BattleGame})))
 const LandingPage = lazy(() => import("./pages/landing-page.jsx"))
@@ -15,6 +15,18 @@ const KattyLab = lazy(() => import("./pages/katty-lab.jsx"))
 const AppLoading = () => {
   const navigate = useNavigate()
   return <BattleLoading progress={18} status="Загружаем интерфейс..." onCancel={() => navigate("/", {replace: true})}/>
+}
+
+const TelegramRouteBackButton = () => {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (location.pathname === "/" || location.pathname.startsWith("/battle")) return undefined
+    return setupTelegramBackButton(window, () => navigate("/", {replace: true}))
+  }, [location.pathname, navigate])
+
+  return null
 }
 
 const BattlePage = ({id}) => {
@@ -124,6 +136,7 @@ const App = () => {
   return (
     <PortraitOrientationGuard>
       <BrowserRouter future={{v7_startTransition:true, v7_relativeSplatPath:true}}>
+        <TelegramRouteBackButton/>
         <Suspense fallback={<AppLoading />}>
           <Routes>
             <Route path="/katty-lab" element={<KattyLab/>}/>

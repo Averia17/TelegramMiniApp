@@ -88,6 +88,46 @@ export const setupTelegramActivity = (platform = globalThis, onChange = () => {}
   }
 }
 
+export const setupTelegramBackButton = (platform = globalThis, onClick = null) => {
+  const backButton = getTelegramWebApp(platform)?.BackButton
+  if (!backButton || typeof onClick !== "function") return () => {}
+
+  try {
+    backButton.show?.()
+    backButton.onClick?.(onClick)
+  } catch (_error) {
+    return () => {}
+  }
+
+  return () => {
+    try {
+      backButton.hide?.()
+      backButton.offClick?.(onClick)
+    } catch (_error) {
+      // A partially implemented Telegram client must not break route cleanup.
+    }
+  }
+}
+
+const TELEGRAM_HAPTIC_METHODS = {
+  impact: "impactOccurred",
+  notification: "notificationOccurred",
+  selection: "selectionChanged",
+}
+
+export const triggerTelegramHaptic = (platform = globalThis, kind, value) => {
+  const haptic = getTelegramWebApp(platform)?.HapticFeedback
+  const method = TELEGRAM_HAPTIC_METHODS[kind]
+  if (!haptic || !method || typeof haptic[method] !== "function") return false
+  try {
+    if (value === undefined) haptic[method]()
+    else haptic[method](value)
+    return true
+  } catch (_error) {
+    return false
+  }
+}
+
 const callSafely = (webApp, method) => {
   if (typeof webApp?.[method] !== "function") return false
   try {

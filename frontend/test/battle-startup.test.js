@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import {readFile} from "node:fs/promises"
 
 const battleGameSource = await readFile(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url), "utf8")
+const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8")
 
 test("BattleGame initializes effectivePlayerId before callbacks that capture it", () => {
   const effectivePlayerIdDeclaration = battleGameSource.indexOf("const effectivePlayerId =")
@@ -44,6 +45,16 @@ test("BattleGame retries a dropped socket and exposes the recovered connection n
   assert.match(battleGameSource, /setConnectionNotice/)
   assert.match(battleGameSource, /client\.connect\(\)/)
   assert.match(battleGameSource, /client\.recoverBattle\(roomId \|\| ""\)/)
+})
+
+test("Telegram BackButton routes outside battle and leaves an active battle cleanly", () => {
+  assert.match(appSource, /setupTelegramBackButton/)
+  assert.match(appSource, /location\.pathname\.startsWith\("\/battle"\)/)
+  assert.match(battleGameSource, /setupTelegramBackButton\(window, handleBackToMenu\)/)
+})
+
+test("BattleGame reports battle outcomes through Telegram haptics", () => {
+  assert.match(battleGameSource, /triggerTelegramHaptic\(\s*window,\s*"notification"/)
 })
 
 test("BattleGame pauses prediction/rendering while Telegram Mini App is inactive", () => {

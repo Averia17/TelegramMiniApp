@@ -28,7 +28,7 @@ import {BATTLE_RECOVERY_TIMEOUT_MS, getBattleReconnectDelay, getBattleRecoveryDe
 import {clearActiveBattle, saveActiveBattle, saveBattleHistoryRecord} from "../../utils/battleHistory.js"
 import {shouldSpendBattleEnergy} from "./battleEnergy.js"
 import {getTeamBattleMap, normalizeBattleMap} from "../../utils/battlePreferences.js"
-import {enterTelegramBattleMode, leaveTelegramBattleMode, setupTelegramActivity} from "../../utils/telegramWebApp.js"
+import {enterTelegramBattleMode, leaveTelegramBattleMode, setupTelegramActivity, setupTelegramBackButton, triggerTelegramHaptic} from "../../utils/telegramWebApp.js"
 import "./BattleGame.css"
 
 const DEATH_RESULT_DELAY_MS = 2000
@@ -124,6 +124,11 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
       {duration:0,kills:0,monsters:0,...snapshotStats,...result},
       latestStateRef.current,
       clientRef.current?.playerId,
+    )
+    triggerTelegramHaptic(
+      window,
+      "notification",
+      normalized.draw ? "warning" : normalized.won ? "success" : "error",
     )
     const localPlayerId = clientRef.current?.playerId || effectivePlayerId
     clearActiveBattle(localPlayerId)
@@ -675,7 +680,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
     }
   }, [connected, recoveryAction, playerName, heroName, effectivePlayerId, mode, mapName, partyId, partyTicket])
 
-  const handleBackToMenu = async () => {
+  const handleBackToMenu = useCallback(async () => {
     if (suppressDisconnectRef.current) return
     suppressDisconnectRef.current = true
     joinedRef.current = false
@@ -689,7 +694,9 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
       client.disconnect()
     }
     navigate("/")
-  }
+  }, [navigate, setView])
+
+  useEffect(() => setupTelegramBackButton(window, handleBackToMenu), [handleBackToMenu])
 
   const localPlayer = clientRef.current?.playerId
     ? gameState?.players?.[clientRef.current.playerId]

@@ -1,5 +1,6 @@
 import {normalizeEightWayMove, quantizeAngleToSectors, worldAngleToProtocolScreen} from "./direction.js"
 import {buildAbilityInput, getHeroAbilityInputContract} from "./abilityInputContract.js"
+import {triggerTelegramHaptic} from "../../utils/telegramWebApp.js"
 
 const AUTO_AIM_GESTURE_DRAG_LIMIT = 10
 const MIN_ATTACK_INPUT_DEBOUNCE_MS = 90
@@ -374,7 +375,10 @@ export class Input {
 
     const angle = this.resolveAimAngle(screenX, screenY, player, origin)
     const sentAt = this.client.shoot(angle, this.resolveAimDistance(screenX, screenY, origin), autoAim)
-    if (sentAt !== null && sentAt !== undefined) this.lastShotAt = now
+    if (sentAt !== null && sentAt !== undefined) {
+      this.lastShotAt = now
+      triggerTelegramHaptic(globalThis, "impact", "light")
+    }
   }
 
   update() {
@@ -388,12 +392,18 @@ export class Input {
     const {player} = this.getAttackContext()
     if (!player || !this.client?.ability) return null
     const contract = getHeroAbilityInputContract(player.hero || player.heroName, slot)
-    if (contract.mode === "self") return this.client.ability(slot, undefined, buildAbilityInput({contract}))
+    if (contract.mode === "self") {
+      const sentAt = this.client.ability(slot, undefined, buildAbilityInput({contract}))
+      if (sentAt !== null && sentAt !== undefined) triggerTelegramHaptic(globalThis, "impact", "medium")
+      return sentAt
+    }
     const rect = this.canvas.getBoundingClientRect()
     const origin = this.getAimOrigin(rect, player)
     const angle = this.resolveAimAngle(this.mouseX, this.mouseY, player, origin)
     const distance = this.resolveAimDistance(this.mouseX, this.mouseY, origin)
-    return this.client.ability(slot, undefined, buildAbilityInput({contract, aimAngle: angle, aimDistance: distance}))
+    const sentAt = this.client.ability(slot, undefined, buildAbilityInput({contract, aimAngle: angle, aimDistance: distance}))
+    if (sentAt !== null && sentAt !== undefined) triggerTelegramHaptic(globalThis, "impact", "medium")
+    return sentAt
   }
 
   sendKeyboardMove() {

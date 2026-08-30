@@ -4,8 +4,10 @@ import {
   enterTelegramBattleMode,
   isTelegramVersionAtLeast,
   leaveTelegramBattleMode,
+  setupTelegramBackButton,
   setupTelegramActivity,
   setupTelegramWebApp,
+  triggerTelegramHaptic,
 } from "../src/utils/telegramWebApp.js"
 
 const createDocument = () => {
@@ -90,6 +92,45 @@ test("Telegram activity follows isActive and cleans up activated/deactivated han
 
   cleanup()
   assert.equal(handlers.size, 0)
+})
+
+test("Telegram BackButton is shown for a route and hidden during cleanup", () => {
+  const calls = []
+  const backButton = {
+    show: () => calls.push("show"),
+    hide: () => calls.push("hide"),
+    onClick: handler => {
+      calls.push("onClick")
+      backButton.handler = handler
+    },
+    offClick: handler => {
+      assert.equal(backButton.handler, handler)
+      calls.push("offClick")
+    },
+  }
+  let navigations = 0
+  const cleanup = setupTelegramBackButton({Telegram: {WebApp: {BackButton: backButton}}}, () => { navigations += 1 })
+
+  backButton.handler()
+  cleanup()
+
+  assert.equal(navigations, 1)
+  assert.deepEqual(calls, ["show", "onClick", "hide", "offClick"])
+})
+
+test("Telegram haptics call the supported feedback channel and no-op elsewhere", () => {
+  const calls = []
+  const platform = {Telegram: {WebApp: {HapticFeedback: {
+    impactOccurred: style => calls.push(["impact", style]),
+    notificationOccurred: type => calls.push(["notification", type]),
+    selectionChanged: () => calls.push(["selection"]),
+  }}}}
+
+  assert.equal(triggerTelegramHaptic(platform, "impact", "light"), true)
+  assert.equal(triggerTelegramHaptic(platform, "notification", "success"), true)
+  assert.equal(triggerTelegramHaptic(platform, "selection"), true)
+  assert.equal(triggerTelegramHaptic({}, "impact", "light"), false)
+  assert.deepEqual(calls, [["impact", "light"], ["notification", "success"], ["selection"]])
 })
 
 test("battle mode opts into fullscreen and prevents accidental vertical swipe dismissal", () => {
