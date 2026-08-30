@@ -1,10 +1,11 @@
 import * as THREE from "three"
 import {disposeObjectTree} from "./shared/disposal.js"
+import {getTelegramGraphicsProfile} from "../../../utils/telegramDeviceProfile.js"
 
-export const getBattleWebGLContext = canvas => {
+export const getBattleWebGLContext = (canvas, graphicsProfile = getTelegramGraphicsProfile()) => {
   const attributes = {
     alpha: false,
-    antialias: true,
+    antialias: graphicsProfile.antialias,
     depth: true,
     stencil: false,
     powerPreference: "high-performance",
@@ -20,16 +21,17 @@ export const getBattleWebGLContext = canvas => {
 
 export class SceneRoot {
   constructor(canvas) {
-    const context = getBattleWebGLContext(canvas)
+    const graphicsProfile = getTelegramGraphicsProfile()
+    const context = getBattleWebGLContext(canvas, graphicsProfile)
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       context,
-      antialias: true,
+      antialias: graphicsProfile.antialias,
       alpha: false,
       powerPreference: "high-performance",
       precision: "highp",
     })
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, graphicsProfile.maxPixelRatio))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.08
