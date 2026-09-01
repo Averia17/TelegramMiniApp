@@ -28,7 +28,7 @@ test("Brock Zeus publishes a separate companion cloud asset", async () => {
   }
   assert.deepEqual(
     [...new Set((character.animations || []).map(animation => animation.name))].sort(),
-    ["Aim", "AimGadget", "AimSuper", "Attack", "Gadget", "Spawn", "Victory", "death", "hit", "idle", "run", "super"].sort(),
+    ["Aim", "AimGadget", "AimSuper", "Attack", "Gadget", "Spawn", "Stunned", "Victory", "death", "hit", "idle", "run", "super"].sort(),
   )
   const attack = character.animations.find(animation => animation.name === "Attack")
   assert.ok(attack, "Brock Zeus Attack clip must be present")

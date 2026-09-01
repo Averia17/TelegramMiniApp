@@ -77,6 +77,7 @@ func (h *Handler) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/deployment/status", h.HandleDeploymentStatus)
 	mux.HandleFunc("/heroes", h.HandleHeroes)
 	mux.HandleFunc("/map-preview", h.HandleMapPreview)
+	mux.HandleFunc("/map-editor/apply", h.HandleMapEditorApply)
 	mux.HandleFunc("/history", h.HandleBattleHistory)
 	mux.HandleFunc("/maintenance", h.HandleMaintenance)
 	mux.Handle("/metrics", observability.Default)
@@ -125,12 +126,17 @@ func (h *Handler) HandleDeploymentDrain(w http.ResponseWriter, r *http.Request) 
 	}
 	message := "Идёт обновление. Новые бои временно недоступны."
 	var request struct {
-		Tag string `json:"tag"`
+		Tag     string `json:"tag"`
+		Message string `json:"message"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&request)
 	}
-	if validReleaseTag(request.Tag) {
+	message = strings.TrimSpace(request.Message)
+	if message == "" {
+		message = "Идёт обновление. Новые бои временно недоступны."
+	}
+	if request.Message == "" && validReleaseTag(request.Tag) {
 		message += " Загружается " + request.Tag + "."
 	}
 	if deployment.Begin(message) {

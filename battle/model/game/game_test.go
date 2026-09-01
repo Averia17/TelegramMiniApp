@@ -1093,8 +1093,8 @@ func TestEffectiveMovementSpeedSlowsInsidePassableVineZone(t *testing.T) {
 	mapValue := &gamemap.GameMap{Collisions: []*geometry.WallTile{
 		{MinX: 100, MinY: 100, MaxX: 140, MaxY: 140, Type: "thorn_vine"},
 	}}
-	if got := EffectiveMovementSpeedAt(p, now, mapValue, 120, 120); math.Abs(got-81.6) > .001 {
-		t.Fatalf("thorn vine speed = %.2f, want 81.60", got)
+	if got := EffectiveMovementSpeedAt(p, now, mapValue, 120, 120); math.Abs(got-66) > .001 {
+		t.Fatalf("thorn vine speed = %.2f, want 66.00", got)
 	}
 	if got := EffectiveMovementSpeedAt(p, now, mapValue, 80, 120); math.Abs(got-120) > .001 {
 		t.Fatalf("outside thorn vine speed = %.2f, want 120", got)
@@ -1120,8 +1120,8 @@ func TestPlayerMovementAppliesPassableVineSlowdown(t *testing.T) {
 
 	gs.updatePlayerMovement(time.Second / 60)
 
-	if math.Abs(p.X-(100+120*.68/60)) > .001 {
-		t.Fatalf("thorn vine movement x = %.3f, want %.3f", p.X, 100+120*.68/60)
+	if math.Abs(p.X-(100+120*.55/60)) > .001 {
+		t.Fatalf("thorn vine movement x = %.3f, want %.3f", p.X, 100+120*.55/60)
 	}
 }
 

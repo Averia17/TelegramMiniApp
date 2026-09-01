@@ -246,11 +246,13 @@ const resolveDynamicProps = (position, radius, props) => {
   return {x, y}
 }
 
+const VINE_SPEED_MULTIPLIER = .55
+
 const vineSpeedMultiplierAt = (position, map) => {
   if (!position || !Array.isArray(map?.walls)) return 1
   return map.walls.some(wall => (wall?.type === "vine" || wall?.type === "thorn_vine") &&
     position.x >= Number(wall.minX) && position.x <= Number(wall.maxX) &&
-    position.y >= Number(wall.minY) && position.y <= Number(wall.maxY)) ? .68 : 1
+    position.y >= Number(wall.minY) && position.y <= Number(wall.maxY)) ? VINE_SPEED_MULTIPLIER : 1
 }
 
 const movementSpeed = (player, position = null, map = null) => {

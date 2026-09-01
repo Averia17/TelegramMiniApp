@@ -2,6 +2,8 @@ package game
 
 import (
 	"battle/model/gamemap"
+	"battle/service/geometry"
+	"math"
 	"testing"
 )
 
@@ -25,6 +27,17 @@ func TestNewMapJSONPublishesCanonicalIdentityAndRevision(t *testing.T) {
 		if wall.Type == "beacon" && wall.ColliderRadius <= 0 {
 			t.Fatalf("beacon collider radius was not serialized: %#v", wall)
 		}
+	}
+}
+
+func TestNewMapJSONPublishesEditableWallRotation(t *testing.T) {
+	canonical := &gamemap.GameMap{Collisions: []*geometry.WallTile{{
+		MinX: 20, MinY: 40, MaxX: 60, MaxY: 80, Type: "city_object", Rotation: math.Pi / 2, LinkedFeatureID: "building-a",
+	}}}
+
+	got := NewMapJSON("team-battle-northern", canonical, 0, true)
+	if len(got.Walls) != 1 || got.Walls[0].Rotation != math.Pi/2 || got.Walls[0].LinkedFeatureID != "building-a" {
+		t.Fatalf("wall rotation = %#v, want %v", got.Walls, math.Pi/2)
 	}
 }
 
@@ -76,9 +89,19 @@ func TestNewMapJSONPublishesNorthernTeamMapIdentity(t *testing.T) {
 	if got.ID != gamemap.CanonicalTeamBattleNorthernID || got.Name != "team-battle-northern" || got.Seed != gamemap.CanonicalTeamBattleNorthernSeed || got.Revision != 2 {
 		t.Fatalf("northern team map identity = %#v", got)
 	}
-	if len(got.Features) <= len(gamemap.GenerateTeamBattleClassic(gamemap.CanonicalTeamBattleSeed).Features) {
-		t.Fatalf("northern team map did not retain its detailed city features: %d", len(got.Features))
+	if featureJSONTypeCount(got.Features, "castle_keep") != 2 || featureJSONTypeCount(got.Features, "castle_house") != 8 {
+		t.Fatalf("northern team map did not retain its collision buildings: castle keeps=%d houses=%d", featureJSONTypeCount(got.Features, "castle_keep"), featureJSONTypeCount(got.Features, "castle_house"))
 	}
+}
+
+func featureJSONTypeCount(features []FeatureJSON, featureType string) int {
+	count := 0
+	for _, feature := range features {
+		if feature.Type == featureType {
+			count++
+		}
+	}
+	return count
 }
 
 func TestNewMapJSONPublishesRiverAndBridgeCollisionLayers(t *testing.T) {

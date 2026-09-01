@@ -277,6 +277,52 @@ func TestBotKeepsPressureOnCriticallyWoundedTargetDespiteBeingOutnumbered(t *tes
 	}
 }
 
+func TestBotRetreatsWhenTargetWinsImmediateDamageRace(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1200, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	gs.State = GameStateGame
+
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.X, bot.Y, bot.Lives, bot.MaxLives, bot.Ammo = 100, 100, 10000, 10000, 3
+	enemy.X, enemy.Y, enemy.Lives, enemy.MaxLives, enemy.AttackDmg, enemy.Ammo = 600, 100, 10000, 10000, 5000, 3
+	target := &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, x: enemy.X, y: enemy.Y, distance: 500}
+
+	gs.botEngageTarget(bot.PlayerId, bot, target, 10_000)
+
+	if bot.MoveX >= 0 {
+		t.Fatalf("bot pushed into a target that wins the damage race: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+	if bot.AttackPulse != 0 || bot.LastShootAt != 0 {
+		t.Fatalf("bot attacked despite losing the damage race: pulse=%d lastShoot=%d", bot.AttackPulse, bot.LastShootAt)
+	}
+}
+
+func TestBotStopsClosingWhenRangedTargetIsAlreadyInAttackRange(t *testing.T) {
+	gs := newTestGameState()
+	gs.Map = &gamemap.GameMap{WidthInPixels: 1200, HeightInPixels: 1000}
+	gs.Walls = geometry.NewSpatialHash(TileSize)
+	gs.PlayerAdd("bot", "Bot", "Brock Zeus")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	gs.State = GameStateGame
+
+	bot, enemy := gs.Players["bot"], gs.Players["enemy"]
+	bot.X, bot.Y, bot.Ammo, bot.GadgetCharges, bot.SuperCharge = 100, 100, 1, 0, 0
+	enemy.X, enemy.Y, enemy.Ammo = 700, 100, 0
+	target := &botTarget{kind: "player", id: enemy.PlayerId, player: enemy, x: enemy.X, y: enemy.Y, distance: 600}
+
+	gs.botEngageTarget(bot.PlayerId, bot, target, 10_000)
+
+	if bot.MoveX > .12 {
+		t.Fatalf("ranged bot kept running through an attack opportunity: move=(%.2f, %.2f)", bot.MoveX, bot.MoveY)
+	}
+	if bot.AttackPulse != 1 || bot.Ammo != 0 {
+		t.Fatalf("ranged bot did not attack from available range: pulse=%d ammo=%d", bot.AttackPulse, bot.Ammo)
+	}
+}
+
 func TestBotRetreatsAwayFromTheWholeVisibleThreatGroup(t *testing.T) {
 	gs := newTestGameState()
 	gs.Map = &gamemap.GameMap{WidthInPixels: 1000, HeightInPixels: 1000}

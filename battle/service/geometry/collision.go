@@ -92,15 +92,20 @@ func CorrectCircleWithBlockingCircles(body *CircleBody, obstacles []*CircleBody)
 }
 
 type WallTile struct {
-	MinX           float64
-	MinY           float64
-	MaxX           float64
-	MaxY           float64
-	Type           string
-	BushGroup      int
-	ColliderInsetX float64
-	ColliderInsetY float64
-	ColliderRadius float64
+	MinX     float64
+	MinY     float64
+	MaxX     float64
+	MaxY     float64
+	Type     string
+	Rotation float64
+	// LinkedFeatureID keeps authored feature colliders attached to the visual
+	// feature that owns them. It is metadata for map editing and serialization;
+	// generic props leave it empty.
+	LinkedFeatureID string
+	BushGroup       int
+	ColliderInsetX  float64
+	ColliderInsetY  float64
+	ColliderRadius  float64
 }
 
 func (wall *WallTile) ColliderRect() RectangleBody {

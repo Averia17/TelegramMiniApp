@@ -106,6 +106,8 @@ output/
 
 # Local compiled service binaries
 /battle/battle
+/battle/battle.exe
+/battle/.gocache/
 /battle/tmp/
 /leaderboard/leaderboard-server
 

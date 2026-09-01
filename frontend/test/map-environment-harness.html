@@ -22,6 +22,7 @@
     button { font: inherit; }
     canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
     canvas.is-dragging { cursor: grabbing; }
+    canvas.is-editor { cursor: crosshair; }
     #app { position: relative; }
     #status {
       position: absolute;
@@ -55,6 +56,8 @@
       box-shadow: 0 18px 56px rgba(0, 0, 0, .36);
       backdrop-filter: blur(16px);
       transition: transform .2s ease, opacity .2s ease;
+      max-height: calc(100vh - max(28px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+      overflow: auto;
     }
     #inspector.is-hidden { transform: translateX(calc(100% + 22px)); opacity: 0; pointer-events: none; }
     .eyebrow { color: var(--signal); font: 800 10px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .16em; text-transform: uppercase; }
@@ -86,7 +89,45 @@
     .zoom-row button { margin: 0; min-height: 30px; padding: 0; }
     .zoom-row output { display: grid; place-items: center; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font: 700 10px "Cascadia Mono", Consolas, monospace; }
     .hint { margin: 13px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .editor-tools { margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .editor-tools[hidden] { display: none; }
+    .editor-button-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 7px; }
+    .editor-button-row.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .editor-button, .editor-tools select, .editor-tools input { width: 100%; min-height: 32px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: #2d353d; }
+    .editor-button { cursor: pointer; font-weight: 700; }
+    .editor-button:hover, .editor-button:focus-visible, .editor-tools select:focus-visible, .editor-tools input:focus-visible { outline: 2px solid var(--active); outline-offset: 1px; }
+    .editor-button.is-primary { color: #15201f; border-color: var(--active); background: var(--active); }
+    .editor-button:disabled { cursor: not-allowed; opacity: .42; }
+    .editor-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 7px; }
+    .editor-field { display: grid; gap: 4px; color: var(--muted); font: 700 9px/1 "Cascadia Mono", Consolas, monospace; text-transform: uppercase; }
+    .editor-selected { margin-top: 9px; padding: 9px; border: 1px solid rgba(116, 217, 196, .3); border-radius: 7px; color: var(--muted); background: rgba(116, 217, 196, .06); font-size: 11px; }
+    .editor-selected strong { display: block; overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+    .editor-help { margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.35; }
     kbd { padding: 2px 5px; border: 1px solid #59636a; border-bottom-width: 2px; border-radius: 4px; color: #e8ecec; background: #333b42; font: 700 9px/1 "Cascadia Mono", Consolas, monospace; }
+    .editor-popover {
+      position: absolute;
+      z-index: 6;
+      width: min(294px, calc(100vw - 24px));
+      padding: 10px;
+      border: 1px solid rgba(116, 217, 196, .58);
+      border-radius: 10px;
+      background: rgba(24, 29, 37, .96);
+      box-shadow: 0 14px 36px rgba(0, 0, 0, .42);
+      backdrop-filter: blur(16px);
+      transform: translate(-50%, -100%);
+    }
+    .editor-popover::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 12px; height: 12px; border-right: 1px solid rgba(116, 217, 196, .58); border-bottom: 1px solid rgba(116, 217, 196, .58); background: rgba(24, 29, 37, .96); transform: translateX(-50%) rotate(45deg); }
+    .editor-popover[hidden] { display: none; }
+    .editor-popover-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .editor-popover-head strong { overflow: hidden; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .editor-popover-close { width: 24px; min-height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: #2d353d; cursor: pointer; }
+    .editor-popover-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+    .editor-popover-field { display: grid; gap: 3px; color: var(--muted); font: 700 9px/1 "Cascadia Mono", Consolas, monospace; text-transform: uppercase; }
+    .editor-popover-field input { width: 100%; min-height: 30px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: #2d353d; }
+    .editor-popover-field input:focus-visible, .editor-popover-close:focus-visible { outline: 2px solid var(--active); outline-offset: 1px; }
+    .editor-popover-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-top: 7px; }
+    .editor-popover-actions button { min-height: 29px; padding: 4px 5px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: #2d353d; cursor: pointer; font-size: 10px; font-weight: 700; }
+    .editor-popover-actions button:hover, .editor-popover-actions button:focus-visible { outline: 2px solid var(--active); outline-offset: 1px; }
     #toggle-panel {
       position: absolute;
       z-index: 5;
@@ -108,6 +149,7 @@
       h1 { font-size: 21px; }
       .intro { display: none; }
       .section-title { margin-top: 12px; }
+      #inspector { max-height: calc(100vh - 76px); }
     }
     @media (prefers-reduced-motion: reduce) { #inspector { transition: none; } }
   </style>
@@ -150,20 +192,116 @@
       <div class="readout"><span>Позиция героя</span><strong id="position">—</strong></div>
       <div class="zoom-row" aria-label="Масштаб камеры"><button id="zoom-out" type="button" aria-label="Отдалить">−</button><output id="zoom-value">100%</output><button id="zoom-in" type="button" aria-label="Приблизить">+</button></div>
       <p class="hint">Тяните карту мышью для панорамы, колёсико — масштаб. <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> — двигать героя по одному тайлу.</p>
+      <section id="editor-tools" class="editor-tools" aria-label="Редактор объектов карты">
+        <div class="section-title">Редактор объектов</div>
+        <button id="editor-mode" class="editor-button is-primary" type="button" aria-pressed="false">Включить редактирование</button>
+        <div id="editor-controls" hidden>
+          <label class="section-title" for="editor-selection">Выбранный объект</label>
+          <select id="editor-selection" aria-label="Выбранный объект"><option value="">Ничего не выбрано</option></select>
+          <div class="editor-grid">
+            <label class="editor-field" for="editor-kind">Слой<select id="editor-kind" aria-label="Слой объекта"><option value="wall">Проп / коллизия</option><option value="feature">Композиция</option></select></label>
+            <label class="editor-field" for="editor-type">Тип<select id="editor-type" aria-label="Тип объекта"></select></label>
+            <button id="spawn-item" class="editor-button" type="button">+ Спавн</button>
+          </div>
+          <div class="editor-selected"><strong id="selected-item">Ничего не выбрано</strong><span id="selected-item-meta">Кликните по объекту на карте</span></div>
+          <div class="editor-grid">
+            <label class="editor-field" for="editor-x">X<input id="editor-x" type="number" step="any" inputmode="decimal" disabled></label>
+            <label class="editor-field" for="editor-y">Y<input id="editor-y" type="number" step="any" inputmode="decimal" disabled></label>
+            <label class="editor-field" for="editor-rotation">Поворот °<input id="editor-rotation" type="number" step="any" inputmode="decimal" disabled></label>
+          </div>
+          <div class="editor-button-row three">
+            <button id="rotate-left" class="editor-button" type="button" disabled>↶ 15°</button>
+            <button id="rotate-right" class="editor-button" type="button" disabled>↷ 15°</button>
+            <button id="duplicate-item" class="editor-button" type="button" disabled>Дубль</button>
+          </div>
+          <div class="editor-button-row">
+            <button id="undo-item" class="editor-button" type="button" disabled>↶ Отменить</button>
+            <button id="redo-item" class="editor-button" type="button" disabled>↷ Повторить</button>
+          </div>
+          <div class="editor-button-row">
+            <button id="delete-item" class="editor-button" type="button" disabled>Удалить</button>
+            <button id="reset-map" class="editor-button" type="button">Сбросить черновик</button>
+          </div>
+          <div class="editor-button-row">
+            <button id="save-code" class="editor-button is-primary" type="button">Сохранить в код</button>
+          </div>
+          <p class="editor-help">В режиме редактирования тяните объект левой кнопкой. Пустое место — выбор, <kbd>Esc</kbd> — снять выбор, <kbd>Ctrl</kbd> + <kbd>Z</kbd> — откатить. Изменения сохраняются в черновик браузера.</p>
+        </div>
+      </section>
     </aside>
+    <div id="editor-popover" class="editor-popover" hidden aria-label="Изменение выбранного объекта">
+      <div class="editor-popover-head"><strong id="editor-popover-title">Объект карты</strong><button id="editor-popover-close" class="editor-popover-close" type="button" aria-label="Снять выбор">×</button></div>
+      <div class="editor-popover-grid">
+        <label class="editor-popover-field" for="popover-x">X<input id="popover-x" type="number" step="any" inputmode="decimal"></label>
+        <label class="editor-popover-field" for="popover-y">Y<input id="popover-y" type="number" step="any" inputmode="decimal"></label>
+        <label class="editor-popover-field" for="popover-rotation">Поворот °<input id="popover-rotation" type="number" step="any" inputmode="decimal"></label>
+      </div>
+      <div class="editor-popover-actions">
+        <button id="popover-rotate-left" type="button">↶ 15°</button>
+        <button id="popover-rotate-right" type="button">↷ 15°</button>
+        <button id="popover-delete" type="button">Удалить</button>
+      </div>
+    </div>
     <button id="toggle-panel" type="button" aria-controls="inspector" aria-expanded="true">Скрыть панель</button>
     <canvas id="scene" aria-label="Каноническая боевая карта"></canvas>
   </main>
   <script type="module">
+    import * as THREE from "three"
     import {ThreeBattleRenderer} from "/src/components/BattleGame/rendering/three/ThreeBattleRenderer.js"
     import {assetRegistry} from "/src/components/BattleGame/rendering/assets/AssetRegistry.js"
     import {createCollisionIndex, movePosition} from "/src/components/BattleGame/NetworkSimulation.js"
     import {loadCanonicalBattleMap} from "/src/components/BattleGame/canonicalMap.js"
+    import {WORLD_SCALE} from "/src/components/BattleGame/rendering/shared/coordinates.js"
+    import {
+      EDITOR_FEATURE_TYPES,
+      EDITOR_WALL_TYPES,
+      appendEditorItem,
+      createEditorMap,
+      createEditorHistory,
+      exportEditorMap,
+      duplicateEditorItem,
+      getLinkedCollisionCount,
+      isEditorItemHit,
+      listEditorItems,
+      removeEditorItem,
+      redoEditorHistory,
+      recordEditorHistory,
+      undoEditorHistory,
+      updateEditorItem,
+    } from "/src/components/BattleGame/mapEditor.js"
 
     const canvas = document.querySelector("#scene")
     const status = document.querySelector("#status")
     const inspector = document.querySelector("#inspector")
     const togglePanel = document.querySelector("#toggle-panel")
+    const editorModeButton = document.querySelector("#editor-mode")
+    const editorControls = document.querySelector("#editor-controls")
+    const editorSelection = document.querySelector("#editor-selection")
+    const editorKind = document.querySelector("#editor-kind")
+    const editorType = document.querySelector("#editor-type")
+    const editorX = document.querySelector("#editor-x")
+    const editorY = document.querySelector("#editor-y")
+    const editorRotation = document.querySelector("#editor-rotation")
+    const selectedItem = document.querySelector("#selected-item")
+    const selectedItemMeta = document.querySelector("#selected-item-meta")
+    const spawnButton = document.querySelector("#spawn-item")
+    const deleteButton = document.querySelector("#delete-item")
+    const duplicateButton = document.querySelector("#duplicate-item")
+    const resetButton = document.querySelector("#reset-map")
+    const saveCodeButton = document.querySelector("#save-code")
+    const rotateLeftButton = document.querySelector("#rotate-left")
+    const rotateRightButton = document.querySelector("#rotate-right")
+    const undoButton = document.querySelector("#undo-item")
+    const redoButton = document.querySelector("#redo-item")
+    const editorPopover = document.querySelector("#editor-popover")
+    const editorPopoverTitle = document.querySelector("#editor-popover-title")
+    const popoverX = document.querySelector("#popover-x")
+    const popoverY = document.querySelector("#popover-y")
+    const popoverRotation = document.querySelector("#popover-rotation")
+    const popoverClose = document.querySelector("#editor-popover-close")
+    const popoverRotateLeft = document.querySelector("#popover-rotate-left")
+    const popoverRotateRight = document.querySelector("#popover-rotate-right")
+    const popoverDelete = document.querySelector("#popover-delete")
     try {
       const query = new URLSearchParams(location.search)
       const selectedMode = query.get("mode") === "team" ? "team" : "solo"
@@ -171,6 +309,7 @@
       document.querySelector("#map-mode").value = selectedMode
       document.querySelector("#team-map").value = selectedMap
       document.querySelector("#team-map").hidden = selectedMode !== "team"
+      saveCodeButton.disabled = selectedMode !== "team"
       document.querySelector("#map-mode").addEventListener("change", event => {
         const url = new URL(location.href)
         if (event.target.value === "team") url.searchParams.set("mode", "team")
@@ -183,7 +322,12 @@
         url.searchParams.set("map", event.target.value)
         location.href = url.toString()
       })
-      const map = await loadCanonicalBattleMap(fetch, selectedMode, selectedMap)
+      const canonicalMap = await loadCanonicalBattleMap(fetch, selectedMode, selectedMap)
+      const draftKey = `battle-map-editor:${selectedMode}:${selectedMap}`
+      let storedDraft = null
+      try { storedDraft = JSON.parse(localStorage.getItem(draftKey) || "null") } catch { storedDraft = null }
+      let map = createEditorMap(storedDraft?.walls ? storedDraft : canonicalMap)
+      let history = createEditorHistory(map)
       document.querySelector("h1").textContent = map.name === "team-battle" ? "Каменный Перекрёсток" : map.name === "team-battle-northern" ? "Северный Пепел" : "Проверка карты"
       status.textContent = "Загрузка боевого рендерера…"
       await assetRegistry.preloadHeroes(["Kaze"])
@@ -198,7 +342,7 @@
         rotation: 0, lives: 720, maxLives: 720, speed: 0, movementSpeed: map.tileSize || 40, radius: 14, moveX: 0, moveY: 0,
         aiming: false, attackPulse: 0, superPulse: 0, gadgetPulse: 0,
       }
-      const collisionIndex = createCollisionIndex(map.walls)
+      let collisionIndex = createCollisionIndex(map.walls)
       const battleState = {
         map,
         game: {
@@ -214,6 +358,289 @@
       const battleRenderer = new ThreeBattleRenderer(canvas)
       battleRenderer.setLocalPlayerId("map-inspector")
       battleRenderer.setState(battleState)
+
+      const editorState = {enabled: false, selection: null, pointerId: null, dragging: false, dragStartMap: null}
+      const editorMarker = new THREE.Mesh(
+        new THREE.RingGeometry(.88, 1, 32),
+        new THREE.MeshBasicMaterial({color: 0x74d9c4, transparent: true, opacity: .95, depthTest: false, depthWrite: false, side: THREE.DoubleSide}),
+      )
+      editorMarker.name = "map-editor-selection"
+      editorMarker.rotation.x = -Math.PI / 2
+      editorMarker.renderOrder = 1000
+      editorMarker.visible = false
+      battleRenderer.mapRoot.add(editorMarker)
+      const nonEditableWallTypes = new Set(["objective", "beacon", "city_object"])
+      const getEditorItems = () => listEditorItems(map).filter(item => item.kind !== "wall" || !nonEditableWallTypes.has(String(item.type)))
+      const selectionValue = selection => selection ? `${selection.kind}:${selection.editorId}` : ""
+      const findSelectedItem = () => getEditorItems().find(item => item.kind === editorState.selection?.kind && String(item.editorId) === String(editorState.selection?.editorId)) || null
+      const typeDefinitions = () => editorKind.value === "feature" ? EDITOR_FEATURE_TYPES : EDITOR_WALL_TYPES
+      const typeLabel = (kind, type) => (kind === "feature" ? EDITOR_FEATURE_TYPES : EDITOR_WALL_TYPES).find(option => option.value === type)?.label || type
+      const itemCenter = descriptor => descriptor.kind === "feature"
+        ? {x: Number(descriptor.item.x) || 0, y: Number(descriptor.item.y) || 0}
+        : {x: (Number(descriptor.item.minX) + Number(descriptor.item.maxX)) / 2, y: (Number(descriptor.item.minY) + Number(descriptor.item.maxY)) / 2}
+      const itemSize = descriptor => descriptor.kind === "feature"
+        ? {width: (map.tileSize || 40) * 2.4 * (Number(descriptor.item.scale) > 0 ? Number(descriptor.item.scale) : 1), depth: (map.tileSize || 40) * 2.4 * (Number(descriptor.item.scale) > 0 ? Number(descriptor.item.scale) : 1)}
+        : {width: Math.max(2, Number(descriptor.item.maxX) - Number(descriptor.item.minX)), depth: Math.max(2, Number(descriptor.item.maxY) - Number(descriptor.item.minY))}
+      const clampMapPoint = point => ({
+        x: Math.max(0, Math.min(map.width, point.x)),
+        y: Math.max(0, Math.min(map.height, point.y)),
+      })
+      const screenPoint = event => {
+        const rect = canvas.getBoundingClientRect()
+        return {x: (event.clientX - rect.left) / rect.width * battleRenderer.width, y: (event.clientY - rect.top) / rect.height * battleRenderer.height}
+      }
+      const screenToMap = event => {
+        const point = screenPoint(event)
+        const raycaster = new THREE.Raycaster()
+        raycaster.setFromCamera(new THREE.Vector2(point.x / battleRenderer.width * 2 - 1, 1 - point.y / battleRenderer.height * 2), battleRenderer.camera)
+        const hit = new THREE.Vector3()
+        if (!raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) return null
+        return clampMapPoint({x: hit.x / WORLD_SCALE, y: hit.z / WORLD_SCALE})
+      }
+      const pickEditorItem = event => {
+        const point = screenToMap(event)
+        if (!point) return null
+        let closest = null
+        let closestArea = Infinity
+        let closestDistance = Infinity
+        getEditorItems().forEach(descriptor => {
+          if (!isEditorItemHit(map, descriptor, point)) return
+          const center = itemCenter(descriptor)
+          const size = itemSize(descriptor)
+          const area = size.width * size.depth
+          const distance = Math.hypot(point.x - center.x, point.y - center.y)
+          if (area < closestArea || area === closestArea && distance < closestDistance) {
+            closest = descriptor
+            closestArea = area
+            closestDistance = distance
+          }
+        })
+        return closest
+      }
+      const renderEditorMarker = () => {
+        const descriptor = findSelectedItem()
+        if (!editorState.enabled || !descriptor) {
+          editorMarker.visible = false
+          return
+        }
+        const center = itemCenter(descriptor)
+        const size = itemSize(descriptor)
+        editorMarker.position.set(center.x * WORLD_SCALE, .08, center.y * WORLD_SCALE)
+        editorMarker.scale.set(Math.max(1, size.width * WORLD_SCALE / 2), Math.max(1, size.depth * WORLD_SCALE / 2), 1)
+        editorMarker.visible = true
+      }
+      const positionEditorPopover = () => {
+        const descriptor = findSelectedItem()
+        if (!editorState.enabled || !descriptor) {
+          editorPopover.hidden = true
+          return
+        }
+        editorPopover.hidden = false
+        const center = itemCenter(descriptor)
+        const size = itemSize(descriptor)
+        const screen = battleRenderer.worldToScreen(center.x, center.y)
+        const projectedTop = battleRenderer.worldToScreen(center.x, center.y - size.depth / 2)
+        const panelWidth = editorPopover.offsetWidth || 294
+        const halfWidth = panelWidth / 2
+        const left = Math.max(12 + halfWidth, Math.min(innerWidth - 12 - halfWidth, screen.x))
+        const anchorY = Math.min(screen.y, projectedTop.y) - 12
+        const top = Math.max(editorPopover.offsetHeight + 12, Math.min(innerHeight - 12, anchorY))
+        editorPopover.style.left = `${left}px`
+        editorPopover.style.top = `${top}px`
+      }
+      const refreshEditorTypes = () => {
+        const previous = editorType.value
+        editorType.replaceChildren(...typeDefinitions().map(option => new Option(option.label, option.value)))
+        editorType.value = typeDefinitions().some(option => option.value === previous) ? previous : typeDefinitions()[0]?.value || ""
+      }
+      const refreshEditorUI = ({refreshOptions = true} = {}) => {
+        const descriptors = getEditorItems()
+        const currentValue = selectionValue(editorState.selection)
+        if (refreshOptions) {
+          editorSelection.replaceChildren(new Option("Ничего не выбрано", ""))
+          descriptors.forEach(descriptor => editorSelection.add(new Option(
+            `${descriptor.kind === "feature" ? "Композиция" : "Проп"} · ${typeLabel(descriptor.kind, descriptor.type)} · ${descriptor.editorId}`,
+            selectionValue(descriptor),
+          )))
+          editorSelection.value = descriptors.some(descriptor => selectionValue(descriptor) === currentValue) ? currentValue : ""
+        }
+        const descriptor = findSelectedItem()
+        const hasSelection = Boolean(descriptor)
+        const center = descriptor ? itemCenter(descriptor) : null
+        selectedItem.textContent = descriptor ? `${typeLabel(descriptor.kind, descriptor.type)} · ${descriptor.editorId}` : "Ничего не выбрано"
+        const linkedCollisionText = descriptor?.kind === "feature" ? ` · коллизий связано: ${getLinkedCollisionCount(map, descriptor.item)}` : ""
+        selectedItemMeta.textContent = descriptor ? `${descriptor.kind === "feature" ? "Композиция" : "Проп / коллизия"} · ${Math.round(itemSize(descriptor).width)} × ${Math.round(itemSize(descriptor).depth)}${linkedCollisionText}` : "Кликните по объекту на карте"
+        editorX.value = center ? Math.round(center.x) : ""
+        editorY.value = center ? Math.round(center.y) : ""
+        editorRotation.value = descriptor ? Number(((Number(descriptor.item.rotation) || 0) * 180 / Math.PI).toFixed(2)) : ""
+        editorPopoverTitle.textContent = descriptor ? `${typeLabel(descriptor.kind, descriptor.type)} · ${descriptor.editorId}` : "Объект карты"
+        popoverX.value = center ? Number(center.x.toFixed(2)) : ""
+        popoverY.value = center ? Number(center.y.toFixed(2)) : ""
+        popoverRotation.value = descriptor ? Number(((Number(descriptor.item.rotation) || 0) * 180 / Math.PI).toFixed(2)) : ""
+        ;[editorX, editorY, editorRotation, deleteButton, duplicateButton, rotateLeftButton, rotateRightButton].forEach(control => { control.disabled = !hasSelection })
+        ;[popoverX, popoverY, popoverRotation, popoverRotateLeft, popoverRotateRight, popoverDelete].forEach(control => { control.disabled = !hasSelection })
+        undoButton.disabled = history.past.length === 0
+        redoButton.disabled = history.future.length === 0
+        positionEditorPopover()
+        renderEditorMarker()
+      }
+      const saveDraft = () => {
+        localStorage.setItem(draftKey, exportEditorMap(map))
+        status.textContent = "Черновик сохранён · изменения видны сразу"
+      }
+      const renderEditedMap = () => {
+        battleState.map = map
+        collisionIndex = createCollisionIndex(map.walls)
+        battleRenderer.setState(battleState)
+        if (window.qa) window.qa.map = map
+        document.querySelector("#objects").textContent = battleRenderer.mapRenderer.objects.size.toLocaleString("ru-RU")
+        document.querySelector("#bushes").textContent = map.walls.filter(wall => wall.type === "bush").length.toLocaleString("ru-RU")
+        document.querySelector("#features").textContent = (map.features || []).length.toLocaleString("ru-RU")
+        refreshEditorUI()
+      }
+      const commitEditorMap = nextMap => {
+        history = recordEditorHistory(history, nextMap)
+        map = nextMap
+        renderEditedMap()
+        saveDraft()
+      }
+      const updateLiveEditorMap = nextMap => {
+        map = nextMap
+        battleState.map = map
+        battleRenderer.mapRenderer.previewEditorMap?.(map)
+        if (window.qa) window.qa.map = map
+        refreshEditorUI({refreshOptions: false})
+      }
+      const setEditorSelection = descriptor => {
+        editorState.selection = descriptor ? {kind: descriptor.kind, editorId: descriptor.editorId} : null
+        refreshEditorUI()
+      }
+      const patchSelectedPosition = (x, y) => {
+        const descriptor = findSelectedItem()
+        if (!descriptor || !Number.isFinite(x) || !Number.isFinite(y)) return
+        const next = descriptor.kind === "feature"
+          ? {x, y}
+          : (() => {
+            const size = itemSize(descriptor)
+            return {minX: x - size.width / 2, maxX: x + size.width / 2, minY: y - size.depth / 2, maxY: y + size.depth / 2}
+          })()
+        commitEditorMap(updateEditorItem(map, editorState.selection, next))
+      }
+      const editorPositionPatch = (descriptor, point) => descriptor.kind === "feature"
+        ? {x: point.x, y: point.y}
+        : (() => {
+          const size = itemSize(descriptor)
+          return {minX: point.x - size.width / 2, maxX: point.x + size.width / 2, minY: point.y - size.depth / 2, maxY: point.y + size.depth / 2}
+        })()
+      const patchSelectedRotation = degrees => {
+        const descriptor = findSelectedItem()
+        if (!descriptor || !Number.isFinite(degrees)) return
+        commitEditorMap(updateEditorItem(map, editorState.selection, {rotation: degrees * Math.PI / 180, ...(descriptor.kind === "feature" ? {editorRotation: true} : {})}))
+      }
+      const restoreEditorHistory = (nextHistory, label) => {
+        if (!nextHistory || nextHistory === history) return
+        history = nextHistory
+        map = history.present
+        renderEditedMap()
+        saveDraft()
+        status.textContent = label
+      }
+      const setEditorMode = enabled => {
+        editorState.enabled = enabled
+        editorModeButton.setAttribute("aria-pressed", String(enabled))
+        editorModeButton.textContent = enabled ? "Выключить редактирование" : "Включить редактирование"
+        editorModeButton.classList.toggle("is-primary", !enabled)
+        editorControls.hidden = !enabled
+        canvas.classList.toggle("is-editor", enabled)
+        refreshEditorTypes()
+        refreshEditorUI()
+      }
+      editorModeButton.addEventListener("click", () => setEditorMode(!editorState.enabled))
+      editorKind.addEventListener("change", () => { refreshEditorTypes() })
+      editorSelection.addEventListener("change", () => {
+        const [kind, ...idParts] = editorSelection.value.split(":")
+        setEditorSelection(editorSelection.value ? {kind, editorId: idParts.join(":")} : null)
+      })
+      editorX.addEventListener("change", () => patchSelectedPosition(Number(editorX.value), Number(editorY.value)))
+      editorY.addEventListener("change", () => patchSelectedPosition(Number(editorX.value), Number(editorY.value)))
+      editorRotation.addEventListener("change", () => patchSelectedRotation(Number(editorRotation.value)))
+      popoverX.addEventListener("change", () => patchSelectedPosition(Number(popoverX.value), Number(popoverY.value)))
+      popoverY.addEventListener("change", () => patchSelectedPosition(Number(popoverX.value), Number(popoverY.value)))
+      popoverRotation.addEventListener("change", () => patchSelectedRotation(Number(popoverRotation.value)))
+      rotateLeftButton.addEventListener("click", () => patchSelectedRotation(Number(editorRotation.value || 0) - 15))
+      rotateRightButton.addEventListener("click", () => patchSelectedRotation(Number(editorRotation.value || 0) + 15))
+      popoverRotateLeft.addEventListener("click", () => patchSelectedRotation(Number(popoverRotation.value || 0) - 15))
+      popoverRotateRight.addEventListener("click", () => patchSelectedRotation(Number(popoverRotation.value || 0) + 15))
+      popoverClose.addEventListener("click", () => setEditorSelection(null))
+      undoButton.addEventListener("click", () => restoreEditorHistory(undoEditorHistory(history), "Изменение отменено"))
+      redoButton.addEventListener("click", () => restoreEditorHistory(redoEditorHistory(history), "Изменение возвращено"))
+      spawnButton.addEventListener("click", () => {
+        const kind = editorKind.value
+        const option = typeDefinitions().find(item => item.value === editorType.value)
+        if (!option) return
+        const center = findSelectedItem() ? itemCenter(findSelectedItem()) : {x: map.width / 2, y: map.height / 2}
+        const next = appendEditorItem(map, {
+          kind,
+          type: option.value,
+          x: Math.max(0, Math.min(map.width, center.x + (findSelectedItem() ? map.tileSize : 0))),
+          y: Math.max(0, Math.min(map.height, center.y + (findSelectedItem() ? map.tileSize : 0))),
+          width: option.width || map.tileSize || 40,
+          depth: option.depth || map.tileSize || 40,
+          scale: option.scale,
+        })
+        const collection = kind === "feature" ? next.features : next.walls
+        const item = collection[collection.length - 1]
+        editorState.selection = {kind, editorId: item.editorId}
+        commitEditorMap(next)
+      })
+      duplicateButton.addEventListener("click", () => {
+        const descriptor = findSelectedItem()
+        if (!descriptor) return
+        const center = itemCenter(descriptor)
+        const next = duplicateEditorItem(map, editorState.selection, {
+          x: Math.min(map.width, center.x + (map.tileSize || 40)),
+          y: Math.min(map.height, center.y + (map.tileSize || 40)),
+        })
+        const collection = descriptor.kind === "feature" ? next.features : next.walls
+        editorState.selection = {kind: descriptor.kind, editorId: collection[collection.length - 1].editorId}
+        commitEditorMap(next)
+      })
+      const deleteSelectedItem = () => {
+        if (!findSelectedItem()) return
+        const next = removeEditorItem(map, editorState.selection)
+        editorState.selection = null
+        commitEditorMap(next)
+      }
+      deleteButton.addEventListener("click", deleteSelectedItem)
+      popoverDelete.addEventListener("click", deleteSelectedItem)
+      resetButton.addEventListener("click", () => {
+        if (!confirm("Сбросить все изменения этой карты и вернуть каноническую версию?")) return
+        localStorage.removeItem(draftKey)
+        editorState.selection = null
+        commitEditorMap(createEditorMap(canonicalMap))
+        status.textContent = "Каноническая карта восстановлена"
+      })
+      saveCodeButton.addEventListener("click", async () => {
+        if (selectedMode !== "team") return
+        saveCodeButton.disabled = true
+        status.textContent = "Записываю карту в исходный код…"
+        try {
+          const cleanMap = JSON.parse(exportEditorMap(map))
+          const response = await fetch("/api/battle/map-editor/apply", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({map: selectedMap, walls: cleanMap.walls, features: cleanMap.features || []}),
+          })
+          const result = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`)
+          status.textContent = `Код карты обновлён · ${result.path || "backend"}`
+        } catch (error) {
+          console.error("Map source save failed:", error)
+          status.textContent = `Ошибка сохранения кода: ${error.message}`
+        } finally {
+          saveCodeButton.disabled = false
+        }
+      })
 
       const zoneCoordinates = {
         "north-west": [.25, .25], north: [.5, .16], "north-east": [.75, .25],
@@ -233,6 +660,17 @@
         updatePosition(map.width * x, map.height * y, button.dataset.zone)
       }))
       addEventListener("keydown", event => {
+        if (!editorState.enabled || !(event.ctrlKey || event.metaKey) || event.altKey) return
+        const key = event.key.toLowerCase()
+        if (key === "z") {
+          event.preventDefault()
+          restoreEditorHistory(event.shiftKey ? redoEditorHistory(history) : undoEditorHistory(history), event.shiftKey ? "Изменение возвращено" : "Изменение отменено")
+        } else if (key === "y") {
+          event.preventDefault()
+          restoreEditorHistory(redoEditorHistory(history), "Изменение возвращено")
+        }
+      })
+      addEventListener("keydown", event => {
         if (!/[wasd]/i.test(event.key)) return
         const offset = {w:[0,-1], a:[-1,0], s:[0,1], d:[1,0]}[event.key.toLowerCase()]
         const next = movePosition(
@@ -249,7 +687,19 @@
       let dragX = 0
       let dragY = 0
       canvas.addEventListener("pointerdown", event => {
-        if (event.button !== 0) return
+        if (event.button !== 0 && event.button !== 1 && event.button !== 2) return
+        if (editorState.enabled && event.button === 0) {
+          const hit = pickEditorItem(event)
+          setEditorSelection(hit)
+          if (hit) {
+            editorState.pointerId = event.pointerId
+            editorState.dragging = true
+            editorState.dragStartMap = map
+            canvas.setPointerCapture(event.pointerId)
+            canvas.classList.add("is-dragging")
+          }
+          return
+        }
         dragPointer = event.pointerId
         dragX = event.clientX
         dragY = event.clientY
@@ -257,12 +707,31 @@
         canvas.classList.add("is-dragging")
       })
       canvas.addEventListener("pointermove", event => {
+        if (editorState.dragging && event.pointerId === editorState.pointerId) {
+          const point = screenToMap(event)
+          const descriptor = findSelectedItem()
+          if (point && descriptor) updateLiveEditorMap(updateEditorItem(map, editorState.selection, editorPositionPatch(descriptor, point)))
+          return
+        }
         if (event.pointerId !== dragPointer) return
         battleRenderer.cameraRig.panByScreen(event.clientX - dragX, event.clientY - dragY)
         dragX = event.clientX
         dragY = event.clientY
       })
       const stopDragging = event => {
+        if (editorState.dragging && event.pointerId === editorState.pointerId) {
+          editorState.dragging = false
+          editorState.pointerId = null
+          if (editorState.dragStartMap && map !== editorState.dragStartMap) {
+            history = recordEditorHistory(history, map)
+            renderEditedMap()
+            saveDraft()
+          }
+          editorState.dragStartMap = null
+          canvas.classList.remove("is-dragging")
+          if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId)
+          return
+        }
         if (event.pointerId !== dragPointer) return
         dragPointer = null
         canvas.classList.remove("is-dragging")
@@ -270,7 +739,14 @@
       }
       canvas.addEventListener("pointerup", stopDragging)
       canvas.addEventListener("pointercancel", stopDragging)
-      const resize = () => battleRenderer.resize(innerWidth, innerHeight)
+      canvas.addEventListener("contextmenu", event => event.preventDefault())
+      addEventListener("keydown", event => {
+        if (event.key === "Escape" && editorState.enabled) setEditorSelection(null)
+      })
+      const resize = () => {
+        battleRenderer.resize(innerWidth, innerHeight)
+        positionEditorPopover()
+      }
       addEventListener("resize", resize)
       let zoom = 1
       const applyZoom = () => { battleRenderer.cameraRig.preferredVertical = 31 / zoom; document.querySelector("#zoom-value").textContent = `${Math.round(zoom * 100)}%` }
@@ -293,11 +769,20 @@
       document.querySelector("#bushes").textContent = map.walls.filter(wall => wall.type === "bush").length.toLocaleString("ru-RU")
       document.querySelector("#features").textContent = (map.features || []).length.toLocaleString("ru-RU")
       updatePosition(player.x, player.y, "center")
+      refreshEditorTypes()
+      refreshEditorUI()
       status.textContent = `Готово · ${map.width} × ${map.height}`
       status.classList.add("is-ready")
 
-      battleRenderer.renderer.setAnimationLoop(() => battleRenderer.render())
-      addEventListener("pagehide", () => battleRenderer.destroy(), {once: true})
+      battleRenderer.renderer.setAnimationLoop(() => {
+        battleRenderer.render()
+        positionEditorPopover()
+      })
+      addEventListener("pagehide", () => {
+        editorMarker.geometry.dispose()
+        editorMarker.material.dispose()
+        battleRenderer.destroy()
+      }, {once: true})
       window.qa = {map, battleRenderer, battleState, player, updatePosition}
       window.render_game_to_text = () => JSON.stringify({
         renderer: "ThreeBattleRenderer",

@@ -3,19 +3,26 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import bpy
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+
+from hero_animation_contract import ALL_HEROES, master_path
 
 
 def main() -> None:
-    for hero_dir in sorted(path for path in SOURCE.iterdir() if path.is_dir()):
-        path = hero_dir / f"{hero_dir.name}.blend"
+    for hero in ALL_HEROES:
+        hero_dir = SOURCE / hero
+        path = master_path(hero)
         if not path.exists():
-            print("MISSING_MASTER", hero_dir.name, path)
+            print("MISSING_MASTER", hero, path)
             continue
         bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
         armature = next(
@@ -32,7 +39,7 @@ def main() -> None:
         ]
         print(
             "INVENTORY",
-            hero_dir.name,
+            hero,
             path.name,
             "objects",
             len(bpy.context.scene.objects),

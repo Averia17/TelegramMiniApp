@@ -30,9 +30,23 @@ func TestDefaultMapProviderRegistrySupportsBothTeamMapVariants(t *testing.T) {
 		}
 	}
 	classic, err := DefaultMapProvider{}.LoadMap("team-battle")
-	if err != nil || classic == nil || len(classic.Features) >= len(mustLoadNorthern(t).Features) {
-		t.Fatalf("classic provider did not load the previous compact variant: err=%v classic=%v", err, classic)
+	northern := mustLoadNorthern(t)
+	if err != nil || classic == nil || gamemapFeatureTypeCount(classic.Features, "city_building") != 10 || gamemapFeatureTypeCount(classic.Features, "castle_keep") != 0 {
+		t.Fatalf("classic provider did not load the classic city variant: err=%v classic=%v", err, classic)
 	}
+	if gamemapFeatureTypeCount(northern.Features, "castle_keep") != 2 || gamemapFeatureTypeCount(northern.Features, "castle_house") != 8 {
+		t.Fatalf("northern provider did not load the collision-building variant: northern=%v", northern)
+	}
+}
+
+func gamemapFeatureTypeCount(features []gamemap.MapFeature, featureType string) int {
+	count := 0
+	for _, feature := range features {
+		if feature.Type == featureType {
+			count++
+		}
+	}
+	return count
 }
 
 func mustLoadNorthern(t *testing.T) *gamemap.GameMap {

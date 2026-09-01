@@ -53,6 +53,7 @@ func TestBrockSuperTargetFallsBackToNearestMonster(t *testing.T) {
 
 func TestBrockBotUsesRandomSuperPointWithoutVisibleTargets(t *testing.T) {
 	gs, bot := newBrockAbilityTargetState()
+	bot.SuperCharge = SuperMaxChargePercent
 
 	target := gs.botBrockSuperTarget(bot, 10_000)
 

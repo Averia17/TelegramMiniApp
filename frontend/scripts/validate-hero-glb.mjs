@@ -3,7 +3,7 @@ import {readFile} from "node:fs/promises"
 import path from "node:path"
 
 const expectedClips = new Set([
-  "idle", "run", "hit", "death", "super", "Aim", "AimSuper", "Attack", "Gadget", "Spawn", "Victory",
+  "idle", "run", "hit", "death", "super", "Aim", "AimSuper", "Attack", "Gadget", "Spawn", "Victory", "Stunned",
 ])
 const extraClipsByHero = Object.freeze({"brock-zeus": ["AimGadget"], "fairy-mina": ["AimGadget"], kaze: ["AimGadget"], mandy: ["AimGadget"], needle: ["AimGadget"]})
 const runtimeFileBySlug = Object.freeze({})

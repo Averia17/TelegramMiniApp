@@ -53,7 +53,109 @@ type botUtilityContext struct {
 	TargetInAttackRange  bool
 	TargetStunned        bool
 	TargetRecentlyFired  bool
+	BotExpectedDamage    float64
+	TargetExpectedDamage float64
+	BotAttacksToKill     int
+	TargetAttacksToKill  int
+	BotTimeToKillMs      int64
+	TargetTimeToKillMs   int64
+	BotWinsDamageRace    bool
+	TargetWinsDamageRace bool
+	TargetCanAttack      bool
 	TeamMode             bool
+}
+
+type botCombatEvaluation struct {
+	BotExpectedDamage    float64
+	TargetExpectedDamage float64
+	BotAttacksToKill     int
+	TargetAttacksToKill  int
+	BotTimeToKillMs      int64
+	TargetTimeToKillMs   int64
+	BotWinsDamageRace    bool
+	TargetWinsDamageRace bool
+	TargetCanAttack      bool
+}
+
+// evaluateBotCombat estimates the short-term basic-attack exchange. It is
+// intentionally conservative: abilities, projectile misses, and regeneration
+// are not assumed. The estimate is still enough to distinguish a winnable
+// all-in from a target that can kill the bot before it gets another shot.
+func evaluateBotCombat(bot *player.Player, target *botTarget) botCombatEvaluation {
+	if bot == nil || target == nil || target.player == nil || !target.player.IsAlive() {
+		return botCombatEvaluation{}
+	}
+	evaluation := botCombatEvaluation{
+		BotExpectedDamage:    botExpectedBasicDamage(bot),
+		TargetExpectedDamage: botExpectedBasicDamage(target.player),
+	}
+	evaluation.BotAttacksToKill = attacksNeeded(target.player.Lives, evaluation.BotExpectedDamage)
+	evaluation.TargetAttacksToKill = attacksNeeded(bot.Lives, evaluation.TargetExpectedDamage)
+	botInRange := target.distance <= botAttackRange(bot)+target.radius()
+	targetInRange := target.distance <= botAttackRange(target.player)+bot.Radius
+	evaluation.TargetCanAttack = targetInRange && target.player.Ammo > 0 && evaluation.TargetExpectedDamage > 0
+	if botInRange && bot.Ammo > 0 && evaluation.BotExpectedDamage > 0 {
+		evaluation.BotTimeToKillMs = botAttackTimeMs(bot, evaluation.BotAttacksToKill)
+	}
+	if evaluation.TargetCanAttack {
+		evaluation.TargetTimeToKillMs = botAttackTimeMs(target.player, evaluation.TargetAttacksToKill)
+	}
+	if evaluation.BotTimeToKillMs > 0 && evaluation.TargetTimeToKillMs == 0 {
+		evaluation.BotWinsDamageRace = true
+	}
+	if evaluation.TargetTimeToKillMs > 0 && evaluation.BotTimeToKillMs == 0 {
+		evaluation.TargetWinsDamageRace = true
+	}
+	if evaluation.BotTimeToKillMs > 0 && evaluation.TargetTimeToKillMs > 0 {
+		evaluation.BotWinsDamageRace = evaluation.BotTimeToKillMs <= evaluation.TargetTimeToKillMs
+		evaluation.TargetWinsDamageRace = evaluation.TargetTimeToKillMs < evaluation.BotTimeToKillMs
+	}
+	return evaluation
+}
+
+func botExpectedBasicDamage(bot *player.Player) float64 {
+	if bot == nil || bot.AttackDmg <= 0 {
+		return 0
+	}
+	multiplier := math.Max(1, bot.DamageMultiplier)
+	return math.Max(1, math.Round(float64(bot.AttackDmg)*multiplier))
+}
+
+func attacksNeeded(lives int, damage float64) int {
+	if lives <= 0 {
+		return 0
+	}
+	if damage <= 0 {
+		return math.MaxInt
+	}
+	return int(math.Ceil(float64(lives) / damage))
+}
+
+func botAttackTimeMs(bot *player.Player, attacks int) int64 {
+	if bot == nil || attacks <= 0 {
+		return 0
+	}
+	attackRate := bot.AttackRate
+	if attackRate <= 0 {
+		attackRate = BulletRate
+	}
+	reloadTime := bot.ReloadTime
+	if reloadTime <= 0 {
+		reloadTime = attackRate
+	}
+	available := bot.Ammo
+	if available <= 0 {
+		available = 0
+	}
+	maxAmmo := bot.MaxAmmo
+	if maxAmmo <= 0 {
+		maxAmmo = 1
+	}
+	reloads := 0
+	if attacks > available {
+		reloads = int(math.Ceil(float64(attacks-available) / float64(maxAmmo)))
+	}
+	return int64(attacks)*attackRate + int64(reloads)*reloadTime
 }
 
 // scoreBotUtility is pure and deterministic so combat decisions can be
@@ -80,6 +182,15 @@ func scoreBotUtility(ctx botUtilityContext) map[botUtilityAction]float64 {
 		}
 		if ctx.TargetRecentlyFired {
 			engage += 8
+		}
+		if ctx.BotWinsDamageRace {
+			engage += 34
+			if ctx.BotAttacksToKill == 1 {
+				engage += 16
+			}
+		}
+		if ctx.TargetWinsDamageRace && ctx.TargetCanAttack && ctx.TargetInAttackRange {
+			engage -= 36
 		}
 		if ctx.TargetDistance > ctx.PreferredRange && ctx.PreferredRange > 0 {
 			engage += math.Min(12, (ctx.TargetDistance-ctx.PreferredRange)/20)
@@ -123,6 +234,12 @@ func scoreBotUtility(ctx botUtilityContext) map[botUtilityAction]float64 {
 		}
 		if ctx.TargetInAttackRange {
 			retreat += 10
+		}
+		if ctx.TargetWinsDamageRace && ctx.TargetCanAttack && ctx.TargetInAttackRange {
+			retreat += 42
+		}
+		if ctx.BotWinsDamageRace {
+			retreat -= 32
 		}
 		if ctx.MaxAmmo > 0 && ctx.Ammo == 0 && ctx.TargetDistance < 190 {
 			retreat += 18
@@ -313,6 +430,16 @@ func (gs *GameState) botUtilityContextFor(bot *player.Player, target *botTarget,
 		ctx.TargetKind = target.kind
 		ctx.TargetInAttackRange = target.distance <= ctx.AttackRange+target.radius()
 		if target.player != nil {
+			evaluation := evaluateBotCombat(bot, target)
+			ctx.BotExpectedDamage = evaluation.BotExpectedDamage
+			ctx.TargetExpectedDamage = evaluation.TargetExpectedDamage
+			ctx.BotAttacksToKill = evaluation.BotAttacksToKill
+			ctx.TargetAttacksToKill = evaluation.TargetAttacksToKill
+			ctx.BotTimeToKillMs = evaluation.BotTimeToKillMs
+			ctx.TargetTimeToKillMs = evaluation.TargetTimeToKillMs
+			ctx.BotWinsDamageRace = evaluation.BotWinsDamageRace
+			ctx.TargetWinsDamageRace = evaluation.TargetWinsDamageRace
+			ctx.TargetCanAttack = evaluation.TargetCanAttack
 			ctx.TargetHealthFraction = float64(target.player.Lives) / math.Max(1, float64(target.player.MaxLives))
 			ctx.TargetStunned = target.player.StunUntil > now
 			ctx.TargetRecentlyFired = target.player.LastShootAt > 0 && now-target.player.LastShootAt <= BotRecentThreatDuration.Milliseconds()

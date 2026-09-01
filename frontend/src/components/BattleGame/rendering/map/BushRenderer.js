@@ -273,7 +273,7 @@ const hash = seed => {
   return value - Math.floor(value)
 }
 
-const createLeafScatter = (wall, wallIndex) => {
+const createLeafScatter = (wall, wallIndex, sizeMultiplier = 1) => {
   const width = Math.max(.85, (wall.maxX - wall.minX) * WORLD_SCALE)
   const depth = Math.max(.85, (wall.maxY - wall.minY) * WORLD_SCALE)
   const cellWidth = .72
@@ -287,7 +287,7 @@ const createLeafScatter = (wall, wallIndex) => {
       const seed = wallIndex * 7919 + row * 131 + column * 17
       const normalizedX = Math.max(.035, Math.min(.965, (column + hash(seed + 1)) / columns))
       const normalizedZ = Math.max(.05, Math.min(.95, (row + hash(seed + 2)) / rows))
-      const size = .8 * (.82 + hash(seed + 3) * .34)
+      const size = .8 * sizeMultiplier * (.82 + hash(seed + 3) * .34)
       leaves.push({
         x: wall.minX * WORLD_SCALE + normalizedX * width,
         z: wall.minY * WORLD_SCALE + normalizedZ * depth,
@@ -366,6 +366,7 @@ export const splitBushWallComponents = walls => {
 
 export const createBushField = (walls, kind = "bush", palette = "default") => {
   const isMoonMist = kind === "moon_mist"
+  const isVine = kind === "vine"
   const isTeam = palette === "team"
   const visualWalls = subdivideBushWalls(walls)
   // Keep the support volume aligned to the gameplay tile. A sphere creates
@@ -394,7 +395,7 @@ export const createBushField = (walls, kind = "bush", palette = "default") => {
     baseMaterial.opacity = .92
     baseMaterial.depthWrite = false
   }
-  const leaves = visualWalls.flatMap((wall, index) => createLeafScatter(wall, index)
+  const leaves = visualWalls.flatMap((wall, index) => createLeafScatter(wall, index, isVine ? 1.12 : 1)
     .map(leaf => ({...leaf, tileIndex: index})))
   // Keep a sparse set of blades in front of the hero. The full canopy is
   // rendered behind the actor so the brawler reads as standing inside it,
@@ -408,7 +409,7 @@ export const createBushField = (walls, kind = "bush", palette = "default") => {
     return [.14, .32, .5, .68, .86].map((normalizedX, index) => ({
       x: wall.minX * WORLD_SCALE + (normalizedX + (hash(tileIndex * 67 + index + 17) - .5) * .06) * width,
       z: frontZ + .04 + hash(tileIndex * 71 + index * 19) * .36,
-      size: .86 + hash(tileIndex * 31 + index) * .18,
+      size: (isVine ? .96 : .86) + hash(tileIndex * 31 + index) * .2,
       rotation: hash(tileIndex * 43 + index + 7) * Math.PI * 2,
       stretchX: .9 + hash(tileIndex * 53 + index + 11) * .2,
       stretchZ: .88 + hash(tileIndex * 61 + index + 13) * .2,
@@ -469,12 +470,12 @@ export const createBushField = (walls, kind = "bush", palette = "default") => {
 
     position.set(centerX, .018, centerZ)
     rotation.identity()
-    scale.set(width * .62, depth * .62, 1)
+    scale.set(width * (isVine ? .74 : .62), depth * (isVine ? .74 : .62), 1)
     matrix.compose(position, rotation, scale)
     bed.setMatrixAt(index, matrix)
 
     position.set(centerX, .34, centerZ)
-    scale.set(width * .52, isMoonMist ? .28 : .14, depth * .52)
+    scale.set(width * (isVine ? .58 : .52), isMoonMist ? .28 : (isVine ? .18 : .14), depth * (isVine ? .58 : .52))
     matrix.compose(position, rotation, scale)
     base.setMatrixAt(index, matrix)
 

@@ -1,5 +1,6 @@
 FROM golang:1.26.6-alpine AS development
 WORKDIR /app
+ENV GOCACHE=/app/.gocache
 COPY go.mod go.sum ./
 RUN go mod download
 RUN go install github.com/air-verse/air@v1.62.0

@@ -24,6 +24,20 @@ test("map environment lab uses the complete battle renderer and canonical map", 
   assert.match(html, /from "\/src\/components\/BattleGame\/NetworkSimulation\.js"/)
   assert.match(html, /movePosition\(/)
   assert.match(html, /render_game_to_text/)
+  assert.match(html, /createEditorMap/)
+  assert.match(html, /id="editor-mode"/)
+  assert.match(html, /id="spawn-item"/)
+  assert.match(html, /id="delete-item"/)
+  assert.doesNotMatch(html, /id="export-map"/)
+  assert.doesNotMatch(html, /id="export-go"/)
+  assert.match(html, /id="save-code"/)
+  assert.match(html, /map-editor\/apply/)
+  assert.match(html, /id="undo-item"/)
+  assert.match(html, /id="redo-item"/)
+  assert.match(html, /id="editor-popover"/)
+  assert.match(html, /id="popover-rotation"[^>]*step="any"/)
+  assert.match(html, /undoEditorHistory|Ctrl+Z/)
+  assert.match(html, /localStorage/)
 })
 
 test("map lab exposes the canonical battle view controls", async () => {
@@ -35,6 +49,11 @@ test("map lab exposes the canonical battle view controls", async () => {
   assert.match(html, /canvas\.addEventListener\("pointerdown"/)
   assert.match(html, /canvas\.addEventListener\("pointermove"/)
   assert.match(html, /battleRenderer\.cameraRig\.panByScreen\(/)
+  assert.match(html, /pickEditorItem\(/)
+  assert.match(html, /updateEditorItem\(/)
+  assert.match(html, /duplicateEditorItem/)
+  assert.match(html, /getLinkedCollisionCount/)
+  assert.match(html, /коллизий связано/)
 })
 
 test("map and hero labs expose wheel zoom controls", async () => {

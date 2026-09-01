@@ -36,6 +36,21 @@ func TestSimulationStepSeparatesStateAdvanceFromTransport(t *testing.T) {
 		t.Fatal("empty room should not advance a transport step")
 	}
 
+	ended := 0
+	r.State.State = game.GameStateGame
+	r.State.PlayerAdd("human", "Human", "Needle")
+	r.State.PlayerAdd("bot", "Bot", "Needle")
+	r.State.Players["human"].Lives = 0
+	r.State.Players["bot"].IsBot = true
+	r.State.OnGameEnd = func(_ map[string]*player.Player, _ string, _ int64) { ended++ }
+	step = r.stepSimulation(time.UnixMilli(1_000), 0, time.UnixMilli(1_016))
+	if step.hasClients {
+		t.Fatal("a clientless battle should not publish a transport step")
+	}
+	if r.State.State != game.GameStateFinished || ended != 1 {
+		t.Fatalf("clientless active battle did not advance to its result: state=%q endCalls=%d", r.State.State, ended)
+	}
+
 	r.Clients["p1"] = &Client{Id: "p1"}
 	step = r.stepSimulation(time.UnixMilli(1_000), 0, time.UnixMilli(1_016))
 	if !step.hasClients {

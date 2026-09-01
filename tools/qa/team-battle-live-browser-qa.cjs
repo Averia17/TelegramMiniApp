@@ -58,11 +58,16 @@ runWithBrowser(
       const riverFeature = renderer?.mapRenderer?.featureObjects?.get?.("team-river")
       const riverWater = riverFeature?.getObjectByName?.("team-river-water")
       let renderedRiverBounds = null
+      let renderedRiverCenter = null
       if (riverWater) {
         riverWater.geometry.computeBoundingBox()
         renderedRiverBounds = {
           minX: riverWater.geometry.boundingBox.min.x,
           maxX: riverWater.geometry.boundingBox.max.x,
+        }
+        renderedRiverCenter = {
+          x: riverFeature.position.x,
+          z: riverFeature.position.z,
         }
       }
       const views = [...(renderer?.players?.values?.() || [])].map(view => ({
@@ -96,6 +101,7 @@ runWithBrowser(
         riverMinAlong: riverWalls.length ? Math.min(...riverWalls.map(riverAlong)) : null,
         riverMaxAlong: riverWalls.length ? Math.max(...riverWalls.map(riverAlong)) : null,
         renderedRiverBounds,
+        renderedRiverCenter,
         screenshot: true,
       }
     })
@@ -109,11 +115,14 @@ runWithBrowser(
     assert.equal(report.mapId, expectedMapId, "unexpected team map")
     assert.ok(report.riverCellCount >= 300, "river collision layer is incomplete")
     assert.ok(report.bridgeCellCount >= 60, "bridge collision layer is incomplete")
-    assert.equal(report.riverMinAlong, 15, "river does not reach the first island shoreline")
-    assert.equal(report.riverMaxAlong, 65, "river does not reach the second island shoreline")
-    assert.ok(report.renderedRiverBounds?.minX <= -100, "river does not reach the western ocean")
-    assert.ok(report.renderedRiverBounds?.maxX >= 100, "river does not reach the eastern ocean")
-    assert.ok(report.renderedRiverBounds?.maxX < 120, "river mouth overshoots into a second ocean edge")
+    assert.equal(report.riverMinAlong, 10, "river does not reach the first island shoreline")
+    assert.equal(report.riverMaxAlong, 60, "river does not reach the second island shoreline")
+    assert.ok(report.renderedRiverBounds?.minX <= -91.9, "river does not reach the western shoreline")
+    assert.ok(report.renderedRiverBounds?.maxX >= 93.9, "river does not reach the eastern shoreline")
+    assert.ok(report.renderedRiverBounds?.minX > -93, "river mouth overshoots into the western ocean")
+    assert.ok(report.renderedRiverBounds?.maxX < 95, "river mouth overshoots into the eastern ocean")
+    assert.ok(Math.abs((report.renderedRiverCenter?.x || 0) - 89.7) < .01, "river feature is not aligned with the cropped map")
+    assert.ok(Math.abs((report.renderedRiverCenter?.z || 0) - 89.7) < .01, "river feature is not aligned with the cropped map")
     assert.deepEqual(consoleErrors, [])
     assert.deepEqual(pageErrors, [])
   },

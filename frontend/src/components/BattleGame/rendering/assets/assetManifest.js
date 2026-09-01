@@ -10,6 +10,7 @@ const clips = Object.freeze({
   spawn: "Spawn",
   victory: "Victory",
   defeat: "death",
+  stunned: "Stunned",
 })
 const needleClips = Object.freeze({...clips, aimGadget: "AimGadget"})
 const fairyMinaClips = Object.freeze({...clips, aimGadget: "AimGadget"})

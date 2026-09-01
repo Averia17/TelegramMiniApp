@@ -26,7 +26,7 @@ test("Mandy exposes the left-hand staff and AimGadget runtime clip", async () =>
   assert.deepEqual(manifest.hero_animation_extras?.mandy, ["aim-gadget"])
   assert.deepEqual(mandy.animations.available, [
     "idle", "run", "attack", "super", "aim", "aim-super", "hit", "death",
-    "spawn", "victory", "aim-gadget",
+    "spawn", "victory", "stunned", "aim-gadget",
   ])
   assert.equal("weaponUrl" in HERO_ASSETS.Mandy, false)
   assert.equal("weaponAttachments" in HERO_ASSETS.Mandy, false)

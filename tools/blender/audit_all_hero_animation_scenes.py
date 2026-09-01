@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import bpy
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+
+from hero_animation_contract import master_path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
@@ -28,6 +35,7 @@ CLIP_ACTIONS = {
     "death": "death",
     "spawn": "Spawn",
     "victory": "Victory",
+    "stunned": "Stunned",
 }
 HEROES = tuple(MANIFEST["heroes"])
 if "katty" not in HEROES:
@@ -153,7 +161,7 @@ def main() -> None:
     for hero in HEROES:
         hero_root = SOURCE / hero
         clips = hero_clips(hero)
-        master = hero_root / f"{hero}.blend"
+        master = master_path(hero)
         paths = {clip: master for clip in clips}
         expected = set(clips)
         for clip in sorted(expected - set(paths)):

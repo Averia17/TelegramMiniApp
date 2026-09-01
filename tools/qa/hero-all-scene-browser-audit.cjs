@@ -8,7 +8,7 @@ const baseUrl = process.env.HERO_ALL_SCENE_QA_URL || "http://127.0.0.1:5173"
 const output = path.resolve(__dirname, "../../output/playwright/hero-all-scene-audit")
 const heroes = (process.env.HERO_ALL_SCENE_QA_HEROES || "Mandy,Kaze,Wukong Mico,Needle,Fairy Mina,Persephone Lumi,Brock Zeus,Katty").split(",")
 const extras = new Set(["Mandy", "Kaze", "Needle", "Fairy Mina", "Brock Zeus"])
-const clips = ["idle", "run", "attack", "super", "gadget", "aim", "aim-super", "hit", "death", "spawn", "victory"]
+const clips = ["idle", "run", "attack", "super", "gadget", "aim", "aim-super", "hit", "death", "spawn", "victory", "stunned"]
 const sceneClips = hero => extras.has(hero) ? [...clips, "aim-gadget"] : clips
 const runtimeName = clip => ({"aim-super": "aimSuper", "aim-gadget": "aimGadget", death: "defeat"}[clip] || clip)
 const slug = value => value.toLowerCase().replaceAll(" ", "-")
@@ -28,6 +28,7 @@ async function resetController(page) {
     player.moveX = 0
     player.moveY = 0
     player.aiming = false
+    player.stun = 0
     player.channel = 0
     window.qa.battleRenderer.setState(window.qa.battleState)
   })
@@ -59,6 +60,8 @@ async function playScene(page, hero, clip) {
       controller.playOutcome("defeat", 0)
     } else if (clip === "victory") {
       controller.playOutcome("victory", 0)
+    } else if (clip === "stunned") {
+      player.stun = 3
     } else {
       controller.playSafe(name, "idle", 0)
     }
@@ -66,7 +69,7 @@ async function playScene(page, hero, clip) {
     return action.getClip().duration
   }, {clip, name})
   assert.ok(duration !== null, `missing runtime action ${name}`)
-  const loop = clip === "idle" || clip === "run" || clip.startsWith("aim") || clip === "victory" || clip === "death"
+  const loop = clip === "idle" || clip === "run" || clip.startsWith("aim") || clip === "victory" || clip === "death" || clip === "stunned"
   const waitTimes = loop
     ? [180, 600, 980]
     : [Math.max(80, duration * 1000 * .08), Math.max(180, duration * 1000 * .52), Math.max(280, duration * 1000 * .88)]

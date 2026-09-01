@@ -22,6 +22,7 @@ CLIP_ACTIONS = {
     "spawn": "Spawn",
     "victory": "Victory",
     "gadget": "Gadget",
+    "stunned": "Stunned",
 }
 EXTRA_ACTIONS = {
     hero: {clip: "AimGadget" for clip in clips}

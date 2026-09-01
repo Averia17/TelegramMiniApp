@@ -13,10 +13,17 @@ services:
   account:
     container_name: dev-account
     image: dev-account
+    environment:
+      DB_HOST: dev-db
+      SHOP_CATALOG_URL: "http://dev-shop:8000/api/products"
+      KAFKA_ADDR: dev-kafka:9092
 
   bot:
     container_name: dev-bot
     image: dev-bot
+    environment:
+      DB_HOST: dev-db
+      REDIS_HOST: dev-redis
 
   db:
     container_name: dev-db
@@ -27,6 +34,11 @@ services:
   shop:
     container_name: dev-shop
     image: dev-shop
+    environment:
+      SHOP_DB_HOST: dev-shop-db
+      REDIS_HOST: dev-redis
+      KAFKA_ADDR: dev-kafka:9092
+      USERS_SERVICE_URL: http://dev-account:8000
 
   shop-db:
     container_name: dev-shop-db
@@ -34,6 +46,10 @@ services:
   battle:
     container_name: dev-battle
     image: dev-battle
+    environment:
+      REDIS_ADDR: dev-battle-redis:6379
+      KAFKA_ADDR: dev-kafka:9092
+      ACCOUNT_URL: http://dev-account:8000
 
   battle-redis:
     container_name: dev-battle-redis
@@ -41,6 +57,9 @@ services:
   leaderboard:
     container_name: dev-leaderboard
     image: dev-leaderboard
+    environment:
+      REDIS_ADDR: dev-leaderboard-redis:6379
+      KAFKA_ADDR: dev-kafka:9092
 
   leaderboard-redis:
     container_name: dev-leaderboard-redis
@@ -48,10 +67,15 @@ services:
   party:
     container_name: dev-party
     image: dev-party
+    environment:
+      KAFKA_ADDR: dev-kafka:9092
+      ACCOUNT_URL: http://dev-account:8000
 
   news:
     container_name: dev-news
     image: dev-news
+    environment:
+      NEWS_DB_HOST: dev-news-db
 
   news-db:
     container_name: dev-news-db
@@ -73,7 +97,7 @@ services:
       - frontend-node-modules:/home/node/app/node_modules
     command: ["npm", "run", "dev"]
     environment:
-      VITE_BATTLE_PROXY_TARGET: http://battle:8000
+      VITE_BATTLE_PROXY_TARGET: http://dev-battle:8000
       VITE_USE_POLLING: "true"
       VITE_MAX_PARTY_SIZE: ${MAX_PARTY_SIZE:-3}
     stop_signal: SIGINT
@@ -128,7 +152,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus.dev.yml:/etc/prometheus/prometheus.yml:ro
       - ./observability/alerts:/etc/prometheus/alerts:ro
       - prometheus-data:/prometheus
     depends_on:
@@ -164,10 +188,10 @@ services:
       KAFKA_PROCESS_ROLES: "controller,broker"
       KAFKA_NODE_ID: 1
       KAFKA_BROKER_ID: 1
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@dev-kafka:29093"
       KAFKA_LISTENERS: "CONTROLLER://:29093,PLAINTEXT://:9092"
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://dev-kafka:9092"
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
       KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
@@ -196,13 +220,14 @@ services:
     expose:
       - "8080"
     environment:
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: dev-kafka:9092
       DYNAMIC_CONFIG_ENABLED: true
     networks:
       - app-net
 
 networks:
   app-net:
+    name: dev_app-net
 
 volumes:
   frontend-node-modules:

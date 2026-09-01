@@ -22,15 +22,32 @@ services:
 
   bot:
     container_name: prod-bot
+    environment:
+      DB_HOST: prod-db
+      REDIS_HOST: prod-redis
     depends_on:
       bot-migrate:
         condition: service_completed_successfully
 
+  bot-migrate:
+    container_name: prod-bot-migrate
+    environment:
+      DB_HOST: prod-db
+
   account:
     container_name: prod-account
+    environment:
+      DB_HOST: prod-db
+      SHOP_CATALOG_URL: "http://prod-shop:8000/api/products"
+      KAFKA_ADDR: prod-kafka:9092
 
   shop:
     container_name: prod-shop
+    environment:
+      SHOP_DB_HOST: prod-shop-db
+      REDIS_HOST: prod-redis
+      KAFKA_ADDR: prod-kafka:9092
+      USERS_SERVICE_URL: http://prod-account:8000
     depends_on:
       shop-migrate:
         condition: service_completed_successfully
@@ -42,26 +59,45 @@ services:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set for prod}"
       POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB must be set for prod}"
 
+  shop-migrate:
+    container_name: prod-shop-migrate
+    environment:
+      SHOP_DB_HOST: prod-shop-db
+
   battle:
     container_name: prod-battle
+    environment:
+      REDIS_ADDR: prod-battle-redis:6379
+      KAFKA_ADDR: prod-kafka:9092
+      ACCOUNT_URL: http://prod-account:8000
 
   battle-redis:
     container_name: prod-battle-redis
 
   leaderboard:
     container_name: prod-leaderboard
+    environment:
+      REDIS_ADDR: prod-leaderboard-redis:6379
+      KAFKA_ADDR: prod-kafka:9092
 
   leaderboard-redis:
     container_name: prod-leaderboard-redis
 
   party:
     container_name: prod-party
+    environment:
+      KAFKA_ADDR: prod-kafka:9092
+      ACCOUNT_URL: http://prod-account:8000
 
   news:
     container_name: prod-news
+    environment:
+      NEWS_DB_HOST: prod-news-db
 
   news-migrate:
     container_name: prod-news-migrate
+    environment:
+      NEWS_DB_HOST: prod-news-db
 
   news-db:
     container_name: prod-news-db
@@ -173,7 +209,7 @@ services:
     ports:
       - "127.0.0.1:19090:9090"
     volumes:
-      - ${COMPOSE_BIND_ROOT:-.}/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${COMPOSE_BIND_ROOT:-.}/observability/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
       - ${COMPOSE_BIND_ROOT:-.}/observability/alerts:/etc/prometheus/alerts:ro
       - prometheus-data:/prometheus
     depends_on:
@@ -221,10 +257,10 @@ services:
       KAFKA_PROCESS_ROLES: "controller,broker"
       KAFKA_NODE_ID: 1
       KAFKA_BROKER_ID: 1
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@prod-kafka:29093"
       KAFKA_LISTENERS: "CONTROLLER://:29093,PLAINTEXT://:9092"
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://prod-kafka:9092"
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
       KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
@@ -253,13 +289,14 @@ services:
     expose:
       - "8080"
     environment:
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: prod-kafka:9092
       DYNAMIC_CONFIG_ENABLED: true
     networks:
       - app-net
 
 networks:
   app-net:
+    name: prod_app-net
 
 volumes:
   frontend-dist:

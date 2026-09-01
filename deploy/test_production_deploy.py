@@ -19,6 +19,18 @@ class ProductionDeploySafetyTests(unittest.TestCase):
         self.assertIn("--no-build --no-deps --force-recreate", source)
         self.assertIn('for unit in "${RECREATE_UNITS[@]}"', source)
 
+    def test_deployer_accepts_eta_parameter_and_sends_start_message_before_drain_wait(
+        self,
+    ):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("--eta-minutes", source)
+        self.assertIn("DEPLOY_ESTIMATED_MINUTES", source)
+        self.assertIn("DEPLOYMENT_MESSAGE", source)
+        self.assertIn('"message"', source)
+        self.assertLess(
+            source.index("DEPLOYMENT_MESSAGE"), source.index("wait_for_drain")
+        )
+
     def test_deployer_backups_databases_before_migrations_and_publishes_news(self):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("backup_databases", source)

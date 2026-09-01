@@ -3,7 +3,6 @@ package gamemap
 import (
 	"fmt"
 	"math"
-	"strings"
 
 	"battle/service/geometry"
 )
@@ -37,6 +36,14 @@ const (
 	teamBattleRiverMouth = 70.0
 )
 
+// The authored grid is cropped by five design cells before publication. Keep
+// the shoreline centred on the compact cell grid so the stepped water ring is
+// symmetric on all four sides of the 70x70 map.
+const (
+	teamBattleIslandCenter = float64(teamBattleCropTiles) + float64(teamBattleCompactSize)/2
+	teamBattleIslandRadius = 35.5
+)
+
 const teamBattleCityObjectCollisionType = "city_object"
 
 // teamBattleCityColliderSpec is expressed in the local tile-space of a city
@@ -49,7 +56,7 @@ type teamBattleCityColliderSpec struct {
 	Radius        float64
 }
 
-func teamBattleCityObjectCollider(cx, cy, rotation, scale float64, spec teamBattleCityColliderSpec) *geometry.WallTile {
+func teamBattleCityObjectCollider(featureID string, cx, cy, rotation, scale float64, spec teamBattleCityColliderSpec) *geometry.WallTile {
 	const tile = 40.0
 	cos, sin := math.Cos(rotation), math.Sin(rotation)
 	centerX, centerY := cx*tile, cy*tile
@@ -61,7 +68,7 @@ func teamBattleCityObjectCollider(cx, cy, rotation, scale float64, spec teamBatt
 		return &geometry.WallTile{
 			MinX: worldX - radius, MinY: worldY - radius,
 			MaxX: worldX + radius, MaxY: worldY + radius,
-			Type: teamBattleCityObjectCollisionType, ColliderRadius: radius,
+			Type: teamBattleCityObjectCollisionType, LinkedFeatureID: featureID, ColliderRadius: radius,
 		}
 	}
 
@@ -79,7 +86,7 @@ func teamBattleCityObjectCollider(cx, cy, rotation, scale float64, spec teamBatt
 		minX, minY = math.Min(minX, worldX), math.Min(minY, worldY)
 		maxX, maxY = math.Max(maxX, worldX), math.Max(maxY, worldY)
 	}
-	return &geometry.WallTile{MinX: minX, MinY: minY, MaxX: maxX, MaxY: maxY, Type: teamBattleCityObjectCollisionType}
+	return &geometry.WallTile{MinX: minX, MinY: minY, MaxX: maxX, MaxY: maxY, Type: teamBattleCityObjectCollisionType, LinkedFeatureID: featureID}
 }
 
 func teamBattleCityColliderSpecs(archetype string, includeStructuralBodies bool) []teamBattleCityColliderSpec {
@@ -149,6 +156,63 @@ func teamBattleCityColliderSpecs(archetype string, includeStructuralBodies bool)
 			}, specs...)
 		}
 		return specs
+	case "harbour_row":
+		// The harbour row is three connected timber fronts with a covered
+		// loading edge. Keep each ground contact narrow so the south bridge
+		// approach remains a real lane instead of one invisible rectangle.
+		return []teamBattleCityColliderSpec{
+			{X: -1.55, Y: .42, Width: 1.22, Height: 1.12},
+			{X: 0, Y: .42, Width: 1.22, Height: 1.12},
+			{X: 1.55, Y: .42, Width: 1.22, Height: 1.12},
+			{X: -1.55, Y: -.72, Width: 1.16, Height: .42},
+			{X: 1.55, Y: -.72, Width: 1.16, Height: .42},
+			{X: 2.38, Y: .05, Radius: .24},              // mooring post / physical dressing
+			{X: 1.12, Y: -.52, Width: .72, Height: .46}, // loading crate
+			{X: -1.12, Y: -.52, Radius: .2},             // tied sack
+		}
+	case "dock_warehouse":
+		// Three connected warehouse bays form one solid frontage. The loading
+		// edge stays narrow, while the hoist, crate and sack remain physical.
+		return []teamBattleCityColliderSpec{
+			{X: -1.45, Y: .36, Width: 1.18, Height: 1.08},
+			{X: 0, Y: .36, Width: 1.18, Height: 1.08},
+			{X: 1.45, Y: .36, Width: 1.18, Height: 1.08},
+			{X: -1.45, Y: -.76, Width: .9, Height: .32},
+			{X: 1.45, Y: -.76, Width: .9, Height: .32},
+			{X: 2.2, Y: -.54, Radius: .2}, // hoist post
+			{X: .82, Y: -.82, Width: .72, Height: .42},
+			{X: -.82, Y: -.82, Radius: .2},
+		}
+	case "guildhall":
+		// The guildhall is a connected three-bay civic facade. Each bay gets its
+		// own body contact, while the front steps and notice board remain small
+		// physical anchors so the plaza approach stays open.
+		return []teamBattleCityColliderSpec{
+			{X: -1.55, Y: .38, Width: 1.18, Height: 1.08},
+			{X: 0, Y: .38, Width: 1.18, Height: 1.08},
+			{X: 1.55, Y: .38, Width: 1.18, Height: 1.08},
+			{X: -1.55, Y: -.76, Width: .92, Height: .32},
+			{X: 1.55, Y: -.76, Width: .92, Height: .32},
+			{X: 0, Y: -1.02, Width: .5, Height: .24}, // civic steps
+			{X: 2.28, Y: -.65, Radius: .16},          // notice post
+		}
+	case "north_townhouses":
+		// Three narrow homes share one frontage, but their contacts stay split so
+		// the north-gate street can run past the row instead of becoming one
+		// invisible rectangle. The rear band closes the visible shells; the two
+		// steps and lantern remain small physical details at the street edge.
+		return []teamBattleCityColliderSpec{
+			{X: -1.9, Y: .28, Width: 1.38, Height: 1.08},
+			{X: 0, Y: .28, Width: 1.38, Height: 1.08},
+			{X: 1.9, Y: .28, Width: 1.38, Height: 1.08},
+			{X: -1.7, Y: .94, Width: 1.18, Height: .34},
+			{X: 0, Y: .94, Width: 1.18, Height: .34},
+			{X: 1.7, Y: .94, Width: 1.18, Height: .34},
+			{X: -1.85, Y: -.74, Width: .68, Height: .24},
+			{X: 1.85, Y: -.74, Width: .68, Height: .24},
+			{X: 0, Y: -.9, Radius: .16},
+			{X: 2.48, Y: -.52, Radius: .2},
+		}
 	case "castle_keep":
 		// The keep is assembled from several tight footprints rather than one
 		// giant invisible rectangle. The courtyard and gate remain walkable.
@@ -195,18 +259,31 @@ func teamBattleCityColliderSpecs(archetype string, includeStructuralBodies bool)
 		// The classic map keeps its original prop-only contacts; Northern Ash
 		// opts into the complete house shell above.
 		return specs
-	case "castle_market":
-		return []teamBattleCityColliderSpec{
-			{X: -1.2, Y: .25, Width: .72, Height: .48},
-			{X: .15, Y: .32, Width: .72, Height: .48},
-			{X: 1.35, Y: .25, Width: .72, Height: .48},
-		}
 	default:
 		return nil
 	}
 }
 
 func teamBattleBaseColliderSpecs(archetype string) []teamBattleCityColliderSpec {
+	if archetype == "base_compound" {
+		// The base is published as one authored settlement, but its three visible
+		// structures remain separate contacts so the courtyard and approach stay
+		// playable instead of becoming one invisible square.
+		return []teamBattleCityColliderSpec{
+			// Keep these contacts compact because the authored compound is rotated
+			// 45 degrees toward the river; an axis-aligned wall box otherwise grows
+			// into the open lanes when its corners are projected.
+			{X: -4.8, Y: 2.1, Width: 1.2, Height: 1.2}, // workshop wing
+			{X: -3.55, Y: 2.1, Width: 1.2, Height: 1.2},
+			{X: 3.55, Y: 2.1, Width: 1.2, Height: 1.2}, // storehouse wing
+			{X: 4.8, Y: 2.1, Width: 1.2, Height: 1.2},
+			{X: -1.2, Y: 5.2, Width: 1.2, Height: 1.2}, // rear chapel hall
+			{X: 0, Y: 5.2, Width: 1.2, Height: 1.2},
+			{X: 1.2, Y: 5.2, Width: 1.2, Height: 1.2},
+			{X: -4.2, Y: -4.5, Width: .75, Height: 1.1}, // gate towers
+			{X: 4.2, Y: -4.5, Width: .75, Height: 1.1},
+		}
+	}
 	// Base dressing is physical too, but each footprint is deliberately kept
 	// to the visible ground contact of the authored model. Roof eaves, banners,
 	// wagon poles, and open stable fronts stay outside the collider.
@@ -234,63 +311,85 @@ func teamBattleBaseColliderSpecs(archetype string) []teamBattleCityColliderSpec 
 	}
 }
 
-func teamBattleFeatureColliderSpecs(archetype, featureID string) []teamBattleCityColliderSpec {
+func teamBattleFeatureColliderSpecs(archetype, _ string) []teamBattleCityColliderSpec {
 	switch archetype {
-	case "castle_gate":
-		// The gate opening stays clear, while both visible gate towers remain
-		// solid at their ground contact.
+	case "city_plaza":
+		// The square itself is passable. These contacts cover only its physical
+		// anchors: the well, two market tables, bench, notice board, basket,
+		// lantern and cart wheel. Paving, weeds and torch poles remain passable.
 		return []teamBattleCityColliderSpec{
-			{X: -1.55, Y: 0, Width: 1.02, Height: 1.08},
-			{X: 1.55, Y: 0, Width: 1.02, Height: 1.08},
-		}
-	case "castle_courtyard":
-		// Keep the courtyard floor open, but reserve the visible well, benches,
-		// and braziers as small contacts rather than letting heroes stand inside
-		// those props.
-		return []teamBattleCityColliderSpec{
-			{X: 0, Y: .1, Radius: .4},
-			{X: -1.8, Y: 1.03, Width: .88, Height: .32},
-			{X: 1.8, Y: 1.03, Width: .88, Height: .32},
-			{X: -1.82, Y: -.95, Radius: .2},
-			{X: 1.82, Y: -.95, Radius: .2},
-		}
-	case "castle_detail":
-		if strings.Contains(featureID, "chapel") {
-			return []teamBattleCityColliderSpec{{X: 0, Y: .58, Width: 1.12, Height: .36}}
-		}
-		return []teamBattleCityColliderSpec{{X: 0, Y: .62, Width: 1.55, Height: .36}}
-	case "castle_bastion":
-		// Keep the contact tight enough that the surrounding ward lanes stay
-		// usable for a hero-sized body.
-		return []teamBattleCityColliderSpec{{X: 0, Y: 0, Radius: .86}}
-	case "castle_market":
-		// Three stalls and the fountain are separate contacts so the market
-		// remains navigable between its props.
-		return []teamBattleCityColliderSpec{
-			{X: -1.85, Y: .28, Width: 1.22, Height: .5},
-			{X: 0, Y: .12, Radius: .86},
-			{X: 1.85, Y: .28, Width: 1.22, Height: .5},
-		}
-	case "city_shrine":
-		// The road remains open around the shrine, while its stone pedestal and
-		// footing keep the hero from occupying the visible centre of the prop.
-		return []teamBattleCityColliderSpec{{X: 0, Y: 0, Radius: .45}}
-	case "city_detail":
-		switch {
-		case strings.Contains(featureID, "wagon"):
-			return []teamBattleCityColliderSpec{{X: 0, Y: 0, Width: 1.7, Height: 1.3}}
-		case strings.Contains(featureID, "cottage"):
-			return []teamBattleCityColliderSpec{{X: 0, Y: .35, Width: 1.8, Height: 1.35}}
-		default:
-			return []teamBattleCityColliderSpec{{X: 0, Y: .18, Width: 2.45, Height: .34}}
+			{X: 0, Y: 0, Radius: .88},
+			{X: -2.15, Y: 1.65, Width: 1.45, Height: .45},
+			{X: 2.05, Y: -1.58, Width: 1.45, Height: .45},
+			{X: 2.15, Y: 1.5, Width: 1.65, Height: .32},
+			{X: -2.78, Y: -2.7, Width: 1.05, Height: .35},
+			{X: 1.62, Y: -2.72, Radius: .31},
+			{X: -1.78, Y: 2.52, Radius: .65},
+			{X: 2.86, Y: 2.54, Radius: .16},
 		}
 	case "city_street":
-		// The street remains open around the edge props; the cart and barrels
-		// themselves are still solid.
+		// Street paving is open ground, but its cart, barrels, crate and lamp
+		// are solid authored dressing and therefore get explicit contacts.
 		return []teamBattleCityColliderSpec{
 			{X: 1.35, Y: -.48, Width: 1.35, Height: .68},
+			{X: 1.69, Y: -.6, Width: .48, Height: .46},
 			{X: -1.8, Y: .62, Radius: .24},
 			{X: -1.28, Y: .65, Radius: .24},
+			{X: -2.55, Y: .43, Radius: .12},
+		}
+	case "city_lane":
+		// The lane surface is passable. Only its paired lamps, drain cover and
+		// parked handcart occupy ground, each as a small authored contact.
+		return []teamBattleCityColliderSpec{
+			{X: -2.35, Y: .72, Radius: .14},
+			{X: 2.35, Y: .72, Radius: .14},
+			{X: 0, Y: -.72, Radius: .2},
+			{X: 1.25, Y: -.78, Width: .62, Height: .36},
+		}
+	case "city_avenue":
+		// The avenue is a long passable route. Only its four lamps, harbour
+		// drain, loading crate and handcart occupy ground along the ribbon.
+		return []teamBattleCityColliderSpec{
+			{X: -3.5, Y: .92, Radius: .16},
+			{X: -1.15, Y: .92, Radius: .16},
+			{X: 1.15, Y: .92, Radius: .16},
+			{X: 3.5, Y: .92, Radius: .16},
+			{X: 0, Y: -1.12, Radius: .2},
+			{X: 2.55, Y: -.82, Width: .72, Height: .42},
+			{X: 3.65, Y: -.82, Width: 1.08, Height: .48},
+		}
+	case "city_dockyard":
+		// The loading court itself is open ground. Its only blockers are the
+		// large dock props visible on the perimeter and loading edge.
+		return []teamBattleCityColliderSpec{
+			{X: 2.2, Y: .9, Width: 1.0, Height: .5}, // handcart
+			{X: .95, Y: .86, Width: .8, Height: .5}, // crate stack
+			{X: -1.8, Y: .88, Radius: .28},
+			{X: -2.3, Y: .9, Radius: .28},
+			{X: 2.72, Y: .9, Radius: .2}, // mooring post
+		}
+	case "castle_courtyard":
+		// The court paving stays open. These contacts match the visible well,
+		// paired benches, braziers and four loose stones without turning the
+		// inner ward into a square invisible blocker.
+		return []teamBattleCityColliderSpec{
+			{X: 0, Y: .1, Radius: .8},
+			{X: -1.8, Y: 1.03, Width: .92, Height: .42},
+			{X: 1.8, Y: 1.03, Width: .92, Height: .42},
+			{X: -1.82, Y: -.95, Radius: .22},
+			{X: 1.82, Y: -.95, Radius: .22},
+			{X: -2.1, Y: 1.25, Radius: .18},
+			{X: 2.15, Y: 1.2, Radius: .18},
+			{X: -2.25, Y: -.95, Radius: .18},
+			{X: 2.2, Y: -.98, Radius: .18},
+		}
+	case "castle_gate":
+		// The gate opening stays clear, while both visible gate towers remain
+		// solid at their ground contact. Inset the contacts slightly from the
+		// visual shell so the side passage beside the gate remains usable.
+		return []teamBattleCityColliderSpec{
+			{X: -1.55, Y: 0, Width: .82, Height: 1.08},
+			{X: 1.55, Y: 0, Width: .82, Height: 1.08},
 		}
 	case "city_tower":
 		// The tower body is round and larger than a single decorative tile, but
@@ -306,7 +405,9 @@ func teamBattleFeatureColliderSpecs(archetype, featureID string) []teamBattleCit
 // authored cell is reflected across that diagonal so both teams get the same
 // readable combat language.
 func GenerateTeamBattle(seed int64) *GameMap {
-	return generateTeamBattle(seed, true)
+	gm := generateTeamBattle(seed, true)
+	applyEditedTeamBattleNorthernMap(gm)
+	return gm
 }
 
 // GenerateTeamBattleClassic is the stable map snapshot from the previous
@@ -314,7 +415,9 @@ func GenerateTeamBattle(seed int64) *GameMap {
 // selecting the classic map really returns the old map, not a darkened subset
 // of the current one.
 func GenerateTeamBattleClassic(seed int64) *GameMap {
-	return generateTeamBattle(seed, false)
+	gm := generateTeamBattle(seed, false)
+	applyEditedTeamBattleClassicMap(gm)
+	return gm
 }
 
 func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
@@ -352,11 +455,10 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 	}
 	// The arena is an island, not a rectangular lawn. Water is authored first
 	// so every later prop is automatically trimmed to the circular shoreline.
-	const islandCenter, islandRadius = 40.0, 35.5
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
-			distance := math.Hypot(float64(x)+.5-islandCenter, float64(y)+.5-islandCenter)
-			if distance > islandRadius {
+			distance := math.Hypot(float64(x)+.5-teamBattleIslandCenter, float64(y)+.5-teamBattleIslandCenter)
+			if distance > teamBattleIslandRadius {
 				add(x, y, "water")
 			}
 		}
@@ -366,6 +468,19 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 		add(x, y, kind)
 		mx, my := mirror(x, y)
 		add(mx, my, kind)
+	}
+	addLinkedMirrored := func(x, y int, kind, featureID string) {
+		before := len(gm.Collisions)
+		add(x, y, kind)
+		for _, wall := range gm.Collisions[before:] {
+			wall.LinkedFeatureID = featureID
+		}
+		mx, my := mirror(x, y)
+		before = len(gm.Collisions)
+		add(mx, my, kind)
+		for _, wall := range gm.Collisions[before:] {
+			wall.LinkedFeatureID = featureID + "-mirror"
+		}
 	}
 	addMirroredRect := func(minX, minY, maxX, maxY int, kind string) {
 		for y := minY; y <= maxY; y++ {
@@ -395,6 +510,75 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 			}
 		}
 	}
+	// Urban pockets own their immediate ground readability, but they must not
+	// erase authored fortress/building walls. Remove only soft natural dressing
+	// from the existing collision list and leave all structural contacts intact.
+	isNaturalUrbanDressing := func(kind string) bool {
+		switch kind {
+		case "bush", "tree", "dead_tree", "vine", "thorn_vine", "ruin_wall":
+			return true
+		default:
+			return false
+		}
+	}
+	clearNaturalAt := func(x, y int) {
+		cell := [2]int{x, y}
+		if liquidCells[cell] {
+			return
+		}
+		collisions := gm.Collisions
+		kept := make([]*geometry.WallTile, 0, len(collisions))
+		occupiedByStructural := false
+		for _, wall := range collisions {
+			wallCell := [2]int{int(wall.MinX / tile), int(wall.MinY / tile)}
+			if wallCell == cell && isNaturalUrbanDressing(wall.Type) {
+				continue
+			}
+			if wallCell == cell {
+				occupiedByStructural = true
+			}
+			kept = append(kept, wall)
+		}
+		gm.Collisions = kept
+		if !occupiedByStructural {
+			delete(occupied, cell)
+		}
+	}
+	clearCityCell := func(x, y int) {
+		cell := [2]int{x, y}
+		if liquidCells[cell] {
+			return
+		}
+		collisions := gm.Collisions
+		kept := make([]*geometry.WallTile, 0, len(collisions))
+		occupiedByStructural := false
+		for _, wall := range collisions {
+			wallCell := [2]int{int(wall.MinX / tile), int(wall.MinY / tile)}
+			if wallCell != cell {
+				kept = append(kept, wall)
+				continue
+			}
+			if isNaturalUrbanDressing(wall.Type) || wall.Type == "building_rubble" || wall.Type == "destructible" || wall.Type == "crates" {
+				continue
+			}
+			occupiedByStructural = true
+			kept = append(kept, wall)
+		}
+		gm.Collisions = kept
+		if !occupiedByStructural {
+			delete(occupied, cell)
+		}
+	}
+	clearNaturalAreaMirrored := func(cx, cy, radius int) {
+		for y := cy - radius; y <= cy+radius; y++ {
+			for x := cx - radius; x <= cx+radius; x++ {
+				if math.Hypot(float64(x-cx), float64(y-cy)) <= float64(radius)+.35 {
+					clearNaturalAt(x, y)
+					clearNaturalAt(y, x)
+				}
+			}
+		}
+	}
 	bridgeCenters := [][2]int{{22, 22}, {39, 39}, {57, 57}}
 	bridgeCorridorCell := func(center, cell [2]int) bool {
 		alongBridge := absInt((cell[0] - center[0]) + (cell[1] - center[1]))
@@ -416,20 +600,20 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 		gm.Features = append(gm.Features, MapFeature{ID: id, Type: kind, X: x * tile, Y: y * tile, Rotation: rotation, Scale: scale})
 	}
 	addFeature("team-river", "river", 39.5, 39.5, -math.Pi/4, 1)
-	addFeature("team-bridge-north", "river_bridge", 22, 22, -math.Pi/4, 1)
+	addFeature("team-bridge-north", "river_bridge", 22.5, 22.5, -math.Pi/4, 1)
 	addFeature("team-bridge-center", "river_bridge", 39.5, 39.5, -math.Pi/4, 1)
-	addFeature("team-bridge-south", "river_bridge", 57, 57, -math.Pi/4, 1)
+	addFeature("team-bridge-south", "river_bridge", 57.5, 57.5, -math.Pi/4, 1)
 	var cityObjectColliders []*geometry.WallTile
-	addCityObjectColliders := func(cx, cy int, rotation, scale float64, archetype string) {
+	addCityObjectColliders := func(featureID string, cx, cy int, rotation, scale float64, archetype string) {
 		for _, spec := range teamBattleCityColliderSpecs(archetype, northernVariant) {
 			cityObjectColliders = append(cityObjectColliders,
-				teamBattleCityObjectCollider(float64(cx), float64(cy), rotation, scale, spec))
+				teamBattleCityObjectCollider(featureID, float64(cx), float64(cy), rotation, scale, spec))
 		}
 	}
 	addFeatureColliders := func(id, archetype string, x, y, rotation, scale float64) {
 		for _, spec := range teamBattleFeatureColliderSpecs(archetype, id) {
 			cityObjectColliders = append(cityObjectColliders,
-				teamBattleCityObjectCollider(x, y, rotation, scale, spec))
+				teamBattleCityObjectCollider(id, x, y, rotation, scale, spec))
 		}
 	}
 
@@ -440,7 +624,9 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 		addMirroredRect(cx-2, cy-1, cx+2, cy-1, "wall")
 		addMirroredRect(cx-2, cy+1, cx-2, cy+2, "destructible")
 		addMirroredRect(cx+1, cy+1, cx+2, cy+2, "destructible")
-		addMirrored(cx, cy+2, "crates")
+		if !northernVariant {
+			addMirrored(cx, cy+2, "crates")
+		}
 	}
 	addGrove := func(cx, cy int) {
 		for _, offset := range [][2]int{{-2, -1}, {0, -2}, {2, -1}, {-2, 1}, {2, 1}, {0, 2}} {
@@ -450,8 +636,10 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 	}
 	addBarricade := func(cx, cy int) {
 		addMirroredRect(cx-3, cy, cx+3, cy, "destructible")
-		addMirrored(cx-2, cy-1, "crates")
-		addMirrored(cx+2, cy-1, "crates")
+		if !northernVariant {
+			addMirrored(cx-2, cy-1, "crates")
+			addMirrored(cx+2, cy-1, "crates")
+		}
 		addMirrored(cx, cy+1, "wall")
 	}
 	addRuinLairVines := func(cx, cy int) {
@@ -518,9 +706,9 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 	addGrove(43, 52)
 	addRuin(54, 43)
 	addBarricade(65, 28)
-	// Keep the base courtyard dry. This pond belongs to the outer approach,
-	// where it can enrich the landscape without touching the town hall or spawns.
-	addPond(34, 57)
+	// Keep the base courtyard and the Northern castle ward dry. This pond sits
+	// on the lower outer approach, clear of the ward gate's visual footprint.
+	addPond(33, 68)
 	// Keep the second pond on the open side lane. The former (35,52) anchor
 	// sat under the Northern castle ward after the castle was introduced, so
 	// its water surface visually cut through the gate houses.
@@ -551,17 +739,20 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 	clearCityFootprint := func(cx, cy int) {
 		for y := cy - 4; y <= cy+4; y++ {
 			for x := cx - 4; x <= cx+4; x++ {
-				clearMirrored(x, y)
+				clearCityCell(x, y)
+				clearCityCell(y, x)
 			}
 		}
 	}
 	addCityBlock := func(id string, cx, cy int, rotation, scale float64, wallOffsets, rubbleOffsets [][2]int) {
 		clearCityFootprint(cx, cy)
 		for _, offset := range wallOffsets {
-			addMirrored(cx+offset[0], cy+offset[1], "building_wall")
+			addLinkedMirrored(cx+offset[0], cy+offset[1], "building_wall", id)
 		}
-		for _, offset := range rubbleOffsets {
-			addMirrored(cx+offset[0], cy+offset[1], "building_rubble")
+		if !northernVariant {
+			for _, offset := range rubbleOffsets {
+				addLinkedMirrored(cx+offset[0], cy+offset[1], "building_rubble", id)
+			}
 		}
 		addFeature(id, "city_building", float64(cx), float64(cy), rotation, scale)
 		mx, my := mirror(cx, cy)
@@ -578,16 +769,17 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 			archetype = "south_ward"
 		case "city-inn":
 			archetype = "inn"
+		case "city-harbour-row":
+			archetype = "harbour_row"
+		case "city-guildhall":
+			archetype = "guildhall"
+		case "city-dock-warehouse":
+			archetype = "dock_warehouse"
+		case "city-north-townhouses":
+			archetype = "north_townhouses"
 		}
-		addCityObjectColliders(cx, cy, rotation, scale, archetype)
-		addCityObjectColliders(mx, my, -rotation, scale, archetype)
-	}
-	addCityShrine := func(id string, cx, cy int, rotation, scale float64) {
-		addFeature(id, "city_shrine", float64(cx), float64(cy), rotation, scale)
-		mx, my := mirror(cx, cy)
-		addFeature(id+"-mirror", "city_shrine", float64(mx), float64(my), -rotation, scale)
-		addFeatureColliders(id, "city_shrine", float64(cx), float64(cy), rotation, scale)
-		addFeatureColliders(id+"-mirror", "city_shrine", float64(mx), float64(my), -rotation, scale)
+		addCityObjectColliders(id, cx, cy, rotation, scale, archetype)
+		addCityObjectColliders(id+"-mirror", mx, my, -rotation, scale, archetype)
 	}
 	// District footprints intentionally differ and leave a broad playable core:
 	// the market is almost entirely open, the depot has a loading-yard gap, and
@@ -607,30 +799,63 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 	// both approaches a small gate-side house so the playable lanes read as
 	// districts instead of three bridges floating in a meadow.
 	addCityBlock("city-north-gate", 16, 31, -.12, .9,
-		[][2]int{{-2, -2}, {-2, -1}, {-2, 0}, {2, -2}, {2, -1}, {2, 0}, {-1, 2}, {0, 2}, {1, 2}},
+		[][2]int{{-2, -2}, {-2, -1}, {-2, 0}, {2, -3}, {2, -2}, {2, -1}, {2, 0}, {-1, 2}, {0, 2}, {1, 2}},
 		[][2]int{{-3, -2}, {3, -2}, {-3, 0}, {3, 0}})
+	if northernVariant {
+		// A continuous residential frontage turns the north gate into a real
+		// neighbourhood edge. Its rear wall faces the outer bank; the street
+		// side remains open around the gate approach and the north bridge route.
+		addCityBlock("city-north-townhouses", 22, 36, .02, 1.0,
+			[][2]int{{-2, 1}, {-1, 1}, {0, 1}, {1, 1}, {2, 1}, {-2, 0}, {2, 0}},
+			[][2]int{{-3, 1}, {3, 1}, {-3, 0}, {3, 0}})
+	}
 	addCityBlock("city-south-ward", 49, 64, .14, .96,
 		[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}, {-2, -1}, {2, -1}, {-2, 0}},
 		[][2]int{{-3, -2}, {3, -2}, {-3, -1}, {3, -1}})
-	addCityDetail := func(id string, cx, cy int, rotation, scale float64) {
-		addFeature(id, "city_detail", float64(cx), float64(cy), rotation, scale)
-		mx, my := mirror(cx, cy)
-		addFeature(id+"-mirror", "city_detail", float64(mx), float64(my), -rotation, scale)
-		addFeatureColliders(id, "city_detail", float64(cx), float64(cy), rotation, scale)
-		addFeatureColliders(id+"-mirror", "city_detail", float64(mx), float64(my), -rotation, scale)
-	}
 	if northernVariant {
+		// A civic hall frames the western edge of the central square. Its twin
+		// on the diagonal makes the plaza read as a connected urban node rather
+		// than a lone market prop in a clearing.
+		addCityBlock("city-guildhall", 38, 52, -.04, 1.02,
+			[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}, {-2, -1}, {2, -1}, {-2, 0}, {2, 0}, {-1, 1}, {0, 1}, {1, 1}},
+			[][2]int{{-3, -2}, {3, -2}, {-3, 0}, {3, 0}})
+		// The civic lane is a passable cobbled ribbon from the guildhall steps
+		// into the central plaza. Its mirrored twin keeps the same approach on
+		// the opposite diagonal side of the city.
+		addFeature("city-lane-guildhall", "city_lane", 41, 52, 0, 1)
+		addFeature("city-lane-guildhall-mirror", "city_lane", 52, 41, math.Pi/2, 1)
+		addFeatureColliders("city-lane-guildhall", "city_lane", 41, 52, 0, 1)
+		addFeatureColliders("city-lane-guildhall-mirror", "city_lane", 52, 41, math.Pi/2, 1)
+		// A continuous warehouse/boathouse row frames the south crossing. The
+		// rear wall and two end wings read as one district landmark, while the
+		// centre-facing loading edge stays open for combat movement.
+		addCityBlock("city-harbour-row", 60, 50, -.08, 1.04,
+			[][2]int{{-3, -2}, {-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}, {3, -2}, {-3, -1}, {3, -1}},
+			[][2]int{{-4, -2}, {4, -2}, {-4, 0}, {4, 0}})
+		// Extend the boathouse row with a second large warehouse frontage. Its
+		// loading face sits one dry terrace above the river bank avenue.
+		addCityBlock("city-dock-warehouse", 65, 54, .04, 1.0,
+			[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}, {-2, -1}, {2, -1}, {-2, 0}, {2, 0}},
+			[][2]int{{-3, -2}, {3, -2}, {-3, 0}, {3, 0}})
+		// One broad dockyard court joins the two large waterfront frontages and
+		// keeps the middle of the loading district open for combat movement.
+		addFeature("city-dockyard", "city_dockyard", 62.5, 52, 0, 1)
+		addFeature("city-dockyard-mirror", "city_dockyard", 52, 62.5, 0, 1)
+		addFeatureColliders("city-dockyard", "city_dockyard", 62.5, 52, 0, 1)
+		addFeatureColliders("city-dockyard-mirror", "city_dockyard", 52, 62.5, 0, 1)
+		// A broad harbour avenue carries the boathouse row along the dry bank
+		// terrace. The opposite diagonal receives the same axis as a fair route;
+		// the river crossing remains owned by the authored bridge feature.
+		addFeature("city-avenue-harbour", "city_avenue", 57, 48.5, 0, 1)
+		addFeature("city-avenue-harbour-mirror", "city_avenue", 48.5, 57, 0, 1)
+		addFeatureColliders("city-avenue-harbour", "city_avenue", 57, 48.5, 0, 1)
+		addFeatureColliders("city-avenue-harbour-mirror", "city_avenue", 48.5, 57, 0, 1)
 		// Keep the inn on the ward's east shoulder. At the old centre-adjacent
 		// anchor its roof and rear wall occupied the only hero-width approach
 		// between the inner and outer gates.
 		addCityBlock("city-inn", 22, 55, .1, .92,
 			[][2]int{{-2, -2}, {-1, -2}, {0, -2}, {1, -2}, {2, -2}, {-2, -1}, {2, -1}, {-2, 0}, {2, 0}},
 			[][2]int{{-3, -2}, {3, -2}, {-3, 0}, {3, 0}})
-		addCityShrine("city-shrine-crossroads", 25, 38, -.12, .82)
-		addCityShrine("city-shrine-east-road", 54, 28, .12, .78)
-		addCityDetail("city-detail-palisade", 23, 34, -.1, .72)
-		addCityDetail("city-detail-wagon-yard", 37, 28, .08, .68)
-		addCityDetail("city-detail-ruined-cottage", 55, 49, -.14, .76)
 	}
 	// Northern Ash is built around a real destination instead of a loose
 	// collection of city props: a broken castle court guards the approach to
@@ -649,19 +874,9 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 		}
 		addFeature(id, "castle_keep", float64(cx), float64(cy), rotation, scale)
 		addFeature(id+"-mirror", "castle_keep", float64(cy), float64(cx), -rotation, scale)
-		addFeature(id+"-gate", "castle_gate", float64(cx), float64(cy+5), rotation, scale)
-		addFeature(id+"-gate-mirror", "castle_gate", float64(cy+5), float64(cx), -rotation, scale)
-		addFeature(id+"-courtyard", "castle_courtyard", float64(cx), float64(cy+2), rotation, scale)
-		addFeature(id+"-courtyard-mirror", "castle_courtyard", float64(cy+2), float64(cx), -rotation, scale)
-		addFeature(id+"-armory", "castle_detail", float64(cx-3), float64(cy+2), rotation, scale*.82)
-		addFeature(id+"-armory-mirror", "castle_detail", float64(cy+2), float64(cx-3), -rotation, scale*.82)
-		addFeature(id+"-chapel", "castle_detail", float64(cx+3), float64(cy+2), rotation, scale*.82)
-		addFeature(id+"-chapel-mirror", "castle_detail", float64(cy+2), float64(cx+3), -rotation, scale*.82)
 		mx, my := mirror(cx, cy)
-		addCityObjectColliders(cx, cy, rotation, scale, "castle_keep")
-		addCityObjectColliders(mx, my, -rotation, scale, "castle_keep")
-		addFeatureColliders(id+"-gate", "castle_gate", float64(cx), float64(cy+5), rotation, scale)
-		addFeatureColliders(id+"-gate-mirror", "castle_gate", float64(cy+5), float64(cx), -rotation, scale)
+		addCityObjectColliders(id, cx, cy, rotation, scale, "castle_keep")
+		addCityObjectColliders(id+"-mirror", mx, my, -rotation, scale, "castle_keep")
 	}
 	if northernVariant {
 		// The keep is the second defensive layer. The outer ward makes the
@@ -683,35 +898,49 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 			for _, offset := range [][2]int{{-10, -9}, {10, -9}, {-10, 9}, {10, 9}} {
 				addMirrored(cx+offset[0], cy+offset[1], "fortress_wall")
 			}
-			addFeature(id+"-gate", "castle_gate", float64(cx), float64(cy+9), rotation, scale*1.08)
-			addFeature(id+"-gate-mirror", "castle_gate", float64(cy+9), float64(cx), -rotation, scale*1.08)
-			addFeatureColliders(id+"-gate", "castle_gate", float64(cx), float64(cy+9), rotation, scale*1.08)
-			addFeatureColliders(id+"-gate-mirror", "castle_gate", float64(cy+9), float64(cx), -rotation, scale*1.08)
-			for index, offset := range [][2]int{{-7, -6}, {7, -1}, {-7, 3}, {7, 3}} {
+			// Lift the gatehouse into the visible opening in the ward's outer wall.
+			// The model has a shallow depth, so its centre sits a little inside the
+			// wall line rather than on the outer stones themselves.
+			gateY := float64(cy) + 5.8
+			addFeature(id+"-gate", "castle_gate", float64(cx), gateY, 0, scale*1.08)
+			addFeature(id+"-gate-mirror", "castle_gate", gateY, float64(cx), 0, scale*1.08)
+			addFeatureColliders(id+"-gate", "castle_gate", float64(cx), gateY, 0, scale*1.08)
+			addFeatureColliders(id+"-gate-mirror", "castle_gate", gateY, float64(cx), 0, scale*1.08)
+			// The keep-facing court is a broad, readable rest pocket between the
+			// inner keep and the outer gate. Its centre stays open around the well
+			// and its diagonal twin preserves the same approach for the other team.
+			courtyardY := float64(cy) + 3.5
+			addFeature(id+"-courtyard", "castle_courtyard", float64(cx), courtyardY, rotation, scale)
+			addFeature(id+"-courtyard-mirror", "castle_courtyard", courtyardY, float64(cx), -rotation, scale)
+			addFeatureColliders(id+"-courtyard", "castle_courtyard", float64(cx), courtyardY, rotation, scale)
+			addFeatureColliders(id+"-courtyard-mirror", "castle_courtyard", courtyardY, float64(cx), -rotation, scale)
+			// Four compact ward houses sit against the inner faces of the
+			// outer ring. Their mirrored twins complete the same residential
+			// rhythm on the opposite castle district without sealing the court.
+			for index, house := range [][2]int{{23, 42}, {28, 40}, {33, 40}, {23, 50}} {
 				houseID := fmt.Sprintf("%s-house-%d", id, index)
-				x, y := cx+offset[0], cy+offset[1]
-				addFeature(houseID, "castle_house", float64(x), float64(y), rotation+float64(index%2)*.08, .86)
-				addFeature(houseID+"-mirror", "castle_house", float64(y), float64(x), -rotation-float64(index%2)*.08, .86)
-				addCityObjectColliders(x, y, rotation+float64(index%2)*.08, .86, "castle_house")
-				addCityObjectColliders(y, x, -rotation-float64(index%2)*.08, .86, "castle_house")
+				addFeature(houseID, "castle_house", float64(house[0]), float64(house[1]), 0, .86)
+				addFeature(houseID+"-mirror", "castle_house", float64(house[1]), float64(house[0]), 0, .86)
+				addCityObjectColliders(houseID, house[0], house[1], 0, .86, "castle_house")
+				addCityObjectColliders(houseID+"-mirror", house[1], house[0], 0, .86, "castle_house")
 			}
-			addFeature(id+"-market", "castle_market", float64(cx), float64(cy-7), rotation, .9)
-			addFeature(id+"-market-mirror", "castle_market", float64(cy-7), float64(cx), -rotation, .9)
-			addFeatureColliders(id+"-market", "castle_market", float64(cx), float64(cy-7), rotation, .9)
-			addFeatureColliders(id+"-market-mirror", "castle_market", float64(cy-7), float64(cx), -rotation, .9)
-			// Market stalls are low, open dressing. They must not claim bridge
-			// approach cells as hard blockers in the combat topology.
-			addFeature(id+"-street", "castle_street", float64(cx), float64(cy+6), rotation, 1)
-			addFeature(id+"-street-mirror", "castle_street", float64(cy+6), float64(cx), -rotation, 1)
 		}
 		addCastleWard("castle-ashen-ward", 30, 47, -.12, 1.08)
 		addCastleCompound("castle-ashen-keep", 30, 47, -.12, 1.08)
 	}
 	addCityTower := func(id string, cx, cy int, rotation, scale float64) {
 		clearAreaMirrored(cx, cy, 2)
-		addMirroredRect(cx-1, cy-1, cx+1, cy+1, "building_wall")
-		for _, offset := range [][2]int{{-2, -1}, {2, -1}, {-2, 1}, {2, 1}} {
-			addMirrored(cx+offset[0], cy+offset[1], "building_rubble")
+		if !northernVariant {
+			for y := cy - 1; y <= cy+1; y++ {
+				for x := cx - 1; x <= cx+1; x++ {
+					addLinkedMirrored(x, y, "building_wall", id)
+				}
+			}
+		}
+		if !northernVariant {
+			for _, offset := range [][2]int{{-2, -1}, {2, -1}, {-2, 1}, {2, 1}} {
+				addLinkedMirrored(cx+offset[0], cy+offset[1], "building_rubble", id)
+			}
 		}
 		addFeature(id, "city_tower", float64(cx), float64(cy), rotation, scale)
 		mx, my := mirror(cx, cy)
@@ -719,18 +948,48 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 		addFeatureColliders(id, "city_tower", float64(cx), float64(cy), rotation, scale)
 		addFeatureColliders(id+"-mirror", "city_tower", float64(mx), float64(my), -rotation, scale)
 	}
-	addCityTower("city-watchtower", 35, 44, .08, 1)
-	addFeature("city-plaza", "city_plaza", 42, 48, 0, 1.0)
-	addFeature("city-plaza-mirror", "city_plaza", 48, 42, 0, 1.0)
-	for index, street := range [][2]int{{20, 27}, {22, 45}, {55, 61}} {
-		addFeature(fmt.Sprintf("city-street-%d", index), "city_street", float64(street[0]), float64(street[1]), -math.Pi/4, 1)
-		mx, my := mirror(street[0], street[1])
-		addFeature(fmt.Sprintf("city-street-%d-mirror", index), "city_street", float64(mx), float64(my), math.Pi/4, 1)
+	// Keep the watchtower as a landmark beside the central crossing, not on its
+	// hero route. Its circular footprint otherwise overlaps the bridge landing
+	// on both mirrored sides and turns an authored passage into a dead stop.
+	addCityTower("city-watchtower", 33, 47, .08, 1)
+	if northernVariant {
+		// The central city square and diagonal street segments connect the
+		// authored districts. Their surfaces remain walkable, while their
+		// physical market/transport anchors use the same city_object contract.
+		addFeature("city-plaza", "city_plaza", 44, 52, 0, 1.0)
+		addFeature("city-plaza-mirror", "city_plaza", 52, 44, 0, 1.0)
+		addFeatureColliders("city-plaza", "city_plaza", 44, 52, 0, 1)
+		addFeatureColliders("city-plaza-mirror", "city_plaza", 52, 44, 0, 1)
+		for index, street := range [][2]int{{22, 30}, {24, 60}, {58, 67}} {
+			streetID := fmt.Sprintf("city-street-%d", index)
+			addFeature(streetID, "city_street", float64(street[0]), float64(street[1]), -math.Pi/4, 1)
+			mx, my := mirror(street[0], street[1])
+			addFeature(streetID+"-mirror", "city_street", float64(mx), float64(my), math.Pi/4, 1)
+			addFeatureColliders(streetID, "city_street", float64(street[0]), float64(street[1]), -math.Pi/4, 1)
+			addFeatureColliders(streetID+"-mirror", "city_street", float64(mx), float64(my), math.Pi/4, 1)
+		}
+	} else {
+		addFeature("city-plaza", "city_plaza", 42, 48, 0, 1.0)
+		addFeature("city-plaza-mirror", "city_plaza", 48, 42, 0, 1.0)
+		for index, street := range [][2]int{{20, 27}, {22, 45}, {55, 61}} {
+			addFeature(fmt.Sprintf("city-street-%d", index), "city_street", float64(street[0]), float64(street[1]), -math.Pi/4, 1)
+			mx, my := mirror(street[0], street[1])
+			addFeature(fmt.Sprintf("city-street-%d-mirror", index), "city_street", float64(mx), float64(my), math.Pi/4, 1)
+		}
 	}
 
 	// Open plazas and spawn pockets are cleared symmetrically after dressing so
 	// no procedural cluster can seal a base or the central crossing.
 	clearAreaMirrored(42, 48, 5)
+	if northernVariant {
+		// Keep authored urban anchors readable above the surrounding cover field.
+		// This pass removes only natural dressing, while the structural grid and
+		// city_object contacts remain available for gameplay and readability.
+		clearNaturalAreaMirrored(44, 52, 4)
+		for _, street := range [][2]int{{22, 30}, {24, 60}, {58, 67}} {
+			clearNaturalAreaMirrored(street[0], street[1], 2)
+		}
+	}
 	clearAreaMirrored(16, 63, 3)
 	clearAreaMirrored(39, 40, 5)
 	clearAreaMirrored(20, 54, 3)
@@ -793,19 +1052,28 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 		mx, my := y, x
 		addFeature(id+"-mirror", kind, mx, my, -rotation, scale)
 		for _, spec := range teamBattleBaseColliderSpecs(kind) {
+			mirrorSpec := spec
+			mirrorSpec.X, mirrorSpec.Y = spec.Y, spec.X
+			mirrorSpec.Width, mirrorSpec.Height = spec.Height, spec.Width
 			cityObjectColliders = append(cityObjectColliders,
-				teamBattleCityObjectCollider(x, y, rotation, scale, spec),
-				teamBattleCityObjectCollider(mx, my, -rotation, scale, spec))
+				teamBattleCityObjectCollider(id, x, y, rotation, scale, spec),
+				teamBattleCityObjectCollider(id+"-mirror", mx, my, -rotation, scale, mirrorSpec))
 		}
 	}
-	addBaseFeature("blue-base-well", "base_well", 11.5, 66, .08, .95)
-	addBaseFeature("blue-base-workshop", "base_workshop", 11.5, 59.5, -.04, .95)
-	addBaseFeature("blue-base-wagon", "base_wagon", 20.5, 69, -.16, .95)
-	addBaseFeature("blue-base-barracks", "base_barracks", 13, 57.5, .08, 1)
-	addBaseFeature("blue-base-storehouse", "base_storehouse", 21, 65, -.12, 1)
-	addBaseFeature("blue-base-stable", "base_stable", 23, 63, .14, 1)
-	addBaseFeature("blue-base-chapel", "base_chapel", 16, 69, -.08, .96)
-	addBaseFeature("blue-base-courtyard", "base_courtyard", 16.5, 63.5, -math.Pi/4, 1)
+	if northernVariant {
+		addBaseFeature("blue-base-compound", "base_compound", 16.5, 63.5, -math.Pi/4, 1)
+	} else {
+		// Keep the classic map snapshot stable; the cohesive compound is the
+		// Northern Ash revision's base language.
+		addBaseFeature("blue-base-well", "base_well", 11.5, 66, .08, .95)
+		addBaseFeature("blue-base-workshop", "base_workshop", 11.5, 59.5, -.04, .95)
+		addBaseFeature("blue-base-wagon", "base_wagon", 20.5, 69, -.16, .95)
+		addBaseFeature("blue-base-barracks", "base_barracks", 13, 57.5, .08, 1)
+		addBaseFeature("blue-base-storehouse", "base_storehouse", 21, 65, -.12, 1)
+		addBaseFeature("blue-base-stable", "base_stable", 23, 63, .14, 1)
+		addBaseFeature("blue-base-chapel", "base_chapel", 16, 69, -.08, .96)
+		addBaseFeature("blue-base-courtyard", "base_courtyard", 16.5, 63.5, -math.Pi/4, 1)
+	}
 	clearBridgeApproaches()
 	// Frame every bridge with the same small bank landmark. The cover stays
 	// outside the bridge corridor, so the crossing remains the obvious route
@@ -846,6 +1114,10 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 		for _, gap := range [][2]int{{28, 53}, {46, 63}, {41, 60}, {13, 29}, {10, 50}, {16, 52}, {19, 29}, {46, 58}, {34, 53}, {52, 62}, {9, 60}, {10, 60}, {30, 18}, {31, 19}, {18, 31}, {34, 45}, {36, 43}} {
 			clearMirrored(gap[0], gap[1])
 		}
+		// Removing the northern crate dressing leaves the depot's outer corner
+		// disconnected from the remaining structural cover; clear that dangling
+		// wall cell along with its mirrored counterpart.
+		clearMirrored(11, 52)
 	}
 	// Clearing the shoreline can replace an old water tile with fortress stone;
 	// collapse those authored cells before the river pass so no cell publishes
@@ -874,7 +1146,7 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 		alongRiver := (float64(x) + .5 + float64(y) + .5) * .5
 		return alongRiver >= teamBattleRiverStart && alongRiver <= teamBattleRiverMouth &&
 			math.Abs((float64(x)+.5)-(float64(y)+.5)-teamBattleRiverCenter) <= teamBattleRiverHalfWidth &&
-			math.Hypot(float64(x)+.5-islandCenter, float64(y)+.5-islandCenter) <= islandRadius
+			math.Hypot(float64(x)+.5-teamBattleIslandCenter, float64(y)+.5-teamBattleIslandCenter) <= teamBattleIslandRadius
 	}
 	riverProps := make(map[[2]int]string)
 	for _, wall := range gm.Collisions {
@@ -982,6 +1254,53 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 	for _, clump := range [][2]int{{10, 47}, {25, 65}, {36, 52}, {56, 67}} {
 		addVineClump(clump[0], clump[1])
 	}
+	if northernVariant {
+		// The river relocation pass can move a natural cell after the first
+		// urban cleanup. Reassert the envelope once all water/bridge dressing is
+		// final, including the passable vine clumps.
+		clearNaturalAreaMirrored(44, 52, 4)
+		for _, street := range [][2]int{{22, 30}, {24, 60}, {58, 67}} {
+			clearNaturalAreaMirrored(street[0], street[1], 2)
+		}
+		// Every authored anchor owns a readable ground envelope. This keeps the
+		// city from reading as isolated models hidden in a procedural field and
+		// removes late-relocated loose cover, while preserving structural walls,
+		// water and the tight authored object contacts appended below.
+		for _, feature := range gm.Features {
+			radius := 0
+			switch feature.Type {
+			case "city_building":
+				radius = 4
+			case "castle_house":
+				radius = 3
+			case "city_plaza":
+				radius = 4
+			case "city_street":
+				radius = 2
+			case "city_lane":
+				radius = 3
+			case "city_avenue":
+				// The avenue is a route, not a district-sized clearing. Keep its
+				// immediate pavement readable while retaining outer bank cover.
+				radius = 2
+			case "city_dockyard":
+				radius = 4
+			case "castle_courtyard":
+				radius = 3
+			default:
+				continue
+			}
+			cx := int(math.Round(feature.X / tile))
+			cy := int(math.Round(feature.Y / tile))
+			for y := cy - radius; y <= cy+radius; y++ {
+				for x := cx - radius; x <= cx+radius; x++ {
+					if math.Hypot(float64(x-cx), float64(y-cy)) <= float64(radius)+.35 {
+						clearCityCell(x, y)
+					}
+				}
+			}
+		}
+	}
 
 	// Neutral resources use three mirrored side-lane pairs plus two camps on the
 	// central diagonal. The diagonal camps are deliberately contestable from
@@ -1015,10 +1334,25 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 		mx, my := mirror(x, y)
 		addSpawnPair("Red", mx, my)
 	}
-
+	// City dressing is authored before the final bridge pass. Reassert the
+	// bridge corridor here so a later wall cluster cannot reclaim a walkable
+	// landing cell. Explicit bridge cells are retained; only blocking tile
+	// props are removed from the corridor.
+	bridgeClearanceCell := func(cell [2]int) bool {
+		for _, center := range bridgeCenters {
+			if bridgeCorridorCell(center, cell) {
+				return true
+			}
+		}
+		return false
+	}
 	filtered := gm.Collisions[:0]
 	for _, wall := range gm.Collisions {
 		cell := [2]int{int(wall.MinX / tile), int(wall.MinY / tile)}
+		if bridgeClearanceCell(cell) && geometry.IsBlockingWall(wall.Type) {
+			delete(occupied, cell)
+			continue
+		}
 		if occupied[cell] {
 			filtered = append(filtered, wall)
 		}
@@ -1028,10 +1362,13 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 	gm.Objectives = []MapObjective{
 		{ID: "blue-town-hall", Type: "town_hall", Team: "Blue", X: 16.5 * tile, Y: 63.5 * tile, Radius: 96},
 		{ID: "red-town-hall", Type: "town_hall", Team: "Red", X: 63.5 * tile, Y: 16.5 * tile, Radius: 96},
-		{ID: "blue-tower-west", Type: "tower", Team: "Blue", X: 19.5 * tile, Y: 60.5 * tile, Radius: 52},
-		{ID: "blue-tower-east", Type: "tower", Team: "Blue", X: 15.5 * tile, Y: 58.5 * tile, Radius: 52},
-		{ID: "red-tower-west", Type: "tower", Team: "Red", X: 60.5 * tile, Y: 19.5 * tile, Radius: 52},
-		{ID: "red-tower-east", Type: "tower", Team: "Red", X: 58.5 * tile, Y: 15.5 * tile, Radius: 52},
+		// The two towers flank the town hall on its authored left/right axis.
+		// They are equally distant from the hall, while the centered gate stays
+		// readable as the single forward entrance of the compound.
+		{ID: "blue-tower-west", Type: "tower", Team: "Blue", X: 13.5 * tile, Y: 59.5 * tile, Radius: 52},
+		{ID: "blue-tower-east", Type: "tower", Team: "Blue", X: 19.5 * tile, Y: 67.5 * tile, Radius: 52},
+		{ID: "red-tower-west", Type: "tower", Team: "Red", X: 59.5 * tile, Y: 13.5 * tile, Radius: 52},
+		{ID: "red-tower-east", Type: "tower", Team: "Red", X: 67.5 * tile, Y: 19.5 * tile, Radius: 52},
 	}
 	// Feature colliders are appended only after the authored cell pass. This is
 	// deliberate: their sub-cell footprints must not be rounded up or removed

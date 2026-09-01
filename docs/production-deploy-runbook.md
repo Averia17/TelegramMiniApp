@@ -85,6 +85,17 @@ Manual rollback on the host:
 bash deploy/production_deploy.sh v0.0.1 .release/releases/v0.0.1/manifest.json
 ```
 
+The deployment notice defaults to an estimate of five minutes. Override it for
+a manual deploy with `--eta-minutes`; the value is included in the immediate
+maintenance message sent to connected battle clients:
+
+```bash
+bash deploy/production_deploy.sh v0.0.2 .release/incoming/v0.0.2.json --eta-minutes 8
+```
+
+The same setting can be provided as `DEPLOY_ESTIMATED_MINUTES` when the script
+is invoked by automation.
+
 Do not delete `.release/releases/*` or tagged images until the retention and
 restore drill checkpoint has passed.
 

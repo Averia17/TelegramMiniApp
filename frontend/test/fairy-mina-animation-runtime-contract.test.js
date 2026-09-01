@@ -16,7 +16,7 @@ test("Fairy Mina publishes the authored AimGadget runtime map", async () => {
   assert.deepEqual(manifest.hero_animation_extras?.["fairy-mina"], ["aim-gadget"])
   assert.deepEqual(mina.animations.available, [
     "idle", "run", "attack", "super", "aim", "aim-super", "hit", "death",
-    "spawn", "victory", "aim-gadget",
+    "spawn", "victory", "stunned", "aim-gadget",
   ])
   assert.equal(HERO_ASSETS["Fairy Mina"].clips.aimGadget, "AimGadget")
 })

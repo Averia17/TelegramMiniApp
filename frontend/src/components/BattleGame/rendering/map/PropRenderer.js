@@ -667,36 +667,87 @@ export const createVineField = (walls, palette = "default") => {
 
 const createBuildingWallVisual = (width, height, depth, variant = 0) => {
   const group = new THREE.Group()
-  const masonry = standardMaterial(variant % 2 ? 0x82786b : 0x746c62, {roughness: .98})
-  const plaster = standardMaterial(variant % 2 ? 0x9a8c76 : 0x887c6d, {roughness: 1})
-  const exposed = standardMaterial(variant % 3 ? 0x514439 : 0x624d3d, {roughness: .98})
-  const glass = standardMaterial(0x202c2b, {roughness: .82, metalness: 0})
+  const masonry = standardMaterial(variant % 2 ? 0x8f8778 : 0x7d786d, {roughness: .98})
+  const plaster = standardMaterial(variant % 2 ? 0xb09d80 : 0x988a73, {roughness: 1})
+  const exposed = standardMaterial(variant % 3 ? 0x765b49 : 0x85604a, {roughness: .98})
+  const roof = standardMaterial(variant % 2 ? 0x73563f : 0x604936, {roughness: .98})
+  const roofLight = standardMaterial(variant % 2 ? 0x947351 : 0x806047, {roughness: .98})
+  const glass = standardMaterial(variant % 2 ? 0x38534d : 0x2d4543, {roughness: .72, metalness: 0, emissive: 0x172b28, emissiveIntensity: .18})
   const frame = standardMaterial(variant % 2 ? 0x4f392d : 0x634532, {roughness: .97, metalness: 0})
 
-  // These cells are the collision footprint of a ruined house. Render them as
-  // offset fragments rather than full squares: the collision remains a solid
-  // tactical cover cell, while the eye still sees a broken, enterable ruin.
+  // These cells are the collision footprint of a ruined house. Keep the visual
+  // inside the cell, but build it as a low wall with a broken cap so adjacent
+  // cells join into architecture instead of reading as a flat brown slab.
   addVisualPart(
     group,
-    new THREE.BoxGeometry(width * .72, height * .32, depth * .28),
+    new THREE.BoxGeometry(width * .78, height * .56, depth * .28),
     masonry,
     "building-masonry",
-    new THREE.Vector3(-width * .08, height * .16, -depth * .22),
+    new THREE.Vector3(-width * .08, height * .28, -depth * .22),
   )
-  addVisualPart(group, new THREE.BoxGeometry(width * .3, height * .44, depth * .42), exposed, "building-broken-cap", new THREE.Vector3(width * .25, height * .22, depth * .16))
+  addVisualPart(
+    group,
+    new THREE.BoxGeometry(width * .34, height * .1, depth * .3),
+    exposed,
+    "building-broken-cap",
+    new THREE.Vector3(width * .2, height * .61, depth * .08),
+    new THREE.Euler(0, variant % 2 ? -.08 : .1, variant % 3 ? -.06 : .04),
+  )
+  addVisualPart(
+    group,
+    new THREE.BoxGeometry(width * .62, height * .08, depth * .08),
+    plaster,
+    "building-wall-cap",
+    new THREE.Vector3(-width * .08, height * .62, -depth * .36),
+    new THREE.Euler(0, variant % 2 ? -.04 : .05, 0),
+  )
+  // A shallow broken gable gives adjacent cells a shared roof language. The
+  // gap at the ridge keeps the silhouette irregular while the alternating
+  // tile strips stop the whole row from becoming one dark rectangle.
+  for (const [x, tilt, material] of [[-.2, -.24, roof], [.2, .24, roofLight]]) {
+    addVisualPart(
+      group,
+      new THREE.BoxGeometry(width * .38, height * .06, depth * .7),
+      material,
+      "building-roof-slope",
+      new THREE.Vector3(x * width, height * .69, -depth * .02),
+      new THREE.Euler(0, 0, tilt),
+    )
+    for (const row of [-.24, 0, .24]) {
+      addVisualPart(
+        group,
+        new THREE.BoxGeometry(width * .28, height * .022, depth * .045),
+        roofLight,
+        "building-roof-tile",
+        new THREE.Vector3((x + row * .08) * width, height * (.73 + Math.abs(row) * .035), -depth * .39),
+        new THREE.Euler(0, 0, tilt),
+      )
+    }
+  }
+  addVisualPart(
+    group,
+    new THREE.BoxGeometry(width * .72, height * .045, depth * .055),
+    frame,
+    "building-eave",
+    new THREE.Vector3(-width * .04, height * .63, depth * .42),
+    new THREE.Euler(0, variant % 2 ? -.05 : .05, 0),
+  )
   // The broken masonry is intentionally chunky: each ruin cell should read
   // as a collapsed wall at the battle camera distance, not as a scatter of
   // marble-sized stones. Keep the centres inside the cell so the larger
   // silhouette does not create an invisible visual overhang into the lane.
   for (const [x, z, size, y] of [
-    [-.3, -.2, .29, .58], [.18, .16, .34, .64], [.34, -.24, .23, .52],
+    [-.3, -.2, .25, .64], [.18, .16, .31, .69], [.34, -.24, .2, .58],
   ]) {
     const chunk = addVisualPart(group, new THREE.DodecahedronGeometry(Math.min(width, depth) * size, 0), plaster, "building-ruin-chunk", new THREE.Vector3(x * width, y * height, z * depth))
-    chunk.scale.y = .62
+    // Keep the cap stones readable without letting them swallow the wall
+    // face; their geometry stays substantial for the low-poly silhouette,
+    // while the visual scale gives the masonry room to breathe.
+    chunk.scale.set(.72, .44, .72)
     chunk.rotation.set(variant * .12 + x, variant * .2, z)
   }
   const windowX = (variant % 2 ? -.16 : .16) * width
-  const windowY = height * .33
+  const windowY = height * .38
   const windowZ = depth * .48
   const windowWidth = width * .22
   const windowHeight = Math.max(.08, height * .14)
@@ -709,10 +760,24 @@ const createBuildingWallVisual = (width, height, depth, variant = 0) => {
   ]) {
     addVisualPart(group, new THREE.BoxGeometry(w, h, .08), frame, "building-window-frame", new THREE.Vector3(x, y, windowZ + .02))
   }
+  // The courtyard side must carry the same visual language. Without this
+  // second face, a camera looking through the ruined footprint sees only a
+  // blank strip and loses the sense of an actual building shell.
+  const rearWindowZ = -depth * .48
+  addVisualPart(group, new THREE.BoxGeometry(windowWidth, windowHeight, .05), glass, "building-window", new THREE.Vector3(windowX, windowY, rearWindowZ))
+  for (const [x, y, w, h] of [
+    [windowX, windowY - windowHeight / 2, windowWidth + .05, .025],
+    [windowX, windowY + windowHeight / 2, windowWidth + .05, .025],
+    [windowX - windowWidth / 2, windowY, .025, windowHeight],
+    [windowX + windowWidth / 2, windowY, .025, windowHeight],
+  ]) {
+    addVisualPart(group, new THREE.BoxGeometry(w, h, .08), frame, "building-window-frame", new THREE.Vector3(x, y, rearWindowZ - .02))
+  }
+  addVisualPart(group, new THREE.BoxGeometry(width * .72, height * .045, depth * .055), frame, "building-eave", new THREE.Vector3(-width * .04, height * .63, -depth * .42), new THREE.Euler(0, variant % 2 ? .05 : -.05, 0))
   addVisualPart(group, new THREE.BoxGeometry(width * .26, height * .05, depth * .06), plaster, "building-plaster-patch", new THREE.Vector3(-width * .18, height * .36, depth * .49))
-  const brokenBeam = addVisualPart(group, new THREE.BoxGeometry(width * .58, height * .045, depth * .07), frame, "building-timber", new THREE.Vector3(width * .08, height * .48, depth * .5))
+  const brokenBeam = addVisualPart(group, new THREE.BoxGeometry(width * .58, height * .055, depth * .07), frame, "building-timber", new THREE.Vector3(width * .08, height * .56, depth * .5))
   brokenBeam.rotation.z = variant % 2 ? -.18 : .12
-  const brace = addVisualPart(group, new THREE.BoxGeometry(width * .045, height * .32, depth * .075), frame, "building-timber", new THREE.Vector3(-width * .12, height * .29, depth * .5))
+  const brace = addVisualPart(group, new THREE.BoxGeometry(width * .05, height * .37, depth * .075), frame, "building-timber", new THREE.Vector3(-width * .12, height * .33, depth * .5))
   brace.rotation.z = variant % 2 ? .58 : -.58
   addVisualPart(group, new THREE.BoxGeometry(width * .1, height * .18, depth * .07), frame, "building-shutter", new THREE.Vector3(windowX - windowWidth * .62, windowY, windowZ + .035))
   const crack = addVisualPart(group, new THREE.BoxGeometry(width * .025, height * .32, .04), exposed, "building-crack", new THREE.Vector3(width * .25, height * .29, depth * .49))
@@ -884,12 +949,14 @@ export const createProp = (wall, index, waterTexture) => {
   const depth = Math.max(2, wall.maxY - wall.minY) * WORLD_SCALE
   const group = new THREE.Group()
   group.userData.visualType = wall.type
+  if (wall.editorId) group.userData.editorId = wall.editorId
   if (wall.type === "vine" || wall.type === "thorn_vine") group.userData.softTerrain = true
   group.position.set(
     (wall.minX + wall.maxX) * 0.5 * WORLD_SCALE,
     0,
     (wall.minY + wall.maxY) * 0.5 * WORLD_SCALE,
   )
+  if (Number.isFinite(Number(wall.rotation))) group.rotation.y = Number(wall.rotation)
 
   if (wall.type === "water" || wall.type === "pond") {
     const material = flatMaterial(0xffffff, {

@@ -331,16 +331,18 @@ type FeatureJSON struct {
 }
 
 type WallJSON struct {
-	MinX           float64 `json:"minX"`
-	MinY           float64 `json:"minY"`
-	MaxX           float64 `json:"maxX"`
-	MaxY           float64 `json:"maxY"`
-	Type           string  `json:"type"`
-	Blocking       bool    `json:"blocking"`
-	BushGroup      int     `json:"bushGroup,omitempty"`
-	ColliderInsetX float64 `json:"colliderInsetX,omitempty"`
-	ColliderInsetY float64 `json:"colliderInsetY,omitempty"`
-	ColliderRadius float64 `json:"colliderRadius,omitempty"`
+	MinX            float64 `json:"minX"`
+	MinY            float64 `json:"minY"`
+	MaxX            float64 `json:"maxX"`
+	MaxY            float64 `json:"maxY"`
+	Type            string  `json:"type"`
+	Rotation        float64 `json:"rotation,omitempty"`
+	LinkedFeatureID string  `json:"linkedFeatureId,omitempty"`
+	Blocking        bool    `json:"blocking"`
+	BushGroup       int     `json:"bushGroup,omitempty"`
+	ColliderInsetX  float64 `json:"colliderInsetX,omitempty"`
+	ColliderInsetY  float64 `json:"colliderInsetY,omitempty"`
+	ColliderRadius  float64 `json:"colliderRadius,omitempty"`
 }
 
 type RoomJoinedParams struct {

@@ -98,7 +98,8 @@ export class ThreeBattleRenderer {
     const mapChanged = !this.mapState ||
       state.map?.width !== this.mapState.width ||
       state.map?.height !== this.mapState.height ||
-      state.map?.walls !== this.mapState.walls
+      state.map?.walls !== this.mapState.walls ||
+      state.map?.features !== this.mapState.features
     if (mapChanged) {
       this.mapRenderer.sync(state.map)
     }

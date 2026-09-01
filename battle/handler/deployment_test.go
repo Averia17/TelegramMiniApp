@@ -4,6 +4,7 @@ import (
 	"battle/deployment"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -44,5 +45,27 @@ func TestDeploymentAdminRequiresConstantTimeToken(t *testing.T) {
 	defer deployment.Resume()
 	if started.Code != http.StatusOK || !deployment.IsDraining() {
 		t.Fatalf("drain response = %d, draining = %v", started.Code, deployment.IsDraining())
+	}
+}
+
+func TestDeploymentDrainUsesMessageFromDeployer(t *testing.T) {
+	t.Setenv("DEPLOY_ADMIN_TOKEN", "test-admin-token")
+	defer deployment.Resume()
+	deployment.Resume()
+	h := NewHandler()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/admin/deployment/drain",
+		strings.NewReader(`{"tag":"v0.0.2","message":"Деплой начинается. Бои приостановлены. Ориентировочно через 7 минут."}`),
+	)
+	request.Header.Set("X-Deployment-Token", "test-admin-token")
+	started := httptest.NewRecorder()
+	h.HandleDeploymentDrain(started, request)
+
+	if started.Code != http.StatusOK {
+		t.Fatalf("drain status = %d, want 200", started.Code)
+	}
+	if got := deployment.SnapshotState().Message; got != "Деплой начинается. Бои приостановлены. Ориентировочно через 7 минут." {
+		t.Fatalf("drain message = %q, want custom deployer message", got)
 	}
 }

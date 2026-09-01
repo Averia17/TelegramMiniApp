@@ -49,6 +49,17 @@ docker compose up -d
 # http://localhost
 ```
 
+For a direct Windows launch of the battle service, use the fixed local
+executable instead of `go run`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\battle\run-local.ps1
+```
+
+This always runs `battle\battle.exe` and keeps Go's required build cache in the
+fixed ignored directory `battle\.gocache`, so Go does not leave another battle
+executable under `%TEMP%`.
+
 The production-like contour is isolated in its own Compose project named
 `prod`. Its containers use the `prod-*` prefix while dev containers use the
 `dev-*` prefix. It uses

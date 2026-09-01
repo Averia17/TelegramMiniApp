@@ -80,6 +80,29 @@ def validate_action(
         failures.append(f"{clip}: frame_start metadata does not match Action")
     if action.get("frame_end") != int(round(end)):
         failures.append(f"{clip}: frame_end metadata does not match Action")
+    expected_range = MANIFEST.get("clip_frame_ranges", {}).get(clip)
+    if expected_range:
+        actual_range = [int(round(start)), int(round(end))]
+        if actual_range != expected_range:
+            failures.append(
+                f"{clip}: frame range {actual_range} != expected {expected_range}"
+            )
+    if clip == "stunned":
+        if (int(round(start)), int(round(end))) != (1, 30):
+            failures.append(
+                f"stunned: expected 1..30 frames, got {tuple(action.frame_range)}"
+            )
+        if action.get("loop") is not True or action.get("cyclic") is not True:
+            failures.append("stunned: loop/cyclic metadata must be enabled")
+        if (action.get("loop_start"), action.get("loop_end")) != (10, 25):
+            failures.append("stunned: expected loop window 10..25")
+        interpolations = {
+            point.interpolation
+            for curve in action_fcurves(action)
+            for point in curve.keyframe_points
+        }
+        if "CONSTANT" in interpolations:
+            failures.append("stunned: constant interpolation would create a jerk")
     bones = {bone.name for bone in armature.data.bones}
     keyed_bones = set()
     for curve in action_fcurves(action):
@@ -146,13 +169,30 @@ def validate_hero(hero: str) -> dict:
                 )
                 continue
             validate_action(matches[0], hero, clip, armature, failures)
+        nla_tracks = list(
+            armature.animation_data.nla_tracks if armature.animation_data else ()
+        )
+        for clip in actions_for(hero):
+            matching_tracks = [track for track in nla_tracks if track.name == clip]
+            if len(matching_tracks) != 1:
+                failures.append(
+                    f"{clip}: expected exactly one NLA track named {clip!r}"
+                )
+                continue
+            strips = list(matching_tracks[0].strips)
+            if len(strips) != 1 or strips[0].action is None:
+                failures.append(
+                    f"{clip}: NLA track must contain exactly one Action strip"
+                )
 
     if hero == "brock-zeus":
         cloud = bpy.data.objects.get("Cloud")
         if cloud is None or cloud.type != "MESH":
             failures.append("missing Cloud mesh")
         cloud_names = ["Cloud_root_idle"] + [
-            f"Cloud_{action_name}" for action_name in actions_for(hero).values()
+            f"Cloud_{action_name}"
+            for clip, action_name in actions_for(hero).items()
+            if clip != "stunned"
         ]
         for action_name in cloud_names:
             if len(exact_actions(action_name)) != 1:

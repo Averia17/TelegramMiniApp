@@ -1,11 +1,11 @@
 root = "."
-tmp_dir = "tmp"
+tmp_dir = "."
 
 [build]
-cmd = "go build -o ./tmp/battle-server ."
-bin = "./tmp/battle-server"
+cmd = "go build -o ./battle.exe ."
+bin = "./battle.exe"
 include_ext = ["go"]
-exclude_dir = ["tmp"]
+exclude_dir = ["tmp", ".git"]
 delay = 1000
 poll = true
 poll_interval = 1000
@@ -17,4 +17,4 @@ kill_delay = "2s"
 time = true
 
 [misc]
-clean_on_exit = true
+clean_on_exit = false

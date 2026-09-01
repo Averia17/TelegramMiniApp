@@ -7,7 +7,11 @@ const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cj
 const baseUrl = process.env.MAP_QA_URL || "http://127.0.0.1"
 const selectedMap = process.env.MAP_QA_MAP === "team-battle" ? "team-battle" : "team-battle-northern"
 const expectedMapId = selectedMap === "team-battle" ? "team-battle@20260816" : "team-battle-northern@20260827"
-const expectedCityObjectBlockingCount = selectedMap === "team-battle" ? 56 : 148
+const expectedCityObjectBlockingCount = selectedMap === "team-battle" ? 58 : 148
+const expectedBaseFeatureCount = selectedMap === "team-battle" ? 16 : 2
+const expectedBaseFeatureSummary = selectedMap === "team-battle"
+  ? {base_well: 2, base_workshop: 2, base_wagon: 2, base_barracks: 2, base_storehouse: 2, base_stable: 2, base_chapel: 2, base_courtyard: 2}
+  : {base_compound: 2}
 const output = path.resolve(__dirname, "../../output/playwright/abandoned-city-map", selectedMap, "global-audit")
 
 const sectors = [
@@ -34,14 +38,23 @@ const detailViews = [
   ["city-street-detail", 15, 22],
   ["city-plaza-detail", 37, 43],
   ["city-watchtower-detail", 30, 39],
-  ["base-workshop-detail", 6.5, 54.5],
-  ["base-well-detail", 6.5, 61],
-  ["base-wagon-detail", 15.5, 64],
-  ["base-barracks-detail", 8, 52.5],
-  ["base-storehouse-detail", 16, 60],
-  ["base-stable-detail", 18, 58],
-  ["base-chapel-detail", 11, 64],
-  ["base-courtyard-detail", 11.5, 58.5],
+  ...(selectedMap === "team-battle-northern"
+    ? [
+        ["base-compound-overview", 11.5, 58.5],
+        ["base-compound-west-wing", 7.3, 60.6],
+        ["base-compound-east-wing", 15.7, 60.6],
+        ["base-compound-hall", 11.5, 63.7],
+      ]
+    : [
+        ["base-workshop-detail", 6.5, 54.5],
+        ["base-well-detail", 6.5, 61],
+        ["base-wagon-detail", 15.5, 64],
+        ["base-barracks-detail", 8, 52.5],
+        ["base-storehouse-detail", 16, 60],
+        ["base-stable-detail", 18, 58],
+        ["base-chapel-detail", 11, 64],
+        ["base-courtyard-detail", 11.5, 58.5],
+      ]),
 ]
 const castleViews = selectedMap === "team-battle-northern"
   ? [
@@ -198,12 +211,12 @@ runWithBrowser(
     assert.deepEqual(metrics.thornVineBlockingCells, [])
     assert.equal(metrics.cityFeatures >= 11, true)
     assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_keep || 0) === 0 : metrics.featureSummary.castle_keep === 2, true)
-    assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_gate || 0) === 0 : metrics.featureSummary.castle_gate === 4, true)
+    assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_gate || 0) === 0 : metrics.featureSummary.castle_gate === 2, true)
     assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_house || 0) === 0 : metrics.featureSummary.castle_house === 8, true)
-    assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_market || 0) === 0 : metrics.featureSummary.castle_market === 2, true)
+    assert.equal(selectedMap === "team-battle" ? (metrics.featureSummary.castle_market || 0) === 2 : (metrics.featureSummary.castle_market || 0) === 0, true)
     assert.equal((metrics.featureSummary.castle_bastion || 0) === 0, true)
-    assert.equal(metrics.baseFeatures, 16)
-    assert.deepEqual(metrics.baseFeatureSummary, {base_well: 2, base_workshop: 2, base_wagon: 2, base_barracks: 2, base_storehouse: 2, base_stable: 2, base_chapel: 2, base_courtyard: 2})
+    assert.equal(metrics.baseFeatures, expectedBaseFeatureCount)
+    assert.deepEqual(metrics.baseFeatureSummary, expectedBaseFeatureSummary)
     assert.deepEqual(consoleErrors, [])
     assert.deepEqual(pageErrors, [])
 

@@ -1816,6 +1816,8 @@ func EffectiveMovementSpeed(p *player.Player, now int64) float64 {
 // Vines are deliberately queried by the hero's centre point: the same simple
 // footprint is used by the server and client prediction, so entering and
 // leaving a clump never creates a hidden collision-sized buffer.
+const vineTerrainSpeedMultiplier = .55
+
 func TerrainMovementMultiplier(mapValue *gamemap.GameMap, x, y float64) float64 {
 	if mapValue == nil {
 		return 1
@@ -1824,7 +1826,7 @@ func TerrainMovementMultiplier(mapValue *gamemap.GameMap, x, y float64) float64 
 		if wall == nil || (wall.Type != "vine" && wall.Type != "thorn_vine") || x < wall.MinX || x > wall.MaxX || y < wall.MinY || y > wall.MaxY {
 			continue
 		}
-		return .68
+		return vineTerrainSpeedMultiplier
 	}
 	return 1
 }

@@ -599,6 +599,31 @@ func (gs *GameState) botShouldDisengage(bot *player.Player, target *botTarget, n
 	return botHealth < .55
 }
 
+// botShouldFleeDamageRace handles the situation that the old health-only
+// gates missed: a healthy bot can still lose an all-in when the visible target
+// deals much more damage or has enough ammo to finish first. Do not flee from
+// a target that cannot currently attack, and always take a clear finishing
+// window over a theoretical future exchange.
+func botShouldFleeDamageRace(bot *player.Player, target *botTarget) bool {
+	if bot == nil || target == nil || target.player == nil {
+		return false
+	}
+	if target.distance > botAttackRange(bot)+target.radius() {
+		return false
+	}
+	evaluation := evaluateBotCombat(bot, target)
+	if !evaluation.TargetCanAttack || !evaluation.TargetWinsDamageRace || evaluation.BotWinsDamageRace {
+		return false
+	}
+	if bot.MaxLives > 0 && float64(bot.Lives)/float64(bot.MaxLives) < .65 {
+		return true
+	}
+	if evaluation.TargetExpectedDamage >= evaluation.BotExpectedDamage*1.75 {
+		return true
+	}
+	return evaluation.TargetTimeToKillMs+750 < evaluation.BotTimeToKillMs
+}
+
 func (gs *GameState) botSelectTarget(bot *player.Player, now int64) *botTarget {
 	if bot == nil {
 		return nil
@@ -987,23 +1012,24 @@ func (gs *GameState) botEngageTarget(id string, bot *player.Player, target *botT
 	melee := botIsMelee(bot)
 	profile := botProfileFor(id)
 	memory := gs.botMemoryFor(id)
-	// Profiles make bots more or less eager to close in while staying inside
-	// the legacy combat distance envelope.
-	preferred := reach * profile.PreferredRangeScale
-	if gs.botShouldDisengage(bot, target, now) || botShouldKite(bot, target) {
+	if gs.botShouldDisengage(bot, target, now) || botShouldFleeDamageRace(bot, target) || botShouldKite(bot, target) {
 		gs.botRetreatFrom(id, bot, target.x, target.y, now)
 		gs.botRotateToward(id, bot, angle)
 	} else {
 		approach := 0.0
-		if target.distance > preferred {
+		if target.distance > attackDistance {
 			approach = 1
-		} else if !melee && bot.Ammo == 0 {
+		} else if !melee && bot.Ammo == 0 && target.distance < reach*.6 {
 			// A ranged bot with an empty magazine must create reload space. A
 			// pure strafe here reads as orbiting the target and can leave the bot
 			// circling without contributing damage until the next decision tick.
 			approach = -.65
 		} else if !melee && target.distance < reach*.38 {
 			approach = -.85
+		} else if melee && target.distance > reach*.55 {
+			// Keep melee pressure near the edge of the cone, but do not sprint
+			// through an enemy that is already in striking distance.
+			approach = .18
 		}
 		if memory.StrafeUntil <= now || memory.StrafeSign == 0 {
 			memory.StrafeSign = profile.StrafeSign
@@ -1183,7 +1209,8 @@ func (gs *GameState) botTryAbility(id string, bot *player.Player, target *botTar
 			secondaryScore = scoreBotAbility(gs.botUtilityContextFor(bot, secondaryTarget, nil, now), botAbilityGadget)
 		}
 	}
-	primaryReady := (bot.LastPrimaryAt == 0 || now-bot.LastPrimaryAt >= AbilityCooldownMs(bot.HeroName, "primary")) && primaryUseful
+	primaryReady := bot.SuperCharge >= SuperMaxChargePercent &&
+		(bot.LastPrimaryAt == 0 || now-bot.LastPrimaryAt >= AbilityCooldownMs(bot.HeroName, "primary")) && primaryUseful
 	usePrimary := primaryReady && (secondaryScore == math.Inf(-1) || primaryScore >= secondaryScore)
 	if usePrimary {
 		if fallbackPoint {

@@ -29,6 +29,7 @@ ACTION_NAMES = {
     "spawn": "Spawn",
     "victory": "Victory",
     "gadget": "Gadget",
+    "stunned": "Stunned",
 }
 
 

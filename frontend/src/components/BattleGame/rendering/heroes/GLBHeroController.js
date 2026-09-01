@@ -7,7 +7,7 @@ const CLOUD_STORM_TINT = new THREE.Color(0x07111e)
 export const LOCOMOTION_FADE = 0.16
 export const OVERLAY_FADE = 0.18
 const MANDY_SPAWN_STAFF_REVEAL_SECONDS = 20 / 30
-const FULL_BODY_OVERLAYS = new Set(["attack", "super", "gadget", "aimGadget", "hit", "spawn"])
+const FULL_BODY_OVERLAYS = new Set(["attack", "super", "gadget", "aimGadget", "hit", "spawn", "stunned"])
 const UPPER_BONE = /(spine|chest|neck|head|shoulder|clavicle|arm|hand|finger|weapon)/i
 const LOWER_BONE = /(root|hips?|pelvis|leg|thigh|calf|foot|toe)/i
 
@@ -407,6 +407,7 @@ export class GLBHeroController {
     // weapons drift. Brock's non-skeletal cast remains handled by cloudCaster.
     this.attackPoseNodes = []
     this.lastHitAmount = 0
+    this.stunnedActive = false
     this.fallbackEvents = []
 
     for (const [semanticName, clipName] of Object.entries(clipNames)) {
@@ -603,6 +604,10 @@ export class GLBHeroController {
     const previous = this.actions.get(this.overlay)
     if (previous && previous !== next) previous.fadeOut(fadeSeconds)
     next.enabled = true
+    if (name === "stunned") {
+      next.setLoop(THREE.LoopRepeat, Infinity)
+      next.clampWhenFinished = false
+    }
     next.reset().setEffectiveWeight(1).fadeIn(fadeSeconds).play()
     this.overlay = name
     this.overlayBlendOutScheduled = false
@@ -728,6 +733,14 @@ export class GLBHeroController {
       this.updateAuthoredCloudEffects()
       return
     }
+    const stunned = Number(input.stun) > 0
+    if (stunned) {
+      if (this.overlay !== "stunned") this.playSafe("stunned", "idle", OVERLAY_FADE)
+      this.stunnedActive = true
+    } else if (this.stunnedActive) {
+      if (this.overlay === "stunned") this.clearOverlay()
+      this.stunnedActive = false
+    }
     if (this.lastSpawnPulse !== input.spawnPulse && input.spawnPulse !== undefined) {
       this.playSpawn()
     } else if (this.state === "dead" && input.alive !== false) {
@@ -735,11 +748,11 @@ export class GLBHeroController {
     }
     this.lastSpawnPulse = input.spawnPulse
 
-    if (this.lastGadgetPulse !== input.gadgetPulse && input.gadgetPulse !== undefined) {
+    if (!stunned && this.lastGadgetPulse !== input.gadgetPulse && input.gadgetPulse !== undefined) {
       this.playSafe("gadget")
-    } else if (this.lastSuperPulse !== input.superPulse && input.superPulse !== undefined) {
+    } else if (!stunned && this.lastSuperPulse !== input.superPulse && input.superPulse !== undefined) {
       this.playSafe("super")
-    } else if (this.lastAttackPulse !== input.attackPulse && input.attackPulse !== undefined) {
+    } else if (!stunned && this.lastAttackPulse !== input.attackPulse && input.attackPulse !== undefined) {
       this.playSafe("attack")
       this.attackVisualRemaining = .42
     }

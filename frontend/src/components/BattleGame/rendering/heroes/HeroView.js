@@ -503,6 +503,7 @@ export class HeroView {
         superPulse: this.state.superPulse,
         gadgetPulse: this.state.gadgetPulse,
         spawnPulse: this.spawnPulse,
+        stun: this.state.stun,
         result: this.result,
       })
       this.model.rotation.y += this.animation.attackSwingYaw

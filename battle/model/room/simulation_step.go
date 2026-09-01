@@ -1,6 +1,9 @@
 package room
 
-import "time"
+import (
+	"battle/model/game"
+	"time"
+)
 
 // simulationStep is the transport-independent result of one authoritative
 // simulation step. Room.Run owns scheduling and delivery; this seam owns only
@@ -23,11 +26,14 @@ func (r *Room) stepSimulation(previousTickAt time.Time, frame int, now time.Time
 
 	r.mu.Lock()
 	r.expireDisconnectedPlayers()
-	if len(r.Clients) == 0 {
+	if r.State == nil || (len(r.Clients) == 0 && r.State.State != game.GameStateGame) {
 		r.mu.Unlock()
 		return step
 	}
-	step.hasClients = true
+	// Transport delivery is optional once combat has started. The authoritative
+	// match must keep advancing when every human disconnects so bots can finish
+	// the fight and the result can be persisted for a later recovery request.
+	step.hasClients = len(r.Clients) > 0
 	frame++
 	started := time.Now()
 	r.State.UpdateWithDelta(elapsed)

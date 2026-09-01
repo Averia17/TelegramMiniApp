@@ -27,6 +27,64 @@ func TestBotUtilityRetreatsFromCloseNumericalThreat(t *testing.T) {
 	}
 }
 
+func TestBotCombatEvaluationAccountsForDamageRace(t *testing.T) {
+	bot := &player.Player{
+		Lives: 1000, MaxLives: 1000, AttackDmg: 120, AttackRate: 400,
+		ReloadTime: 1000, Ammo: 3, MaxAmmo: 3,
+	}
+	target := &player.Player{
+		Lives: 900, MaxLives: 900, AttackDmg: 300, AttackRate: 400,
+		ReloadTime: 1000, Ammo: 3, MaxAmmo: 3,
+	}
+
+	evaluation := evaluateBotCombat(bot, &botTarget{
+		kind: "player", player: target, distance: 100,
+	})
+
+	if evaluation.BotExpectedDamage != 120 || evaluation.TargetExpectedDamage != 300 {
+		t.Fatalf("damage evaluation bot=%.1f target=%.1f, want 120/300", evaluation.BotExpectedDamage, evaluation.TargetExpectedDamage)
+	}
+	if evaluation.BotAttacksToKill != 8 || evaluation.TargetAttacksToKill != 4 {
+		t.Fatalf("attack counts bot=%d target=%d, want 8/4", evaluation.BotAttacksToKill, evaluation.TargetAttacksToKill)
+	}
+	if !evaluation.TargetWinsDamageRace || evaluation.BotWinsDamageRace {
+		t.Fatalf("damage race botWins=%v targetWins=%v, want target only", evaluation.BotWinsDamageRace, evaluation.TargetWinsDamageRace)
+	}
+}
+
+func TestBotUtilityFightsWhenItCanWinTheDamageRace(t *testing.T) {
+	scores := scoreBotUtility(botUtilityContext{
+		HealthFraction: .75, TargetHealthFraction: .35, TargetDistance: 100,
+		PreferredRange: 220, AttackRange: 260, Enemies: 1, Allies: 0,
+		Ammo: 2, MaxAmmo: 3, Role: "Fighter", TargetKind: "player",
+		HasTarget: true, TargetInAttackRange: true,
+		BotExpectedDamage: 180, TargetExpectedDamage: 80,
+		BotAttacksToKill: 2, TargetAttacksToKill: 8,
+		BotWinsDamageRace: true,
+	})
+
+	if scores[botUtilityEngage] <= scores[botUtilityRetreat] {
+		t.Fatalf("bot abandoned a favorable damage race: engage=%.1f retreat=%.1f", scores[botUtilityEngage], scores[botUtilityRetreat])
+	}
+}
+
+func TestBotUtilityRetreatsWhenTargetWinsTheDamageRace(t *testing.T) {
+	scores := scoreBotUtility(botUtilityContext{
+		HealthFraction: 1, TargetHealthFraction: .9, TargetDistance: 100,
+		PreferredRange: 220, AttackRange: 260, Enemies: 1, Allies: 0,
+		Ammo: 2, MaxAmmo: 3, Role: "Sharpshooter", TargetKind: "player",
+		HasTarget: true, TargetInAttackRange: true, TargetCanAttack: true,
+		BotExpectedDamage: 80, TargetExpectedDamage: 300,
+		BotAttacksToKill: 12, TargetAttacksToKill: 4,
+		BotTimeToKillMs: 4800, TargetTimeToKillMs: 1600,
+		TargetWinsDamageRace: true,
+	})
+
+	if scores[botUtilityRetreat] <= scores[botUtilityEngage] {
+		t.Fatalf("bot ignored a losing damage race: retreat=%.1f engage=%.1f", scores[botUtilityRetreat], scores[botUtilityEngage])
+	}
+}
+
 func TestBotUtilityCollectsHealthBoostWhenFightIsNotImmediate(t *testing.T) {
 	scores := scoreBotUtility(botUtilityContext{
 		HealthFraction:       .42,

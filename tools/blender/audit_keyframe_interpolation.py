@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import bpy
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if os.fspath(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, os.fspath(SCRIPT_DIR))
+from hero_animation_contract import master_path
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
@@ -28,6 +34,7 @@ ACTION_NAMES = {
     "death": "death",
     "spawn": "Spawn",
     "victory": "Victory",
+    "stunned": "Stunned",
 }
 
 
@@ -66,7 +73,7 @@ def scene_clips(hero):
 
 
 def inspect(hero, clip):
-    path = SOURCE / hero / f"{hero}.blend"
+    path = master_path(hero)
     bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
     action = action_for(ACTION_NAMES[clip])
     if action is None:

@@ -49,7 +49,7 @@ func NewMapJSON(name string, source *gamemap.GameMap, revision int, includeWalls
 	for _, wall := range source.Collisions {
 		result.Walls = append(result.Walls, WallJSON{
 			MinX: wall.MinX, MinY: wall.MinY, MaxX: wall.MaxX, MaxY: wall.MaxY,
-			Type: wall.Type, Blocking: geometry.IsBlockingWall(wall.Type), BushGroup: wall.BushGroup,
+			Type: wall.Type, Rotation: wall.Rotation, LinkedFeatureID: wall.LinkedFeatureID, Blocking: geometry.IsBlockingWall(wall.Type), BushGroup: wall.BushGroup,
 			ColliderInsetX: wall.ColliderInsetX, ColliderInsetY: wall.ColliderInsetY,
 			ColliderRadius: wall.ColliderRadius,
 		})

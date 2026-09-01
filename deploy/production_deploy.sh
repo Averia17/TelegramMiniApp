@@ -13,15 +13,37 @@ DEPLOY_COMPOSE_PROFILE="${DEPLOY_COMPOSE_PROFILE:-cloudflare}"
 COMPOSE=(docker compose --profile "$DEPLOY_COMPOSE_PROFILE" --env-file "$RELEASE_ROOT/compose.env" -f "$DEPLOY_COMPOSE_FILE")
 
 usage() {
-  echo "Usage: $0 <tag> <manifest.json>" >&2
+  echo "Usage: $0 <tag> <manifest.json> [--eta-minutes <minutes>]" >&2
   exit 2
 }
 
-[[ $# -eq 2 ]] || usage
+[[ $# -ge 2 ]] || usage
 TAG="$1"
 MANIFEST="$2"
+shift 2
+ESTIMATED_MINUTES="${DEPLOY_ESTIMATED_MINUTES:-5}"
+while (( $# > 0 )); do
+  case "$1" in
+    --eta-minutes)
+      [[ $# -ge 2 ]] || usage
+      ESTIMATED_MINUTES="$2"
+      shift 2
+      ;;
+    --eta-minutes=*)
+      ESTIMATED_MINUTES="${1#*=}"
+      shift
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "invalid release tag" >&2; exit 2; }
 [[ -f "$MANIFEST" ]] || { echo "manifest not found: $MANIFEST" >&2; exit 2; }
+[[ "$ESTIMATED_MINUTES" =~ ^[1-9][0-9]*$ ]] || {
+  echo "--eta-minutes must be a positive integer" >&2
+  exit 2
+}
 
 mkdir -p "$RELEASE_ROOT/releases" "$RELEASE_ROOT/current"
 exec 9>"$RELEASE_ROOT/deploy.lock"
@@ -65,6 +87,15 @@ print(json.load(open(sys.argv[1], encoding="utf-8"))["commit"])
 PY
 )"
 
+DEPLOYMENT_MESSAGE="Деплой начинается. Бои приостановлены. Ориентировочно завершится через ~${ESTIMATED_MINUTES} мин."
+DEPLOYMENT_PAYLOAD="$(python - "$TAG" "$DEPLOYMENT_MESSAGE" <<'PY'
+import json
+import sys
+
+print(json.dumps({"tag": sys.argv[1], "message": sys.argv[2]}, ensure_ascii=False))
+PY
+)"
+
 mapfile -t COMPOSE_SERVICES < <("${COMPOSE[@]}" config --services)
 has_service() {
   printf '%s\n' "${COMPOSE_SERVICES[@]}" | grep -Fxq "$1"
@@ -105,7 +136,7 @@ wait_for_drain() {
     case "$service" in
       account) request_account POST "/internal/deployment/drain" >/dev/null ;;
       party) request_party POST "/internal/deployment/drain" >/dev/null ;;
-      battle) request_battle POST "/admin/deployment/drain" "{\"tag\":\"$TAG\"}" >/dev/null ;;
+      battle) request_battle POST "/admin/deployment/drain" "$DEPLOYMENT_PAYLOAD" >/dev/null ;;
     esac
     DRAINED_SERVICES+=("$service")
   done <<'SERVICES'

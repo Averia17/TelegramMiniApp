@@ -316,7 +316,7 @@ test("passable vine clumps slow local prediction without becoming collision wall
   const inside = movePosition({x: 110, y: 100}, {x: 1, y: 0}, player, .1, map, index)
   assert.ok(outside.x > 89)
   assert.ok(inside.x < 119)
-  assert.ok(Math.abs(inside.x - 116.8) < 0.000001)
+  assert.ok(Math.abs(inside.x - 115.5) < 0.000001)
 })
 
 test("passable thorn vines slow local prediction without becoming collision walls", () => {
@@ -330,7 +330,7 @@ test("passable thorn vines slow local prediction without becoming collision wall
   const next = movePosition({x: 110, y: 100}, {x: 1, y: 0}, player, .1, map, index)
 
   assert.ok(next.x > 110)
-  assert.ok(Math.abs(next.x - 116.8) < 0.000001)
+  assert.ok(Math.abs(next.x - 115.5) < 0.000001)
 })
 
 test("local prediction stops a hero at an opaque city roof footprint without over-padding it", () => {
