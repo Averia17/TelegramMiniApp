@@ -68,7 +68,9 @@ func TestMicoSuperUsesAnAimableShortLeapAndStopsAtBlockingCover(t *testing.T) {
 	mico := gs.Players["mico"]
 	mico.X, mico.Y = 100, 300
 	now := time.Now().UnixMilli()
+	gs.clockNow = func() int64 { return now + 250 }
 	WukongMicoKit{}.Super(gs, mico, now, 0, 240)
+	gs.updateNewHeroSystems()
 	if mico.X <= 100 {
 		t.Fatalf("Mico did not leap toward the aimed direction: x=%.1f", mico.X)
 	}
@@ -78,7 +80,10 @@ func TestMicoSuperUsesAnAimableShortLeapAndStopsAtBlockingCover(t *testing.T) {
 	gs.Walls.Insert(gs.Map.Collisions[0])
 	gs.WallsSource = gs.Map.Collisions
 	mico.X, mico.Y = 100, 300
-	WukongMicoKit{}.Super(gs, mico, now+1, 0, 240)
+	nextCast := now + 500
+	gs.clockNow = func() int64 { return nextCast + 250 }
+	WukongMicoKit{}.Super(gs, mico, nextCast, 0, 240)
+	gs.updateNewHeroSystems()
 	if mico.X >= 145 {
 		t.Fatalf("Mico leap crossed blocking cover: x=%.1f", mico.X)
 	}

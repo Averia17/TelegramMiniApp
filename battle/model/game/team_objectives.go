@@ -241,7 +241,7 @@ func resetPlayerRespawnCombatState(p *player.Player) {
 	p.Marks, p.Heat, p.HeatUntil = 0, 0, 0
 	p.ShieldUntil, p.InvulnerableUntil, p.StealthUntil = 0, 0, 0
 	p.StunUntil, p.CastUntil, p.ChannelUntil = 0, 0, 0
-	p.VineUntil, p.VortexUntil, p.VortexTickAt = 0, 0, 0
+	p.VineUntil, p.VortexUntil, p.VortexReadyAt, p.VortexTickAt = 0, 0, 0, 0
 	p.BlindUntil, p.HasteUntil = 0, 0
 	p.LunarSpeedUntil, p.LunarDamageUntil, p.LunarShield = 0, 0, false
 	p.SlowUntil, p.SlowMultiplier = 0, 1

@@ -93,6 +93,8 @@ func combatEventsForClient(events []game.CombatEvent, playerID string, now int64
 			ProjectileID: event.ProjectileID, Distance: event.Distance, Damage: event.Damage,
 			EffectiveDamage: event.EffectiveDamage, ResourceKind: event.ResourceKind,
 			ResourceBefore: event.ResourceBefore, ResourceAfter: event.ResourceAfter,
+			Reaction: event.Reaction, HitStopMs: event.HitStopMs,
+			TargetLivesBefore: event.TargetLivesBefore, TargetLivesAfter: event.TargetLivesAfter,
 			Accepted: event.Accepted, Resolved: event.Resolved,
 		})
 	}

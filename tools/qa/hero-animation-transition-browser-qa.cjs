@@ -36,7 +36,8 @@ runWithBrowser(
         await page.waitForTimeout(240)
         const before = await page.evaluate(() => {
           const controller = window.qa.getView().animation
-          return {idleTime: controller.actions.get("idle")?.time || 0, idleWeight: controller.actions.get("idle")?.getEffectiveWeight() || 0}
+          const idle = controller.actions.get("idle")
+          return {idleTime: idle?.time || 0, idleDuration: idle?.getClip().duration || 2, idleWeight: idle?.getEffectiveWeight() || 0}
         })
         await page.screenshot({path: path.join(heroOutput, "before.png")})
         await page.evaluate(() => window.qa.getView().animation.playOverlay("attack", .18))
@@ -54,10 +55,12 @@ runWithBrowser(
         await page.waitForTimeout(Math.max(260, duration * 1000 + 240))
         const after = await page.evaluate(() => {
           const controller = window.qa.getView().animation
+          const idle = controller.actions.get("idle")
           return {
             overlay: controller.overlay,
             state: controller.state,
             idleTime: controller.actions.get("idle")?.time || 0,
+            idleDuration: idle?.getClip().duration || 2,
             idleWeight: controller.actions.get("idle")?.getEffectiveWeight() || 0,
             attackWeight: controller.actions.get("attack")?.getEffectiveWeight() || 0,
           }
@@ -68,7 +71,8 @@ runWithBrowser(
         assert.ok(during.idleWeight > 0 && during.idleWeight < 1, `${hero}: locomotion was not blended during overlay`)
         assert.ok(during.attackWeight > 0, `${hero}: attack did not blend in`)
         assert.ok(after.idleWeight > .95, `${hero}: locomotion did not fade back in`)
-        assert.ok(after.idleTime > before.idleTime, `${hero}: locomotion phase was reset after overlay`)
+        const idlePhaseAdvance = (after.idleTime - before.idleTime + after.idleDuration) % after.idleDuration
+        assert.ok(idlePhaseAdvance > .05, `${hero}: locomotion phase was reset after overlay`)
         results.push({hero, duration, before, during, after})
       } catch (error) {
         errors.push(`${hero}: ${error.stack || error}`)

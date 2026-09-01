@@ -2417,4 +2417,10 @@ func TestTeamDeathmatchStartUsesAuthoredNeutralSpawns(t *testing.T) {
 	if gs.Monsters["team-bat-0"].Tier != gs.Monsters["team-bat-4"].Tier {
 		t.Fatalf("mirrored monster tiers = %d/%d, want equal", gs.Monsters["team-bat-0"].Tier, gs.Monsters["team-bat-4"].Tier)
 	}
+	if gs.Monsters["team-bat-1"].Kind != "ash_hound" || gs.Monsters["team-bat-2"].Kind != "root_guardian" {
+		t.Fatalf("authored monster kinds = %q/%q, want ash_hound/root_guardian", gs.Monsters["team-bat-1"].Kind, gs.Monsters["team-bat-2"].Kind)
+	}
+	if gs.Monsters["team-bat-1"].CampID != "camp-02" || gs.Monsters["team-bat-2"].TerritoryRadius <= 0 {
+		t.Fatalf("authored camp metadata missing: hound=%#v guardian=%#v", gs.Monsters["team-bat-1"], gs.Monsters["team-bat-2"])
+	}
 }

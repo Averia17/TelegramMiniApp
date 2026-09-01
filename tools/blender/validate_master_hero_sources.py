@@ -186,6 +186,38 @@ def validate_hero(hero: str) -> dict:
                 )
 
     if hero == "brock-zeus":
+        head = bpy.data.objects.get("ZeusPart_Head")
+        if head is None or head.type != "MESH":
+            failures.append("missing ZeusPart_Head mesh")
+        else:
+            if head.get("beard_fix_revision") != "2026-09-01-white-beard-seam-v2":
+                failures.append(
+                    "ZeusPart_Head: beard seam fix metadata is missing or stale"
+                )
+            beard_material = bpy.data.materials.get("Zeus_Beard_White")
+            beard_slot = next(
+                (
+                    index
+                    for index, material in enumerate(head.data.materials)
+                    if material == beard_material
+                ),
+                None,
+            )
+            if beard_slot is None:
+                failures.append("ZeusPart_Head: missing Zeus_Beard_White material slot")
+            else:
+                exposed_seam = [
+                    polygon
+                    for polygon in head.data.polygons
+                    if (head.matrix_world @ polygon.center).y < -0.55
+                    and (head.matrix_world @ polygon.center).z < 5.0
+                ]
+                if any(
+                    polygon.material_index != beard_slot for polygon in exposed_seam
+                ):
+                    failures.append(
+                        "ZeusPart_Head: exposed lower-beard seam has non-white polygons"
+                    )
         cloud = bpy.data.objects.get("Cloud")
         if cloud is None or cloud.type != "MESH":
             failures.append("missing Cloud mesh")

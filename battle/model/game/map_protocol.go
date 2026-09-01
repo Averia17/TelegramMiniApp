@@ -42,6 +42,9 @@ func NewMapJSON(name string, source *gamemap.GameMap, revision int, includeWalls
 	for _, feature := range source.Features {
 		result.Features = append(result.Features, FeatureJSON{ID: feature.ID, Type: feature.Type, X: feature.X, Y: feature.Y, Rotation: feature.Rotation, Scale: feature.Scale})
 	}
+	for _, spawn := range source.MonsterSpawns {
+		result.MonsterCamps = append(result.MonsterCamps, MonsterCampJSON{ID: spawn.ID, Kind: string(spawn.Kind), X: spawn.X, Y: spawn.Y, TerritoryRadius: spawn.TerritoryRadius})
+	}
 	if !includeWalls {
 		return result
 	}

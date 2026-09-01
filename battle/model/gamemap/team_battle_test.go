@@ -25,6 +25,26 @@ func TestTeamBattleVariantsShareCombatTopologyButHaveDistinctDressing(t *testing
 	}
 }
 
+func TestTeamBattleMonsterCampsHaveStableKindsAndTerritories(t *testing.T) {
+	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
+	if len(mapValue.MonsterSpawns) != 8 {
+		t.Fatalf("monster camps=%d, want 8", len(mapValue.MonsterSpawns))
+	}
+	seenKinds := map[string]bool{}
+	for index, spawn := range mapValue.MonsterSpawns {
+		if spawn.ID == "" || spawn.Kind == "" || spawn.TerritoryRadius <= 0 {
+			t.Fatalf("camp %d is missing identity or territory: %#v", index, spawn)
+		}
+		seenKinds[spawn.Kind] = true
+	}
+	if !seenKinds["ash_hound"] || !seenKinds["root_guardian"] {
+		t.Fatalf("monster camps lack the two authored types: %#v", seenKinds)
+	}
+	if mapValue.MonsterSpawns[0].ID != "camp-01" || mapValue.MonsterSpawns[4].ID != "camp-05" {
+		t.Fatalf("camp ids are not stable: first=%q mirror=%q", mapValue.MonsterSpawns[0].ID, mapValue.MonsterSpawns[4].ID)
+	}
+}
+
 func TestNorthernTeamBattleDoesNotPlaceConfusingCrateDecorations(t *testing.T) {
 	mapValue := GenerateTeamBattle(CanonicalTeamBattleNorthernSeed)
 	for _, wall := range mapValue.Collisions {

@@ -7,6 +7,15 @@ import {createHealthBadge, updateHealthBadge} from "../heroes/healthBadge.js"
 
 const BAT_HEIGHT = 22
 const HEALTH_BADGE_PARENT_SCALE = 2.2
+const MONSTER_VISUAL_PROFILES = {
+  bat: {body: 0x48206f, wing: 0x62318c, accent: 0xff4057, wings: true, scale: [1, 1, 1]},
+  ash_hound: {body: 0x6b4235, wing: 0x8c4f39, accent: 0xff8a3d, wings: false, scale: [1.28, .82, .92]},
+  root_guardian: {body: 0x315d4a, wing: 0x427e5a, accent: 0x9be66f, wings: false, scale: [.96, 1.32, 1.08]},
+}
+
+export const getMonsterVisualProfile = kind => (
+  MONSTER_VISUAL_PROFILES[String(kind || "bat")] || MONSTER_VISUAL_PROFILES.bat
+)
 export const getHealthBarFraction = (current, maximum) => (
   Math.max(0, Math.min(1, (Number(current) || 0) / Math.max(1, Number(maximum) || 1)))
 )
@@ -84,19 +93,21 @@ const createNoticeTelegraph = () => {
 
 const createBat = state => {
   const group = new THREE.Group()
-  group.userData.kind = "bat"
+  const kind = String(state.kind || "bat")
+  const profile = getMonsterVisualProfile(kind)
+  group.userData.kind = kind
   group.userData.tier = Number(state.tier) || 1
 
   const tier = group.userData.tier
   const bodyMaterial = new THREE.MeshStandardMaterial({
-    color: tier >= 2 ? 0x7227a8 : 0x48206f,
+    color: tier >= 2 ? profile.accent : profile.body,
     roughness: .66,
-    emissive: tier >= 2 ? 0x26003d : 0x130021,
+    emissive: tier >= 2 ? profile.body : 0x130021,
     emissiveIntensity: .45,
     side: THREE.DoubleSide,
   })
   const body = new THREE.Mesh(new THREE.SphereGeometry(.43, 14, 10), bodyMaterial)
-  body.scale.set(.82, 1.05, .72)
+  body.scale.set(.82 * profile.scale[0], 1.05 * profile.scale[1], .72 * profile.scale[2])
   body.castShadow = true
 
   const head = new THREE.Mesh(new THREE.SphereGeometry(.35, 14, 10), bodyMaterial.clone())
@@ -120,7 +131,7 @@ const createBat = state => {
   }
 
   const wingMaterial = new THREE.MeshStandardMaterial({
-    color: tier >= 2 ? 0x9437c7 : 0x62318c,
+    color: tier >= 2 ? profile.accent : profile.wing,
     roughness: .78,
     side: THREE.DoubleSide,
   })
@@ -129,6 +140,38 @@ const createBat = state => {
   leftWing.position.set(-.22, .2, 0)
   rightWing.position.set(.22, .2, 0)
   leftWing.castShadow = rightWing.castShadow = true
+  leftWing.visible = rightWing.visible = profile.wings
+
+  if (kind === "ash_hound") {
+    const hornMaterial = new THREE.MeshStandardMaterial({color: profile.accent, emissive: 0x3a1206, emissiveIntensity: .6})
+    for (const x of [-.18, .18]) {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(.10, .34, 5), hornMaterial.clone())
+      horn.position.set(x, .57, .02)
+      horn.rotation.z = x < 0 ? .25 : -.25
+      horn.userData.role = "ash-hound-horn"
+      group.add(horn)
+    }
+    const ember = new THREE.Mesh(new THREE.SphereGeometry(.09, 8, 6), new THREE.MeshBasicMaterial({color: profile.accent}))
+    ember.position.set(0, .16, .38)
+    ember.userData.role = "ash-hound-ember"
+    group.add(ember)
+  }
+
+  if (kind === "root_guardian") {
+    const rootMaterial = new THREE.MeshStandardMaterial({color: profile.accent, emissive: 0x173c20, emissiveIntensity: .48})
+    const crown = new THREE.Mesh(new THREE.TorusGeometry(.48, .055, 7, 18), rootMaterial)
+    crown.rotation.x = Math.PI / 2
+    crown.position.y = .58
+    crown.userData.role = "root-guardian-crown"
+    group.add(crown)
+    for (const x of [-.28, 0, .28]) {
+      const root = new THREE.Mesh(new THREE.ConeGeometry(.07, .38, 5), rootMaterial.clone())
+      root.position.set(x, -.18, .05)
+      root.rotation.z = x * .7
+      root.userData.role = "root-guardian-vine"
+      group.add(root)
+    }
+  }
 
   const shadow = createContactShadow(.72)
   shadow.position.y = -BAT_HEIGHT * WORLD_SCALE + .02
@@ -172,7 +215,12 @@ export class MonsterRenderer {
       if (Number(state?.lives) <= 0) return
       active.add(String(id))
       let view = this.views.get(String(id))
-      if (!view) {
+      if (!view || view.group.userData.kind !== String(state.kind || "bat")) {
+        if (view) {
+          this.root.remove(view.group)
+          disposeObjectTree(view.group)
+          this.views.delete(String(id))
+        }
         view = createBat(state)
         this.views.set(String(id), view)
         this.root.add(view.group)

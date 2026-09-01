@@ -93,7 +93,10 @@ type GameMap struct {
 // MapMonsterSpawn is an authored neutral monster position. Team maps use
 // these instead of sampling a random arena region at match start.
 type MapMonsterSpawn struct {
-	X, Y float64
+	ID              string
+	Kind            string
+	X, Y            float64
+	TerritoryRadius float64
 }
 
 type MapObjective struct {

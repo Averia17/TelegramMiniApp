@@ -20,9 +20,9 @@ const heroes = {
     ["super-strike", "zeus_lightning_strike"], ["super-blast", "zeus_lightning_blast"], ["gadget-fire", "zeus_fire_ground"],
     ["brand", "zeus_thunderbrand"], ["lightning", "lightning"],
   ],
-  Kaze: [["basic", "kaze_cross_slash"], ["super", "kaze_dash"], ["gadget", "kaze_veil_step"], ["followup", "kaze_followup_ready"]],
+  Kaze: [["basic", "kaze_cross_slash"], ["super-telegraph", "kaze_dash_telegraph"], ["super", "kaze_dash"], ["gadget", "kaze_veil_step"], ["followup", "kaze_followup_ready"]],
   "Wukong Mico": [
-    ["basic", "mico_staff_swing"], ["super-leap", "mico_leap"], ["super-spin", "mico_staff_spin"],
+    ["basic", "mico_staff_swing"], ["super-telegraph", "mico_vortex_telegraph"], ["super-leap", "mico_leap"], ["super-spin", "mico_staff_spin"],
     ["gadget-bind", "mico_ruyi_bind"], ["gadget-rage", "mico_suppressed_rage"], ["gadget-burst", "mico_armor_burst"], ["impact", "mico_skyfall"],
   ],
   "Persephone Lumi": [["basic-zone", "lumi_flower"], ["super", "lumi_roots"], ["gadget", "lumi_seedburst"], ["feedback", "lumi_root_impact"]],
@@ -82,7 +82,7 @@ runWithBrowser(
           arc: .9,
           color: heroColors[hero],
           maxLife: skill.includes("super") ? 4 : 1.2,
-          phase: ["zeus_strike_warning", "needle_root_telegraph", "mandy_super_charge"].includes(kind)
+          phase: ["zeus_strike_warning", "needle_root_telegraph", "mandy_super_charge", "kaze_dash_telegraph", "mico_vortex_telegraph"].includes(kind)
             ? "telegraph"
             : [
               "needle_root_active", "needle_spore_cloud", "needle_spores", "mina_healing_aura", "zeus_storm_target",

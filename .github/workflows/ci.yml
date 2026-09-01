@@ -49,11 +49,17 @@ jobs:
           findings = secret_scan(git("ls-files"))
           if findings:
               raise SystemExit("secret-like values found: " + ", ".join(findings))
+          PY
+      - name: Validate deployment shell scripts
+        run: |
+          bash -n deploy/production_deploy.sh
+          bash -n deploy/retry_release_news.sh
+      - name: Run root Compose contract tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Audit Python dependencies
         run: |
-          python -m pip install --disable-pip-version-check pip-audit
+          python -m pip install --disable-pip-version-check pip-audit -e ./account -e ./bot -e ./news -e ./shop
           pip-audit
-          PY
 
   go:
     name: Go checks

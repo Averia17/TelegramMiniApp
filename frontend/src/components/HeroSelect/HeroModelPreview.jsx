@@ -3,6 +3,7 @@ import * as THREE from "three"
 import {assetRegistry} from "../BattleGame/rendering/assets/AssetRegistry"
 import {GLBHeroController} from "../BattleGame/rendering/heroes/GLBHeroController"
 import {disposeObjectTree} from "../BattleGame/rendering/shared/disposal"
+import {getPreviewCameraBounds, getPreviewFitBounds} from "./previewCamera.js"
 import {
   acquirePreviewSlot,
   registerPreviewRenderer,
@@ -58,8 +59,8 @@ export const HeroModelPreview = ({hero, stage = false}) => {
         }
       }
 
-      const width = stage ? 300 : 150
-      const height = stage ? 340 : 185
+      const fallbackWidth = stage ? 300 : 150
+      const fallbackHeight = stage ? 340 : 185
       let renderer
       try {
         renderer = new THREE.WebGLRenderer({
@@ -84,12 +85,48 @@ export const HeroModelPreview = ({hero, stage = false}) => {
 
       registerPreviewRenderer(renderer)
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, stage ? 2 : 1.35))
-      renderer.setSize(width, height, false)
       renderer.outputColorSpace = THREE.SRGBColorSpace
       renderer.shadowMap.enabled = stage
 
+      let width = fallbackWidth
+      let height = fallbackHeight
+      const readCanvasSize = () => {
+        width = Math.max(1, canvas.clientWidth || fallbackWidth)
+        height = Math.max(1, canvas.clientHeight || fallbackHeight)
+        renderer.setSize(width, height, false)
+      }
+      readCanvasSize()
+
       const scene = new THREE.Scene()
-      const camera = new THREE.OrthographicCamera(-2, 2, 2.35, -2.35, .1, 30)
+      let model = new THREE.Group()
+      let orientationOffset = 0
+      let animation = null
+      let runtimeDisposed = false
+      let frame
+      const cameraBounds = getPreviewCameraBounds({width, height, stage})
+      const camera = new THREE.OrthographicCamera(
+        cameraBounds.left,
+        cameraBounds.right,
+        cameraBounds.top,
+        cameraBounds.bottom,
+        .1,
+        30,
+      )
+      const resizePreview = () => {
+        readCanvasSize()
+        const nextBounds = getPreviewCameraBounds({width, height, stage})
+        Object.assign(camera, nextBounds)
+        if (stage && model.children.length) {
+          model.updateMatrixWorld(true)
+          const fitBounds = getPreviewFitBounds({camera, object: model, width, height})
+          if (fitBounds) Object.assign(camera, fitBounds)
+        }
+        camera.updateProjectionMatrix()
+      }
+      const resizeObserver = typeof ResizeObserver === "function"
+        ? new ResizeObserver(resizePreview)
+        : null
+      resizeObserver?.observe(canvas)
       camera.position.set(4.5, 3.8, 7.2)
       camera.lookAt(0, 1.25, 0)
       scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x41344f, 2.5))
@@ -101,11 +138,6 @@ export const HeroModelPreview = ({hero, stage = false}) => {
       rim.position.set(4, 3, -4)
       scene.add(rim)
 
-      let model = new THREE.Group()
-      let orientationOffset = 0
-      let animation = null
-      let runtimeDisposed = false
-      let frame
       scene.add(model)
 
       disposeRuntime = () => {
@@ -114,6 +146,7 @@ export const HeroModelPreview = ({hero, stage = false}) => {
         cancelAnimationFrame(frame)
         animation?.dispose()
         unregisterPreviewRenderer(renderer)
+        resizeObserver?.disconnect()
         renderer.setAnimationLoop(null)
         renderer.dispose()
         renderer.forceContextLoss()
@@ -139,7 +172,26 @@ export const HeroModelPreview = ({hero, stage = false}) => {
           orientationOffset = instance.asset?.rotationOffset || 0
           model.scale.multiplyScalar(stage ? 1.28 : 1.02)
           model.position.x += instance.asset.previewOffsetX || 0
+          if (stage && instance.asset.previewCompanionScale) {
+            const companion = model.getObjectByName("HeroAttachment_Cloud")
+            companion?.scale.multiplyScalar(instance.asset.previewCompanionScale)
+            if (companion && instance.asset.previewCompanionOffsetX) {
+              companion.position.x += instance.asset.previewCompanionOffsetX
+            }
+            if (companion && instance.asset.previewCompanionOffsetY) {
+              companion.position.y += instance.asset.previewCompanionOffsetY
+            }
+          }
           scene.add(model)
+          if (stage) {
+            model.rotation.y = orientationOffset + .42
+            model.updateMatrixWorld(true)
+            const fitBounds = getPreviewFitBounds({camera, object: model, width, height})
+            if (fitBounds) {
+              Object.assign(camera, fitBounds)
+              camera.updateProjectionMatrix()
+            }
+          }
           animation = new GLBHeroController(model, instance.animations, instance.asset.clips, {
             heroName: hero.name,
             spawnOnLoad: false,

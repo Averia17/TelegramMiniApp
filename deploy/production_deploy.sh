@@ -44,21 +44,30 @@ done
   echo "--eta-minutes must be a positive integer" >&2
   exit 2
 }
+REPO_COMMIT="$(git rev-parse --verify HEAD)"
+
+python - "$MANIFEST" "$TAG" "$ROOT" "$REPO_COMMIT" <<'PY'
+import json
+import sys
+from hmac import compare_digest
+from pathlib import Path
+
+from deploy.create_manifest import config_sha256
+from deploy.manifest import validate_release_manifest
+
+manifest = json.load(open(sys.argv[1], encoding="utf-8"))
+validate_release_manifest(manifest)
+if manifest.get("tag") != sys.argv[2]:
+    raise SystemExit("manifest tag does not match deployment tag")
+if not compare_digest(manifest["config_sha256"], config_sha256(Path(sys.argv[3]))):
+    raise SystemExit("release manifest production configuration hash mismatch")
+if not compare_digest(manifest["commit"], sys.argv[4]):
+    raise SystemExit("manifest commit does not match checked-out HEAD")
+PY
 
 mkdir -p "$RELEASE_ROOT/releases" "$RELEASE_ROOT/current"
 exec 9>"$RELEASE_ROOT/deploy.lock"
 flock -n 9 || { echo "another production deployment is running" >&2; exit 3; }
-
-python - "$MANIFEST" "$TAG" <<'PY'
-import json
-import sys
-
-manifest = json.load(open(sys.argv[1], encoding="utf-8"))
-if manifest.get("tag") != sys.argv[2]:
-    raise SystemExit("manifest tag does not match deployment tag")
-if manifest.get("schema_version") != 1:
-    raise SystemExit("unsupported release manifest schema")
-PY
 
 PREVIOUS_MANIFEST="$RELEASE_ROOT/current/manifest.json"
 TARGET_DIR="$RELEASE_ROOT/releases/$TAG"
@@ -187,6 +196,10 @@ backup_database() {
   echo "creating backup for $service"
   "${COMPOSE[@]}" exec -T "$service" sh -c 'pg_dump --format=custom --no-owner --no-acl -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$backup_dir/$filename"
   [[ -s "$backup_dir/$filename" ]] || { echo "empty database backup: $service" >&2; return 1; }
+  if ! "${COMPOSE[@]}" exec -T "$service" sh -c 'pg_restore --list' < "$backup_dir/$filename" >/dev/null; then
+    echo "unreadable database backup: $service" >&2
+    return 1
+  fi
   sha256sum "$backup_dir/$filename" > "$backup_dir/$filename.sha256"
 }
 

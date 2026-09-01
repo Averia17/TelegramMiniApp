@@ -1,10 +1,156 @@
 import unittest
 
 from deploy.create_manifest import create_manifest
-from deploy.manifest import build_release_manifest, required_build_units
+from deploy.manifest import (
+    build_release_manifest,
+    required_build_units,
+    validate_release_manifest,
+)
 
 
 class ReleaseManifestTests(unittest.TestCase):
+    def test_validate_release_manifest_accepts_complete_immutable_manifest(self):
+        manifest = {
+            "schema_version": 1,
+            "tag": "v0.0.2",
+            "commit": "abc123",
+            "config_sha256": "a" * 64,
+            "build_units": [],
+            "recreate_units": [],
+            "full_reconcile": False,
+            "images": {
+                unit: f"ghcr.io/example/{unit}@sha256:{'0' * 64}"
+                for unit in (
+                    "account",
+                    "battle",
+                    "bot",
+                    "shop",
+                    "leaderboard",
+                    "party",
+                    "news",
+                    "frontend",
+                    "nginx",
+                )
+            },
+        }
+
+        validate_release_manifest(manifest)
+
+    def test_validate_release_manifest_rejects_mutable_image_reference(self):
+        manifest = {
+            "schema_version": 1,
+            "tag": "v0.0.2",
+            "commit": "abc123",
+            "config_sha256": "a" * 64,
+            "build_units": [],
+            "recreate_units": [],
+            "full_reconcile": False,
+            "images": {
+                unit: f"ghcr.io/example/{unit}@sha256:{'0' * 64}"
+                for unit in (
+                    "account",
+                    "battle",
+                    "bot",
+                    "shop",
+                    "leaderboard",
+                    "party",
+                    "news",
+                    "frontend",
+                    "nginx",
+                )
+            },
+        }
+        manifest["images"]["battle"] = "ghcr.io/example/battle:latest"
+
+        with self.assertRaisesRegex(ValueError, "immutable image reference"):
+            validate_release_manifest(manifest)
+
+    def test_validate_release_manifest_rejects_stateful_recreate_unit(self):
+        manifest = {
+            "schema_version": 1,
+            "tag": "v0.0.2",
+            "commit": "abc123",
+            "config_sha256": "a" * 64,
+            "build_units": [],
+            "recreate_units": ["db"],
+            "full_reconcile": False,
+            "images": {
+                unit: f"ghcr.io/example/{unit}@sha256:{'0' * 64}"
+                for unit in (
+                    "account",
+                    "battle",
+                    "bot",
+                    "shop",
+                    "leaderboard",
+                    "party",
+                    "news",
+                    "frontend",
+                    "nginx",
+                )
+            },
+        }
+
+        with self.assertRaisesRegex(ValueError, "recreate_units"):
+            validate_release_manifest(manifest)
+
+    def test_validate_release_manifest_requires_built_units_to_be_recreated(self):
+        manifest = {
+            "schema_version": 1,
+            "tag": "v0.0.2",
+            "commit": "abc123",
+            "config_sha256": "a" * 64,
+            "build_units": ["battle"],
+            "recreate_units": [],
+            "full_reconcile": False,
+            "images": {
+                unit: f"ghcr.io/example/{unit}@sha256:{'0' * 64}"
+                for unit in (
+                    "account",
+                    "battle",
+                    "bot",
+                    "shop",
+                    "leaderboard",
+                    "party",
+                    "news",
+                    "frontend",
+                    "nginx",
+                )
+            },
+        }
+
+        with self.assertRaisesRegex(ValueError, "built units must be recreated"):
+            validate_release_manifest(manifest)
+
+    def test_validate_release_manifest_requires_all_runtime_units_for_full_reconcile(
+        self,
+    ):
+        manifest = {
+            "schema_version": 1,
+            "tag": "v0.0.2",
+            "commit": "abc123",
+            "config_sha256": "a" * 64,
+            "build_units": [],
+            "recreate_units": ["battle"],
+            "full_reconcile": True,
+            "images": {
+                unit: f"ghcr.io/example/{unit}@sha256:{'0' * 64}"
+                for unit in (
+                    "account",
+                    "battle",
+                    "bot",
+                    "shop",
+                    "leaderboard",
+                    "party",
+                    "news",
+                    "frontend",
+                    "nginx",
+                )
+            },
+        }
+
+        with self.assertRaisesRegex(ValueError, "full_reconcile"):
+            validate_release_manifest(manifest)
+
     def test_first_release_builds_every_application_image(self):
         plan = {"build": [], "recreate": [], "full_reconcile": False}
 
@@ -67,15 +213,18 @@ class ReleaseManifestTests(unittest.TestCase):
         previous = {
             "tag": "v0.0.1",
             "images": {
-                "account": "sha256:account-old",
-                "battle": "sha256:battle-old",
-                "bot": "sha256:bot-old",
-                "shop": "sha256:shop-old",
-                "leaderboard": "sha256:leaderboard-old",
-                "party": "sha256:party-old",
-                "news": "sha256:news-old",
-                "frontend": "sha256:frontend-old",
-                "nginx": "sha256:nginx-old",
+                unit: f"registry/{unit}@sha256:{'0' * 64}"
+                for unit in (
+                    "account",
+                    "battle",
+                    "bot",
+                    "shop",
+                    "leaderboard",
+                    "party",
+                    "news",
+                    "frontend",
+                    "nginx",
+                )
             },
         }
 
@@ -84,19 +233,24 @@ class ReleaseManifestTests(unittest.TestCase):
             commit="abc123",
             plan=plan,
             previous_manifest=previous,
-            built_images={"battle": "sha256:battle-new"},
+            built_images={"battle": f"registry/battle@sha256:{'1' * 64}"},
+            config_sha256="a" * 64,
         )
 
         self.assertEqual(manifest["previous_tag"], "v0.0.1")
-        self.assertEqual(manifest["images"]["account"], "sha256:account-old")
-        self.assertEqual(manifest["images"]["battle"], "sha256:battle-new")
+        self.assertEqual(
+            manifest["images"]["account"], f"registry/account@sha256:{'0' * 64}"
+        )
+        self.assertEqual(
+            manifest["images"]["battle"], f"registry/battle@sha256:{'1' * 64}"
+        )
         self.assertEqual(manifest["tag"], "v0.0.2")
 
     def test_create_manifest_records_digest_refs_and_config_hash(self):
         previous = {
             "tag": "v0.0.1",
             "images": {
-                unit: f"ghcr.io/example/{unit}@sha256:old"
+                unit: f"ghcr.io/example/{unit}@sha256:{'0' * 64}"
                 for unit in (
                     "account",
                     "battle",
@@ -114,14 +268,16 @@ class ReleaseManifestTests(unittest.TestCase):
             tag="v0.0.2",
             commit="abc123",
             plan={"build": ["battle"], "recreate": ["battle"]},
-            built_images={"battle": "ghcr.io/example/battle@sha256:new"},
+            built_images={"battle": f"ghcr.io/example/battle@sha256:{'1' * 64}"},
             previous_manifest=previous,
         )
         self.assertEqual(
-            result["images"]["battle"], "ghcr.io/example/battle@sha256:new"
+            result["images"]["battle"],
+            f"ghcr.io/example/battle@sha256:{'1' * 64}",
         )
         self.assertEqual(
-            result["images"]["account"], "ghcr.io/example/account@sha256:old"
+            result["images"]["account"],
+            f"ghcr.io/example/account@sha256:{'0' * 64}",
         )
         self.assertEqual(len(result["config_sha256"]), 64)
 

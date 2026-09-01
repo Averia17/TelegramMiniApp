@@ -4,6 +4,7 @@ import * as THREE from "three"
 
 import {
   collectNewCombatHits,
+  getCombatHitProfile,
   isConfirmedHitEvent,
   resolveCombatTargetPosition,
 } from "../src/components/BattleGame/rendering/combat/combatFeedback.js"
@@ -73,4 +74,17 @@ test("a hit is retried when its target is absent from a compact snapshot", () =>
   assert.equal(renderer.sync({combatEvents: [event], players: {enemy: {x: 20, y: 30}}}).length, 1)
   assert.equal(root.children.length, 1)
   renderer.dispose()
+})
+
+test("combat hit profile preserves hit and defeat timing", () => {
+  assert.deepEqual(getCombatHitProfile({reaction: "hit", hitStopMs: 55}), {
+    reaction: "hit",
+    burstScale: 1,
+    hitStopSeconds: .055,
+  })
+  assert.deepEqual(getCombatHitProfile({reaction: "defeat", hitStopMs: 110}), {
+    reaction: "defeat",
+    burstScale: 1.18,
+    hitStopSeconds: .11,
+  })
 })

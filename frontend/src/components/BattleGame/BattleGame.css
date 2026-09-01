@@ -438,6 +438,13 @@
 .mini-base { position: absolute; z-index: 2; width: 11px; height: 11px; transform: translate(-50%,-50%); border: 2px solid #fff; border-radius: 3px; background: #ff5262; box-shadow: 0 0 8px rgba(255,82,98,.85); }
 .mini-base--own { border-color: #ffe36a; background: #49caff; box-shadow: 0 0 0 2px rgba(255,227,106,.3), 0 0 10px rgba(73,202,255,.9); }
 .mini-base.is-destroyed { opacity: .42; filter: grayscale(1); }
+.mini-camp-cluster { position: absolute; z-index: 2; width: 1px; height: 1px; transform: translate(-50%,-50%); }
+.mini-camp-territory { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); min-width: 7px; min-height: 7px; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(255,255,255,.035); }
+.mini-camp { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; transform: translate(-50%,-50%) rotate(45deg); border: 1px solid #fff4ae; background: #7e5ac4; box-shadow: 0 0 6px rgba(255,220,104,.7); }
+.mini-camp-cluster--ash_hound .mini-camp { background: #e86b36; border-color: #ffd0a1; }
+.mini-camp-cluster--root_guardian .mini-camp { background: #58a866; border-color: #c8ffae; }
+.mini-camp-cluster.is-danger .mini-camp { animation: mini-camp-danger .48s ease-in-out infinite alternate; box-shadow: 0 0 0 2px rgba(255,92,80,.3),0 0 10px #ff5e5e; }
+@keyframes mini-camp-danger { to { transform: translate(-50%,-50%) rotate(45deg) scale(1.35); } }
 .mini-player { position: absolute; width: 7px; height: 7px; transform: translate(-50%,-50%); border: 1px solid #fff; border-radius: 50%; background: #ff4e57; box-shadow: 0 0 5px #ff4e57; }
 .mini-player--ally { background: #49d9ff; box-shadow: 0 0 7px #49d9ff; }
 .mini-player--me { z-index: 2; width: 9px; height: 9px; background: #65eeff; box-shadow: 0 0 8px #65eeff; }
@@ -741,6 +748,175 @@
       max-height: clamp(96px, 20vh, 152px);
     }
   }
+}
+
+/* Team portraits: one compact, Dota-like roster strip anchored below the
+   match topbar. The member cells carry their own death state and countdown. */
+.battle-game--team {
+  --battle-team-score-height: 62px;
+}
+
+.battle-game--team .team-battle-hud {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  width: min(520px, calc(100% - var(--battle-safe-left) - var(--battle-safe-right) - 20px));
+  padding: 4px;
+  border: 1px solid rgba(255,255,255,.3);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(16,24,70,.88), rgba(8,13,43,.8));
+  box-shadow: 0 5px 18px rgba(3,7,28,.25), inset 0 1px rgba(255,255,255,.1);
+}
+
+.battle-game--team .team-battle-hud__team {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.battle-game--team .team-battle-hud__team + .team-battle-hud__team {
+  border-left: 1px solid rgba(255,255,255,.16);
+  text-align: right;
+}
+
+.team-battle-hud__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  min-width: 0;
+}
+
+.team-battle-hud__header > strong {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  color: #d5e2ff;
+  font: 900 7px/1 system-ui, sans-serif;
+  letter-spacing: .45px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-battle-hud__team.is-enemy .team-battle-hud__header > strong { color: #ffd2d2; }
+
+.team-battle-hud__stats {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 2px;
+  margin: 0;
+  color: rgba(255,255,255,.56);
+  white-space: nowrap;
+}
+
+.team-battle-hud__stats small { font: 800 6px/1 system-ui, sans-serif; }
+.team-battle-hud__stats em { font-size: 7px; font-style: normal; opacity: .5; }
+.team-battle-hud__value { color: #fff5ae; font: 900 11px/1 Impact, Haettenschweiler, system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.team-battle-hud__team.is-enemy .team-battle-hud__value { color: #ffd3d3; }
+
+.team-battle-hud__members {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.team-battle-hud__team + .team-battle-hud__team .team-battle-hud__members { justify-content: flex-end; }
+
+.team-battle-hud__member {
+  position: relative;
+  flex: 0 1 40px;
+  width: 40px;
+  min-width: 26px;
+  max-width: 40px;
+  aspect-ratio: 1;
+  overflow: visible;
+  border: 2px solid #80d5ff;
+  border-radius: 11px;
+  background: #18265f;
+  box-shadow: 0 2px 5px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.2);
+}
+
+.team-battle-hud__team.is-enemy .team-battle-hud__member { border-color: #ff8b93; }
+
+.team-battle-hud__avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  object-fit: cover;
+  object-position: center center;
+  background: #263875;
+}
+
+.team-battle-hud__avatar--fallback {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font: 900 14px/1 system-ui, sans-serif;
+}
+
+.team-battle-hud__member.is-dead .team-battle-hud__avatar { filter: grayscale(1) brightness(.42); }
+
+.team-battle-hud__respawn {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font: 900 14px/1 Impact, Haettenschweiler, system-ui, sans-serif;
+  text-shadow: 0 2px 3px #050817;
+}
+
+.team-battle-hud__member-state {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border: 1px solid #07102e;
+  border-radius: 50%;
+  color: #fff;
+  background: #2cc779;
+  font: 900 10px/1 system-ui, sans-serif;
+}
+
+.team-battle-hud__member.is-dead .team-battle-hud__member-state { background: #f04466; }
+
+@media (pointer: coarse), (max-width: 700px) {
+  .battle-game--team { --battle-team-score-height: 59px; }
+
+  .battle-game--team .team-battle-hud {
+    width: min(calc(100% - var(--battle-safe-left) - var(--battle-safe-right) - 20px), 360px);
+  }
+
+  .battle-game--team .team-battle-hud__team { padding-inline: 3px; }
+  .team-battle-hud__member { width: 34px; max-width: 34px; border-radius: 9px; }
+  .team-battle-hud__avatar { border-radius: 6px; }
+  .team-battle-hud__header > strong { font-size: 6px; }
+  .team-battle-hud__value { font-size: 10px; }
+  .team-battle-hud__stats small { font-size: 5px; }
+  .team-battle-hud__respawn { font-size: 12px; }
+}
+
+@media (max-height: 520px) {
+  .battle-game--team { --battle-team-score-height: 51px; }
+  .team-battle-hud__member { width: 28px; max-width: 28px; border-width: 1px; border-radius: 7px; }
+  .team-battle-hud__avatar { border-radius: 5px; }
+  .team-battle-hud__member-state { width: 10px; height: 10px; right: -3px; bottom: -3px; font-size: 8px; }
+  .team-battle-hud__respawn { font-size: 10px; }
 }
 
 /* The short landscape center has room for two compact, side-by-side notices
@@ -1173,4 +1349,107 @@
     right: calc(var(--battle-safe-right) + var(--battle-control-stick-size) + var(--battle-control-gap) + var(--battle-control-gap));
     bottom: calc(var(--battle-safe-bottom) + var(--battle-control-gap) + var(--battle-ability-main-size) + var(--battle-control-gap));
   }
+}
+
+/* Team HUD: one compact information surface, with objective health inside each team half. */
+.battle-game--team {
+  --battle-team-topbar-stack: 50px;
+  --battle-team-score-height: 96px;
+  --battle-team-objective-height: 0px;
+  --team-objective-top: var(--team-score-top);
+  --team-info-top: calc(var(--team-score-top) + var(--battle-team-score-height) + var(--battle-team-stack-gap));
+}
+
+.battle-game--team .battle-topbar__center--team { display: none; }
+.battle-game--team .team-objective-hud { display: none; }
+
+.battle-game--team .team-battle-hud {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px minmax(0, 1fr);
+  align-items: stretch;
+  width: min(360px, calc(100% - var(--battle-safe-left) - var(--battle-safe-right) - 12px));
+  min-height: 0;
+  padding: 4px;
+  gap: 0;
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 13px;
+  background: linear-gradient(180deg, rgba(16,24,70,.94), rgba(8,13,43,.88));
+  box-shadow: 0 4px 14px rgba(3,7,28,.26), inset 0 1px rgba(255,255,255,.1);
+}
+
+.battle-game--team .team-battle-hud__team {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.battle-game--team .team-battle-hud__team:first-child { border-right: 1px solid rgba(255,255,255,.16); }
+.battle-game--team .team-battle-hud__timer { display: grid; min-width: 0; place-items: center; padding-inline: 3px; border-inline: 1px solid rgba(255,255,255,.1); }
+.battle-game--team .team-battle-hud__timer + .team-battle-hud__team { border-left: 0; text-align: right; }
+.battle-game--team .team-battle-hud__timer + .team-battle-hud__team .team-battle-hud__members { justify-content: flex-end; }
+
+.battle-game--team .team-battle-hud__header { min-height: 14px; gap: 5px; }
+.battle-game--team .team-battle-hud__header > strong { font-size: 7px; letter-spacing: .4px; }
+.battle-game--team .team-battle-hud__team.is-enemy .team-battle-hud__header { flex-direction: row-reverse; }
+.battle-game--team .team-battle-hud__kills { display: inline-flex; flex: 0 0 auto; align-items: baseline; gap: 3px; color: rgba(255,255,255,.62); white-space: nowrap; }
+.battle-game--team .team-battle-hud__kills b { color: #fff1a0; font: 900 16px/1 Impact, Haettenschweiler, system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.battle-game--team .team-battle-hud__team.is-enemy .team-battle-hud__kills b { color: #ffc5c5; }
+
+.battle-game--team .team-battle-hud__members { width: 100%; gap: 3px; }
+.battle-game--team .team-battle-hud__member { box-sizing: border-box; flex: 1 1 0; width: auto; min-width: 0; max-width: none; border-width: 1px; border-radius: 8px; }
+.battle-game--team .team-battle-hud__avatar { border-radius: 6px; }
+.battle-game--team .team-battle-hud__respawn { font-size: 12px; }
+.battle-game--team .team-battle-hud__member-state { right: -4px; bottom: -4px; width: 11px; height: 11px; font-size: 8px; }
+
+.battle-game--team .team-battle-hud__objectives { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; min-width: 0; }
+.battle-game--team .team-battle-hud__objective { display: grid; grid-template-columns: auto auto minmax(14px, 1fr) auto; align-items: center; gap: 3px; min-width: 0; color: rgba(255,255,255,.7); }
+.battle-game--team .team-battle-hud__objective-icon { color: #7bd9ff; font-size: 8px; line-height: 1; }
+.battle-game--team .team-battle-hud__team.is-enemy .team-battle-hud__objective-icon { color: #ff8b93; }
+.battle-game--team .team-battle-hud__objective-label { overflow: hidden; color: rgba(255,255,255,.62); font: 900 5px/1 system-ui, sans-serif; letter-spacing: .15px; text-overflow: ellipsis; white-space: nowrap; }
+.battle-game--team .team-battle-hud__objective i { display: block; min-width: 0; height: 4px; overflow: hidden; border-radius: 4px; background: rgba(255,255,255,.16); }
+.battle-game--team .team-battle-hud__objective i em { display: block; height: 100%; border-radius: inherit; background: #63d7ff; transition: width .25s ease; }
+.battle-game--team .team-battle-hud__team.is-enemy .team-battle-hud__objective i em { background: #ff737d; }
+.battle-game--team .team-battle-hud__objective b { min-width: 20px; color: #dff9ff; font: 900 7px/1 system-ui, sans-serif; text-align: right; font-variant-numeric: tabular-nums; }
+.battle-game--team .team-battle-hud__team.is-enemy .team-battle-hud__objective b { color: #ffd4d4; }
+.battle-game--team .team-battle-hud__objective.is-destroyed { opacity: .44; }
+.battle-game--team .team-battle-hud__objective.is-protected b { color: #ffe696; }
+
+.battle-game--team .team-battle-hud__timer .battle-match-timer { min-width: 0; gap: 3px; padding: 2px 4px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.battle-game--team .team-battle-hud__timer .battle-match-timer span { font-size: 6px; letter-spacing: .35px; }
+.battle-game--team .team-battle-hud__timer .battle-match-timer strong { min-width: 30px; font-size: 14px; }
+
+@media (pointer: coarse), (max-width: 700px) {
+  .battle-game--team { --battle-team-topbar-stack: 48px; --battle-team-score-height: 100px; }
+  .battle-game--team .team-battle-hud { grid-template-columns: minmax(0, 1fr) 52px minmax(0, 1fr); width: min(calc(100% - var(--battle-safe-left) - var(--battle-safe-right) - 12px), 400px); padding: 4px; border-radius: 11px; }
+  .battle-game--team .team-battle-hud__team { gap: 4px; padding: 3px 5px; }
+  .battle-game--team .team-battle-hud__header { min-height: 15px; gap: 4px; }
+  .battle-game--team .team-battle-hud__header > strong { flex: 1 1 auto; font-size: 7px; }
+  .battle-game--team .team-battle-hud__kills b { font-size: 14px; }
+  .battle-game--team .team-battle-hud__member { flex-basis: 0; width: auto; min-width: 0; max-width: none; border-radius: 7px; }
+  .battle-game--team .team-battle-hud__avatar { border-radius: 5px; }
+  .battle-game--team .team-battle-hud__respawn { font-size: 10px; }
+  .battle-game--team .team-battle-hud__objectives { gap: 4px; }
+  .battle-game--team .team-battle-hud__objective { grid-template-columns: auto minmax(14px, 1fr) auto; gap: 3px; }
+  .battle-game--team .team-battle-hud__objective-icon { font-size: 8px; }
+  .battle-game--team .team-battle-hud__objective-label { display: none; }
+  .battle-game--team .team-battle-hud__objective i { height: 4px; }
+  .battle-game--team .team-battle-hud__objective b { min-width: 18px; font-size: 7px; }
+  .battle-game--team .team-battle-hud__timer .battle-match-timer { gap: 0; padding-inline: 1px; }
+  .battle-game--team .team-battle-hud__timer .battle-match-timer span { display: none; }
+  .battle-game--team .team-battle-hud__timer .battle-match-timer strong { min-width: 27px; font-size: 12px; }
+}
+
+@media (max-height: 520px) {
+  .battle-game--team { --battle-team-topbar-stack: 44px; --battle-team-score-height: 68px; }
+  .battle-game--team .team-battle-hud__member { flex-basis: 24px; width: 24px; min-width: 24px; max-width: 24px; border-radius: 6px; }
+  .battle-game--team .team-battle-hud__objective-label { display: none; }
 }

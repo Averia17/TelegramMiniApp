@@ -61,6 +61,18 @@ compatibility rules so an application-image rollback never requires destructive
 schema rollback. The deployer never deletes database, Redis, Kafka, party,
 Prometheus, Grafana, or frontend volumes.
 
+Before creating release state or draining traffic, the deployer validates the
+manifest's schema, complete immutable `@sha256:` application image references,
+allowed stateless recreate units, and production Compose configuration hash.
+Each PostgreSQL custom-format backup is also opened with `pg_restore --list`
+before migrations are allowed to start.
+
+The remote release workflow also verifies that the pushed tag resolves to the
+manifest commit on both staging and production hosts. A GitHub release's
+manifest is immutable: rerunning the workflow may reuse it only when the
+generated manifest matches byte-for-byte; it cannot overwrite an existing
+manifest for the same tag.
+
 On a successful smoke check, the deployer resumes battle traffic and publishes
 an idempotent release article through the internal News endpoint. The frontend
 News tab reads only the public `GET /api/news` route. If News is temporarily

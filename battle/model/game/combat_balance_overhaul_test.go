@@ -175,6 +175,8 @@ func TestCombatEffectPhaseContract(t *testing.T) {
 		"lumi_roots":            EffectPhaseActive,
 		"lumi_seedburst":        EffectPhaseImpact,
 		"zeus_strike_warning":   EffectPhaseTelegraph,
+		"kaze_dash_telegraph":   EffectPhaseTelegraph,
+		"mico_vortex_telegraph": EffectPhaseTelegraph,
 		"katty_paint_spray":     EffectPhaseCast,
 		"needle_spores":         EffectPhaseActive,
 		"mandy_super_wave":      EffectPhaseActive,

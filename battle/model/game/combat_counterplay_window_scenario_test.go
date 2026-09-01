@@ -58,6 +58,13 @@ func runCounterplayWindowTrial(t *testing.T, trial counterplayWindowTrial) Comba
 		if len(state.PendingMandySupers) > 0 {
 			windowMs = state.PendingMandySupers[0].TriggerAt - castAt
 		}
+	case "Wukong Mico":
+		for _, zone := range state.HeroZones {
+			if zone != nil && zone.Owner == attacker.PlayerId {
+				windowMs = zone.TriggerAt - zone.CreatedAt
+				break
+			}
+		}
 	case "Brock Zeus":
 		if len(state.LightningStrikes) > 0 {
 			windowMs = state.LightningStrikes[0].TriggerAt - castAt
@@ -103,7 +110,7 @@ func TestScenarioPackCounterplayWindowsAreExplicitAndReplayable(t *testing.T) {
 		{hero: "Fairy Mina", targetDistance: 260, wantWindowMs: 0, feedbackKind: "mina_healing_aura"},
 		{hero: "Brock Zeus", targetDistance: 260, wantWindowMs: 700, telegraphKind: "zeus_strike_warning", feedbackKind: "zeus_storm_target"},
 		{hero: "Kaze", targetDistance: 220, wantWindowMs: 0, feedbackKind: "kaze_dash"},
-		{hero: "Wukong Mico", targetDistance: 100, wantWindowMs: 0, feedbackKind: "mico_staff_spin"},
+		{hero: "Wukong Mico", targetDistance: 100, wantWindowMs: 250, telegraphKind: "mico_vortex_telegraph", feedbackKind: "mico_vortex_telegraph"},
 		{hero: "Persephone Lumi", targetDistance: 220, wantWindowMs: 600, feedbackKind: "lumi_roots"},
 		{hero: "Katty", targetDistance: 80, wantWindowMs: 500, feedbackKind: "katty_paint_puddle"},
 	}

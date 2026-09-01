@@ -30,6 +30,20 @@ func TestNewMapJSONPublishesCanonicalIdentityAndRevision(t *testing.T) {
 	}
 }
 
+func TestNewMapJSONPublishesAuthoredMonsterCamps(t *testing.T) {
+	canonical := gamemap.GenerateTeamBattle(gamemap.CanonicalTeamBattleSeed)
+	got := NewMapJSON("team-battle", canonical, 1, false)
+	if len(got.MonsterCamps) != len(canonical.MonsterSpawns) || len(got.MonsterCamps) < 6 {
+		t.Fatalf("monster camps=%d, want %d authored camps", len(got.MonsterCamps), len(canonical.MonsterSpawns))
+	}
+	for index, camp := range got.MonsterCamps {
+		spawn := canonical.MonsterSpawns[index]
+		if camp.ID != spawn.ID || camp.Kind != string(spawn.Kind) || camp.X != spawn.X || camp.Y != spawn.Y || camp.TerritoryRadius != spawn.TerritoryRadius {
+			t.Fatalf("camp %d=%#v, want authored %#v", index, camp, spawn)
+		}
+	}
+}
+
 func TestNewMapJSONPublishesEditableWallRotation(t *testing.T) {
 	canonical := &gamemap.GameMap{Collisions: []*geometry.WallTile{{
 		MinX: 20, MinY: 40, MaxX: 60, MaxY: 80, Type: "city_object", Rotation: math.Pi / 2, LinkedFeatureID: "building-a",

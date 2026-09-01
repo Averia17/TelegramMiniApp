@@ -143,6 +143,7 @@ type GameState struct {
 	DelayedEffects          []*DelayedBattleEffect
 	ScheduledShots          []*ScheduledShot
 	DamageZones             []*DamageZone
+	MonsterZones            []*MonsterZone
 	PendingMandySupers      []*PendingMandySuper
 	HeroZones               []*HeroZone
 	KattyPaintStacks        map[string]map[string]int
@@ -166,6 +167,7 @@ type GameState struct {
 	IslandVoiceKillClaimed  map[string]bool
 	CombatEvents            []CombatEvent
 	NextCombatEventID       uint64
+	NextCombatEffectID      uint64
 	abilityResolutions      map[string]*abilityResolution
 	activeCommandID         string
 	activeSourceID          string
@@ -197,11 +199,14 @@ type GameState struct {
 // camp. The id is preserved across cycles so snapshots and telemetry can
 // correlate a camp's contest and reward history.
 type MonsterRespawn struct {
-	RespawnAt int64
-	X, Y      float64
-	Radius    float64
-	Tier      int
-	MaxLives  int
+	RespawnAt       int64
+	X, Y            float64
+	Radius          float64
+	Kind            monster.MonsterKind
+	CampID          string
+	TerritoryRadius float64
+	Tier            int
+	MaxLives        int
 }
 
 // BotAIMetrics are match-local counters. They are deliberately kept out of
@@ -365,8 +370,14 @@ type DelayedBattleEffect struct {
 }
 
 type BattleEffect struct {
+	ID                                        uint64
 	Kind                                      string
 	Phase                                     CombatEffectPhase
+	CommandID                                 string
+	SourceID                                  string
+	AbilitySlot                               string
+	TargetType                                string
+	TargetID                                  string
 	X, Y, ToX, ToY, Radius, Angle, Range, Arc float64
 	Color                                     string
 	Damage                                    int

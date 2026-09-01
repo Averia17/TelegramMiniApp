@@ -7,6 +7,8 @@ import {MapRenderer} from "../map/MapRenderer"
 import {AimRenderer} from "../combat/AimRenderer"
 import {EffectRenderer} from "../combat/EffectRenderer"
 import {CombatFeedbackRenderer} from "../combat/CombatFeedbackRenderer.js"
+import {getCombatHitProfile} from "../combat/combatFeedback.js"
+import {CombatAudio} from "../combat/combatAudio.js"
 import {createLastContactEffects} from "../combat/lastContactEffects.js"
 import {ProjectileRenderer} from "../combat/ProjectileRenderer"
 import {CameraRig} from "../CameraRig"
@@ -37,12 +39,14 @@ export class ThreeBattleRenderer {
     this.projectiles = new ProjectileRenderer(this.projectileRoot)
     this.effects = new EffectRenderer(this.effectRoot)
     this.combatFeedback = new CombatFeedbackRenderer(this.effectRoot)
+    this.combatAudio = new CombatAudio()
     this.aim = new AimRenderer(this.aimRoot)
     this.state = null
     this.mapState = null
     this.localPlayerId = null
     this.mapRenderer = new MapRenderer(this.mapRoot)
     this.time = 0
+    this.hitStopRemaining = 0
     this.lastRenderAt = performance.now()
     this.resize(window.innerWidth, window.innerHeight)
   }
@@ -161,7 +165,10 @@ export class ThreeBattleRenderer {
     newHits.forEach(event => {
       const targetIsLocal = String(event.targetId) === this.localPlayerId
       const sourceIsLocal = String(event.sourceId) === this.localPlayerId
+      this.players.get(String(event.targetId))?.triggerHitReaction?.(event)
+      this.combatAudio.playCombatEvent(event)
       this.cameraRig.addShake(targetIsLocal ? .18 : sourceIsLocal ? .07 : .025)
+      this.hitStopRemaining = Math.max(this.hitStopRemaining, getCombatHitProfile(event).hitStopSeconds)
     })
     recordBattleMetric("renderer.scene_entity_count", active.size + Object.keys(state.monsters || {}).length + (state.bullets || []).length, {
       players: active.size,
@@ -198,22 +205,26 @@ export class ThreeBattleRenderer {
     const now=performance.now()
     const frameInterval = now - this.lastRenderAt
     recordBattleMetric("renderer.frame_interval", frameInterval)
-    const delta=clamp(frameInterval/1000,1/240,.05);this.lastRenderAt=now;this.time+=delta
+    const delta=clamp(frameInterval/1000,1/240,.05);this.lastRenderAt=now
+    const hitStopActive = this.hitStopRemaining > 0
+    const visualDelta = hitStopActive ? 0 : delta
+    this.hitStopRemaining = Math.max(0, this.hitStopRemaining - delta)
+    this.time += visualDelta
     const sceneUpdateStartedAt = performance.now()
     const walls=this.state?.map?.walls||[]
-    this.players.forEach((view,id)=>view.update(delta,this.time,(id===this.localPlayerId||Boolean(this.state?.players?.[id]?.team&&this.state.players[id].team===this.state?.players?.[this.localPlayerId]?.team))&&isInsideBush(view.state,walls)))
+    this.players.forEach((view,id)=>view.update(visualDelta,this.time,(id===this.localPlayerId||Boolean(this.state?.players?.[id]?.team&&this.state.players[id].team===this.state?.players?.[this.localPlayerId]?.team))&&isInsideBush(view.state,walls)))
     removeFinishedDeathViews(this.players, this.actorRoot)
     const local=this.players.get(this.localPlayerId)
     // Map focus is updated on snapshot/state boundaries; procedural props do
     // not trigger asset work from inside RAF.
-    this.mapRenderer.update(delta)
-    this.projectiles.update(delta,this.time)
-    this.monsters.update(delta,this.time)
-    this.pickups.update(delta)
-    this.combatFeedback.update(delta)
-    this.aim.update(this.state?.players?.[this.localPlayerId], delta)
+    this.mapRenderer.update(visualDelta)
+    this.projectiles.update(visualDelta,this.time)
+    this.monsters.update(visualDelta,this.time)
+    this.pickups.update(visualDelta)
+    this.combatFeedback.update(visualDelta)
+    this.aim.update(this.state?.players?.[this.localPlayerId], visualDelta)
     const map=this.state?.map||{width:1024,height:768}
-    this.cameraRig.follow(local, map, delta)
+    this.cameraRig.follow(local, map, visualDelta)
     recordBattleMetric("renderer.scene_update", performance.now() - sceneUpdateStartedAt, {
       players: this.players.size,
       monsters: this.monsters.views.size,
@@ -252,6 +263,7 @@ export class ThreeBattleRenderer {
     this.monsters.dispose()
     this.mapRenderer.dispose()
     this.combatFeedback.dispose()
+    this.combatAudio.dispose()
     this.sceneRoot.dispose()
   }
 }

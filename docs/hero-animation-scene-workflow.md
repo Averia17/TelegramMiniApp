@@ -18,7 +18,9 @@ hit -> hit         death -> death      spawn -> Spawn
 victory -> Victory gadget -> Gadget
 ```
 
-Авторинг и проверки работают непосредственно с master-файлом. В Blender один
+Авторинг выполняется непосредственно в Blender вручную: все ключи, кривые,
+пропы и NLA-треки сохраняются в master-файле. Репозиторий не содержит скриптов,
+которые создают, переписывают или «улучшают» Actions/геометрию. В Blender один
 Action выбирается активным для текущего просмотра, но остальные Actions
 остаются в том же `.blend` и экспортируются вместе с ним.
 
@@ -36,8 +38,8 @@ npm run validate:hero-catalog
 ```
 
 Exporter открывает `<hero>/<hero>.blend`, проверяет canonical Actions и
-экспортирует их через `export_animation_mode="ACTIONS"`. Он не создаёт ключи и
-не сохраняет source `.blend`. Для Brock Zeus Cloud остаётся отдельным runtime
+экспортирует их через `export_animation_mode="ACTIONS"`. Он не создаёт ключи,
+не меняет Actions/геометрию и не сохраняет source `.blend`. Для Brock Zeus Cloud остаётся отдельным runtime
 companion GLB, но находится в том же source master.
 
 Результат — один самодостаточный файл на героя:

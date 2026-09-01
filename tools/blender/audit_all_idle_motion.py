@@ -9,7 +9,9 @@ from pathlib import Path
 
 import bpy
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(
+    os.environ.get("AUDIT_ROOT", os.fspath(Path(__file__).resolve().parents[2]))
+)
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 HEROES = (
     "brock-zeus",
@@ -83,9 +85,8 @@ def audit(hero: str) -> dict:
         bpy.context.view_layer.update()
         for name in names:
             bone = armature.pose.bones[name]
-            basis = bone.matrix_basis
-            rotation = basis.to_quaternion()
-            translation = basis.to_translation()
+            rotation = bone.rotation_euler.to_quaternion()
+            translation = bone.location.copy()
             if name not in initial:
                 initial[name] = (rotation.copy(), translation.copy())
             base_rotation, base_translation = initial[name]
@@ -154,7 +155,11 @@ def audit(hero: str) -> dict:
 
 
 def main() -> None:
-    reports = [audit(hero) for hero in HEROES]
+    requested = os.environ.get("HERO_FILTER")
+    if requested and requested not in HEROES:
+        raise ValueError(f"HERO_FILTER={requested!r} is not a canonical hero")
+    heroes = (requested,) if requested else HEROES
+    reports = [audit(hero) for hero in heroes]
     output = ROOT / "output" / "blender" / "all-hero-idle-motion-audit.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(

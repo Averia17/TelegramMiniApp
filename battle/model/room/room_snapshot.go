@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sort"
 	"time"
 )
 
@@ -31,6 +32,7 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 	now := time.Now().UnixMilli()
 	playerCount := len(r.State.Players)
 	players := make(map[string]game.PlayerJSON, playerCount)
+	teamRoster := make([]game.TeamRosterPlayerJSON, 0, playerCount)
 	for id, p := range r.State.Players {
 		if _, disconnected := r.Disconnected[id]; disconnected {
 			continue
@@ -131,23 +133,45 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			RegenRate:          p.RegenRate,
 			RespawnAt:          p.RespawnAt,
 		}
+		if r.State.Mode == game.ModeTeamDeathmatch {
+			teamRoster = append(teamRoster, game.TeamRosterPlayerJSON{
+				PlayerId:  p.PlayerId,
+				Name:      p.Name,
+				Hero:      p.HeroName,
+				Team:      p.Team,
+				Alive:     p.IsAlive(),
+				Kills:     p.Kills,
+				RespawnAt: p.RespawnAt,
+			})
+		}
 	}
+	sort.Slice(teamRoster, func(i, j int) bool {
+		if teamRoster[i].Team != teamRoster[j].Team {
+			return teamRoster[i].Team < teamRoster[j].Team
+		}
+		return teamRoster[i].PlayerId < teamRoster[j].PlayerId
+	})
 
 	var monsters map[string]game.MonsterJSON
 	if len(r.State.Monsters) > 0 {
 		monsters = make(map[string]game.MonsterJSON, len(r.State.Monsters))
 		for id, m := range r.State.Monsters {
 			monsters[id] = game.MonsterJSON{
-				X:           m.X,
-				Y:           m.Y,
-				Radius:      m.Radius,
-				Rotation:    m.Rotation,
-				Lives:       m.Lives,
-				MaxLives:    m.MaxLives,
-				Tier:        m.Tier,
-				State:       string(m.State),
-				NoticeUntil: m.NoticeUntil,
-				WindupUntil: m.AttackWindupUntil,
+				X:               m.X,
+				Y:               m.Y,
+				Kind:            string(m.Kind),
+				CampID:          m.CampID,
+				TerritoryRadius: m.TerritoryRadius,
+				Radius:          m.Radius,
+				Rotation:        m.Rotation,
+				Lives:           m.Lives,
+				MaxLives:        m.MaxLives,
+				Tier:            m.Tier,
+				State:           string(m.State),
+				NoticeUntil:     m.NoticeUntil,
+				WindupUntil:     m.AttackWindupUntil,
+				RecoveryUntil:   m.RecoveryUntil,
+				VulnerableUntil: m.VulnerableUntil,
 			}
 		}
 	}
@@ -193,7 +217,7 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			continue
 		}
 		maxLife := float64(effect.ExpiresAt-effect.CreatedAt) / 1000
-		effects = append(effects, game.EffectJSON{Id: fmt.Sprintf("%d:%s:%.0f:%.0f", effect.CreatedAt, effect.Kind, effect.X, effect.Y), Kind: effect.Kind, Phase: string(effect.Phase), X: effect.X, Y: effect.Y, ToX: effect.ToX, ToY: effect.ToY, Radius: effect.Radius, Angle: effect.Angle, Range: effect.Range, Arc: effect.Arc, Color: effect.Color, Damage: effect.Damage, Life: float64(effect.ExpiresAt-now) / 1000, MaxLife: maxLife})
+		effects = append(effects, game.EffectJSON{Id: fmt.Sprintf("%d", effect.ID), Kind: effect.Kind, Phase: string(effect.Phase), CommandID: effect.CommandID, SourceID: effect.SourceID, AbilitySlot: effect.AbilitySlot, TargetType: effect.TargetType, TargetID: effect.TargetID, X: effect.X, Y: effect.Y, ToX: effect.ToX, ToY: effect.ToY, Radius: effect.Radius, Angle: effect.Angle, Range: effect.Range, Arc: effect.Arc, Color: effect.Color, Damage: effect.Damage, Life: float64(effect.ExpiresAt-now) / 1000, MaxLife: maxLife})
 	}
 	gameState := game.GameStateJSON{
 		State:             r.State.State,
@@ -253,6 +277,9 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 		visibleProps := propsForClient(viewer, r.State.Props)
 		combatEvents := combatEventsForClient(r.State.CombatEvents, client.Id, now)
 		clientState := game.NewStateUpdate(&gameState, &mapJSON, visiblePlayers, visibleMonsters, visibleBullets, visibleProps, visibleEffects, combatEvents)
+		if r.State.Mode == game.ModeTeamDeathmatch {
+			clientState.TeamRoster = teamRoster
+		}
 		for _, objective := range r.State.Objectives {
 			if objective != nil {
 				clientState.Objectives = append(clientState.Objectives, game.ObjectiveStateJSON{ID: objective.ID, Type: objective.Type, Team: objective.Team, X: objective.X, Y: objective.Y, Lives: objective.Lives, MaxLives: objective.MaxLives, AttackRange: objective.AttackRange})

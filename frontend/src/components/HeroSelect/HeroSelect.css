@@ -46,7 +46,8 @@
 .hero-portrait--viper .hp-arm { width:31px;height:42px;border-radius:45%;background:#44343a }.hero-portrait--viper .hp-leg{width:20px;background:#332b31}
 .hero-portrait--shadow .hp-body{left:10px;top:42px;width:76px;height:57px;border-radius:16px;background:#d5a62b}.hero-portrait--shadow .hp-body::after{content:'';position:absolute;inset:7px 9px 12px;border-radius:12px;background:rgba(111,235,158,.5)}
 .hero-portrait--shadow .hp-head{left:24px;top:7px;background:#52b94e;border-radius:50% 50% 28% 28%;clip-path:polygon(50% 0,100% 34%,78% 100%,50% 76%,20% 100%,0 34%)}.hero-portrait--shadow .hp-mouth{left:12px;width:30px;height:17px;border:5px solid #d23d67;border-top:0}.hero-portrait--shadow .hp-leg{width:18px;background:#29374b}
-.hero-identity { position: relative; z-index: 4; margin-top: -22px; text-align: center; color: #fff; text-transform: uppercase; text-shadow: 0 3px 0 #172963, 0 5px 9px rgba(19,28,69,.34); }
+.hero-details { position: relative; z-index: 4; display: flex; flex-direction: column; align-items: center; width: 100%; margin-top: -22px; }
+.hero-identity { position: relative; z-index: 4; text-align: center; color: #fff; text-transform: uppercase; text-shadow: 0 3px 0 #172963, 0 5px 9px rgba(19,28,69,.34); }
 .hero-identity h1 { margin: 1px 0 3px; font: 950 clamp(31px, 9vw, 48px)/.95 Impact, system-ui; letter-spacing: 1px; }
 .hero-rarity { display: inline-block; padding: 4px 10px; border-radius: 6px; background: #8c3ee6; font: 900 9px/1 system-ui; letter-spacing: 1.5px; box-shadow: 0 3px #542499; }
 .hero-role { font: 900 11px/1 system-ui; letter-spacing: 1px; color: #cfe4ff; }.hero-role span { margin-right: 5px; color: #ffe143; }
@@ -94,6 +95,7 @@
 @media (max-width:430px) {
   .hero-select { padding-inline:2px; }
   .hero-showcase { height:clamp(240px,42dvh,310px); margin-top:34px; }
+  .hero-portrait--stage:has(.hero-model-canvas) { top:-26px; }
   .hero-quick-stats { width:100%; max-width:310px; justify-content:center; }
   .hero-quick-stat { flex:1 1 0; min-width:0; max-width:96px; padding-inline:5px; }
   .hero-ability-card { width:min(100%,390px); }
@@ -111,8 +113,20 @@
 
 @media (max-height:700px) {
   .hero-showcase { height:240px; margin-top:22px; }
-  .hero-identity { margin-top:-14px; }
+  .hero-details { margin-top:-14px; }
   .hero-quick-stats { margin-block:8px 5px; }
+}
+
+/* Give the hero a taller, calmer focal zone on regular phone heights while
+   keeping the compact short-phone layout safe above the bottom dock. */
+@media (min-width:361px) and (min-height:600px) and (max-width:430px) {
+  .hero-showcase { height:clamp(280px,44dvh,330px); margin-top:24px; }
+  .hero-details { margin-top:15px; }
+  .hero-quick-stats { margin-block:8px 4px; }
+  .hero-quick-stat { padding-block:5px; }
+  .hero-ability-card { margin:5px 0 7px; padding:8px 10px; }
+  .hero-ability-card > strong { margin-bottom:4px; font-size:10px; }
+  .hero-ability-card p { gap:5px; margin:2px 0; line-height:1.2; }
 }
 
 /* Canvas models use the same articulated renderer as the battle arena. */
@@ -156,5 +170,31 @@
 }
 
 @media (prefers-reduced-motion:reduce) {
+  .hero-portrait--stage:has(.hero-model-canvas), .hero-rays, .hero-float-particle { animation:none; }
   .hero-party-member .hero-portrait--party:has(.hero-model-canvas) { animation:none; }
+}
+
+/* Give the selected hero more stage on tablets and desktop. The preview camera
+   follows the canvas size, so the larger presentation stays crisp and framed. */
+@media (min-width:620px) {
+  .hero-showcase:not(.hero-showcase--party) { width:min(100%,760px); height:clamp(320px,53dvh,480px); }
+  .hero-portrait--stage:has(.hero-model-canvas) { width:clamp(300px,30vw,420px); height:clamp(340px,44vw,460px); }
+}
+
+/* In short landscape there is room for a deliberate hero/detail split, which
+   keeps the lower battle dock from competing with the selected hero. */
+@media (orientation:landscape) and (max-height:560px) {
+  .hero-select { display:grid; grid-template-columns:minmax(0,1fr) minmax(220px,34vw); grid-template-rows:auto auto auto auto auto; align-content:center; gap:4px; padding:22px 8px 62px 72px; box-sizing:border-box; }
+  .hero-showcase:not(.hero-showcase--party) { grid-column:1; grid-row:1 / 6; width:100%; height:100%; min-height:0; margin:0; }
+  .hero-portrait--stage:has(.hero-model-canvas) { width:clamp(220px,38vw,340px); height:clamp(220px,70vh,300px); }
+  .hero-details { grid-column:2; grid-row:1 / 6; align-self:center; width:100%; margin:0; }
+  .hero-identity { margin:0; }
+  .hero-identity h1 { font-size:clamp(27px,5vw,40px); }
+  .hero-quick-stats { width:100%; justify-content:stretch; margin:4px 0; }
+  .hero-quick-stat { flex:1 1 0; min-width:0; padding-inline:4px; }
+  .hero-ability-card { width:100%; margin:2px 0 4px; padding:7px 9px; }
+  .hero-ability-card p { grid-template-columns:43px minmax(0,1fr); font-size:8px; }
+  .hero-lobby-actions { width:100%; gap:4px; }
+  .hero-roster-button { min-width:0; flex:1 1 0; padding-inline:8px; }
+  .hero-mode-button { min-width:0; flex:1 1 0; }
 }

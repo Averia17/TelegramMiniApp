@@ -5,6 +5,12 @@
 - Do not modify files, run project commands, or make other implementation changes while waiting for those answers.
 - If the task is clear enough to proceed safely, make reasonable assumptions, state them briefly, and continue without unnecessary questions.
 
+# Blender animation authoring rule
+
+- Do not create extra Python scripts to improve, author, polish, or otherwise modify hero animations.
+- All animation behavior must be authored and maintained through Blender Actions in the master `.blend` files.
+- Python may only be used for non-authoring support such as opening Blender, deterministic export, inspection, or validation; it must not procedurally edit animation keyframes, poses, rigs, or clips.
+
 # Testing guidance
 
 - Run tests for large tasks, substantial changes, or when explicitly requested; do not run the test suite after every small code change.

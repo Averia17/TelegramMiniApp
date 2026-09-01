@@ -1,8 +1,7 @@
 """Export runtime hero GLBs from one canonical master .blend per hero.
 
 This module is export-only. It never creates keys and never saves a source
-master; all authoring happens in the master file or the migration/authoring
-scripts.
+master; all authoring happens directly in the master Blender file.
 """
 
 from __future__ import annotations

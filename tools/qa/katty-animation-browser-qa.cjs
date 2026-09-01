@@ -61,6 +61,24 @@ runWithBrowser(
     await page.locator('[data-animation="idle"]').click()
     await page.locator("#toggle").click()
     await page.waitForTimeout(800)
+    const headTiltDegrees = await page.evaluate(() => {
+      const view = window.qa.getView()
+      const model = view.model
+      let head = null
+      model.traverse(node => { if (node.name === "head_s") head = node })
+      if (!head) throw new Error("Katty GLB is missing head_s")
+      model.updateMatrixWorld(true)
+      const elements = head.matrixWorld.elements
+      const length = Math.hypot(elements[8], elements[9], elements[10])
+      const cosine = Math.max(-1, Math.min(1,
+        elements[10] / length,
+      ))
+      return Math.acos(cosine) * 180 / Math.PI
+    })
+    assert.ok(
+      headTiltDegrees < 10,
+      `Katty idle head tilt was ${headTiltDegrees}°`,
+    )
     await page.screenshot({path: path.join(output, "idle.png")})
     await page.evaluate(() => {
       window.qa.player.attackPulse += 1
@@ -77,7 +95,13 @@ runWithBrowser(
 
     assert.deepEqual(pageErrors, [])
     assert.deepEqual(consoleErrors, [])
-    process.stdout.write(JSON.stringify({facingAngles, consoleErrors, pageErrors, output}, null, 2))
+    process.stdout.write(JSON.stringify({
+      facingAngles,
+      headTiltDegrees,
+      consoleErrors,
+      pageErrors,
+      output,
+    }, null, 2))
   },
 ).catch(error => {
   console.error(error)

@@ -63,6 +63,22 @@ test("team HUD groups living players and marks the local team", () => {
   assert.deepEqual(model.teams.map(team => team.label), ["СОЮЗНИКИ", "ПРОТИВНИКИ"])
 })
 
+test("team HUD aggregates tower and town hall HP beside the team kills", () => {
+  const state = {game: {mode: TEAM_DEATHMATCH_MODE}, players: {
+    local: {playerId: "local", team: "Blue", lives: 100, kills: 2, name: "A"},
+    enemy: {playerId: "enemy", team: "Red", lives: 100, kills: 3, name: "C"},
+  }, objectives: [
+    {id: "blue-tower-east", type: "tower", team: "Blue", lives: 700, maxLives: 1000},
+    {id: "blue-tower-west", type: "tower", team: "Blue", lives: 1000, maxLives: 1000},
+    {id: "blue-town-hall", type: "town_hall", team: "Blue", lives: 1500, maxLives: 2000},
+  ]}
+  const model = getTeamHudModel(state, "local")
+  assert.deepEqual(model.teams[0].objectives, {
+    tower: {current: 1700, maximum: 2000, percent: 85, destroyed: false, count: 2},
+    townHall: {current: 1500, maximum: 2000, percent: 75, destroyed: false, count: 1, protected: true},
+  })
+})
+
 test("team colors stay relative when the local player starts on the authored Red side", () => {
   assert.equal(getTeamPerspectiveLabel("Red", "Red"), "СОЮЗНИКИ")
   assert.equal(getTeamPerspectiveLabel("Blue", "Red"), "ПРОТИВНИКИ")
@@ -133,14 +149,16 @@ test("team objective HUD keeps the local team column on the left", () => {
   assert.deepEqual(groups.map(([team]) => team), ["Red", "Blue"])
 })
 
-test("team HUD layers reserve separate vertical slots", async () => {
+test("team HUD uses one compact information surface", async () => {
   const css = await readSource(new URL("../src/components/BattleGame/BattleGame.css", import.meta.url))
-  assert.match(css, /--team-score-top:\s*calc\(/)
-  assert.match(css, /--team-objective-top:\s*calc\(/)
-  assert.match(css, /--team-info-top:\s*calc\(/)
-  assert.match(css, /\.team-battle-hud[^}]*top:\s*var\(--team-score-top\)/)
-  assert.match(css, /\.team-objective-hud[^}]*top:\s*var\(--team-objective-top\)/)
-  assert.match(css, /\.battle-game--team \.battle-player-card,[\s\S]*?\.battle-game--team \.battle-minimap\s*\{\s*top:\s*var\(--team-info-top\)/)
+  const source = await readSource(new URL("../src/components/BattleGame/BattleGameUI.jsx", import.meta.url))
+  const battle = await readSource(new URL("../src/components/BattleGame/BattleGame.jsx", import.meta.url))
+  assert.match(source, /team-battle-hud__kills/)
+  assert.match(source, /team-battle-hud__objectives/)
+  assert.doesNotMatch(source, /team-battle-hud__stats[^\n]*aria-label=.*живы/)
+  assert.doesNotMatch(battle, /<TeamObjectiveHud /)
+  assert.match(css, /\.battle-game--team \.team-battle-hud\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)\s+74px\s+minmax\(0, 1fr\)/)
+  assert.match(css, /\.battle-game--team \.team-objective-hud\s*\{[^}]*display:\s*none/)
 })
 
 test("team HUD exposes the nearest enemy tower threat only inside its real range", () => {

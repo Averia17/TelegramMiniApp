@@ -33,6 +33,8 @@ func TestKazeSuperMovesTheAuthoritativeHero(t *testing.T) {
 	startX, startY := kaze.X, kaze.Y
 
 	gs.playerAbility(kaze.PlayerId, time.Now().UnixMilli(), "primary", "kaze-dash-movement")
+	gs.clockNow = func() int64 { return time.Now().UnixMilli() + 250 }
+	gs.updateNewHeroSystems()
 
 	if math.Hypot(kaze.X-startX, kaze.Y-startY) < 1 {
 		t.Fatalf("Kaze super left the hero at %.1f,%.1f; start was %.1f,%.1f", kaze.X, kaze.Y, startX, startY)
@@ -143,6 +145,43 @@ func TestMicoStaffBuildsRageAndSuperConsumesItForLargerVortex(t *testing.T) {
 	}
 	if p.VortexRadius != MicoVortexBaseRadius+2*MicoVortexRadiusPerRage {
 		t.Fatalf("vortex radius=%.0f, want rage-scaled radius", p.VortexRadius)
+	}
+}
+
+func TestMicoSuperTelegraphsBeforeVortexImpact(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("mico", "Mico", "Wukong Mico")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	mico, enemy := gs.Players["mico"], gs.Players["enemy"]
+	mico.X, mico.Y, enemy.X, enemy.Y = 500, 500, 570, 500
+	now := int64(20_000)
+	gs.clockNow = func() int64 { return now }
+	mico.MicoRage = 2
+	startX, startY := mico.X, mico.Y
+	startLives := enemy.Lives
+
+	WukongMicoKit{}.Super(gs, mico, now, 0, 100)
+	if mico.X != startX || mico.Y != startY || enemy.Lives != startLives {
+		t.Fatalf("Mico Super resolved during telegraph: position=(%.1f,%.1f), damage=%d", mico.X, mico.Y, startLives-enemy.Lives)
+	}
+	if len(gs.HeroZones) != 1 || gs.HeroZones[0].Kind != "mico_vortex_telegraph" {
+		t.Fatalf("Mico telegraph zones=%#v, want one mico_vortex_telegraph", gs.HeroZones)
+	}
+
+	now += 249
+	gs.updateNewHeroSystems()
+	if enemy.Lives != startLives {
+		t.Fatalf("Mico vortex resolved before telegraph ended: damage=%d", startLives-enemy.Lives)
+	}
+	now++
+	gs.updateActiveAbilities()
+	if enemy.Lives != startLives {
+		t.Fatalf("Mico vortex tick leaked before impact phase: damage=%d", startLives-enemy.Lives)
+	}
+	gs.updateNewHeroSystems()
+	if enemy.Lives >= startLives || math.Hypot(mico.X-startX, mico.Y-startY) < 1 {
+		t.Fatalf("Mico vortex did not resolve after telegraph: position=(%.1f,%.1f), damage=%d", mico.X, mico.Y, startLives-enemy.Lives)
 	}
 }
 
@@ -743,8 +782,10 @@ func TestKazeSuperCrossesAndStunsEnemy(t *testing.T) {
 	p, enemy := gs.Players["kaze"], gs.Players["enemy"]
 	p.X, p.Y, enemy.X, enemy.Y = 500, 500, 650, 500
 	now := time.Now().UnixMilli()
+	gs.clockNow = func() int64 { return now + 250 }
 	KazeKit{}.Super(gs, p, now, 0, 0)
-	if enemy.Lives != enemy.MaxLives-160 || enemy.StunUntil != now+MeleeSkillStunDuration.Milliseconds() {
+	gs.updateNewHeroSystems()
+	if enemy.Lives != enemy.MaxLives-160 || enemy.StunUntil != now+250+MeleeSkillStunDuration.Milliseconds() {
 		t.Fatalf("enemy lives=%d stun=%d", enemy.Lives, enemy.StunUntil)
 	}
 	if p.KazeCombo != 2 {
@@ -759,6 +800,45 @@ func TestKazeSuperCrossesAndStunsEnemy(t *testing.T) {
 	}
 }
 
+func TestKazeSuperTelegraphsBeforeDashImpact(t *testing.T) {
+	gs := newTestGameState()
+	gs.State = GameStateGame
+	gs.PlayerAdd("kaze", "Kaze", "Kaze")
+	gs.PlayerAdd("enemy", "Enemy", "Needle")
+	p, enemy := gs.Players["kaze"], gs.Players["enemy"]
+	p.X, p.Y, enemy.X, enemy.Y = 500, 500, 650, 500
+	now := int64(10_000)
+	gs.clockNow = func() int64 { return now }
+
+	if !(KazeKit{}).Super(gs, p, now, 0, 0) {
+		t.Fatal("Kaze Super was rejected")
+	}
+	if enemy.Lives != enemy.MaxLives || p.X != 500 || p.Y != 500 {
+		t.Fatalf("Kaze Super resolved during telegraph: position=(%.1f,%.1f) lives=%d", p.X, p.Y, enemy.Lives)
+	}
+	telegraph := false
+	for _, effect := range gs.Effects {
+		if effect.Kind == "kaze_dash_telegraph" && effect.Phase == EffectPhaseTelegraph {
+			telegraph = true
+		}
+	}
+	if !telegraph {
+		t.Fatalf("Kaze telegraph missing: effects=%#v", gs.Effects)
+	}
+
+	now += 249
+	gs.updateNewHeroSystems()
+	if enemy.Lives != enemy.MaxLives || p.X != 500 || p.Y != 500 {
+		t.Fatalf("Kaze Super resolved before telegraph ended: position=(%.1f,%.1f) lives=%d", p.X, p.Y, enemy.Lives)
+	}
+
+	now++
+	gs.updateNewHeroSystems()
+	if enemy.Lives != enemy.MaxLives-160 || p.X <= 500 || p.KazeCombo != 2 {
+		t.Fatalf("Kaze impact position=(%.1f,%.1f) lives=%d combo=%d", p.X, p.Y, enemy.Lives, p.KazeCombo)
+	}
+}
+
 func TestKazeSuperPrimesHerFollowUpWithoutGlobalDamageVulnerability(t *testing.T) {
 	gs := newTestGameState()
 	gs.State = GameStateGame
@@ -768,8 +848,10 @@ func TestKazeSuperPrimesHerFollowUpWithoutGlobalDamageVulnerability(t *testing.T
 	kaze, enemy, ally := gs.Players["kaze"], gs.Players["enemy"], gs.Players["ally"]
 	kaze.X, kaze.Y, enemy.X, enemy.Y = 400, 400, 520, 400
 	now := time.Now().UnixMilli()
+	gs.clockNow = func() int64 { return now + 250 }
 
 	KazeKit{}.Super(gs, kaze, now, 0, 0)
+	gs.updateNewHeroSystems()
 
 	if kaze.KazeCombo != 2 {
 		t.Fatalf("Kaze combo=%d, want an empowered personal follow-up", kaze.KazeCombo)

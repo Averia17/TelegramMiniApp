@@ -50,6 +50,22 @@ type DamageZone struct {
 	Group        string
 }
 
+// MonsterZone is an authored neutral hazard. It is deliberately separate
+// from player-owned DamageZone so a guardian camp cannot accidentally damage
+// allied players, monsters, or inherit hero command attribution.
+type MonsterZone struct {
+	SourceID   string
+	Kind       string
+	X, Y       float64
+	Radius     float64
+	Damage     int
+	TicksLeft  int
+	NextTickAt int64
+	Interval   int64
+	ExpiresAt  int64
+	Color      string
+}
+
 type PendingMandySuper struct {
 	Owner     string
 	CommandID string

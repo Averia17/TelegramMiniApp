@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import unittest
 from pathlib import Path
@@ -10,11 +11,18 @@ class ComposeStartupTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         result = subprocess.run(
-            ["docker", "compose", "config", "--format", "json"],
+            ["docker", "compose", "--profile", "dev-bot", "config", "--format", "json"],
             cwd=ROOT,
             check=True,
             capture_output=True,
             text=True,
+            env={
+                **os.environ,
+                "APP_AUTH_SECRET": "compose-test-app-auth-secret",
+                "POSTGRES_USER": "compose-test-user",
+                "POSTGRES_PASSWORD": "compose-test-password",
+                "REDIS_PASSWORD": "compose-test-redis-password",
+            },
         )
         cls.services = json.loads(result.stdout)["services"]
 

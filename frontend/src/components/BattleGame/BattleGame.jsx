@@ -6,7 +6,7 @@ import {Input, MOBILE_INPUT_MEDIA_QUERY} from "./Input"
 import {NetworkSimulation} from "./NetworkSimulation"
 import {getHeroSkill} from "./heroSkills.js"
 import {getBattlePlayerCount, getBattleResultView, getPlayerBattleStats, getPresentedBattleResult, getSynchronizedBattleView, isLocalBattleWinner, isLocalPlayerKilled} from "./battleOutcome"
-import {AbilityButton, ActiveStatusEffects, BattleMatchTimer, BattleMiniMap, BattleResultCard, IslandPhaseHud, IslandVoiceNotice, NetworkStatusNotice, TauntButton, TeamBattleHud, TeamObjectiveHud, TowerThreatNotice, TouchStick} from "./BattleGameUI.jsx"
+import {AbilityButton, ActiveStatusEffects, BattleMatchTimer, BattleMiniMap, BattleResultCard, IslandPhaseHud, IslandVoiceNotice, NetworkStatusNotice, TauntButton, TeamBattleHud, TowerThreatNotice, TouchStick} from "./BattleGameUI.jsx"
 import {getAttackCooldownVisual} from "./attackCooldownVisual.js"
 import {getActiveStatusEffects} from "./statusEffects.js"
 import {formatBattleMessage} from "./battleMessages.js"
@@ -867,10 +867,10 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
           <>
             <header className="battle-topbar">
               <button className="battle-exit-btn" onClick={handleBackToMenu} aria-label="Выйти">✕</button>
-              <div className="battle-topbar__center">
-                <BattleMatchTimer game={gameState?.game}/>
+              <div className={`battle-topbar__center${isTeamBattle ? " battle-topbar__center--team" : ""}`}>
+                {!isTeamBattle && <BattleMatchTimer game={gameState?.game}/>}
               </div>
-              <div className="battle-alive"><i/> {alivePlayerCount} В БОЮ</div>
+              {!isTeamBattle && <div className="battle-alive"><i/> {alivePlayerCount} В БОЮ</div>}
             </header>
             <NetworkStatusNotice quality={networkQuality} notice={connectionNotice}/>
             {!isTeamBattle && (
@@ -903,8 +903,7 @@ export const BattleGame = ({playerId, playerName: configuredPlayerName = "", roo
               </div>
             )}
             {gameState?.map && <BattleMiniMap state={gameState} localId={clientRef.current?.playerId} renderer={rendererRef.current}/>}
-            <TeamBattleHud state={gameState} localId={clientRef.current?.playerId}/>
-            <TeamObjectiveHud state={gameState} localId={clientRef.current?.playerId}/>
+            <TeamBattleHud state={gameState} localId={clientRef.current?.playerId} game={gameState?.game}/>
             <TowerThreatNotice state={gameState} localId={clientRef.current?.playerId}/>
             {isTeamPlayerDown && (
               <div className="team-respawn-overlay" role="status" aria-live="polite">

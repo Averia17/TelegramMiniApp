@@ -10,6 +10,7 @@ test("hero combat effects use authored visual families instead of the generic ri
     "slash", "scythe", "slam", "vortex", "vine", "spin", "mina_air_wave",
     "lightning", "zeus_lightning_strike", "zeus_lightning_blast", "zeus_fire_ground",
     "mico_skyfall", "mico_armor_burst", "needle_spores", "thruster", "spore-jump", "katty_paint_trail",
+    "kaze_dash_telegraph", "mico_vortex_telegraph",
   ]) {
     assert.equal(HERO_EFFECT_VISUAL_KINDS.has(kind), true, `${kind} is missing a visual family`)
   }
@@ -99,6 +100,39 @@ test("Brock fire ground keeps a radial pool for impact-only effects", () => {
   assert.equal(roles.includes("fire-trail-ribbon"), false)
 })
 
+test("Kaze dash telegraph exposes a directed dodge lane before impact", () => {
+  const root = new THREE.Group()
+  const renderer = new EffectRenderer(root)
+  renderer.sync([
+    {id: "kaze-telegraph", kind: "kaze_dash_telegraph", x: 0, y: 0, toX: 320, toY: 0, range: 320, radius: 25, life: .18, maxLife: .25},
+  ])
+
+  const mesh = root.children[0]
+  const roles = []
+  mesh.traverse(node => { if (node.userData?.role) roles.push(node.userData.role) })
+  assert.equal(mesh.userData.directed, true)
+  assert.ok(roles.includes("kaze-telegraph-lane"))
+  assert.ok(roles.includes("kaze-telegraph-edge"))
+  assert.ok(roles.includes("kaze-telegraph-chevron"))
+  assert.ok(mesh.scale.x > mesh.scale.y * 4)
+})
+
+test("Mico vortex telegraph exposes a directed lane and landing reticle", () => {
+  const root = new THREE.Group()
+  const renderer = new EffectRenderer(root)
+  renderer.sync([
+    {id: "mico-telegraph", kind: "mico_vortex_telegraph", x: 0, y: 0, toX: 140, toY: 0, range: 140, radius: 136, life: .18, maxLife: .25},
+  ])
+
+  const mesh = root.children[0]
+  const roles = []
+  mesh.traverse(node => { if (node.userData?.role) roles.push(node.userData.role) })
+  assert.equal(mesh.userData.directed, true)
+  assert.ok(roles.includes("mico-telegraph-lane"))
+  assert.ok(roles.includes("mico-telegraph-target"))
+  assert.ok(mesh.scale.x > 0)
+})
+
 test("signature effects do not stack a second universal composition", () => {
   const root = new THREE.Group()
   const renderer = new EffectRenderer(root)
@@ -123,6 +157,8 @@ test("new hero zones expose intentional runtime phases", () => {
   assert.equal(getCombatEffectPhase({kind: "zeus_lightning_strike"}), "impact")
   assert.equal(getCombatEffectPhase({kind: "needle_spores"}), "active")
   assert.equal(getCombatEffectPhase({kind: "mandy_super_charge"}), "telegraph")
+  assert.equal(getCombatEffectPhase({kind: "kaze_dash_telegraph"}), "telegraph")
+  assert.equal(getCombatEffectPhase({kind: "mico_vortex_telegraph"}), "telegraph")
   assert.equal(getCombatEffectPhase({kind: "mandy_super_wave"}), "active")
   assert.equal(getCombatEffectPhase({kind: "kaze_cross_slash"}), "impact")
 })

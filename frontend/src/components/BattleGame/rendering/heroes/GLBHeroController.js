@@ -242,6 +242,8 @@ export class GLBHeroController {
     }
     this.detachedAmmo = []
     this.cloud = null
+    this.cloudRoot = null
+    this.cloudMixerRoot = null
     this.cloudMaterialBases = []
     this.cloudCaster = null
     this.throwableWeapon = null
@@ -280,18 +282,22 @@ export class GLBHeroController {
         this.throwableWeapon.userData.attachmentRole = "throwable-weapon"
       }
     })
-    // The companion GLB has a non-animated Cloud_Root wrapper and an
-    // animated Cloud child.  Bind authored companion clips to the child;
-    // selecting the wrapper makes Cloud_Attack play without moving the
-    // visible cloud because its tracks target Cloud.position/scale/rotation.
+    // The companion GLB has a stable, normalized wrapper and an animated
+    // Cloud child. Keep the visible child as the public cloud handle while
+    // binding its clips through the wrapper, so Cloud.position/scale/rotation
+    // tracks cannot erase the wrapper's placement and size.
     if (this.heroName === "Brock Zeus") {
       const authoredCloud = root.getObjectByName("Cloud")
-      if (authoredCloud) {
+      if (authoredCloud && this.cloud?.userData.companionPrepared) {
+        this.cloudRoot = this.cloud
+        this.cloud = authoredCloud
+        this.cloud.userData.attachmentRole = "attack-cloud"
+      } else if (authoredCloud) {
         this.cloud = authoredCloud
         this.cloud.userData.attachmentRole = "attack-cloud"
       }
     }
-    if (this.cloud && this.heroName === "Brock Zeus" && !this.cloud.userData.companionPrepared) {
+    if (this.cloud && this.heroName === "Brock Zeus" && !this.cloudRoot && !this.cloud.userData.companionPrepared) {
       // Keep direct preview/test roots readable as well. Production companions
       // are prepared by AssetRegistry before they reach this controller; this
       // fallback only normalizes an unparented authored cloud once.
@@ -349,7 +355,8 @@ export class GLBHeroController {
       root.add(this.cloudLightning)
     }
     if (this.cloud && options.companionAnimations?.length) {
-      this.cloudMixer = new THREE.AnimationMixer(this.cloud)
+      this.cloudMixerRoot = this.cloudRoot || this.cloud
+      this.cloudMixer = new THREE.AnimationMixer(this.cloudMixerRoot)
       for (const [semanticName, clipName] of Object.entries(clipNames)) {
         const source = THREE.AnimationClip.findByName(options.companionAnimations, `Cloud_${clipName}`)
           || THREE.AnimationClip.findByName(options.companionAnimations, clipName)
@@ -490,9 +497,10 @@ export class GLBHeroController {
     return true
   }
 
-  transitionCloud(name, fadeSeconds = LOCOMOTION_FADE) {
+  transitionCloud(name, fadeSeconds = LOCOMOTION_FADE, forceRestart = false) {
     const next = this.cloudActions.get(name)
-    if (!next || this.cloudState === name) return Boolean(next)
+    if (!next) return false
+    if (this.cloudState === name && !forceRestart) return true
     this.cloud.visible = true
     const previous = this.cloudActions.get(this.cloudState)
     next.enabled = true
@@ -683,7 +691,10 @@ export class GLBHeroController {
     this.mandySpawnStaffElapsed = 0
     if (this.heroName === "Mandy" && this.meleeWeapon) this.meleeWeapon.visible = false
     const action = this.actions.get("spawn")
-    this.transitionCloud("spawn", 0)
+    // A preview can request spawn while the automatic initial spawn is still
+    // running. Restart the companion track as well, otherwise Cloud_Spawn
+    // keeps its old time and finishes before the body appears.
+    this.transitionCloud("spawn", 0, true)
     if (this.spawnCactus && !action) {
       this.spawnCactus.visible = true
       this.spawnCactus.scale.copy(this.spawnCactusScale)
@@ -1071,7 +1082,7 @@ export class GLBHeroController {
     this.mixer.stopAllAction()
     this.mixer.uncacheRoot(this.root)
     this.cloudMixer?.stopAllAction()
-    if (this.cloud) this.cloudMixer?.uncacheRoot(this.cloud)
+    if (this.cloudMixerRoot) this.cloudMixer?.uncacheRoot(this.cloudMixerRoot)
     this.actions.clear()
     this.cloudActions.clear()
   }

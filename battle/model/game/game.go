@@ -73,6 +73,7 @@ func InitGameStateWithDependencies(gs *GameState, dependencies GameDependencies)
 	gs.DelayedEffects = make([]*DelayedBattleEffect, 0)
 	gs.ScheduledShots = make([]*ScheduledShot, 0)
 	gs.DamageZones = make([]*DamageZone, 0)
+	gs.MonsterZones = make([]*MonsterZone, 0)
 	gs.PendingMandySupers = make([]*PendingMandySuper, 0)
 	gs.HeroZones = make([]*HeroZone, 0)
 	gs.KattyPaintStacks = make(map[string]map[string]int)
@@ -173,6 +174,7 @@ func (gs *GameState) updateWithDelta(elapsed time.Duration) {
 	gs.updateRegeneration()
 	gs.updateBots()
 	gs.updateMonsters()
+	gs.updateMonsterZones()
 	gs.updateBullets()
 	now := gs.nowMs()
 	gs.updateAbilityResolutions(now)
@@ -543,6 +545,14 @@ func (gs *GameState) updateMonsters() {
 			gs.moveMonsterHome(monsterID, m)
 			continue
 		}
+		if m.State == monster.MonsterRecovery {
+			m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
+			if now < m.RecoveryUntil {
+				continue
+			}
+			m.State = monster.MonsterChase
+			m.RecoveryUntil = 0
+		}
 		if m.State == monster.MonsterNotice {
 			target := gs.Players[m.TargetPlayerId]
 			chaseDistance := math.Hypot(m.X-m.SpawnX, m.Y-m.SpawnY)
@@ -565,7 +575,8 @@ func (gs *GameState) updateMonsters() {
 		}
 		if m.State == monster.MonsterWindup {
 			target := gs.Players[m.TargetPlayerId]
-			if target == nil || !target.IsAlive() || !gs.monsterCanSeePlayer(m, target) || math.Hypot(target.X-m.X, target.Y-m.Y) > 72 {
+			profile := monster.ProfileForKind(m.Kind, m.Tier)
+			if target == nil || !target.IsAlive() || !gs.monsterCanSeePlayer(m, target) || (m.Kind == monster.MonsterBat && math.Hypot(target.X-m.X, target.Y-m.Y) > profile.Range+16) {
 				m.State = monster.MonsterChase
 				m.AttackWindupUntil = 0
 				continue
@@ -577,16 +588,24 @@ func (gs *GameState) updateMonsters() {
 			m.State = monster.MonsterChase
 			m.AttackWindupUntil = 0
 			m.LastAttackAt = now
+			if m.Kind == monster.MonsterAshHound {
+				gs.resolveAshHoundAttack(monsterID, m, target, profile, now)
+				continue
+			}
+			if m.Kind == monster.MonsterRootGuardian {
+				gs.resolveRootGuardianAttack(monsterID, m, target, profile, now)
+				continue
+			}
 			gs.recordBatStrike()
-			gs.applyDamage(target, 62+m.Tier*18)
+			gs.applyDamage(target, profile.Damage)
 			if !target.IsAlive() {
 				gs.Broadcast("killed", map[string]interface{}{
-					"killerName": "A bat",
+					"killerName": monsterDisplayName(m.Kind),
 					"killedName": target.Name,
 					"killedId":   target.PlayerId,
 				})
 				if gs.OnPlayerKilled != nil {
-					gs.OnPlayerKilled(target.PlayerId, "A bat")
+					gs.OnPlayerKilled(target.PlayerId, monsterDisplayName(m.Kind))
 				}
 				gs.finishBattleIfDecided()
 			}
@@ -636,19 +655,86 @@ func (gs *GameState) updateMonsters() {
 		} else {
 			gs.moveMonster(monsterID, m, 0, 0, monster.MonsterChasePace+float64(m.Tier)*12+float64(index))
 		}
-		cooldown := int64(1100)
-		if m.Tier == 2 {
-			cooldown = 900
-		}
-		if closest < 56 && now-m.LastAttackAt >= cooldown {
-			gs.recordBatWindupStart()
+		profile := monster.ProfileForKind(m.Kind, m.Tier)
+		if closest < profile.Range && now-m.LastAttackAt >= profile.CooldownMs {
+			if m.Kind == monster.MonsterBat {
+				gs.recordBatWindupStart()
+			}
 			m.State = monster.MonsterWindup
-			m.AttackWindupUntil = now + monster.MonsterAttackWindup
+			m.AttackWindupUntil = now + profile.WindupMs
+			m.AttackOriginX, m.AttackOriginY = m.X, m.Y
+			m.AttackTargetX, m.AttackTargetY = target.X, target.Y
 			m.MoveX, m.MoveY, m.MoveScale = 0, 0, 0
-			gs.addEffect("bat_windup", m.X, m.Y, target.X, target.Y, m.Radius+10, 0, 0, 0, "#ff486f", monster.MonsterAttackWindup, monster.MonsterAttackWindup)
+			gs.addMonsterEffect(monsterID, profile.Telegraph, m.X, m.Y, target.X, target.Y, m.Radius+10, profile.Color, profile.WindupMs)
 		}
 		index++
 	}
+}
+
+func monsterDisplayName(kind monster.MonsterKind) string {
+	switch kind {
+	case monster.MonsterAshHound:
+		return "An ash hound"
+	case monster.MonsterRootGuardian:
+		return "A root guardian"
+	default:
+		return "A bat"
+	}
+}
+
+func (gs *GameState) addMonsterEffect(sourceID, kind string, x, y, toX, toY, radius float64, color string, duration int64) *BattleEffect {
+	effect := gs.addEffect(kind, x, y, toX, toY, radius, 0, math.Hypot(toX-x, toY-y), 0, color, 0, duration)
+	effect.SourceID = sourceID
+	effect.AbilitySlot = "monster"
+	return effect
+}
+
+func (gs *GameState) resolveAshHoundAttack(id string, m *monster.Monster, target *player.Player, profile monster.AttackProfile, now int64) {
+	hit := distanceToSegment(target.X, target.Y, m.AttackOriginX, m.AttackOriginY, m.AttackTargetX, m.AttackTargetY) <= target.Radius+m.Radius+18
+	if hit {
+		gs.applyDamage(target, profile.Damage)
+		gs.addMonsterEffect(id, profile.Impact, m.AttackOriginX, m.AttackOriginY, m.AttackTargetX, m.AttackTargetY, 28, profile.Color, 360)
+	} else {
+		m.VulnerableUntil = now + profile.RecoveryMs
+		gs.addMonsterEffect(id, "ash_hound_recovery", m.X, m.Y, 0, 0, m.Radius+18, profile.Color, profile.RecoveryMs)
+	}
+	m.State = monster.MonsterRecovery
+	m.RecoveryUntil = now + profile.RecoveryMs
+	if !target.IsAlive() {
+		gs.Broadcast("killed", map[string]interface{}{"killerName": monsterDisplayName(m.Kind), "killedName": target.Name, "killedId": target.PlayerId})
+		if gs.OnPlayerKilled != nil {
+			gs.OnPlayerKilled(target.PlayerId, monsterDisplayName(m.Kind))
+		}
+		gs.finishBattleIfDecided()
+	}
+}
+
+func (gs *GameState) resolveRootGuardianAttack(id string, m *monster.Monster, target *player.Player, profile monster.AttackProfile, now int64) {
+	zoneRadius := 112.0
+	zoneDuration := int64(1800)
+	gs.MonsterZones = append(gs.MonsterZones, &MonsterZone{
+		SourceID: id, Kind: "root_guardian_zone", X: m.AttackTargetX, Y: m.AttackTargetY,
+		Radius: zoneRadius, Damage: profile.Damage, TicksLeft: 4, NextTickAt: now + 120,
+		Interval: 420, ExpiresAt: now + zoneDuration, Color: profile.Color,
+	})
+	gs.addMonsterEffect(id, "root_guardian_impact", m.AttackTargetX, m.AttackTargetY, 0, 0, zoneRadius, profile.Color, 360)
+	gs.addMonsterEffect(id, "root_guardian_zone", m.AttackTargetX, m.AttackTargetY, 0, 0, zoneRadius, profile.Color, zoneDuration)
+	_ = target
+}
+
+func distanceToSegment(px, py, ax, ay, bx, by float64) float64 {
+	dx, dy := bx-ax, by-ay
+	lengthSquared := dx*dx + dy*dy
+	if lengthSquared <= .0001 {
+		return math.Hypot(px-ax, py-ay)
+	}
+	t := ((px-ax)*dx + (py-ay)*dy) / lengthSquared
+	if t < 0 {
+		t = 0
+	} else if t > 1 {
+		t = 1
+	}
+	return math.Hypot(px-(ax+t*dx), py-(ay+t*dy))
 }
 
 func (gs *GameState) steerMonster(m *monster.Monster, desiredX, desiredY float64) (float64, float64) {
@@ -915,6 +1001,7 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		return 0
 	}
 	wasAlive := target != nil && target.IsAlive()
+	targetLivesBefore := target.Lives
 	previousContactBy, previousContactAt := target.LastContactBy, target.LastContactAt
 	dealt := gs.applyDamageAmount(target, amount)
 	if dealt > 0 && target != nil {
@@ -956,6 +1043,20 @@ func (gs *GameState) dealPlayerDamage(source, target *player.Player, amount int)
 		gs.emitCombatEvent(CombatEvent{
 			Kind: "hit", CommandID: gs.activeCommandID, SourceID: sourceID,
 			TargetType: "players", TargetID: target.PlayerId, ProjectileID: gs.activeProjectileID, Damage: dealt,
+			Reaction: func() string {
+				if !target.IsAlive() {
+					return "defeat"
+				}
+				return "hit"
+			}(),
+			HitStopMs: func() int64 {
+				if !target.IsAlive() {
+					return 110
+				}
+				return 55
+			}(),
+			TargetLivesBefore: targetLivesBefore,
+			TargetLivesAfter:  target.Lives,
 		})
 	}
 	if wasAlive && !target.IsAlive() {
@@ -1127,7 +1228,13 @@ func (gs *GameState) updateDelayedEffects() {
 
 func (gs *GameState) addEffect(kind string, x, y, toX, toY, radius, angle, reach, arc float64, color string, damage int, duration int64) *BattleEffect {
 	now := gs.nowMs()
-	effect := &BattleEffect{Kind: kind, Phase: combatEffectPhase(kind), X: x, Y: y, ToX: toX, ToY: toY, Radius: radius, Angle: angle, Range: reach, Arc: arc, Color: color, Damage: damage, CreatedAt: now, ExpiresAt: now + duration}
+	gs.NextCombatEffectID++
+	effect := &BattleEffect{
+		ID: gs.NextCombatEffectID, Kind: kind, Phase: combatEffectPhase(kind),
+		CommandID: gs.activeCommandID, SourceID: gs.activeSourceID, AbilitySlot: gs.activeAbilitySlot,
+		X: x, Y: y, ToX: toX, ToY: toY, Radius: radius, Angle: angle, Range: reach, Arc: arc,
+		Color: color, Damage: damage, CreatedAt: now, ExpiresAt: now + duration,
+	}
 	gs.Effects = append(gs.Effects, effect)
 	return effect
 }
@@ -1150,7 +1257,7 @@ func (gs *GameState) updateActiveAbilities() {
 			continue
 		}
 		source.LastAbilityTick = now
-		if source.VortexUntil > now && now >= source.VortexTickAt {
+		if source.VortexUntil > now && source.VortexReadyAt <= 0 && now >= source.VortexTickAt {
 			source.VortexTickAt = now + MicoVortexTickInterval.Milliseconds()
 			radius := source.VortexRadius
 			if radius <= 0 {
@@ -1908,27 +2015,31 @@ func worldAngleFromScreen(angle float64) float64 {
 }
 
 type CombatEvent struct {
-	ID              uint64
-	Ts              int64
-	MatchID         string
-	Kind            string
-	Phase           string
-	Hero            string
-	AbilitySlot     string
-	Reason          string
-	CommandID       string
-	SourceID        string
-	TargetType      string
-	TargetID        string
-	ProjectileID    uint64
-	Distance        float64
-	Damage          int
-	EffectiveDamage int
-	ResourceKind    string
-	ResourceBefore  int
-	ResourceAfter   int
-	Accepted        bool
-	Resolved        bool
+	ID                uint64
+	Ts                int64
+	MatchID           string
+	Kind              string
+	Phase             string
+	Hero              string
+	AbilitySlot       string
+	Reason            string
+	CommandID         string
+	SourceID          string
+	TargetType        string
+	TargetID          string
+	ProjectileID      uint64
+	Distance          float64
+	Damage            int
+	EffectiveDamage   int
+	ResourceKind      string
+	ResourceBefore    int
+	ResourceAfter     int
+	Reaction          string
+	HitStopMs         int64
+	TargetLivesBefore int
+	TargetLivesAfter  int
+	Accepted          bool
+	Resolved          bool
 }
 
 type abilityResolution struct {
@@ -2722,6 +2833,9 @@ func (gs *GameState) damageMonster(id string, target *monster.Monster, damage in
 	if target == nil || !target.IsAlive() || damage <= 0 {
 		return false
 	}
+	if target.VulnerableUntil > gs.nowMs() {
+		damage = int(math.Round(float64(damage) * 1.25))
+	}
 	damageSourceID := gs.activeSourceID
 	if len(sourceIDs) > 0 && sourceIDs[0] != "" {
 		damageSourceID = sourceIDs[0]
@@ -2768,6 +2882,7 @@ func (gs *GameState) damageMonster(id string, target *monster.Monster, damage in
 	gs.MonsterRespawns[id] = MonsterRespawn{
 		RespawnAt: gs.nowMs() + BatCampRespawnDuration.Milliseconds(),
 		X:         target.SpawnX, Y: target.SpawnY, Radius: target.Radius,
+		Kind: target.Kind, CampID: target.CampID, TerritoryRadius: target.TerritoryRadius,
 		Tier: target.Tier, MaxLives: target.MaxLives,
 	}
 	delete(gs.Monsters, id)
@@ -2800,7 +2915,7 @@ func (gs *GameState) updateMonsterRespawns(now int64) {
 		if gs.Map != nil {
 			mapWidth, mapHeight = gs.Map.WidthInPixels, gs.Map.HeightInPixels
 		}
-		m := monster.NewMonsterAt(now, respawn.X, respawn.Y, respawn.Radius, mapWidth, mapHeight, lives)
+		m := monster.NewMonsterOfKindAt(now, respawn.Kind, respawn.CampID, respawn.X, respawn.Y, respawn.Radius, mapWidth, mapHeight, respawn.TerritoryRadius, lives)
 		m.Tier = respawn.Tier
 		if m.Tier <= 0 {
 			m.Tier = 1
@@ -2809,6 +2924,33 @@ func (gs *GameState) updateMonsterRespawns(now int64) {
 		gs.recordBatRespawn()
 		delete(gs.MonsterRespawns, id)
 	}
+}
+
+func (gs *GameState) updateMonsterZones() {
+	if gs == nil || len(gs.MonsterZones) == 0 {
+		return
+	}
+	now := gs.nowMs()
+	kept := gs.MonsterZones[:0]
+	for _, zone := range gs.MonsterZones {
+		if zone == nil || zone.TicksLeft <= 0 || now >= zone.ExpiresAt {
+			continue
+		}
+		for zone.TicksLeft > 0 && now >= zone.NextTickAt {
+			for _, target := range gs.Players {
+				if target == nil || !target.IsAlive() || math.Hypot(target.X-zone.X, target.Y-zone.Y) > zone.Radius+target.Radius {
+					continue
+				}
+				gs.dealPlayerDamage(nil, target, zone.Damage)
+			}
+			zone.TicksLeft--
+			zone.NextTickAt += zone.Interval
+		}
+		if zone.TicksLeft > 0 {
+			kept = append(kept, zone)
+		}
+	}
+	gs.MonsterZones = kept
 }
 
 func (gs *GameState) hitSector(source *player.Player, angle, reach, halfArc float64, damage int, pull bool) int {
@@ -3306,7 +3448,7 @@ func (gs *GameState) resetPlayerMatchState(p *player.Player) {
 	p.Aiming, p.AimDistance = false, 0
 	p.ShieldUntil, p.InvulnerableUntil, p.StealthUntil = 0, 0, 0
 	p.StunUntil, p.CastUntil, p.ChannelUntil = 0, 0, 0
-	p.VineUntil, p.VortexUntil, p.VortexTickAt = 0, 0, 0
+	p.VineUntil, p.VortexUntil, p.VortexReadyAt, p.VortexTickAt = 0, 0, 0, 0
 	p.FlyingUntil, p.FlightSpeedMultiplier, p.BlindUntil = 0, 0, 0
 	p.Dodges, p.Souls, p.Deflect, p.Evolution = 0, 0, 0, 0
 	p.LastAbilityTick, p.LastAbilityID, p.LastAbilityOK = 0, "", false
@@ -3339,6 +3481,7 @@ func (gs *GameState) resetMatchAbilityRuntime() {
 	gs.DelayedEffects = make([]*DelayedBattleEffect, 0)
 	gs.ScheduledShots = make([]*ScheduledShot, 0)
 	gs.DamageZones = make([]*DamageZone, 0)
+	gs.MonsterZones = make([]*MonsterZone, 0)
 	gs.PendingMandySupers = make([]*PendingMandySuper, 0)
 	gs.HeroZones = make([]*HeroZone, 0)
 	gs.KattyPaintStacks = make(map[string]map[string]int)
@@ -3351,6 +3494,7 @@ func (gs *GameState) resetMatchAbilityRuntime() {
 	gs.TemporaryWalls = make(map[*geometry.WallTile]int64)
 	gs.CombatEvents = make([]CombatEvent, 0)
 	gs.NextCombatEventID = 0
+	gs.NextCombatEffectID = 0
 	gs.BotMemory = make(map[string]*BotPerception)
 	gs.resetBotAIMetrics()
 	gs.resetBatLifecycleMetrics()
@@ -3637,7 +3781,7 @@ func (gs *GameState) addAuthoredTeamMonsters(count int) {
 		if index%4 == 0 {
 			tier, lives = 2, monster.EliteMonsterLives
 		}
-		m := monster.NewMonsterAt(gs.nowMs(), spawn.X, spawn.Y, PlayerSize/2, gs.Map.WidthInPixels, gs.Map.HeightInPixels, lives)
+		m := monster.NewMonsterOfKindAt(gs.nowMs(), monster.MonsterKind(spawn.Kind), spawn.ID, spawn.X, spawn.Y, PlayerSize/2, gs.Map.WidthInPixels, gs.Map.HeightInPixels, spawn.TerritoryRadius, lives)
 		m.Tier, m.MaxLives = tier, lives
 		gs.Monsters[fmt.Sprintf("team-bat-%d", index)] = m
 	}

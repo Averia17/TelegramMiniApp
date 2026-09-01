@@ -32,6 +32,35 @@ func TestNewMonster(t *testing.T) {
 	}
 }
 
+func TestNewMonsterOfKindKeepsAuthoredCampIdentity(t *testing.T) {
+	m := NewMonsterOfKindAt(10_000, MonsterAshHound, "camp-ash-01", 120, 240, 18, 1024, 768, 320, MonsterLives)
+	if m.Kind != MonsterAshHound || m.CampID != "camp-ash-01" {
+		t.Fatalf("monster identity=%q/%q, want %q/camp-ash-01", m.Kind, m.CampID, MonsterAshHound)
+	}
+	if m.TerritoryRadius != 320 {
+		t.Fatalf("monster territory=%.0f, want 320", m.TerritoryRadius)
+	}
+}
+
+func TestNeutralKindsHaveDistinctAttackProfiles(t *testing.T) {
+	bat := ProfileForKind(MonsterBat, 1)
+	hound := ProfileForKind(MonsterAshHound, 1)
+	guardian := ProfileForKind(MonsterRootGuardian, 1)
+
+	if bat.Telegraph == hound.Telegraph || bat.Telegraph == guardian.Telegraph || hound.Telegraph == guardian.Telegraph {
+		t.Fatalf("neutral telegraphs must be distinct: bat=%q hound=%q guardian=%q", bat.Telegraph, hound.Telegraph, guardian.Telegraph)
+	}
+	if hound.Range <= bat.Range || guardian.Range <= bat.Range {
+		t.Fatalf("specialists need authored ranges: bat=%.1f hound=%.1f guardian=%.1f", bat.Range, hound.Range, guardian.Range)
+	}
+	if hound.RecoveryMs <= 0 {
+		t.Fatal("ash hound must expose a punishable recovery window")
+	}
+	if guardian.WindupMs <= hound.WindupMs {
+		t.Fatalf("root guardian should give a longer readable zone telegraph: guardian=%d hound=%d", guardian.WindupMs, hound.WindupMs)
+	}
+}
+
 func TestMonsterHurt(t *testing.T) {
 	m := NewMonster(0, 0, 16, 512, 512, 3)
 

@@ -123,6 +123,7 @@ type HeroZone struct {
 	Target                                      string
 	X, Y, Radius                                float64
 	ToX, ToY, Width                             float64
+	Damage                                      int
 	CreatedAt, ExpiresAt, NextTickAt, TriggerAt int64
 	Triggered                                   map[string]bool
 	ImpactDone                                  bool
@@ -489,32 +490,17 @@ func (KazeKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ float64
 	gs.addEffect("kaze_cross_slash", p.X, p.Y, 0, 0, config.Range, angle, config.Range, config.HalfArcDegrees*math.Pi/180, p.Color, damage, 260)
 }
 func (KazeKit) Super(gs *GameState, p *player.Player, ts int64, angle, _ float64) bool {
-	startX, startY := p.X, p.Y
-	gs.vaultMove(p, angle, 320)
-	hit := false
-	killed := false
-	for _, target := range gs.Players {
-		if target.CanBulletHurt(p.PlayerId, p.Team) && segmentHitsCircle(startX, startY, p.X, p.Y, target.X, target.Y, target.Radius+18) {
-			hit = true
-			gs.dealPlayerDamage(p, target, 160)
-			if !target.IsAlive() {
-				killed = true
-			}
-			if target.IsAlive() {
-				target.StunUntil = max(target.StunUntil, ts+MeleeSkillStunDuration.Milliseconds())
-				addSuperChargeForControl(p, target, MeleeSkillStunDuration.Milliseconds())
-			}
-			p.KazeCombo, p.KazeComboUntil = 2, ts+KazeComboWindow.Milliseconds()
-		}
-	}
-	p.HasteUntil = ts + 2000
-	if killed {
-		p.KazeSuperReset = true
-	}
-	if hit {
-		gs.addEffect("kaze_followup_ready", p.X, p.Y, 0, 0, 74, 0, 0, 0, "#d7b8ff", 0, KazeComboWindow.Milliseconds())
-	}
-	gs.addEffect("kaze_dash", startX, startY, p.X, p.Y, 25, angle, 320, 0, p.Color, 160, 450)
+	distance := 320.0
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{
+		Owner: p.PlayerId, CommandID: gs.activeCommandID, Kind: "kaze_dash",
+		X: p.X, Y: p.Y, ToX: p.X + math.Cos(angle)*distance, ToY: p.Y + math.Sin(angle)*distance, Radius: 25, Width: distance,
+		CreatedAt: ts, TriggerAt: ts + 250, ExpiresAt: ts + 450,
+		Triggered: map[string]bool{},
+	})
+	p.ChannelUntil = ts + 250
+	gs.addEffect("kaze_dash_telegraph", p.X, p.Y,
+		p.X+math.Cos(angle)*distance, p.Y+math.Sin(angle)*distance,
+		25, angle, distance, 0, p.Color, 0, 250)
 	return true
 }
 
@@ -539,33 +525,28 @@ func (WukongMicoKit) Basic(gs *GameState, p *player.Player, ts int64, angle, _ f
 	gs.addEffect("mico_staff_swing", p.X, p.Y, 0, 0, reach, angle, reach, halfArc, p.Color, p.AttackDmg, 360)
 }
 func (WukongMicoKit) Super(gs *GameState, p *player.Player, ts int64, angle, distance float64) bool {
-	if distance > 0 {
-		leapDistance := math.Min(140, math.Max(0, distance*.5))
-		startX, startY := p.X, p.Y
-		gs.vaultMove(p, angle, leapDistance)
-		gs.addEffect("mico_leap", startX, startY, p.X, p.Y, 24, angle, leapDistance, 0, p.Color, 0, 360)
-	}
 	rage := p.MicoRage
 	duration := cappedSkillDuration(MicoVortexBaseDuration + time.Duration(rage)*MicoVortexDurationPerRage)
 	radius := MicoVortexBaseRadius + float64(rage)*MicoVortexRadiusPerRage
 	damage := micoVortexImpactDamage(rage)
+	leapDistance := math.Min(140, math.Max(0, distance*.5))
+	endX, endY := p.X+math.Cos(angle)*leapDistance, p.Y+math.Sin(angle)*leapDistance
 	p.MicoRage = 0
 	p.VortexUntil = ts + duration
+	p.VortexReadyAt = ts + 250
 	p.VortexRadius = radius
 	p.VortexDamage = micoVortexTickDamage(rage)
-	gs.radialDamage(p.PlayerId, p.X, p.Y, radius, damage)
-	for _, target := range gs.Players {
-		if target.CanBulletHurt(p.PlayerId, p.Team) && math.Hypot(target.X-p.X, target.Y-p.Y) <= radius+target.Radius {
-			dx, dy := p.X-target.X, p.Y-target.Y
-			if d := math.Hypot(dx, dy); d > 0 {
-				pullDistance := math.Min(d, d*MicoVortexPullFraction)
-				gs.movePlayerByCollision(target, dx/d*pullDistance, dy/d*pullDistance)
-			}
-			target.StunUntil = max(target.StunUntil, ts+MicoVortexStunDuration.Milliseconds())
-			addSuperChargeForControl(p, target, MicoVortexStunDuration.Milliseconds())
-		}
-	}
-	gs.addEffect("mico_staff_spin", p.X, p.Y, 0, 0, radius, angle, radius, math.Pi, p.Color, damage, duration)
+	// The vortex state is armed immediately, but its first tick cannot happen
+	// until the readable wind-up has resolved. This keeps the counterplay window
+	// authoritative instead of making the telegraph cosmetic only.
+	p.VortexTickAt = ts + 250
+	gs.HeroZones = append(gs.HeroZones, &HeroZone{
+		Owner: p.PlayerId, CommandID: gs.activeCommandID, Kind: "mico_vortex_telegraph",
+		X: p.X, Y: p.Y, ToX: endX, ToY: endY, Radius: radius, Width: leapDistance, Damage: damage,
+		CreatedAt: ts, TriggerAt: ts + 250, ExpiresAt: ts + 450,
+		Triggered: map[string]bool{},
+	})
+	gs.addEffect("mico_vortex_telegraph", p.X, p.Y, endX, endY, radius, angle, leapDistance, 0, p.Color, 0, 250)
 	return true
 }
 
@@ -751,6 +732,11 @@ func (gs *GameState) updateNewHeroSystems() {
 			continue
 		}
 		if now >= z.ExpiresAt {
+			if z.Kind == "mico_vortex_telegraph" {
+				if owner := gs.Players[z.Owner]; owner != nil {
+					owner.VortexReadyAt, owner.VortexUntil = 0, 0
+				}
+			}
 			if z.Kind == "lumi_flower" {
 				if owner := gs.Players[z.Owner]; owner != nil {
 					owner.LumiFlowers = int(math.Max(0, float64(owner.LumiFlowers-1)))
@@ -760,6 +746,80 @@ func (gs *GameState) updateNewHeroSystems() {
 		}
 		if z.TriggerAt > now {
 			zones = append(zones, z)
+			continue
+		}
+		if z.Kind == "kaze_dash" {
+			owner := gs.Players[z.Owner]
+			if owner == nil || !owner.IsAlive() {
+				continue
+			}
+			startX, startY := z.X, z.Y
+			angle := math.Atan2(z.ToY-z.Y, z.ToX-z.X)
+			distance := math.Hypot(z.ToX-z.X, z.ToY-z.Y)
+			if distance <= 0 {
+				distance = z.Width
+			}
+			hit := false
+			killed := false
+			gs.withCombatCommand(z.CommandID, z.Owner, "primary", func() {
+				gs.vaultMove(owner, angle, distance)
+				for _, target := range gs.Players {
+					if target.CanBulletHurt(owner.PlayerId, owner.Team) && segmentHitsCircle(startX, startY, owner.X, owner.Y, target.X, target.Y, target.Radius+18) {
+						hit = true
+						gs.dealPlayerDamage(owner, target, 160)
+						if !target.IsAlive() {
+							killed = true
+						}
+						if target.IsAlive() {
+							target.StunUntil = max(target.StunUntil, now+MeleeSkillStunDuration.Milliseconds())
+							addSuperChargeForControl(owner, target, MeleeSkillStunDuration.Milliseconds())
+						}
+					}
+				}
+			})
+			owner.ChannelUntil = 0
+			owner.HasteUntil = now + 2000
+			if killed {
+				owner.KazeSuperReset = true
+			}
+			if hit {
+				owner.KazeCombo, owner.KazeComboUntil = 2, now+KazeComboWindow.Milliseconds()
+				gs.addEffect("kaze_followup_ready", owner.X, owner.Y, 0, 0, 74, 0, 0, 0, "#d7b8ff", 0, KazeComboWindow.Milliseconds())
+			}
+			gs.addEffect("kaze_dash", startX, startY, owner.X, owner.Y, 25, angle, distance, 0, owner.Color, 160, 450)
+			continue
+		}
+		if z.Kind == "mico_vortex_telegraph" {
+			owner := gs.Players[z.Owner]
+			if owner == nil || !owner.IsAlive() {
+				continue
+			}
+			startX, startY := z.X, z.Y
+			angle := math.Atan2(z.ToY-z.Y, z.ToX-z.X)
+			distance := math.Hypot(z.ToX-z.X, z.ToY-z.Y)
+			if distance <= 0 {
+				distance = z.Width
+			}
+			gs.withCombatCommand(z.CommandID, z.Owner, "primary", func() {
+				gs.vaultMove(owner, angle, distance)
+				gs.radialDamage(owner.PlayerId, owner.X, owner.Y, z.Radius, z.Damage)
+				for _, target := range gs.Players {
+					if !target.CanBulletHurt(owner.PlayerId, owner.Team) || math.Hypot(target.X-owner.X, target.Y-owner.Y) > z.Radius+target.Radius {
+						continue
+					}
+					dx, dy := owner.X-target.X, owner.Y-target.Y
+					if d := math.Hypot(dx, dy); d > 0 {
+						pullDistance := math.Min(d, d*MicoVortexPullFraction)
+						gs.movePlayerByCollision(target, dx/d*pullDistance, dy/d*pullDistance)
+					}
+					target.StunUntil = max(target.StunUntil, now+MicoVortexStunDuration.Milliseconds())
+					addSuperChargeForControl(owner, target, MicoVortexStunDuration.Milliseconds())
+				}
+				owner.VortexReadyAt = 0
+				owner.VortexTickAt = now
+				gs.addEffect("mico_leap", startX, startY, owner.X, owner.Y, 24, angle, distance, 0, owner.Color, 0, 360)
+				gs.addEffect("mico_staff_spin", owner.X, owner.Y, 0, 0, z.Radius, angle, z.Radius, math.Pi, owner.Color, z.Damage, owner.VortexUntil-now)
+			})
 			continue
 		}
 		if z.Kind == "needle_roots" {

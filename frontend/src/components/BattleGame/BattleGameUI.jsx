@@ -1,6 +1,6 @@
-import {memo, useEffect, useRef, useState} from "react"
+import {Fragment, memo, useEffect, useRef, useState} from "react"
 import {getBattleRewardMessage} from "./battleOutcome"
-import {getIncomingTowerThreat, getObjectiveHudModel, getTeamHudModel, getTeamObjectiveGroups, getTeamPerspectiveLabel} from "./teamBattleUi.js"
+import {getHeroAvatarPath, getIncomingTowerThreat, getObjectiveHudModel, getTeamHudModel, getTeamObjectiveGroups, getTeamPerspectiveLabel, getTeamRespawnSeconds} from "./teamBattleUi.js"
 import {getIslandPhaseIndex, getIslandPhaseProgress, ISLAND_PHASE_ORDER} from "./phaseVisuals.js"
 import {isTeamBattleMode} from "./battleMode.js"
 import {formatBattleTime} from "./battleTimer.js"
@@ -237,16 +237,69 @@ export const AbilityButton = ({keyName, label, description, cooldown = 0, isSupe
   )
 }
 
-export const TeamBattleHud = ({state, localId}) => {
+const TEAM_OBJECTIVE_WIDGETS = [
+  ["tower", "БАШНИ", "▰"],
+  ["townHall", "РАТУША", "◆"],
+]
+
+const TeamObjectiveHealth = ({objectives}) => {
+  if (!objectives) return null
+  return <div className="team-battle-hud__objectives" aria-label="Здоровье укреплений">
+    {TEAM_OBJECTIVE_WIDGETS.map(([key, label, icon]) => {
+      const objective = objectives[key]
+      const readableCurrent = objective?.maximum > 0 ? `${objective.current} / ${objective.maximum} HP` : "нет данных"
+      const status = objective?.destroyed ? "разрушено" : objective?.protected ? "защищена башнями" : readableCurrent
+      return <div key={key} className={`team-battle-hud__objective${objective?.destroyed ? " is-destroyed" : ""}${objective?.protected ? " is-protected" : ""}`} title={`${label}: ${readableCurrent}`} aria-label={`${label}: ${status}`}>
+        <span className="team-battle-hud__objective-icon" aria-hidden="true">{icon}</span>
+        <span className="team-battle-hud__objective-label">{label}</span>
+        <i aria-hidden="true"><em style={{width: `${objective?.percent || 0}%`}}/></i>
+        <b>{objective?.maximum > 0 ? `${objective.percent}%` : "—"}</b>
+      </div>
+    })}
+  </div>
+}
+
+export const TeamBattleHud = ({state, localId, game}) => {
   const model = getTeamHudModel(state, localId)
+  const [now, setNow] = useState(() => Date.now())
+  const hasRespawningMember = Boolean(model?.teams.some(team => team.members.some(member => !member.alive && Number(member.respawnAt) > Date.now())))
+
+  useEffect(() => {
+    if (!hasRespawningMember) return undefined
+    const timer = window.setInterval(() => setNow(Date.now()), 250)
+    return () => window.clearInterval(timer)
+  }, [hasRespawningMember])
+
   if (!model) return null
-  return <section className="team-battle-hud" aria-label="Счёт команд">
-    {model.teams.map(team => <div key={team.id} className={`team-battle-hud__team${team.isLocal ? " is-local" : " is-enemy"}`}>
-      <b><i className="team-battle-hud__swatch" aria-hidden="true"/>{team.label}</b>
-      <span className="team-battle-hud__stats" aria-label={`${team.alive} живы, ${team.kills} фрагов`}>
-        <strong className="team-battle-hud__value">{team.alive}</strong><small>живы</small><em aria-hidden="true">·</em><strong className="team-battle-hud__value">{team.kills}</strong><small>фраги</small>
-      </span>
-    </div>)}
+  return <section className="team-battle-hud" aria-label="Состав и счёт команд">
+    {model.teams.map((team, index) => <Fragment key={team.id}>
+      {index === 1 && <div className="team-battle-hud__timer"><BattleMatchTimer game={game}/></div>}
+      <div className={`team-battle-hud__team${team.isLocal ? " is-local" : " is-enemy"}`}>
+        <div className="team-battle-hud__header">
+          <strong><i className="team-battle-hud__swatch" aria-hidden="true"/>{team.label}</strong>
+          <span className="team-battle-hud__kills" aria-label={`${team.kills} убийств`}><b>{team.kills}</b></span>
+        </div>
+        <div className="team-battle-hud__members">
+          {team.members.map(member => {
+            const respawnSeconds = getTeamRespawnSeconds(member, now)
+            const avatarPath = getHeroAvatarPath(member.hero)
+            const status = member.alive
+              ? `${member.name}, ${member.hero || "боец"}, в бою`
+              : respawnSeconds === null
+                ? `${member.name}, ${member.hero || "боец"}, выбыл`
+                : `${member.name}, ${member.hero || "боец"}, возрождение через ${respawnSeconds} секунд`
+            return <div key={member.id} className={`team-battle-hud__member${member.alive ? "" : " is-dead"}`} aria-label={status} title={status}>
+              {avatarPath
+                ? <img className="team-battle-hud__avatar" src={avatarPath} alt=""/>
+                : <span className="team-battle-hud__avatar team-battle-hud__avatar--fallback">{String(member.hero || member.name || "?").slice(0, 1).toUpperCase()}</span>}
+              {!member.alive && <span className="team-battle-hud__respawn">{respawnSeconds === null ? "—" : respawnSeconds}</span>}
+              <span className="team-battle-hud__member-state" aria-hidden="true">{member.alive ? "" : "×"}</span>
+            </div>
+          })}
+        </div>
+        <TeamObjectiveHealth objectives={team.objectives}/>
+      </div>
+    </Fragment>)}
   </section>
 }
 
@@ -338,11 +391,33 @@ export const BattleMiniMap = ({state, localId, renderer}) => {
     : []
   const visibleEnemies = Object.entries(state.players || {}).filter(([id]) =>
     String(id) !== String(localId) && renderer?.isPlayerVisible(id))
+  const monsterCamps = map.monsterCamps || []
+  const monstersByCamp = Object.values(state.monsters || {}).reduce((result, monster) => {
+    if (monster?.campId) result[monster.campId] = monster
+    return result
+  }, {})
   return (
     <aside className="battle-minimap" aria-label="Миникарта">
       {state.game?.stormRadius > 0 && <i className="mini-storm" style={{width: `${state.game.stormRadius / width * 200}%`, height: `${state.game.stormRadius / height * 200}%`}}/>}
       {state.game?.beaconOpen && <i className="mini-beacon"/>}
       <BattleMiniMapObstacles map={map}/>
+      {monsterCamps.map(camp => {
+        const kind = String(camp.kind || "bat").replace(/[^a-z0-9_-]/gi, "-")
+        const monster = monstersByCamp[camp.id]
+        const danger = ["notice", "windup", "recovery"].includes(monster?.state)
+        const territorySize = Math.max(7, Number(camp.territoryRadius || 0) / Math.max(width, height) * 200)
+        return (
+          <span
+            key={camp.id}
+            className={`mini-camp-cluster mini-camp-cluster--${kind}${danger ? " is-danger" : ""}`}
+            style={{left: `${Number(camp.x || 0) / width * 100}%`, top: `${Number(camp.y || 0) / height * 100}%`}}
+            aria-label={`Лагерь: ${camp.kind || "монстр"}`}
+          >
+            <i className="mini-camp-territory" style={{width: `${territorySize}%`, height: `${territorySize}%`}}/>
+            <i className="mini-camp"/>
+          </span>
+        )
+      })}
       {baseObjectives.map(objective => (
         <i
           key={objective.id}

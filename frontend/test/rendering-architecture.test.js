@@ -719,6 +719,7 @@ test("classic team map keeps the previous commit palette and skips northern atmo
   const classicBody = findRole(classic, "city-house-body")
   assert.equal(classic.userData.visualTheme, "classic")
   assert.equal(mapRenderer.ground.theme, "default")
+  assert.equal(mapRenderer.ground.mesh.userData.shape, "circular-island")
   assert.equal(Boolean(mapRenderer.phaseAtmosphere?.visible), false)
 
   mapRenderer.sync({...baseMap, id: "team-battle-northern@20260827", name: "team-battle-northern"})
@@ -728,6 +729,8 @@ test("classic team map keeps the previous commit palette and skips northern atmo
   assert.equal(northern.userData.visualTheme, "northern")
   assert.equal(mapRenderer.ground.theme, "team")
   assert.equal(mapRenderer.phaseAtmosphere?.visible, true)
+  assert.equal(mapRenderer.phaseAtmosphere.geometry.type, "CircleGeometry")
+  assert.equal(mapRenderer.phaseAtmosphere.userData.shape, "circular-island")
   assert.equal(mapRenderer.phaseAtmosphere.material.opacity > .05, true)
   assert.notEqual(classicBody.material.color.getHex(), northernBody.material.color.getHex())
 
@@ -886,7 +889,7 @@ test("team bases render as one cohesive settlement compound per team", () => {
   assert.ok(feature)
   const roles = new Set()
   feature.traverse(child => { if (child.userData?.role) roles.add(child.userData.role) })
-  for (const role of ["base-compound-foundation", "base-compound-hall", "base-compound-wing", "base-compound-gate", "base-compound-gate-arch", "base-compound-well"]) {
+  for (const role of ["base-compound-ground", "base-compound-foundation", "base-compound-hall", "base-compound-wing", "base-compound-gate", "base-compound-gate-arch", "base-compound-well"]) {
     assert.equal(roles.has(role), true, `compound lacks ${role}`)
   }
   const gateLintels = []
@@ -912,6 +915,13 @@ test("team bases render as one cohesive settlement compound per team", () => {
     if (child.userData?.role === "base-compound-foundation") foundation.push(child)
   })
   assert.equal(foundation[0].geometry.parameters.radiusBottom < 19, true, "compound plinth should stay inside the wall arc")
+  const ground = []
+  feature.traverse(child => {
+    if (child.userData?.role === "base-compound-ground") ground.push(child)
+  })
+  assert.equal(ground.length, 1, "compound needs one continuous ground apron")
+  assert.ok(ground[0].position.y < 0, "compound ground apron should sit below the gameplay ground plane")
+  assert.ok(ground[0].geometry.parameters.height <= .12, "compound ground apron must stay low and grounded")
   mapRenderer.dispose()
 })
 
@@ -3417,6 +3427,68 @@ test("ordinary grass is a single flat green ground without dense black-prone ins
   assert.equal(root.children[0], ground.mesh)
   assert.equal(ground.mesh.userData.role, "grass-ground")
   assert.equal(ground.mesh.material.color.getHex(), 0x4f9b50)
+})
+
+test("team battle ground follows the circular island boundary", () => {
+  const root = new THREE.Group()
+  const ground = new GroundRenderer(root)
+
+  ground.sync(2800, 2800, "team")
+
+  assert.equal(ground.mesh.geometry.type, "CircleGeometry")
+  assert.equal(ground.mesh.userData.role, "grass-ground")
+  assert.equal(ground.mesh.userData.shape, "circular-island")
+  ground.mesh.geometry.dispose()
+  ground.mesh.material.map.dispose()
+  ground.mesh.material.dispose()
+})
+
+test("team atmosphere follows the same circular island boundary as the ground", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+
+  mapRenderer.syncPhaseAtmosphere("team", 2800, 2800, "circular-island")
+
+  assert.equal(mapRenderer.phaseAtmosphere.geometry.type, "CircleGeometry")
+  assert.equal(mapRenderer.phaseAtmosphere.userData.shape, "circular-island")
+  mapRenderer.dispose()
+})
+
+test("ground rebuilds when a map switches between rectangular and circular shapes", () => {
+  const root = new THREE.Group()
+  const ground = new GroundRenderer(root)
+
+  ground.sync(2800, 2800, "default", [], "rectangular")
+  ground.sync(2800, 2800, "default", [], "circular-island")
+
+  assert.equal(ground.mesh.geometry.type, "CircleGeometry")
+  assert.equal(ground.mesh.userData.shape, "circular-island")
+  ground.mesh.geometry.dispose()
+  ground.mesh.material.map.dispose()
+  ground.mesh.material.dispose()
+})
+
+test("team map fills the seam between the stepped water ring and circular ground", () => {
+  const root = new THREE.Group()
+  const mapRenderer = new MapRenderer(root, {waterTexture: new THREE.Texture()})
+
+  mapRenderer.sync({
+    id: "team-battle-northern@20260827",
+    name: "team-battle-northern",
+    width: 2800,
+    height: 2800,
+    tileSize: 40,
+    walls: [{minX: 0, minY: 0, maxX: 40, maxY: 40, type: "water", blocking: true}],
+    features: [],
+  })
+
+  assert.equal(mapRenderer.oceanSurface.geometry.type, "CircleGeometry")
+  assert.equal(mapRenderer.oceanSurface.userData.role, "team-ocean-surface")
+  assert.equal(mapRenderer.oceanSurface.material.type, "MeshBasicMaterial")
+  assert.equal(mapRenderer.oceanSurface.material.color.getHex(), 0xffffff)
+  assert.equal([...mapRenderer.objects.values()].some(object => object.userData.visualType === "water"), false)
+  assert.equal(mapRenderer.oceanSurface.position.y < mapRenderer.ground.mesh.position.y, true)
+  mapRenderer.dispose()
 })
 
 test("city collision cells use concrete-like fixed-size wall visuals and rubble", () => {

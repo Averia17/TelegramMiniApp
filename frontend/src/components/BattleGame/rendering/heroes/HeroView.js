@@ -221,9 +221,11 @@ export class HeroView {
     this.group = new THREE.Group()
     this.shadow = createContactShadow(1.05)
     this.model = readyInstance ? readyInstance.root : new THREE.Group()
+    this.modelBaseScale = this.model.scale.clone()
     this.orientationOffset = readyInstance?.asset?.rotationOffset || 0
     this.modelMaterials = collectMaterials(this.model)
     this.hitMaterials = collectHitMaterials(this.modelMaterials)
+    this.modelBaseScale = this.model.scale.clone()
     this.modelOpacity = 1
     this.label = createLabel(state, teamBattle, localTeam, isLocalPlayer)
     this.teamMarker = new THREE.Mesh(
@@ -350,6 +352,11 @@ export class HeroView {
     updateLabel(this.label, state)
     this.updateTeamPresentation()
     if (this.isLocalPlayer) this.attackReloadIndicator?.update(state)
+  }
+
+  triggerHitReaction(event) {
+    if (!event || String(event.targetId) !== this.id) return
+    this.hit = Math.max(this.hit, String(event.reaction || "") === "defeat" ? 1.2 : 1)
   }
 
   setLocalPlayer(isLocalPlayer) {
@@ -568,6 +575,14 @@ export class HeroView {
     // Authored animation clips may touch the root transform. Apply the flight
     // offset after the mixer so the model cannot be pulled back into a prop.
     this.model.position.y = flightBodyHeight
+    const impact = clamp(this.hit, 0, 1.2)
+    if (this.modelBaseScale) {
+      this.model.scale.set(
+        this.modelBaseScale.x * (1 + impact * .08),
+        this.modelBaseScale.y * (1 - impact * .055),
+        this.modelBaseScale.z * (1 + impact * .08),
+      )
+    }
     this.model.userData.flightDepthActive = flightMix > 0.05
     // The depth reset lets the elevated model pass over obstacles. Keep the
     // GLB's normal depth testing so overlapping body parts retain their own

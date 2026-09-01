@@ -18,6 +18,26 @@ const cloneMaterials = root => root.traverse(child => {
   else if (child.material) child.material = child.material.clone()
 })
 
+const COMPANION_CLOUD_COLOR = 0xc8e7ff
+
+const createCompanionCloudMaterial = source => {
+  source?.dispose?.()
+  return new THREE.MeshStandardMaterial({
+    color: COMPANION_CLOUD_COLOR,
+    metalness: 0,
+    roughness: .82,
+  })
+}
+
+const prepareCompanionCloudMaterial = root => root.traverse(child => {
+  if (!child.isMesh) return
+  if (Array.isArray(child.material)) {
+    child.material = child.material.map(material => createCompanionCloudMaterial(material))
+  } else {
+    child.material = createCompanionCloudMaterial(child.material)
+  }
+})
+
 const markSharedGeometry = root => root.traverse(child => {
   if (child.geometry) child.geometry.userData.assetRegistryShared = true
 })
@@ -398,6 +418,7 @@ export class AssetRegistry {
       }
       cloudRoot = clone(cloudTemplate)
       cloneMaterials(cloudRoot)
+      prepareCompanionCloudMaterial(cloudRoot)
       cloudRoot.traverse(child => {
         if (child.isMesh) {
           child.castShadow = false

@@ -13,7 +13,7 @@
   </style>
 </head>
 <body>
-  <main id="app"><div id="status">Загрузка боевого героя…</div><aside id="panel"><div class="eyebrow">Battle hero / live renderer</div><h1>Проверка героя</h1><p class="hint">Тот же HeroView, GLB-контроллер, камера и свет, что используются в матче.</p><select id="hero-select" aria-label="Герой"></select><div class="group"><strong>Locomotion</strong><button data-animation="idle">Покой</button><button data-animation="run">Бег</button></div><div class="group"><strong>Skills</strong><button data-skill="attack">Основная атака</button><button data-skill="super">Супер</button><button data-skill="gadget">Gadget</button></div><div class="group"><strong>Events</strong><button data-animation="spawn">Появление</button><button data-animation="hit">Получил удар</button><button data-animation="victory">Победа</button><button data-animation="defeat">Поражение</button></div><div class="group"><strong>Aim</strong><button data-animation="aim">Прицел</button><button data-animation="aimSuper">Прицел супер</button><button data-animation="aimGadget">Прицел gadget</button></div><div class="readout"><span>Состояние</span><strong id="readout">idle</strong></div><div class="zoom-row"><button id="zoom-out" type="button" aria-label="Отдалить">−</button><output id="zoom-value">100%</output><button id="zoom-in" type="button" aria-label="Приблизить">+</button></div></aside><button id="toggle">Скрыть панель</button><canvas id="scene" aria-label="Проверка 3D героя"></canvas></main>
+    <main id="app"><div id="status">Загрузка боевого героя…</div><aside id="panel"><div class="eyebrow">Battle hero / live renderer</div><h1>Проверка героя</h1><p class="hint">Тот же HeroView, GLB-контроллер, камера и свет, что используются в матче.</p><select id="hero-select" aria-label="Герой"></select><div class="group"><strong>Locomotion</strong><button data-animation="idle">Покой</button><button data-animation="run">Бег</button></div><div class="group"><strong>Skills</strong><button data-skill="attack">Основная атака</button><button data-skill="super">Супер</button><button data-skill="gadget">Gadget</button></div><div class="group"><strong>Events</strong><button data-animation="spawn">Появление</button><button data-animation="hit">Получил удар</button><button data-animation="stunned">Оглушение</button><button data-animation="victory">Победа</button><button data-animation="defeat">Поражение</button></div><div class="group"><strong>Aim</strong><button data-animation="aim">Прицел</button><button data-animation="aimSuper">Прицел супер</button><button data-animation="aimGadget">Прицел gadget</button></div><div class="readout"><span>Состояние</span><strong id="readout">idle</strong></div><div class="zoom-row"><button id="zoom-out" type="button" aria-label="Отдалить">−</button><output id="zoom-value">100%</output><button id="zoom-in" type="button" aria-label="Приблизить">+</button></div></aside><button id="toggle">Скрыть панель</button><canvas id="scene" aria-label="Проверка 3D героя"></canvas></main>
   <script type="module">
     import {ThreeBattleRenderer} from "/src/components/BattleGame/rendering/three/ThreeBattleRenderer.js"
     import {assetRegistry} from "/src/components/BattleGame/rendering/assets/AssetRegistry.js"
@@ -32,17 +32,38 @@
 
     await assetRegistry.preloadHeroes([hero])
     const map=await loadCanonicalBattleMap()
-    const player={hero,name:hero,x:map.width*.5,y:map.height*.75,rotation:Math.PI/2,lives:720,maxLives:720,speed:0,moveX:0,moveY:0,aiming:false,stun:0,attackPulse:0,superPulse:0,gadgetPulse:0}
+    const player={hero,name:hero,x:map.width*.5,y:map.height*.75,rotation:Math.PI/2,lives:720,maxLives:720,speed:0,moveX:0,moveY:0,aiming:false,channel:0,stun:0,attackPulse:0,superPulse:0,gadgetPulse:0}
     const battleState={map,game:{islandName:"Остров Первого Испытания",phase:"landing",stormRadius:0},players:{qa:player},monsters:{},props:[],bullets:[],effects:[]}
     const battleRenderer=new ThreeBattleRenderer(canvas);battleRenderer.setLocalPlayerId("qa");battleRenderer.setState(battleState)
     // Runtime clip contract: aimGadget:"AimGadget" is resolved by GLBHeroController inside HeroView.
     const getView=()=>battleRenderer.players.get("qa"), setLabel=value=>{readout.textContent=value;status.textContent=`${hero} · ${value}`}
-    const pulse=skill=>{if(skill==="attack")player.attackPulse++;if(skill==="super")player.superPulse++;if(skill==="gadget")player.gadgetPulse++;battleRenderer.setState(battleState);setLabel(`skill / ${skill}`)}
+    const prepareController=()=>{
+      const view=getView(),controller=view.animation
+      view.setResult(null)
+      player.aiming=false;player.channel=0;player.stun=0
+      if (["spawn","victory","defeat"].includes(controller.state)) {
+        controller.actions.get(controller.state)?.stop().setEffectiveWeight(0)
+        controller.state=null
+      }
+      controller.clearOverlay()
+      controller.locomotionSuppressed=false
+      return controller
+    }
+    const pulse=skill=>{prepareController();if(skill==="attack")player.attackPulse++;if(skill==="super")player.superPulse++;if(skill==="gadget")player.gadgetPulse++;battleRenderer.setState(battleState);setLabel(`skill / ${skill}`)}
     document.querySelectorAll("[data-skill]").forEach(button=>button.addEventListener("click",()=>{pulse(button.dataset.skill)}))
-    document.querySelectorAll("[data-animation]").forEach(button=>button.addEventListener("click",()=>{const animation=button.dataset.animation,view=getView();if(animation==="run")player.moveY=1;else player.moveY=0;if(animation.startsWith("aim"))player.aiming=true;else player.aiming=false;if(animation==="stunned")player.stun=3;else player.stun=0;if(animation==="victory"||animation==="defeat")view.setResult(animation);if(animation==="hit")player.lives=Math.max(1,player.lives-1);battleRenderer.setState(battleState);setLabel(`animation / ${animation}`)}))
+    document.querySelectorAll("[data-animation]").forEach(button=>button.addEventListener("click",()=>{
+      const animation=button.dataset.animation,view=getView(),controller=prepareController()
+      if(animation==="spawn")controller.playSpawn()
+      else if(animation==="stunned"){player.stun=3;controller.playSafe("stunned")}
+      else if(animation==="aimGadget"){player.aiming=true;controller.playSafe("aimGadget")}
+      else {player.moveY=animation==="run"?1:0;player.aiming=animation.startsWith("aim");player.channel=animation==="aimSuper"?1:0}
+      if(animation==="victory"||animation==="defeat")view.setResult(animation)
+      if(animation==="hit"){player.lives=Math.max(1,player.lives-1);controller.playSafe("hit")}
+      battleRenderer.setState(battleState);setLabel(`animation / ${animation}`)
+    }))
     document.querySelector("#toggle").addEventListener("click",event=>{const hidden=panel.classList.toggle("hidden");event.currentTarget.textContent=hidden?"Показать панель":"Скрыть панель"})
     let zoom=1.6;const applyZoom=()=>{battleRenderer.cameraRig.preferredVertical=31/zoom;document.querySelector("#zoom-value").textContent=`${Math.round(zoom*100)}%`};document.querySelector("#zoom-out").addEventListener("click",()=>{zoom=Math.max(.65,zoom-.1);applyZoom()});document.querySelector("#zoom-in").addEventListener("click",()=>{zoom=Math.min(1.8,zoom+.1);applyZoom()});canvas.addEventListener("wheel",event=>{event.preventDefault();if(!event.deltaY)return;zoom=Math.max(.65,Math.min(1.8,zoom*Math.pow(1.08,event.deltaY>0?-1:1)));applyZoom()},{passive:false})
-    const resize=()=>battleRenderer.resize(innerWidth,innerHeight);addEventListener("resize",resize);resize();applyZoom();status.classList.add("ready");setLabel("idle")
+    const resize=()=>battleRenderer.resize(innerWidth,innerHeight);addEventListener("resize",resize);resize();applyZoom();status.classList.add("ready");setLabel(getView()?.animation?.state==="spawn"?"spawn":"idle");setTimeout(()=>{if(readout.textContent==="spawn"&&getView()?.animation?.state!=="spawn")setLabel("idle")},1200)
     battleRenderer.renderer.setAnimationLoop(()=>battleRenderer.render());addEventListener("pagehide",()=>battleRenderer.destroy(),{once:true})
     window.qa={battleRenderer,battleState,player,getView};window.render_game_to_text=()=>JSON.stringify({renderer:"ThreeBattleRenderer",map:{id:map.id,name:map.name,seed:map.seed,revision:map.revision,walls:map.walls.length,water:map.walls.filter(wall=>wall.type==="water").length},hero,requestedHero,state:readout.textContent,animation:getView()?.animation?.state||null,skillPulses:{attack:player.attackPulse,super:player.superPulse,gadget:player.gadgetPulse},clips:getView()?.animation?.actions? [...getView().animation.actions.keys()]:[]})
   </script>

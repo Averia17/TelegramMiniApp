@@ -9,12 +9,21 @@ import (
 
 type MonsterState string
 
+type MonsterKind string
+
 const (
-	MonsterIdle   MonsterState = "idle"
-	MonsterPatrol MonsterState = "patrol"
-	MonsterNotice MonsterState = "notice"
-	MonsterChase  MonsterState = "chase"
-	MonsterWindup MonsterState = "windup"
+	MonsterBat          MonsterKind = "bat"
+	MonsterAshHound     MonsterKind = "ash_hound"
+	MonsterRootGuardian MonsterKind = "root_guardian"
+)
+
+const (
+	MonsterIdle     MonsterState = "idle"
+	MonsterPatrol   MonsterState = "patrol"
+	MonsterNotice   MonsterState = "notice"
+	MonsterChase    MonsterState = "chase"
+	MonsterWindup   MonsterState = "windup"
+	MonsterRecovery MonsterState = "recovery"
 )
 
 const (
@@ -42,8 +51,60 @@ const (
 	MonsterAttackWindup       = 450
 )
 
+// AttackProfile is the authored threat contract for neutral camps. Keeping
+// these values beside MonsterKind prevents every camp from collapsing into a
+// recoloured bat while leaving the authoritative resolution in game state.
+type AttackProfile struct {
+	Range      float64
+	CooldownMs int64
+	WindupMs   int64
+	Damage     int
+	Telegraph  string
+	Impact     string
+	Color      string
+	RecoveryMs int64
+}
+
+func ProfileForKind(kind MonsterKind, tier int) AttackProfile {
+	if tier < 1 {
+		tier = 1
+	}
+	profile := AttackProfile{
+		Range:      56,
+		CooldownMs: 1100 - int64(math.Min(200, float64((tier-1)*200))),
+		WindupMs:   MonsterAttackWindup,
+		Damage:     62 + tier*18,
+		Telegraph:  "bat_windup",
+		Impact:     "bat_strike",
+		Color:      "#ff486f",
+	}
+	switch kind {
+	case MonsterAshHound:
+		profile.Range = 128
+		profile.CooldownMs = 1450 - int64(math.Min(250, float64((tier-1)*250)))
+		profile.WindupMs = 520
+		profile.Damage = 78 + (tier-1)*16
+		profile.Telegraph = "ash_hound_charge_telegraph"
+		profile.Impact = "ash_hound_charge_impact"
+		profile.Color = "#ff8a3d"
+		profile.RecoveryMs = 720
+	case MonsterRootGuardian:
+		profile.Range = 192
+		profile.CooldownMs = 2200 - int64(math.Min(400, float64((tier-1)*400)))
+		profile.WindupMs = 650
+		profile.Damage = 28 + (tier-1)*8
+		profile.Telegraph = "root_guardian_telegraph"
+		profile.Impact = "root_guardian_impact"
+		profile.Color = "#9be66f"
+	}
+	return profile
+}
+
 type Monster struct {
 	geometry.CircleBody
+	Kind               MonsterKind
+	CampID             string
+	TerritoryRadius    float64
 	Rotation           float64
 	MapWidth           float64
 	MapHeight          float64
@@ -67,6 +128,12 @@ type Monster struct {
 	MoveY              float64
 	MoveScale          float64
 	AttackWindupUntil  int64
+	AttackOriginX      float64
+	AttackOriginY      float64
+	AttackTargetX      float64
+	AttackTargetY      float64
+	VulnerableUntil    int64
+	RecoveryUntil      int64
 }
 
 func NewMonster(x, y, radius, mapWidth, mapHeight float64, lives int) *Monster {
@@ -77,20 +144,36 @@ func NewMonster(x, y, radius, mapWidth, mapHeight float64, lives int) *Monster {
 // clock as the battle state. NewMonster remains the wall-clock convenience
 // constructor for standalone callers and legacy tests.
 func NewMonsterAt(now int64, x, y, radius, mapWidth, mapHeight float64, lives int) *Monster {
+	return NewMonsterOfKindAt(now, MonsterBat, "", x, y, radius, mapWidth, mapHeight, 320, lives)
+}
+
+// NewMonsterOfKindAt creates a neutral with an authored camp identity. The
+// identity is part of the gameplay contract so snapshots, rewards and future
+// type-specific AI can remain correlated across respawns.
+func NewMonsterOfKindAt(now int64, kind MonsterKind, campID string, x, y, radius, mapWidth, mapHeight, territoryRadius float64, lives int) *Monster {
+	if kind == "" {
+		kind = MonsterBat
+	}
+	if territoryRadius <= 0 {
+		territoryRadius = MonsterChaseLeash
+	}
 	return &Monster{
-		CircleBody:   geometry.CircleBody{X: x, Y: y, Radius: radius},
-		MapWidth:     mapWidth,
-		MapHeight:    mapHeight,
-		Lives:        lives,
-		MaxLives:     lives,
-		Tier:         1,
-		State:        MonsterIdle,
-		LastActionAt: now,
-		LastAttackAt: now,
-		ChaseOriginX: x,
-		ChaseOriginY: y,
-		SpawnX:       x,
-		SpawnY:       y,
+		CircleBody:      geometry.CircleBody{X: x, Y: y, Radius: radius},
+		Kind:            kind,
+		CampID:          campID,
+		TerritoryRadius: territoryRadius,
+		MapWidth:        mapWidth,
+		MapHeight:       mapHeight,
+		Lives:           lives,
+		MaxLives:        lives,
+		Tier:            1,
+		State:           MonsterIdle,
+		LastActionAt:    now,
+		LastAttackAt:    now,
+		ChaseOriginX:    x,
+		ChaseOriginY:    y,
+		SpawnX:          x,
+		SpawnY:          y,
 	}
 }
 

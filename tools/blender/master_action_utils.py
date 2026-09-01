@@ -1,4 +1,4 @@
-"""Shared helpers for authoring and auditing master-based hero Actions."""
+"""Read-only helpers for auditing master-based hero Actions."""
 
 from __future__ import annotations
 
@@ -76,8 +76,3 @@ def activate_action(hero: str, clip: str):
 def action_marker(action, name: str):
     value = action.get(f"marker_{name}")
     return int(value) if value is not None else None
-
-
-def save_master(path: Path) -> None:
-    bpy.context.preferences.filepaths.save_version = 0
-    bpy.ops.wm.save_as_mainfile(filepath=os.fspath(path), check_existing=False)

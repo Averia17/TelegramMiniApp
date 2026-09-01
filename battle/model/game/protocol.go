@@ -76,6 +76,7 @@ type StateUpdate struct {
 	Game                     GameStateJSON          `json:"game"`
 	Map                      MapJSON                `json:"map"`
 	Players                  map[string]PlayerJSON  `json:"players"`
+	TeamRoster               []TeamRosterPlayerJSON `json:"teamRoster,omitempty"`
 	Monsters                 map[string]MonsterJSON `json:"monsters"`
 	Bullets                  []BulletJSON           `json:"bullets"`
 	Props                    []PropJSON             `json:"props"`
@@ -107,26 +108,35 @@ type CombatEventJSON struct {
 	ResourceKind       string  `json:"resourceKind,omitempty"`
 	ResourceBefore     int     `json:"resourceBefore,omitempty"`
 	ResourceAfter      int     `json:"resourceAfter,omitempty"`
+	Reaction           string  `json:"reaction,omitempty"`
+	HitStopMs          int64   `json:"hitStopMs,omitempty"`
+	TargetLivesBefore  int     `json:"targetLivesBefore,omitempty"`
+	TargetLivesAfter   int     `json:"targetLivesAfter,omitempty"`
 	Accepted           bool    `json:"accepted"`
 	Resolved           bool    `json:"resolved"`
 }
 
 type EffectJSON struct {
-	Id      string  `json:"id"`
-	Kind    string  `json:"kind,omitempty"`
-	Phase   string  `json:"phase,omitempty"`
-	X       float64 `json:"x"`
-	Y       float64 `json:"y"`
-	ToX     float64 `json:"toX,omitempty"`
-	ToY     float64 `json:"toY,omitempty"`
-	Radius  float64 `json:"radius,omitempty"`
-	Angle   float64 `json:"angle,omitempty"`
-	Range   float64 `json:"range,omitempty"`
-	Arc     float64 `json:"arc,omitempty"`
-	Color   string  `json:"color,omitempty"`
-	Damage  int     `json:"damage,omitempty"`
-	Life    float64 `json:"life"`
-	MaxLife float64 `json:"maxLife"`
+	Id          string  `json:"id"`
+	Kind        string  `json:"kind,omitempty"`
+	Phase       string  `json:"phase,omitempty"`
+	CommandID   string  `json:"commandId,omitempty"`
+	SourceID    string  `json:"sourceId,omitempty"`
+	AbilitySlot string  `json:"abilitySlot,omitempty"`
+	TargetType  string  `json:"targetType,omitempty"`
+	TargetID    string  `json:"targetId,omitempty"`
+	X           float64 `json:"x"`
+	Y           float64 `json:"y"`
+	ToX         float64 `json:"toX,omitempty"`
+	ToY         float64 `json:"toY,omitempty"`
+	Radius      float64 `json:"radius,omitempty"`
+	Angle       float64 `json:"angle,omitempty"`
+	Range       float64 `json:"range,omitempty"`
+	Arc         float64 `json:"arc,omitempty"`
+	Color       string  `json:"color,omitempty"`
+	Damage      int     `json:"damage,omitempty"`
+	Life        float64 `json:"life"`
+	MaxLife     float64 `json:"maxLife"`
 }
 
 type PlayerJSON struct {
@@ -216,6 +226,19 @@ type PlayerJSON struct {
 	LastContact        *LastContactJSON `json:"lastContact,omitempty"`
 }
 
+// TeamRosterPlayerJSON is the intentionally small public roster used by the
+// team HUD. It keeps ally/enemy portraits and respawn state visible without
+// exposing concealed enemy position or combat state.
+type TeamRosterPlayerJSON struct {
+	PlayerId  string `json:"playerId"`
+	Name      string `json:"name"`
+	Hero      string `json:"hero"`
+	Team      string `json:"team"`
+	Alive     bool   `json:"alive"`
+	Kills     int    `json:"kills"`
+	RespawnAt int64  `json:"respawnAt,omitempty"`
+}
+
 type LastContactJSON struct {
 	X          float64 `json:"x"`
 	Y          float64 `json:"y"`
@@ -243,16 +266,21 @@ type CooldownsJSON struct {
 }
 
 type MonsterJSON struct {
-	X           float64 `json:"x"`
-	Y           float64 `json:"y"`
-	Radius      float64 `json:"radius"`
-	Rotation    float64 `json:"rotation"`
-	Lives       int     `json:"lives"`
-	MaxLives    int     `json:"maxLives"`
-	Tier        int     `json:"tier,omitempty"`
-	State       string  `json:"state,omitempty"`
-	NoticeUntil int64   `json:"noticeUntil,omitempty"`
-	WindupUntil int64   `json:"windupUntil,omitempty"`
+	X               float64 `json:"x"`
+	Y               float64 `json:"y"`
+	Kind            string  `json:"kind,omitempty"`
+	CampID          string  `json:"campId,omitempty"`
+	TerritoryRadius float64 `json:"territoryRadius,omitempty"`
+	Radius          float64 `json:"radius"`
+	Rotation        float64 `json:"rotation"`
+	Lives           int     `json:"lives"`
+	MaxLives        int     `json:"maxLives"`
+	Tier            int     `json:"tier,omitempty"`
+	State           string  `json:"state,omitempty"`
+	NoticeUntil     int64   `json:"noticeUntil,omitempty"`
+	WindupUntil     int64   `json:"windupUntil,omitempty"`
+	RecoveryUntil   int64   `json:"recoveryUntil,omitempty"`
+	VulnerableUntil int64   `json:"vulnerableUntil,omitempty"`
 }
 
 type BulletJSON struct {
@@ -293,17 +321,18 @@ type PropJSON struct {
 }
 
 type MapJSON struct {
-	ID         string                 `json:"id"`
-	Name       string                 `json:"name"`
-	Seed       int64                  `json:"seed"`
-	Revision   int                    `json:"revision"`
-	Width      float64                `json:"width"`
-	Height     float64                `json:"height"`
-	TileSize   float64                `json:"tileSize"`
-	Walls      []WallJSON             `json:"walls"`
-	TeamSpawns map[string][]SpawnJSON `json:"teamSpawns,omitempty"`
-	Objectives []ObjectiveJSON        `json:"objectives,omitempty"`
-	Features   []FeatureJSON          `json:"features,omitempty"`
+	ID           string                 `json:"id"`
+	Name         string                 `json:"name"`
+	Seed         int64                  `json:"seed"`
+	Revision     int                    `json:"revision"`
+	Width        float64                `json:"width"`
+	Height       float64                `json:"height"`
+	TileSize     float64                `json:"tileSize"`
+	Walls        []WallJSON             `json:"walls"`
+	TeamSpawns   map[string][]SpawnJSON `json:"teamSpawns,omitempty"`
+	Objectives   []ObjectiveJSON        `json:"objectives,omitempty"`
+	Features     []FeatureJSON          `json:"features,omitempty"`
+	MonsterCamps []MonsterCampJSON      `json:"monsterCamps,omitempty"`
 }
 
 type SpawnJSON struct {
@@ -328,6 +357,14 @@ type FeatureJSON struct {
 	Y        float64 `json:"y"`
 	Rotation float64 `json:"rotation,omitempty"`
 	Scale    float64 `json:"scale,omitempty"`
+}
+
+type MonsterCampJSON struct {
+	ID              string  `json:"id"`
+	Kind            string  `json:"kind"`
+	X               float64 `json:"x"`
+	Y               float64 `json:"y"`
+	TerritoryRadius float64 `json:"territoryRadius"`
 }
 
 type WallJSON struct {

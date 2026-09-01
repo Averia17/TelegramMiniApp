@@ -2,21 +2,68 @@ import {TEAM_DEATHMATCH_MODE, normalizeBattleMode} from "./battleMode.js"
 
 const asTeamId = value => String(value || "").trim()
 
+export const heroAvatarPaths = Object.freeze({
+  Needle: "/assets/heroes/icons/needle.png",
+  Mandy: "/assets/heroes/icons/mandy.png",
+  "Fairy Mina": "/assets/heroes/icons/fairy-mina.png",
+  "Brock Zeus": "/assets/heroes/icons/brock-zeus.png",
+  Kaze: "/assets/heroes/icons/kaze.png",
+  "Wukong Mico": "/assets/heroes/icons/wukong-mico.png",
+  "Persephone Lumi": "/assets/heroes/icons/persephone-lumi.png",
+  Katty: "/assets/heroes/icons/katty.png",
+})
+
+export const getHeroAvatarPath = hero => heroAvatarPaths[String(hero || "").trim()] || null
+
+const summarizeObjectiveHealth = (items, extra = {}) => {
+  const current = items.reduce((total, objective) => total + Math.max(0, Number(objective?.lives) || 0), 0)
+  const maximum = items.reduce((total, objective) => total + Math.max(0, Number(objective?.maxLives) || 0), 0)
+  const percent = maximum > 0 ? Math.round(Math.max(0, Math.min(100, current / maximum * 100))) : 0
+  return {current, maximum, percent, destroyed: items.length > 0 && current <= 0, count: items.length, ...extra}
+}
+
+export const getTeamObjectiveSummary = (objectives = [], teamId) => {
+  const teamObjectives = objectives.filter(objective => asTeamId(objective?.team) === asTeamId(teamId))
+  const towers = teamObjectives.filter(objective => objective?.type === "tower")
+  const townHalls = teamObjectives.filter(objective => objective?.type === "town_hall")
+  return {
+    tower: summarizeObjectiveHealth(towers),
+    townHall: summarizeObjectiveHealth(townHalls, {protected: towers.some(objective => Number(objective?.lives) > 0)}),
+  }
+}
+
+export const getTeamRespawnSeconds = (member, now = Date.now()) => {
+  if (member?.alive) return null
+  const respawnAt = Number(member?.respawnAt)
+  if (!Number.isFinite(respawnAt) || respawnAt <= now) return null
+  return Math.ceil((respawnAt - now) / 1000)
+}
+
 export const getTeamPerspectiveLabel = (team, localTeam) => team === localTeam ? "СОЮЗНИКИ" : "ПРОТИВНИКИ"
 
 export const getTeamHudModel = (state, localId, mode = state?.game?.mode) => {
   if (normalizeBattleMode(mode) !== TEAM_DEATHMATCH_MODE) return null
-  const players = Object.values(state?.players || {})
-  const localTeam = asTeamId(state?.players?.[localId]?.team)
+  const roster = Array.isArray(state?.teamRoster) && state.teamRoster.length
+    ? state.teamRoster
+    : Object.values(state?.players || {})
+  const localTeam = asTeamId(state?.players?.[localId]?.team || roster.find(player => String(player?.playerId) === String(localId))?.team)
+  const objectives = Array.isArray(state?.objectives) ? state.objectives.filter(Boolean) : []
   const grouped = new Map()
-  players.forEach(player => {
+  roster.forEach(player => {
     const id = asTeamId(player?.team)
     if (!id) return
     if (!grouped.has(id)) grouped.set(id, {id, alive: 0, kills: 0, members: []})
     const team = grouped.get(id)
-    team.alive += Number(player?.lives) > 0 ? 1 : 0
+    const alive = player?.alive === undefined ? Number(player?.lives) > 0 : Boolean(player.alive)
+    team.alive += alive ? 1 : 0
     team.kills += Number(player?.kills) || 0
-    team.members.push({id: player?.playerId, name: player?.name || "Боец", alive: Number(player?.lives) > 0})
+    team.members.push({
+      id: player?.playerId,
+      name: player?.name || "Боец",
+      hero: player?.hero || "",
+      alive,
+      respawnAt: Number(player?.respawnAt) || 0,
+    })
   })
   return {
     localTeam,
@@ -24,6 +71,7 @@ export const getTeamHudModel = (state, localId, mode = state?.game?.mode) => {
       ...team,
       isLocal: team.id === localTeam,
       label: getTeamPerspectiveLabel(team.id, localTeam),
+      objectives: getTeamObjectiveSummary(objectives, team.id),
     })),
   }
 }

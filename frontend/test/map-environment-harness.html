@@ -261,6 +261,7 @@
       exportEditorMap,
       duplicateEditorItem,
       getLinkedCollisionCount,
+      getEditorItemBounds,
       isEditorItemHit,
       listEditorItems,
       removeEditorItem,
@@ -375,12 +376,22 @@
       const findSelectedItem = () => getEditorItems().find(item => item.kind === editorState.selection?.kind && String(item.editorId) === String(editorState.selection?.editorId)) || null
       const typeDefinitions = () => editorKind.value === "feature" ? EDITOR_FEATURE_TYPES : EDITOR_WALL_TYPES
       const typeLabel = (kind, type) => (kind === "feature" ? EDITOR_FEATURE_TYPES : EDITOR_WALL_TYPES).find(option => option.value === type)?.label || type
-      const itemCenter = descriptor => descriptor.kind === "feature"
+      const itemBounds = descriptor => getEditorItemBounds(map, descriptor)
+      const itemCenter = descriptor => {
+        const bounds = itemBounds(descriptor)
+        return bounds
+          ? {x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2}
+          : {x: 0, y: 0}
+      }
+      const itemAnchor = descriptor => descriptor.kind === "feature"
         ? {x: Number(descriptor.item.x) || 0, y: Number(descriptor.item.y) || 0}
         : {x: (Number(descriptor.item.minX) + Number(descriptor.item.maxX)) / 2, y: (Number(descriptor.item.minY) + Number(descriptor.item.maxY)) / 2}
-      const itemSize = descriptor => descriptor.kind === "feature"
-        ? {width: (map.tileSize || 40) * 2.4 * (Number(descriptor.item.scale) > 0 ? Number(descriptor.item.scale) : 1), depth: (map.tileSize || 40) * 2.4 * (Number(descriptor.item.scale) > 0 ? Number(descriptor.item.scale) : 1)}
-        : {width: Math.max(2, Number(descriptor.item.maxX) - Number(descriptor.item.minX)), depth: Math.max(2, Number(descriptor.item.maxY) - Number(descriptor.item.minY))}
+      const itemSize = descriptor => {
+        const bounds = itemBounds(descriptor)
+        return bounds
+          ? {width: Math.max(2, bounds.maxX - bounds.minX), depth: Math.max(2, bounds.maxY - bounds.minY)}
+          : {width: 2, depth: 2}
+      }
       const clampMapPoint = point => ({
         x: Math.max(0, Math.min(map.width, point.x)),
         y: Math.max(0, Math.min(map.height, point.y)),
@@ -405,7 +416,7 @@
         let closestDistance = Infinity
         getEditorItems().forEach(descriptor => {
           if (!isEditorItemHit(map, descriptor, point)) return
-          const center = itemCenter(descriptor)
+          const center = itemAnchor(descriptor)
           const size = itemSize(descriptor)
           const area = size.width * size.depth
           const distance = Math.hypot(point.x - center.x, point.y - center.y)
@@ -427,6 +438,7 @@
         const size = itemSize(descriptor)
         editorMarker.position.set(center.x * WORLD_SCALE, .08, center.y * WORLD_SCALE)
         editorMarker.scale.set(Math.max(1, size.width * WORLD_SCALE / 2), Math.max(1, size.depth * WORLD_SCALE / 2), 1)
+        editorMarker.rotation.y = descriptor.kind === "wall" ? Number(descriptor.item.rotation) || 0 : 0
         editorMarker.visible = true
       }
       const positionEditorPopover = () => {
@@ -466,7 +478,7 @@
         }
         const descriptor = findSelectedItem()
         const hasSelection = Boolean(descriptor)
-        const center = descriptor ? itemCenter(descriptor) : null
+        const center = descriptor ? itemAnchor(descriptor) : null
         selectedItem.textContent = descriptor ? `${typeLabel(descriptor.kind, descriptor.type)} · ${descriptor.editorId}` : "Ничего не выбрано"
         const linkedCollisionText = descriptor?.kind === "feature" ? ` · коллизий связано: ${getLinkedCollisionCount(map, descriptor.item)}` : ""
         selectedItemMeta.textContent = descriptor ? `${descriptor.kind === "feature" ? "Композиция" : "Проп / коллизия"} · ${Math.round(itemSize(descriptor).width)} × ${Math.round(itemSize(descriptor).depth)}${linkedCollisionText}` : "Кликните по объекту на карте"
@@ -578,7 +590,7 @@
         const kind = editorKind.value
         const option = typeDefinitions().find(item => item.value === editorType.value)
         if (!option) return
-        const center = findSelectedItem() ? itemCenter(findSelectedItem()) : {x: map.width / 2, y: map.height / 2}
+        const center = findSelectedItem() ? itemAnchor(findSelectedItem()) : {x: map.width / 2, y: map.height / 2}
         const next = appendEditorItem(map, {
           kind,
           type: option.value,
@@ -596,7 +608,7 @@
       duplicateButton.addEventListener("click", () => {
         const descriptor = findSelectedItem()
         if (!descriptor) return
-        const center = itemCenter(descriptor)
+        const center = itemAnchor(descriptor)
         const next = duplicateEditorItem(map, editorState.selection, {
           x: Math.min(map.width, center.x + (map.tileSize || 40)),
           y: Math.min(map.height, center.y + (map.tileSize || 40)),

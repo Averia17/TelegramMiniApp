@@ -92,8 +92,8 @@ func TestScenarioPackVisualTimelineCoversEverySuper(t *testing.T) {
 		{hero: "Mandy", targetDistance: 300, initialKind: "mandy_super_charge", initialPhase: EffectPhaseTelegraph, impactKind: "mandy_super_wave", resolveAt: 800},
 		{hero: "Fairy Mina", targetDistance: 260, initialKind: "mina_healing_aura", initialPhase: EffectPhaseActive, resolveAt: 1_000},
 		{hero: "Brock Zeus", targetDistance: 260, initialKind: "zeus_strike_warning", initialPhase: EffectPhaseTelegraph, impactKind: "zeus_lightning_strike", resolveAt: 700},
-		{hero: "Kaze", targetDistance: 220, initialKind: "kaze_dash", initialPhase: EffectPhaseImpact, impactKind: "kaze_dash", resolveAt: 100},
-		{hero: "Wukong Mico", targetDistance: 100, initialKind: "mico_staff_spin", initialPhase: EffectPhaseActive, resolveAt: 100},
+		{hero: "Kaze", targetDistance: 220, initialKind: "kaze_dash_telegraph", initialPhase: EffectPhaseTelegraph, impactKind: "kaze_dash", resolveAt: 300},
+		{hero: "Wukong Mico", targetDistance: 100, initialKind: "mico_vortex_telegraph", initialPhase: EffectPhaseTelegraph, impactKind: "mico_staff_spin", resolveAt: 300},
 		{hero: "Persephone Lumi", targetDistance: 220, initialKind: "lumi_roots", initialPhase: EffectPhaseActive, impactKind: "lumi_root_impact", resolveAt: 700},
 		{hero: "Katty", targetDistance: 80, initialZone: "katty_paint_puddle", impactKind: "katty_paint_impact", resolveAt: 600},
 	}

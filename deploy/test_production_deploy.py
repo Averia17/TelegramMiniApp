@@ -35,10 +35,26 @@ class ProductionDeploySafetyTests(unittest.TestCase):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("backup_databases", source)
         self.assertIn("backup_database news-db", source)
+        self.assertIn("pg_restore --list", source)
         self.assertLess(
             source.index("backup_databases"), source.index("run_migrations")
         )
         self.assertIn("publish_release_news", source)
+
+    def test_deployer_validates_manifest_integrity_before_creating_release_state(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("validate_release_manifest", source)
+        self.assertIn("config_sha256", source)
+        self.assertIn("git rev-parse --verify HEAD", source)
+        self.assertIn("manifest commit does not match checked-out HEAD", source)
+        self.assertLess(
+            source.index("validate_release_manifest"), source.index("mkdir -p")
+        )
+
+    def test_deployer_does_not_allow_stateful_or_mutable_manifest_units(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("from deploy.manifest import validate_release_manifest", source)
+        self.assertIn("manifest production configuration hash mismatch", source)
 
     def test_deployer_supports_a_separate_staging_env_and_checks_rollback_readiness(
         self,
@@ -69,7 +85,9 @@ class ProductionDeploySafetyTests(unittest.TestCase):
         self.assertIn('"127.0.0.1:19090:9090"', compose)
         self.assertIn('"127.0.0.1:13000:3000"', compose)
         self.assertIn("${COMPOSE_BIND_ROOT:-.}/.release/current", compose)
-        self.assertIn("${COMPOSE_BIND_ROOT:-.}/observability/prometheus.yml", compose)
+        self.assertIn(
+            "${COMPOSE_BIND_ROOT:-.}/observability/prometheus.prod.yml", compose
+        )
 
     def test_local_migration_jobs_have_build_contexts(self):
         for service in ("bot", "shop", "news"):

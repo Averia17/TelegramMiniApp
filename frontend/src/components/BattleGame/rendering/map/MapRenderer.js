@@ -852,6 +852,7 @@ const createBaseCompoundVisual = scale => {
   const iron = new THREE.MeshStandardMaterial({color: 0x3b403d, roughness: .7, metalness: .16, flatShading: true})
   const banner = new THREE.MeshStandardMaterial({color: 0x3977a8, roughness: .92, flatShading: true})
   const fire = new THREE.MeshStandardMaterial({color: 0xd17a32, roughness: .4, emissive: 0x632209, emissiveIntensity: .52, flatShading: true})
+  const compoundGround = new THREE.MeshStandardMaterial({color: 0x59664f, roughness: 1, flatShading: true})
 
   const part = (geometry, material, role, x, y, z, rotation = null) => createBaseFeaturePart(
     group, geometry, material, role, new THREE.Vector3(x, y, z), rotation,
@@ -861,6 +862,13 @@ const createBaseCompoundVisual = scale => {
   // Keep the plinth inside the inner edge of the surrounding wall arc. The
   // previous 9-cell radius visibly ran underneath the wall rows and made the
   // whole compound look displaced even when its buildings were centered.
+  // The authored team bases sit close to the circular shoreline. This low
+  // grass apron fills the part of the compound footprint that crosses the
+  // shoreline, so the settlement remains planted instead of hovering above
+  // the ocean surface used outside the playable island.
+  const ground = part(new THREE.CylinderGeometry(10.15 * U, 10.3 * U, .1, 16), compoundGround, "base-compound-ground", 0, -.055, 0)
+  ground.renderOrder = 2
+  ground.castShadow = false
   part(new THREE.CylinderGeometry(6.95 * U, 7.3 * U, .18, 12), foundation, "base-compound-foundation", 0, .09, 0)
   part(new THREE.CylinderGeometry(6.35 * U, 6.35 * U, .08, 12), paving, "base-compound-courtyard", 0, .21, 0)
   part(new THREE.BoxGeometry(1.1 * U, .045, 7.4 * U), foundation, "base-compound-path", 0, .27, 1.0 * U)
@@ -3183,6 +3191,7 @@ export class MapRenderer {
     this.stormRadius = 0
     this.stormTargetRadius = 0
     this.phaseAtmosphere = null
+    this.oceanSurface = null
     this.beaconGroup = null
     this.islandTerrain = null
     this.mapState = null
@@ -3213,7 +3222,7 @@ export class MapRenderer {
     }
     this.syncIslandTerrain(isFirstTrial, width, height)
     this.syncPhaseAtmosphere(teamBattle ? "" : game?.phase, width, height)
-    if (northernTeamBattle) this.syncPhaseAtmosphere("team", width, height)
+    if (northernTeamBattle) this.syncPhaseAtmosphere("team", width, height, "circular-island")
     const stormRadius = teamBattle ? 0 : Number(game?.stormRadius) || 0
     if (stormRadius > 0) {
       const outerRadius = Math.hypot(width, height) * 0.5 * WORLD_SCALE
@@ -3271,7 +3280,7 @@ export class MapRenderer {
     }
   }
 
-  syncPhaseAtmosphere(phase, width, height) {
+  syncPhaseAtmosphere(phase, width, height, shape = "rectangular") {
     const atmosphere = phase === "team" ? TEAM_BATTLE_ATMOSPHERE : ISLAND_PHASE_ATMOSPHERES[phase]
     if (!atmosphere) {
       if (this.phaseAtmosphere) this.phaseAtmosphere.visible = false
@@ -3280,7 +3289,8 @@ export class MapRenderer {
 
     const sceneWidth = width * WORLD_SCALE
     const sceneHeight = height * WORLD_SCALE
-    const mapKey = `${sceneWidth}:${sceneHeight}`
+    const circularIsland = phase === "team" || shape === "circular-island"
+    const mapKey = `${sceneWidth}:${sceneHeight}:${circularIsland ? "circular-island" : "rectangular"}`
     if (!this.phaseAtmosphere || this.phaseAtmosphere.userData.mapKey !== mapKey) {
       if (this.phaseAtmosphere) {
         this.root.remove(this.phaseAtmosphere)
@@ -3293,12 +3303,18 @@ export class MapRenderer {
         depthTest: false,
         depthWrite: false,
       })
-      this.phaseAtmosphere = new THREE.Mesh(new THREE.PlaneGeometry(sceneWidth, sceneHeight), material)
+      this.phaseAtmosphere = new THREE.Mesh(
+        circularIsland
+          ? new THREE.CircleGeometry(Math.min(sceneWidth, sceneHeight) / 2, 96)
+          : new THREE.PlaneGeometry(sceneWidth, sceneHeight),
+        material,
+      )
       this.phaseAtmosphere.rotation.x = -Math.PI / 2
       this.phaseAtmosphere.position.set(sceneWidth / 2, .065, sceneHeight / 2)
       this.phaseAtmosphere.renderOrder = 7
       this.phaseAtmosphere.userData.mapKey = mapKey
       this.phaseAtmosphere.userData.role = "phase-atmosphere"
+      this.phaseAtmosphere.userData.shape = circularIsland ? "circular-island" : "rectangular"
       this.root.add(this.phaseAtmosphere)
     }
     this.phaseAtmosphere.visible = true
@@ -3368,6 +3384,39 @@ export class MapRenderer {
     this.groundCoverField = null
   }
 
+  syncOceanSurface(width, height, tileSize, enabled) {
+    if (!enabled) {
+      if (this.oceanSurface) this.oceanSurface.visible = false
+      return
+    }
+
+    const sceneWidth = width * WORLD_SCALE
+    const sceneHeight = height * WORLD_SCALE
+    const sceneTileSize = Math.max(1, Number(tileSize) || DEFAULT_MAP_TILE_SIZE) * WORLD_SCALE
+    const mapKey = `${sceneWidth}:${sceneHeight}:${sceneTileSize}`
+    if (!this.oceanSurface || this.oceanSurface.userData.mapKey !== mapKey) {
+      if (this.oceanSurface) {
+        this.root.remove(this.oceanSurface)
+        disposeObjectTree(this.oceanSurface)
+      }
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        map: this.waterTexture,
+      })
+      this.oceanSurface = new THREE.Mesh(
+        new THREE.CircleGeometry(Math.hypot(sceneWidth, sceneHeight) * .5 + sceneTileSize, 96),
+        material,
+      )
+      this.oceanSurface.rotation.x = -Math.PI / 2
+      this.oceanSurface.position.set(sceneWidth / 2, -.035, sceneHeight / 2)
+      this.oceanSurface.renderOrder = -1
+      this.oceanSurface.userData.mapKey = mapKey
+      this.oceanSurface.userData.role = "team-ocean-surface"
+      this.root.add(this.oceanSurface)
+    }
+    this.oceanSurface.visible = true
+  }
+
   sync(map) {
     if (!map) return
     this.mapState = map
@@ -3377,13 +3426,21 @@ export class MapRenderer {
     // The same collision map can switch between solo and team atmosphere.
     // Include the ground theme so procedural vegetation is rebuilt with the
     // matching northern-bog palette instead of retaining the bright solo one.
-    const signature = `${createMapSignature(map)}:${this.ground.theme}`
+    const circularTeamMap = isClassicTeamBattleMap(map) || isNorthernTeamBattleMap(map)
+    const signature = `${createMapSignature(map)}:${this.ground.theme}:${circularTeamMap ? "circular-island" : "rectangular"}`
     if (signature === this.signature) return
     this.signature = signature
     this.clearContactShadowBatch()
     this.clearStaticBatches()
     this.clearGroundCoverField()
-    this.ground.sync(map.width, map.height, this.ground.theme, walls.filter(wall => wall.type === "water"))
+    this.syncOceanSurface(map.width, map.height, map.tileSize, circularTeamMap)
+    this.ground.sync(
+      map.width,
+      map.height,
+      this.ground.theme,
+      walls.filter(wall => wall.type === "water"),
+      circularTeamMap ? "circular-island" : "rectangular",
+    )
     this.syncWildflowers()
 
     const active = new Set()
@@ -3424,7 +3481,10 @@ export class MapRenderer {
     })
     const nonBushWalls = visualWalls.filter(wall => wall.type !== "bush" && wall.type !== "half" && wall.type !== "moon_mist" && wall.type !== "vine" && wall.type !== "river" && wall.type !== "river_bridge" && wall.type !== "pond" && !COLLISION_ONLY_TYPES.has(wall.type))
     const renderWalls = [
-      ...mergeWalls(nonBushWalls.filter(wall => wall.type === "water")),
+      // Circular team maps use one continuous ocean surface. Rendering every
+      // water collision cell as a square on top would recreate a dark stepped
+      // seam where the smooth island edge crosses the grid.
+      ...mergeWalls(nonBushWalls.filter(wall => wall.type === "water" && !circularTeamMap)),
       ...nonBushWalls.filter(wall => wall.type !== "water" && !STONE_PROP_TYPES.has(wall.type)),
       ...expandStoneWalls(nonBushWalls.filter(wall => STONE_PROP_TYPES.has(wall.type)), map.tileSize),
     ]
@@ -3785,6 +3845,7 @@ export class MapRenderer {
     this.clearGroundCoverField()
     if (this.stormMesh) disposeObjectTree(this.stormMesh)
     if (this.phaseAtmosphere) disposeObjectTree(this.phaseAtmosphere)
+    if (this.oceanSurface) disposeObjectTree(this.oceanSurface)
     if (this.beaconGroup) disposeObjectTree(this.beaconGroup)
     this.featureObjects.forEach(object => disposeObjectTree(object))
     this.featureObjects.clear()

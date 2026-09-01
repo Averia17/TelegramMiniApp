@@ -87,6 +87,36 @@ func TestStateUpdateIncludesCombatContractVersion(t *testing.T) {
 	}
 }
 
+func TestStateUpdateIncludesCompactTeamRoster(t *testing.T) {
+	state := NewStateUpdate(
+		&GameStateJSON{Mode: string(ModeTeamDeathmatch)},
+		&MapJSON{},
+		map[string]PlayerJSON{},
+		map[string]MonsterJSON{},
+		nil,
+		nil,
+		nil,
+	)
+	state.TeamRoster = []TeamRosterPlayerJSON{{
+		PlayerId: "enemy-1", Name: "Enemy", Hero: "Kaze", Team: "Red",
+		Alive: false, Kills: 2, RespawnAt: 12_500,
+	}}
+
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal team roster state: %v", err)
+	}
+	var wire struct {
+		TeamRoster []TeamRosterPlayerJSON `json:"teamRoster"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		t.Fatalf("decode team roster state: %v", err)
+	}
+	if len(wire.TeamRoster) != 1 || wire.TeamRoster[0].Hero != "Kaze" || wire.TeamRoster[0].Alive || wire.TeamRoster[0].RespawnAt != 12_500 {
+		t.Fatalf("team roster wire = %#v, want compact dead Kaze roster entry", wire.TeamRoster)
+	}
+}
+
 func TestMonsterJSONCarriesNoticeWindow(t *testing.T) {
 	data, err := json.Marshal(MonsterJSON{
 		State: "notice", NoticeUntil: 10_350, WindupUntil: 0,

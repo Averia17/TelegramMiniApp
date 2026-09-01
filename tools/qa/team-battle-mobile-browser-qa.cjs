@@ -26,7 +26,7 @@ const inspectBattle = () => {
     ["brand", ".battle-mode-pill"],
     ["timer", ".battle-match-timer"],
     ["score", ".team-battle-hud"],
-    ["objectives", ".team-objective-hud"],
+    ["objectives", ".team-battle-hud__objectives"],
     ["player", ".battle-player-card"],
     ["minimap", ".battle-minimap"],
     ["abilities", ".battle-abilities"],
@@ -42,8 +42,7 @@ const inspectBattle = () => {
     return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
   }
   const pairs = [
-    ["timer", "score"],
-    ["score", "objectives"],
+    ["score", "player"],
     ["objectives", "player"],
     ["objectives", "minimap"],
     ["player", "minimap"],
@@ -55,8 +54,7 @@ const inspectBattle = () => {
     documentWidth: document.documentElement.scrollWidth,
     elements,
     gaps: {
-      timerToScore: elements.timer && elements.score ? elements.score.top - elements.timer.bottom : null,
-      scoreToObjectives: elements.score && elements.objectives ? elements.objectives.top - elements.score.bottom : null,
+      scoreToPlayer: elements.score && elements.player ? elements.player.top - elements.score.bottom : null,
     },
     overlaps: pairs.filter(([first, second]) => overlap(first, second)).map(([first, second]) => `${first}:${second}`),
   }
@@ -92,9 +90,12 @@ runWithBrowser(
       await page.waitForTimeout(500)
       const report = await page.evaluate(inspectBattle)
       assert.ok(report.documentWidth <= viewport.width + 1, `${viewport.name}: battle overflows horizontally`)
-      assert.ok(report.gaps.timerToScore >= 8, `${viewport.name}: timer and team score are too close (${report.gaps.timerToScore}px)`)
-      assert.ok(report.gaps.scoreToObjectives >= 8, `${viewport.name}: team score and objectives are too close (${report.gaps.scoreToObjectives}px)`)
-      assert.deepEqual(report.overlaps, [], `${viewport.name}: overlapping HUD blocks: ${report.overlaps.join(", ")}`)
+      assert.ok(report.gaps.scoreToPlayer >= 8, `${viewport.name}: combined team HUD and player card are too close (${report.gaps.scoreToPlayer}px)`)
+      assert.equal(report.elements.objectives !== null, true, `${viewport.name}: objective health is missing from the team HUD`)
+      assert.equal(report.elements.timer !== null, true, `${viewport.name}: match timer is missing from the team HUD`)
+      assert.equal(report.overlaps.includes("score:player"), false, `${viewport.name}: combined team HUD overlaps player card`)
+      assert.equal(report.elements.objectives && report.elements.score && report.elements.objectives.top >= report.elements.score.top && report.elements.objectives.bottom <= report.elements.score.bottom, true, `${viewport.name}: objective health escaped the combined team HUD`)
+      assert.equal(report.elements.timer && report.elements.score && report.elements.timer.top >= report.elements.score.top && report.elements.timer.bottom <= report.elements.score.bottom, true, `${viewport.name}: timer escaped the combined team HUD`)
       assert.deepEqual(consoleErrors, [], `${viewport.name}: browser console errors: ${consoleErrors.join("\n")}`)
       assert.deepEqual(pageErrors, [], `${viewport.name}: page errors: ${pageErrors.join("\n")}`)
       await page.screenshot({path: path.join(outputDir, `${viewport.name}.png`), fullPage: true})

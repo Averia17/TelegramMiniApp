@@ -1,5 +1,5 @@
+import {access, readFile} from "node:fs/promises"
 import assert from "node:assert/strict"
-import {readFile} from "node:fs/promises"
 import path from "node:path"
 import test from "node:test"
 import {fileURLToPath} from "node:url"
@@ -16,11 +16,31 @@ test("the full hero animation brief publishes stable Brawl-readable frame ranges
   })
 })
 
-test("the authoring pipeline keeps all standard clips inside the master Actions", async () => {
-  const source = await readFile(path.join(root, "tools/blender/author_brawl_style_animation_overhaul.py"), "utf8")
-  for (const action of ["idle", "run", "Attack", "super", "Aim", "AimSuper", "hit", "death", "Spawn", "Victory", "Gadget", "Stunned"]) {
-    assert.match(source, new RegExp(`['\"]${action}['\"]`))
+test("master blends are the only animation authoring source", async () => {
+  const mutationScripts = [
+    "author_brawl_style_animation_overhaul.py",
+    "author_skill_animation_semantics.py",
+    "author_stunned_animations.py",
+    "enhance_death_animations.py",
+    "polish_hero_pose_continuity.py",
+    "polish_locomotion_secondary_motion.py",
+    "polish_skill_secondary_motion.py",
+    "rebase_fairy_mina_arm_actions.py",
+    "refine_all_skill_intents.py",
+    "refine_animation_angles.py",
+    "refine_brock_zeus_attack.py",
+    "refine_semantic_revision3.py",
+    "refine_skill_animation_readability.py",
+    "repair_all_hero_rig_connections.py",
+    "repair_fairy_mina_idle_arm_pose.py",
+    "repair_fairy_mina_rig.py",
+    "repair_idle_secondary_motion.py",
+    "repair_remaining_pose_tracks.py",
+    "smooth_all_idle_frame_steps.py",
+    "split_fairy_mina_body_mesh.py",
+    "split_fairy_mina_head_torso.py",
+  ]
+  for (const script of mutationScripts) {
+    await assert.rejects(access(path.join(root, "tools/blender", script)))
   }
-  assert.match(source, /authoring_action_name/)
-  assert.match(source, /BEZIER/)
 })

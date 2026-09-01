@@ -89,6 +89,7 @@ type Player struct {
 	ChannelUntil          int64
 	VineUntil             int64
 	VortexUntil           int64
+	VortexReadyAt         int64
 	VortexTickAt          int64
 	FlyingUntil           int64
 	FlightSpeedMultiplier float64

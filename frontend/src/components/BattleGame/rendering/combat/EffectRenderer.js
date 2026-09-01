@@ -43,7 +43,10 @@ const TRAIL_KINDS = new Set([
   "kaze_dash", "mico_leap", "zeus_beam_hole", "needle_spore_dash",
   "thruster", "spore-jump",
 ])
-const TELEGRAPH_KINDS = new Set(["zeus_strike_warning", "needle_root_telegraph"])
+const TELEGRAPH_KINDS = new Set([
+  "zeus_strike_warning", "needle_root_telegraph", "kaze_dash_telegraph", "mico_vortex_telegraph",
+  "ash_hound_charge_telegraph", "root_guardian_telegraph",
+])
 const TOWER_TELEGRAPH_KINDS = new Set(["tower_telegraph"])
 const TOWER_BEAM_KINDS = new Set(["tower_beam"])
 const IMPACT_KINDS = new Set([
@@ -52,6 +55,7 @@ const IMPACT_KINDS = new Set([
   "lightning", "zeus_lightning_strike", "zeus_lightning_blast", "mico_skyfall", "mico_armor_burst",
   "burst", "evade", "damage", "crate_hit", "crate_break", "rock",
   "wall_break", "objective_hit", "tower_shot_blocked",
+  "ash_hound_charge_impact", "ash_hound_recovery", "root_guardian_impact",
 ])
 const CONTACT_KINDS = new Set(["last_contact"])
 const NEEDLE_FIELD_KINDS = new Set(["needle_root_telegraph", "needle_root_active", "needle_spore_cloud", "needle_spores"])
@@ -61,10 +65,11 @@ const CUSTOM_COMPOSITION_KINDS = new Set([
   "mandy_super_charge", "mandy_stance",
   "kaze_veil_step", "kaze_followup_ready",
   "mico_ruyi_bind", "mico_suppressed_rage", "mico_armor_burst",
-  "lumi_flower", "needle_root_cast", "needle_moisture_reserve",
+  "lumi_flower", "needle_root_cast", "needle_moisture_reserve", "kaze_dash_telegraph", "mico_vortex_telegraph",
   "mina_mark_burst", "mina_mark_break", "needle_root_burst", "needle_root_pull",
   "needle_anti_heal", "needle_spore_stun", "katty_paint_impact", "katty_paint_stick",
   "lumi_seedburst", "lumi_root_impact", "zeus_fire_ground",
+  "ash_hound_charge_telegraph", "root_guardian_telegraph", "root_guardian_zone",
 ])
 
 // These are deliberately exported for the visual audit and contract tests. A
@@ -80,6 +85,11 @@ export const HERO_EFFECT_VISUAL_KINDS = new Set([
   ...WAVE_KINDS,
   ...BEAM_KINDS,
   "mandy_super_charge", "mandy_super_wave", "kaze_cross_slash",
+])
+
+export const MONSTER_EFFECT_VISUAL_KINDS = new Set([
+  "ash_hound_charge_telegraph", "ash_hound_charge_impact", "ash_hound_recovery",
+  "root_guardian_telegraph", "root_guardian_impact", "root_guardian_zone",
 ])
 
 const SHARED_VFX_KINDS = new Set([
@@ -594,6 +604,75 @@ const createTelegraphEffect = (radius, material, kind) => {
     tick.rotation.y = -angle
     tick.userData.role = "telegraph-tick"
     group.add(tick)
+  }
+  return group
+}
+
+const createDirectedDashTelegraphEffect = (material, kind, radius = 0) => {
+  const group = new THREE.Group()
+  group.userData.kind = kind
+  group.userData.directed = true
+  const prefix = kind === "mico_vortex_telegraph" ? "mico" : kind === "ash_hound_charge_telegraph" ? "ash-hound" : "kaze"
+
+  const lane = new THREE.Mesh(new THREE.PlaneGeometry(1, .52), material.clone())
+  lane.rotation.x = -Math.PI / 2
+  lane.material.opacity = .22
+  lane.userData.role = `${prefix}-telegraph-lane`
+  lane.userData.baseOpacity = lane.material.opacity
+  group.add(lane)
+
+  for (const edge of [-1, 1]) {
+    const edgeMesh = new THREE.Mesh(new THREE.BoxGeometry(1, .045, .035), material.clone())
+    edgeMesh.position.set(0, .045, edge * .29)
+    edgeMesh.userData.role = `${prefix}-telegraph-edge`
+    edgeMesh.userData.baseOpacity = .66
+    edgeMesh.material.opacity = edgeMesh.userData.baseOpacity
+    group.add(edgeMesh)
+  }
+
+  for (let index = 0; index < 3; index++) {
+    const chevron = new THREE.Mesh(new THREE.BoxGeometry(.16, .06, .055), material.clone())
+    chevron.position.set(-.25 + index * .24, .07, 0)
+    chevron.rotation.y = Math.PI / 4
+    chevron.userData.role = `${prefix}-telegraph-chevron`
+    chevron.userData.phase = index * .8
+    chevron.userData.baseOpacity = .88 - index * .12
+    chevron.material.opacity = chevron.userData.baseOpacity
+    group.add(chevron)
+  }
+  if (radius > 0) {
+    const target = new THREE.Mesh(new THREE.RingGeometry(radius * .64, radius * .73, 36), material.clone())
+    target.rotation.x = -Math.PI / 2
+    target.position.set(.5, .06, 0)
+    target.userData.role = "mico-telegraph-target"
+    target.userData.baseOpacity = .72
+    target.material.opacity = target.userData.baseOpacity
+    group.add(target)
+  }
+  return group
+}
+
+const createRootGuardianZoneEffect = (radius, material) => {
+  const group = new THREE.Group()
+  group.userData.kind = "root_guardian_zone"
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(radius * .84, 36), material.clone())
+  pool.rotation.x = -Math.PI / 2
+  pool.material.opacity = .16
+  pool.userData.role = "root-guardian-zone-core"
+  group.add(pool)
+  const ring = new THREE.Mesh(new THREE.RingGeometry(radius * .78, radius, 40), material.clone())
+  ring.rotation.x = -Math.PI / 2
+  ring.userData.role = "root-guardian-zone-ring"
+  group.add(ring)
+  for (let index = 0; index < 8; index++) {
+    const angle = index / 8 * Math.PI * 2
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(radius * .045, radius * .28, 5), material.clone())
+    spike.position.set(Math.cos(angle) * radius * .65, radius * .14, Math.sin(angle) * radius * .65)
+    spike.rotation.z = Math.PI / 2
+    spike.rotation.y = angle
+    spike.userData.role = "root-guardian-zone-spike"
+    spike.userData.phase = angle
+    group.add(spike)
   }
   return group
 }
@@ -1226,6 +1305,8 @@ export class EffectRenderer {
           mesh = createPaintPuddleEffect(radius, material, effect.kind)
         } else if (effect.kind === "zeus_storm_target") {
           mesh = createStrikeTargetEffect(radius, material)
+        } else if (effect.kind === "root_guardian_zone") {
+          mesh = createRootGuardianZoneEffect(radius, material)
         } else if (PAINT_SPRAY_KINDS.has(effect.kind)) {
           mesh = createPaintSprayEffect(radius, effect.arc || .20, material)
         } else if (WAVE_KINDS.has(effect.kind)) {
@@ -1245,7 +1326,11 @@ export class EffectRenderer {
         } else if (ORBITAL_KINDS.has(effect.kind)) {
           mesh = createOrbitalEffect(radius, material, effect.kind)
         } else if (TELEGRAPH_KINDS.has(effect.kind)) {
-          mesh = createTelegraphEffect(radius, material, effect.kind)
+          mesh = ["kaze_dash_telegraph", "ash_hound_charge_telegraph"].includes(effect.kind)
+            ? createDirectedDashTelegraphEffect(material, effect.kind)
+            : effect.kind === "mico_vortex_telegraph"
+              ? createDirectedDashTelegraphEffect(material, effect.kind, radius)
+              : createTelegraphEffect(radius, material, effect.kind)
         } else if (effect.kind === "wall_break") {
           mesh = createWallBreak(radius, material)
         } else if (TOWER_TELEGRAPH_KINDS.has(effect.kind)) {
@@ -1281,7 +1366,7 @@ export class EffectRenderer {
         }
         if (!["heal", "kaze_cross_slash", "mandy_super_wave", ...WAVE_KINDS, ...BEAM_KINDS].includes(effect.kind) &&
             !ORBITAL_KINDS.has(effect.kind) && !PAINT_SPRAY_KINDS.has(effect.kind) && !TRAIL_KINDS.has(effect.kind) &&
-            !TELEGRAPH_KINDS.has(effect.kind) && !TOWER_TELEGRAPH_KINDS.has(effect.kind) && !IMPACT_KINDS.has(effect.kind) && !TOWER_BEAM_KINDS.has(effect.kind) && !NEEDLE_FIELD_KINDS.has(effect.kind)) {
+            !TELEGRAPH_KINDS.has(effect.kind) && !TOWER_TELEGRAPH_KINDS.has(effect.kind) && !IMPACT_KINDS.has(effect.kind) && !TOWER_BEAM_KINDS.has(effect.kind) && !NEEDLE_FIELD_KINDS.has(effect.kind) && effect.kind !== "root_guardian_zone") {
           mesh.rotation.x = -Math.PI / 2
         }
         mesh.userData.phase = phase
@@ -1307,6 +1392,30 @@ export class EffectRenderer {
           }
           if (child.userData.role === "wave-front") {
             child.scale.setScalar(.88 + Math.sin(progress * Math.PI * 4) * .16)
+          }
+        })
+      } else if (["kaze_dash_telegraph", "mico_vortex_telegraph", "ash_hound_charge_telegraph"].includes(mesh.userData.kind)) {
+        const dx = (effect.toX || effect.x) - effect.x
+        const dy = (effect.toY || effect.y) - effect.y
+        const length = Math.max(24, Math.hypot(dx, dy))
+        mesh.position.copy(worldToScene(effect.x + dx / 2, effect.y + dy / 2, 2))
+        mesh.rotation.z = -Math.atan2(dy, dx)
+        mesh.scale.set(length * WORLD_SCALE, Math.max(18, effect.radius * 1.2) * WORLD_SCALE, 1)
+        const progress = 1 - clamp(effect.life / (effect.maxLife || .25))
+        const pulse = .78 + Math.sin(progress * Math.PI * 7) * .12
+        mesh.children?.forEach(child => {
+          if (child.userData.role?.endsWith("telegraph-lane")) {
+            child.material.opacity = child.userData.baseOpacity * pulse
+          }
+          if (child.userData.role?.endsWith("telegraph-edge") || child.userData.role?.endsWith("telegraph-chevron")) {
+            child.material.opacity = child.userData.baseOpacity * (.82 + Math.sin(progress * Math.PI * 8 + (child.userData.phase || 0)) * .18)
+          }
+          if (child.userData.role?.endsWith("telegraph-chevron")) {
+            child.position.y = .07 + Math.sin(progress * Math.PI * 6 + child.userData.phase) * .035
+          }
+          if (child.userData.role === "mico-telegraph-target") {
+            child.material.opacity = child.userData.baseOpacity * (.85 + Math.sin(progress * Math.PI * 8) * .15)
+            child.scale.x = 1 / Math.max(1, mesh.scale.x)
           }
         })
       } else if (TOWER_TELEGRAPH_KINDS.has(mesh.userData.kind)) {
@@ -1524,6 +1633,19 @@ export class EffectRenderer {
           const progress = 1 - clamp(effect.life / (effect.maxLife || .52))
           const pulse = .92 + progress * .12 + Math.sin(progress * Math.PI * 8) * .04
           mesh.scale.setScalar(pulse)
+        }
+        if (mesh.userData.kind === "root_guardian_zone") {
+          const progress = 1 - clamp(effect.life / (effect.maxLife || 1.8))
+          mesh.rotation.y = progress * Math.PI * 1.4
+          mesh.children.forEach(child => {
+            if (child.userData.role === "root-guardian-zone-ring") {
+              child.scale.setScalar(.94 + Math.sin(progress * Math.PI * 8) * .06)
+            }
+            if (child.userData.role === "root-guardian-zone-spike") {
+              child.position.y = .10 + Math.sin(progress * Math.PI * 6 + child.userData.phase) * .06
+              child.scale.y = .84 + Math.sin(progress * Math.PI * 7 + child.userData.phase) * .16
+            }
+          })
         }
         if (IMPACT_KINDS.has(mesh.userData.kind) || CONTACT_KINDS.has(mesh.userData.kind)) {
           const progress = 1 - clamp(effect.life / (effect.maxLife || .42))

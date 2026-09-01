@@ -24,8 +24,10 @@ func TestCombatContributionSeparatesBasicAndSkillDamage(t *testing.T) {
 	target.Lives = target.MaxLives
 	attacker.SuperCharge = 100
 	gs.playerAbility("attacker", 20_000, "primary", "super-1")
+	gs.clockNow = func() int64 { return 20_250 }
+	gs.updateNewHeroSystems()
 	if attacker.SkillDamage <= 0 {
-		t.Fatalf("skill contribution = %d, want immediate Kaze Super damage", attacker.SkillDamage)
+		t.Fatalf("skill contribution = %d, want delayed Kaze Super damage", attacker.SkillDamage)
 	}
 }
 
@@ -59,6 +61,8 @@ func TestCombatContributionClassifiesSkillAssistedKills(t *testing.T) {
 	attacker.SuperCharge = 100
 
 	gs.playerAbility("attacker", 1_000, "primary", "skill-kill")
+	gs.clockNow = func() int64 { return 1_250 }
+	gs.updateNewHeroSystems()
 
 	if attacker.SkillAssistedKills != 1 || attacker.BasicOnlyKills != 0 {
 		t.Fatalf("skill kill contribution = basic=%d skill=%d, want 0/1", attacker.BasicOnlyKills, attacker.SkillAssistedKills)

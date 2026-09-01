@@ -2,7 +2,12 @@ import * as THREE from "three"
 import {WORLD_SCALE, worldToScene} from "../shared/coordinates.js"
 import {disposeObjectTree} from "../shared/disposal.js"
 import {flatMaterial} from "../shared/materials.js"
-import {collectNewCombatHits, resolveCombatTargetPosition} from "./combatFeedback.js"
+import {
+  collectNewCombatHits,
+  getCombatHitProfile,
+  resolveCombatSourcePosition,
+  resolveCombatTargetPosition,
+} from "./combatFeedback.js"
 import {battleCanvasFont} from "../../battleTypography.js"
 
 const FEEDBACK_LIFE = .62
@@ -32,7 +37,7 @@ const createDamageTexture = damage => {
   return texture
 }
 
-const createHitBurst = (radius, color) => {
+const createHitBurst = (radius, color, directionAngle = 0) => {
   const group = new THREE.Group()
   group.userData.role = "combat-hit-feedback"
   const material = flatMaterial(color, {
@@ -46,15 +51,21 @@ const createHitBurst = (radius, color) => {
   ring.rotation.x = -Math.PI / 2
   ring.userData.role = "hit-ring"
   group.add(ring)
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(radius * .32, 0), material.clone())
+  core.position.y = radius * .22
+  core.userData.role = "hit-core"
+  group.add(core)
   for (let index = 0; index < 6; index++) {
     const shard = new THREE.Mesh(
       new THREE.BoxGeometry(radius * .62, radius * .12, radius * .12),
       material.clone(),
     )
-    const angle = index / 6 * Math.PI * 2
+    const angle = directionAngle + index / 6 * Math.PI * 2
     shard.position.set(Math.cos(angle) * radius * .72, radius * .28, Math.sin(angle) * radius * .72)
     shard.rotation.y = -angle
     shard.userData.role = "hit-shard"
+    shard.userData.angle = angle
+    shard.userData.distance = radius * .72
     group.add(shard)
   }
   return group
@@ -78,12 +89,19 @@ export class CombatFeedbackRenderer {
     const sourceIsLocal = String(event.sourceId) === this.localPlayerId
     const color = targetIsLocal ? 0xff5c72 : sourceIsLocal ? 0xffd84d : 0xfff4e8
     const radius = Math.max(12, position.radius) * WORLD_SCALE
-    const group = createHitBurst(radius, color)
+    const sourcePosition = resolveCombatSourcePosition(event, this.state)
+    const directionAngle = sourcePosition
+      ? Math.atan2(position.y - sourcePosition.y, position.x - sourcePosition.x)
+      : 0
+    const profile = getCombatHitProfile(event)
+    const group = createHitBurst(radius * profile.burstScale, color, directionAngle)
     group.position.copy(worldToScene(position.x, position.y, 2))
     group.userData.eventId = String(event.id)
     group.userData.damage = Number(event.damage) || 0
     group.userData.targetId = String(event.targetId || "")
     group.userData.targetType = String(event.targetType || "players")
+    group.userData.reaction = profile.reaction
+    group.userData.hitStopSeconds = profile.hitStopSeconds
 
     const texture = createDamageTexture(event.damage)
     const label = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -137,6 +155,17 @@ export class CombatFeedbackRenderer {
       entry.group.position.copy(worldToScene(position.x, position.y, 2))
       entry.group.scale.setScalar(.72 + progress * 1.08)
       entry.group.children.forEach(child => {
+        if (child.userData.role === "hit-core") {
+          child.scale.setScalar(.7 + progress * 1.5)
+          child.rotation.y += delta * 12
+        }
+        if (child.userData.role === "hit-shard") {
+          const angle = child.userData.angle || 0
+          const distance = child.userData.distance || 0
+          const travel = progress * Math.max(4, Number(position.radius) || 18) * WORLD_SCALE
+          child.position.x = Math.cos(angle) * (distance + travel)
+          child.position.z = Math.sin(angle) * (distance + travel)
+        }
         if (child.userData.role === "damage-number") {
           child.position.y = 5.2 + progress * 1.15
         }

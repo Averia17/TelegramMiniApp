@@ -1306,20 +1306,34 @@ func generateTeamBattle(seed int64, northernVariant bool) *GameMap {
 	// central diagonal. The diagonal camps are deliberately contestable from
 	// both bases; the side lanes provide safer rewards and invasion routes. The
 	// order keeps the first two mirrored pairs at index+4 for stable map checks.
-	addMonster := func(tileX, tileY float64) {
+	addMonster := func(tileX, tileY float64, kind string, territoryRadius float64) {
 		x, y := tileX*tile, tileY*tile
-		gm.MonsterSpawns = append(gm.MonsterSpawns, MapMonsterSpawn{X: x, Y: y})
+		gm.MonsterSpawns = append(gm.MonsterSpawns, MapMonsterSpawn{
+			ID: fmt.Sprintf("camp-%02d", len(gm.MonsterSpawns)+1), Kind: kind,
+			X: x, Y: y, TerritoryRadius: territoryRadius,
+		})
 	}
 	monsterPoints := [][2]float64{{18.5, 47.5}, {29.5, 61.5}, {43.5, 70.5}, {39.5, 39.5}}
-	for _, point := range monsterPoints {
-		addMonster(point[0], point[1])
+	monsterKinds := []struct {
+		kind      string
+		territory float64
+	}{
+		{kind: "bat", territory: 240},
+		{kind: "ash_hound", territory: 280},
+		{kind: "root_guardian", territory: 300},
+		{kind: "bat", territory: 240},
+	}
+	for index, point := range monsterPoints {
+		camp := monsterKinds[index]
+		addMonster(point[0], point[1], camp.kind, camp.territory)
 	}
 	// The centre-line camps are their own mirrors. Add a second diagonal camp so
 	// the team map keeps eight authored slots without duplicating one position.
-	for _, point := range monsterPoints[:3] {
-		addMonster(point[1], point[0])
+	for index, point := range monsterPoints[:3] {
+		camp := monsterKinds[index]
+		addMonster(point[1], point[0], camp.kind, camp.territory)
 	}
-	addMonster(22.5, 22.5)
+	addMonster(22.5, 22.5, "root_guardian", 300)
 	addSpawnPair := func(team string, x, y int) {
 		spawner := &geometry.RectangleBody{X: float64(x) * tile, Y: float64(y) * tile, Width: tile, Height: tile}
 		gm.Spawners = append(gm.Spawners, spawner)

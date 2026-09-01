@@ -12,7 +12,7 @@ import bpy
 SCRIPT_DIR = Path(__file__).resolve().parent
 if os.fspath(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, os.fspath(SCRIPT_DIR))
-from hero_animation_contract import master_path
+from master_action_utils import activate_action
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
@@ -21,7 +21,19 @@ SOURCE = ROOT / "frontend" / "assets-source" / "heroes"
 # pose. They are intentionally conservative for the silhouette-critical parts
 # that were reported as snapping or separating on the lobby screen.
 LIMITS = {
-    "mandy": {"head_s_035": 0.42, "L_wrist_s_047": 0.30, "R_wrist_s_064": 0.30},
+    "mandy": {
+        "hips_s_02": 0.08,
+        "spine_lower_s_030": 0.08,
+        "spine_mid_s_031": 0.08,
+        "spine_upper_s_032": 0.08,
+        "chest_s_033": 0.08,
+        "head_s_035": 0.08,
+        "hat_01_s_036": 0.06,
+        "L_wrist_s_047": 0.06,
+        "R_wrist_s_064": 0.06,
+        "L_ankle_s_05": 0.06,
+        "R_ankle_s_09": 0.06,
+    },
     "needle": {"Head": 0.25, "LeftHand": 0.30, "RightHand": 0.30, "Flower": 0.55},
     "brock-zeus": {"Head": 0.22, "R_Wrist": 0.24, "L_Wrist": 0.24},
     "kaze": {"head_s": 0.26, "L_wrist_s": 0.24, "R_wrist_s": 0.24},
@@ -29,11 +41,8 @@ LIMITS = {
 
 
 def inspect(hero: str, targets: dict[str, float]) -> list[str]:
-    path = master_path(hero)
-    bpy.ops.wm.open_mainfile(filepath=os.fspath(path))
-    scene = bpy.context.scene
-    armature = next(obj for obj in scene.objects if obj.type == "ARMATURE")
-    start, end = (int(value) for value in armature.animation_data.action.frame_range)
+    _, scene, armature, action = activate_action(hero, "idle")
+    start, end = (int(value) for value in action.frame_range)
     initial: dict[str, tuple[float, float, float]] = {}
     maxima = {name: 0.0 for name in targets}
     for frame in range(start, end + 1):
@@ -58,10 +67,14 @@ def inspect(hero: str, targets: dict[str, float]) -> list[str]:
 
 
 def main() -> None:
+    requested = os.environ.get("HERO_FILTER")
+    if requested and requested not in LIMITS:
+        raise ValueError(f"HERO_FILTER={requested!r} is not a configured hero")
+    targets = {requested: LIMITS[requested]} if requested else LIMITS
     failures = [
         failure
-        for hero, targets in LIMITS.items()
-        for failure in inspect(hero, targets)
+        for hero, hero_targets in targets.items()
+        for failure in inspect(hero, hero_targets)
     ]
     if failures:
         raise RuntimeError("\n".join(failures))

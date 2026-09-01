@@ -113,11 +113,12 @@ export class GroundRenderer {
     this.theme = "default"
   }
 
-  sync(width, height, theme = this.theme, excludedAreas = []) {
+  sync(width, height, theme = this.theme, excludedAreas = [], shape = "rectangular") {
     const sceneWidth = width * WORLD_SCALE
     const sceneHeight = height * WORLD_SCALE
+    const circularIsland = theme === "team" || shape === "circular-island"
     const exclusions = excludedAreas.map(area => `${area.minX}:${area.minY}:${area.maxX}:${area.maxY}`).join("|")
-    const size = `${sceneWidth}:${sceneHeight}:${theme}:${exclusions}`
+    const size = `${sceneWidth}:${sceneHeight}:${theme}:${circularIsland ? "circular-island" : "rectangular"}:${exclusions}`
     if (this.mesh?.userData.size === size) return
     if (this.mesh) {
       this.root.remove(this.mesh)
@@ -127,7 +128,9 @@ export class GroundRenderer {
     this.texture = createGrassTexture(theme)
     this.texture.repeat.set(Math.max(1, sceneWidth / 6), Math.max(1, sceneHeight / 6))
     this.mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(sceneWidth, sceneHeight),
+      circularIsland
+        ? new THREE.CircleGeometry(Math.min(sceneWidth, sceneHeight) / 2, 96)
+        : new THREE.PlaneGeometry(sceneWidth, sceneHeight),
       new THREE.MeshStandardMaterial({
         color: GROUND_COLORS[theme] || GROUND_COLORS.default,
         map: this.texture,
@@ -140,6 +143,7 @@ export class GroundRenderer {
     this.mesh.receiveShadow = true
     this.mesh.userData.size = size
     this.mesh.userData.role = "grass-ground"
+    this.mesh.userData.shape = circularIsland ? "circular-island" : "rectangular"
     this.root.add(this.mesh)
   }
 
