@@ -5,12 +5,47 @@ import {endBattlePerformance, startBattlePerformance} from "../shared/performanc
 import {createContactShadow} from "../shared/materials.js"
 import {createHealthBadge, updateHealthBadge} from "../heroes/healthBadge.js"
 
-const BAT_HEIGHT = 22
 const HEALTH_BADGE_PARENT_SCALE = 2.2
 const MONSTER_VISUAL_PROFILES = {
-  bat: {body: 0x48206f, wing: 0x62318c, accent: 0xff4057, wings: true, scale: [1, 1, 1]},
-  ash_hound: {body: 0x6b4235, wing: 0x8c4f39, accent: 0xff8a3d, wings: false, scale: [1.28, .82, .92]},
-  root_guardian: {body: 0x315d4a, wing: 0x427e5a, accent: 0x9be66f, wings: false, scale: [.96, 1.32, 1.08]},
+  // `size` changes the whole silhouette, while `groundOffset` is the local
+  // distance from the actor origin to the feet. Keeping those values in the
+  // profile prevents every authored kind from inheriting the bat's old hover.
+  bat: {
+    body: 0x48206f,
+    wing: 0x62318c,
+    accent: 0xff4057,
+    wings: true,
+    size: .86,
+    groundOffset: .50,
+    hoverAmplitude: 0,
+    shadowRadius: .62,
+    healthBarOffset: 1.12,
+    scale: [1, 1, 1],
+  },
+  ash_hound: {
+    body: 0x6b4235,
+    wing: 0x8c4f39,
+    accent: 0xff8a3d,
+    wings: false,
+    size: 1.18,
+    groundOffset: .42,
+    hoverAmplitude: 0,
+    shadowRadius: .72,
+    healthBarOffset: 1.02,
+    scale: [1.28, .82, .92],
+  },
+  root_guardian: {
+    body: 0x315d4a,
+    wing: 0x427e5a,
+    accent: 0x9be66f,
+    wings: false,
+    size: 1.42,
+    groundOffset: .64,
+    hoverAmplitude: 0,
+    shadowRadius: .82,
+    healthBarOffset: 1.30,
+    scale: [.96, 1.32, 1.08],
+  },
 }
 
 export const getMonsterVisualProfile = kind => (
@@ -53,7 +88,7 @@ const createHealthBar = () => {
   return {group, fill: null, label}
 }
 
-const createWindupTelegraph = () => {
+const createWindupTelegraph = (groundOffset, visualScale) => {
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(.82, 1.02, 32),
     new THREE.MeshBasicMaterial({
@@ -65,14 +100,14 @@ const createWindupTelegraph = () => {
     }),
   )
   ring.rotation.x = -Math.PI / 2
-  ring.position.y = -BAT_HEIGHT * WORLD_SCALE + .04
+  ring.position.y = -groundOffset + .04 / visualScale
   ring.renderOrder = 17
   ring.visible = false
   ring.userData.role = "bat-windup-telegraph"
   return ring
 }
 
-const createNoticeTelegraph = () => {
+const createNoticeTelegraph = (groundOffset, visualScale) => {
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(.92, 1.08, 32),
     new THREE.MeshBasicMaterial({
@@ -84,7 +119,7 @@ const createNoticeTelegraph = () => {
     }),
   )
   ring.rotation.x = -Math.PI / 2
-  ring.position.y = -BAT_HEIGHT * WORLD_SCALE + .045
+  ring.position.y = -groundOffset + .045 / visualScale
   ring.renderOrder = 17
   ring.visible = false
   ring.userData.role = "bat-notice-telegraph"
@@ -95,8 +130,12 @@ const createBat = state => {
   const group = new THREE.Group()
   const kind = String(state.kind || "bat")
   const profile = getMonsterVisualProfile(kind)
+  const visualScale = Math.max(.82, Number(state.radius) * WORLD_SCALE / 1.45) * profile.size
+  const groundHeight = visualScale * profile.groundOffset
   group.userData.kind = kind
   group.userData.tier = Number(state.tier) || 1
+  group.userData.visualScale = visualScale
+  group.userData.grounded = true
 
   const tier = group.userData.tier
   const bodyMaterial = new THREE.MeshStandardMaterial({
@@ -139,8 +178,29 @@ const createBat = state => {
   const rightWing = new THREE.Mesh(createWingGeometry(1), wingMaterial.clone())
   leftWing.position.set(-.22, .2, 0)
   rightWing.position.set(.22, .2, 0)
+  leftWing.userData.role = "bat-wing"
+  rightWing.userData.role = "bat-wing"
   leftWing.castShadow = rightWing.castShadow = true
   leftWing.visible = rightWing.visible = profile.wings
+
+  const houndLegs = []
+  let houndTail = null
+  let houndEmber = null
+  const guardianVines = []
+  const guardianVineBaseRotations = []
+  let guardianCrown = null
+  let guardianCore = null
+
+  if (kind === "bat") {
+    const fangMaterial = new THREE.MeshStandardMaterial({color: 0xf4e9d0, roughness: .48})
+    for (const x of [-.12, .12]) {
+      const fang = new THREE.Mesh(new THREE.ConeGeometry(.045, .16, 6), fangMaterial.clone())
+      fang.position.set(x, .20, .31)
+      fang.rotation.z = Math.PI
+      fang.userData.role = "bat-fang"
+      group.add(fang)
+    }
+  }
 
   if (kind === "ash_hound") {
     const hornMaterial = new THREE.MeshStandardMaterial({color: profile.accent, emissive: 0x3a1206, emissiveIntensity: .6})
@@ -151,39 +211,73 @@ const createBat = state => {
       horn.userData.role = "ash-hound-horn"
       group.add(horn)
     }
-    const ember = new THREE.Mesh(new THREE.SphereGeometry(.09, 8, 6), new THREE.MeshBasicMaterial({color: profile.accent}))
-    ember.position.set(0, .16, .38)
-    ember.userData.role = "ash-hound-ember"
-    group.add(ember)
+    const snout = new THREE.Mesh(new THREE.SphereGeometry(.22, 10, 8), bodyMaterial.clone())
+    snout.position.set(0, .18, .31)
+    snout.scale.set(1.15, .68, 1.22)
+    snout.userData.role = "ash-hound-snout"
+    group.add(snout)
+    for (const x of [-.22, .22]) {
+      for (const z of [-.17, .17]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(.085, .105, .34, 7), bodyMaterial.clone())
+        leg.position.set(x, -.30, z)
+        leg.rotation.z = x < 0 ? -.06 : .06
+        leg.userData.role = "ash-hound-leg"
+        leg.castShadow = true
+        houndLegs.push(leg)
+        group.add(leg)
+        const paw = new THREE.Mesh(new THREE.SphereGeometry(.115, 8, 6), bodyMaterial.clone())
+        paw.position.set(x, -.49, z + .015)
+        paw.scale.set(1.1, .55, 1.25)
+        paw.userData.role = "ash-hound-paw"
+        paw.castShadow = true
+        group.add(paw)
+      }
+    }
+    houndTail = new THREE.Mesh(new THREE.ConeGeometry(.13, .62, 7), bodyMaterial.clone())
+    houndTail.position.set(0, .05, -.43)
+    houndTail.rotation.x = -Math.PI / 2
+    houndTail.userData.role = "ash-hound-tail"
+    houndTail.castShadow = true
+    group.add(houndTail)
+    houndEmber = new THREE.Mesh(new THREE.SphereGeometry(.09, 8, 6), new THREE.MeshBasicMaterial({color: profile.accent}))
+    houndEmber.position.set(0, .16, .38)
+    houndEmber.userData.role = "ash-hound-ember"
+    group.add(houndEmber)
   }
 
   if (kind === "root_guardian") {
     const rootMaterial = new THREE.MeshStandardMaterial({color: profile.accent, emissive: 0x173c20, emissiveIntensity: .48})
-    const crown = new THREE.Mesh(new THREE.TorusGeometry(.48, .055, 7, 18), rootMaterial)
-    crown.rotation.x = Math.PI / 2
-    crown.position.y = .58
-    crown.userData.role = "root-guardian-crown"
-    group.add(crown)
+    guardianCore = new THREE.Mesh(new THREE.SphereGeometry(.13, 10, 8), new THREE.MeshBasicMaterial({color: profile.accent}))
+    guardianCore.position.set(0, .02, .42)
+    guardianCore.userData.role = "root-guardian-core"
+    group.add(guardianCore)
+    guardianCrown = new THREE.Mesh(new THREE.TorusGeometry(.48, .055, 7, 18), rootMaterial)
+    guardianCrown.rotation.x = Math.PI / 2
+    guardianCrown.position.y = .58
+    guardianCrown.userData.role = "root-guardian-crown"
+    group.add(guardianCrown)
     for (const x of [-.28, 0, .28]) {
       const root = new THREE.Mesh(new THREE.ConeGeometry(.07, .38, 5), rootMaterial.clone())
       root.position.set(x, -.18, .05)
       root.rotation.z = x * .7
       root.userData.role = "root-guardian-vine"
+      guardianVines.push(root)
+      guardianVineBaseRotations.push(root.rotation.z)
       group.add(root)
     }
   }
 
-  const shadow = createContactShadow(.72)
-  shadow.position.y = -BAT_HEIGHT * WORLD_SCALE + .02
-  const noticeTelegraph = createNoticeTelegraph()
-  const windupTelegraph = createWindupTelegraph()
+  const shadow = createContactShadow(profile.shadowRadius)
+  shadow.position.y = -profile.groundOffset
+  const noticeTelegraph = createNoticeTelegraph(profile.groundOffset, visualScale)
+  const windupTelegraph = createWindupTelegraph(profile.groundOffset, visualScale)
   const health = createHealthBar()
+  health.group.position.y = profile.healthBarOffset
   updateHealthBadge(health.label, state, {healthColor: "#ff4657"})
   group.add(shadow, noticeTelegraph, windupTelegraph, leftWing, rightWing, body, head, leftEar, rightEar, health.group)
 
-  const visualScale = Math.max(.82, Number(state.radius) * WORLD_SCALE / 1.45)
   group.scale.setScalar(visualScale)
-  group.position.copy(worldToScene(state.x, state.y, BAT_HEIGHT))
+  group.position.copy(worldToScene(state.x, state.y, groundHeight / WORLD_SCALE))
   return {
     group,
     leftWing,
@@ -195,6 +289,15 @@ const createBat = state => {
     healthFraction: getHealthBarFraction(state.lives, state.maxLives),
     noticeTelegraph,
     windupTelegraph,
+    groundHeight,
+    hoverAmplitude: profile.hoverAmplitude,
+    legs: houndLegs,
+    tail: houndTail,
+    ember: houndEmber,
+    vines: guardianVines,
+    vineBaseRotations: guardianVineBaseRotations,
+    crown: guardianCrown,
+    core: guardianCore,
     targetX: state.x,
     targetY: state.y,
   }
@@ -242,7 +345,7 @@ export class MonsterRenderer {
   }
 
   updateView(view, state) {
-    view.group.position.copy(worldToScene(state.x, state.y, BAT_HEIGHT))
+    view.group.position.copy(worldToScene(state.x, state.y, view.groundHeight / WORLD_SCALE))
     view.group.rotation.y = Math.PI / 2 - (Number(state.rotation) || 0)
     const noticing = state.state === "notice"
     const windingUp = state.state === "windup"
@@ -274,11 +377,26 @@ export class MonsterRenderer {
     this.views.forEach((view, id) => {
       const phase = time * 10 + Number.parseInt(id.replace(/\D/g, "") || "0", 10) * .7
       const flap = Math.sin(phase)
-      view.leftWing.rotation.z = -.22 - flap * .5
-      view.rightWing.rotation.z = .22 + flap * .5
-      view.body.position.y = Math.sin(phase * .5) * .055
-      view.group.position.y = BAT_HEIGHT * WORLD_SCALE + Math.sin(phase * .5) * .08
-      view.group.rotation.z = Math.sin(phase * .35) * .035
+      if (view.group.userData.kind === "bat") {
+        view.leftWing.rotation.z = -.22 - flap * .5
+        view.rightWing.rotation.z = .22 + flap * .5
+      }
+      if (view.group.userData.kind === "ash_hound") {
+        view.legs.forEach((leg, index) => {
+          const stride = Math.sin(phase * 1.25 + (index % 2) * Math.PI) * .22
+          leg.rotation.z = (index % 2 === 0 ? -.06 : .06) + stride
+        })
+        if (view.tail) view.tail.rotation.z = Math.sin(phase * .8) * .16
+        if (view.ember) view.ember.scale.setScalar(1 + Math.sin(phase * 1.4) * .18)
+      }
+      if (view.group.userData.kind === "root_guardian") {
+        view.vines.forEach((vine, index) => {
+          vine.rotation.z = view.vineBaseRotations[index] + Math.sin(phase * .42 + index * .9) * .10
+        })
+        if (view.crown) view.crown.rotation.z = Math.sin(phase * .26) * .10
+        if (view.core) view.core.scale.setScalar(1 + Math.sin(phase * .8) * .14)
+      }
+      view.body.position.y = Math.sin(phase * .5) * view.hoverAmplitude
       void delta
     })
   }

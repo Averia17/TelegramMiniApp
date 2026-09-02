@@ -217,7 +217,7 @@ func (r *Room) prepareStateUpdates() []preparedStateUpdate {
 			continue
 		}
 		maxLife := float64(effect.ExpiresAt-effect.CreatedAt) / 1000
-		effects = append(effects, game.EffectJSON{Id: fmt.Sprintf("%d", effect.ID), Kind: effect.Kind, Phase: string(effect.Phase), CommandID: effect.CommandID, SourceID: effect.SourceID, AbilitySlot: effect.AbilitySlot, TargetType: effect.TargetType, TargetID: effect.TargetID, X: effect.X, Y: effect.Y, ToX: effect.ToX, ToY: effect.ToY, Radius: effect.Radius, Angle: effect.Angle, Range: effect.Range, Arc: effect.Arc, Color: effect.Color, Damage: effect.Damage, Life: float64(effect.ExpiresAt-now) / 1000, MaxLife: maxLife})
+		effects = append(effects, game.EffectJSON{Id: fmt.Sprintf("%d", effect.ID), Kind: effect.Kind, Phase: string(effect.Phase), CommandID: effect.CommandID, SourceID: effect.SourceID, AbilitySlot: effect.AbilitySlot, TargetType: effect.TargetType, TargetID: effect.TargetID, X: effect.X, Y: effect.Y, ToX: effect.ToX, ToY: effect.ToY, Radius: effect.Radius, Angle: effect.Angle, Range: effect.Range, Arc: effect.Arc, Color: effect.Color, Damage: effect.Damage, CreatedAt: effect.CreatedAt, ExpiresAt: effect.ExpiresAt, Life: float64(effect.ExpiresAt-now) / 1000, MaxLife: maxLife})
 	}
 	gameState := game.GameStateJSON{
 		State:             r.State.State,

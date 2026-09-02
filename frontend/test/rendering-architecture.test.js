@@ -24,6 +24,7 @@ import {
 import {createProjectileVisual} from "../src/components/BattleGame/rendering/combat/ProjectileRenderer.js"
 import {
   MonsterRenderer,
+  getMonsterVisualProfile,
   getHealthBarFraction,
   formatHealthLabel,
 } from "../src/components/BattleGame/rendering/monsters/MonsterRenderer.js"
@@ -287,9 +288,16 @@ test("server bats are rendered, animated, and removed with the monster snapshot"
   assert.equal(bat.group.userData.tier, 2)
   assert.equal(bat.healthBar.scale.x >= 2, true)
   assert.equal(bat.healthBar.scale.y >= 2, true)
-  assert.deepEqual(bat.group.position.toArray(), worldToScene(120, 220, 22).toArray())
+  const batProfile = getMonsterVisualProfile("bat")
+  const batVisualScale = Math.max(.82, 24 * WORLD_SCALE / 1.45) * batProfile.size
+  assert.deepEqual(
+    bat.group.position.toArray(),
+    worldToScene(120, 220, batVisualScale * batProfile.groundOffset / WORLD_SCALE).toArray(),
+  )
+  const groundedHeight = bat.group.position.y
   monsters.update(.1, 1)
   assert.equal(Math.abs(bat.leftWing.rotation.z) > 0, true)
+  assert.equal(bat.group.position.y, groundedHeight)
 
   monsters.sync({})
   assert.equal(monsters.views.size, 0)
@@ -3427,6 +3435,36 @@ test("ordinary grass is a single flat green ground without dense black-prone ins
   assert.equal(root.children[0], ground.mesh)
   assert.equal(ground.mesh.userData.role, "grass-ground")
   assert.equal(ground.mesh.material.color.getHex(), 0x4f9b50)
+})
+
+test("combat camera looks ahead only while the player commits to an aim", () => {
+  const camera = new CameraRig()
+  const map = {width: 1024, height: 768}
+  const player = {x: 512, y: 384, aiming: false, rotation: 0}
+  camera.resize(1000, 700)
+  camera.follow(player, map, 1 / 60)
+  const centered = camera.target.clone()
+
+  player.aiming = true
+  camera.follow(player, map, .2)
+
+  assert.ok(camera.target.x > centered.x, "camera should bias toward the aimed lane")
+  assert.deepEqual(player.x, 512)
+})
+
+test("combat camera dead-zone ignores tiny authoritative position jitter", () => {
+  const camera = new CameraRig()
+  const map = {width: 1024, height: 768}
+  const player = {x: 512, y: 384}
+  camera.resize(1000, 700)
+  camera.follow(player, map, 1 / 60)
+  const centered = camera.target.clone()
+
+  player.x += 4
+  player.y += 4
+  camera.follow(player, map, 1 / 60)
+
+  assert.deepEqual(camera.target.toArray(), centered.toArray())
 })
 
 test("team battle ground follows the circular island boundary", () => {

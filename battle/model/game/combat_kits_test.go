@@ -70,7 +70,9 @@ func TestTapAutoAimSelectsAnEnemyTowerWhenNoEnemyHeroIsInRange(t *testing.T) {
 	gs.Monsters = nil
 	source := gs.Players["blue"]
 	tower := gs.Objectives["red-tower-east"]
-	source.X, source.Y, source.Rotation = tower.X-220, tower.Y-80, math.Pi
+	// Stand southeast of the east tower so it is unambiguously the nearest
+	// enemy objective; the west tower remains a valid but farther candidate.
+	source.X, source.Y, source.Rotation = tower.X-220, tower.Y+80, math.Pi
 	gs.Players["red"].X, gs.Players["red"].Y = 3200, 3200
 	gs.Players = map[string]*player.Player{"blue": source, "red": gs.Players["red"]}
 	before := tower.Lives

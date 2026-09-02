@@ -84,6 +84,7 @@ func InitGameStateWithDependencies(gs *GameState, dependencies GameDependencies)
 	gs.Skyfalls = make([]*Skyfall, 0)
 	gs.TemporaryWalls = make(map[*geometry.WallTile]int64)
 	gs.BotMemory = make(map[string]*BotPerception)
+	gs.botMLTrajectory = nil
 	gs.resetBotAIMetrics()
 	gs.resetBatLifecycleMetrics()
 	gs.botAI = newBotAIStrategy(gs.Mode)
@@ -719,6 +720,10 @@ func (gs *GameState) resolveRootGuardianAttack(id string, m *monster.Monster, ta
 	})
 	gs.addMonsterEffect(id, "root_guardian_impact", m.AttackTargetX, m.AttackTargetY, 0, 0, zoneRadius, profile.Color, 360)
 	gs.addMonsterEffect(id, "root_guardian_zone", m.AttackTargetX, m.AttackTargetY, 0, 0, zoneRadius, profile.Color, zoneDuration)
+	m.State = monster.MonsterRecovery
+	m.RecoveryUntil = now + profile.RecoveryMs
+	m.VulnerableUntil = now + profile.RecoveryMs
+	gs.addMonsterEffect(id, "root_guardian_recovery", m.X, m.Y, 0, 0, m.Radius+18, profile.Color, profile.RecoveryMs)
 	_ = target
 }
 
@@ -3496,6 +3501,7 @@ func (gs *GameState) resetMatchAbilityRuntime() {
 	gs.NextCombatEventID = 0
 	gs.NextCombatEffectID = 0
 	gs.BotMemory = make(map[string]*BotPerception)
+	gs.botMLTrajectory = nil
 	gs.resetBotAIMetrics()
 	gs.resetBatLifecycleMetrics()
 	gs.activeCommandID, gs.activeSourceID, gs.activeAbilitySlot = "", "", ""
@@ -3740,8 +3746,12 @@ func (gs *GameState) monstersAdd(count int) {
 	if gs.Map == nil || count <= 0 {
 		return
 	}
-	if gs.Mode == ModeTeamDeathmatch && len(gs.Map.MonsterSpawns) > 0 {
-		gs.addAuthoredTeamMonsters(count)
+	if len(gs.Map.MonsterSpawns) > 0 {
+		if gs.Mode == ModeTeamDeathmatch {
+			gs.addAuthoredTeamMonsters(count)
+		} else {
+			gs.addAuthoredSoloMonsters(count)
+		}
 		return
 	}
 
@@ -3768,6 +3778,22 @@ func (gs *GameState) monstersAdd(count int) {
 			}
 		}
 		gs.Monsters[monsterID] = m
+	}
+}
+
+func (gs *GameState) addAuthoredSoloMonsters(count int) {
+	limit := count
+	if limit > len(gs.Map.MonsterSpawns) {
+		limit = len(gs.Map.MonsterSpawns)
+	}
+	for index, spawn := range gs.Map.MonsterSpawns[:limit] {
+		tier, lives := 1, monster.MonsterLives
+		if index%4 == 0 {
+			tier, lives = 2, monster.EliteMonsterLives
+		}
+		m := monster.NewMonsterOfKindAt(gs.nowMs(), monster.MonsterKind(spawn.Kind), spawn.ID, spawn.X, spawn.Y, PlayerSize/2, gs.Map.WidthInPixels, gs.Map.HeightInPixels, spawn.TerritoryRadius, lives)
+		m.Tier, m.MaxLives = tier, lives
+		gs.Monsters[fmt.Sprintf("solo-camp-%d", index)] = m
 	}
 }
 

@@ -23,7 +23,11 @@ type skillOutcomeResult struct {
 func skillOutcomeState(hero, defender string, mode GameMode) (*GameState, *player.Player, *player.Player) {
 	var state *GameState
 	if mode == ModeTeamDeathmatch {
-		state = newScenarioTeamState()
+		// This matrix replaces the generated team map immediately. Use the small
+		// fixture directly so every trial stays deterministic and cheap.
+		state = newTestGameState()
+		state.Mode = ModeTeamDeathmatch
+		state.rules = TeamDeathmatchRules{}
 		state.Walls = nil
 		state.Objectives = nil
 		state.Props = nil
@@ -251,5 +255,47 @@ func TestScenarioPackSkillEnabledRoundRecordsMeaningfulSkillContribution(t *test
 		if result.targetDamage <= result.basicDamage {
 			t.Fatalf("%s skill-enabled round did not make skills meaningful: total=%d basic=%d skill=%d", trial.hero, result.targetDamage, result.basicDamage, result.skillDamage)
 		}
+	}
+}
+
+func TestScenarioPackGadgetAuthorityCoversEveryHero(t *testing.T) {
+	for _, hero := range []string{
+		"Needle", "Mandy", "Fairy Mina", "Brock Zeus", "Kaze", "Wukong Mico",
+		"Persephone Lumi", "Katty",
+	} {
+		t.Run(hero, func(t *testing.T) {
+			state, attacker, _ := skillOutcomeState(hero, "Kaze", ModeDeathmatch)
+			attacker.GadgetCharges = 3
+			if hero == "Persephone Lumi" {
+				state.HeroZones = append(state.HeroZones, &HeroZone{
+					Owner: attacker.PlayerId, Kind: "lumi_flower", X: attacker.X, Y: attacker.Y,
+					CreatedAt: combatScenarioEpochMs, ExpiresAt: combatScenarioEpochMs + 5_000,
+				})
+			}
+			attacker.SuperCharge = 100
+			commandID := "gadget-matrix-" + hero
+			runner := NewCombatScenarioRunner("gadget-authority-"+hero, 692, ModeDeathmatch, state)
+			if err := runner.ApplyInput(CombatScenarioInput{AtMs: 0, PlayerID: attacker.PlayerId, Type: "gadget"}, func(gs *GameState, _ CombatScenarioInput) {
+				gs.playerAbility(attacker.PlayerId, gs.nowMs(), "secondary", commandID)
+			}); err != nil {
+				t.Fatalf("apply %s gadget: %v", hero, err)
+			}
+			var acknowledgement *CombatEvent
+			for index := range state.CombatEvents {
+				event := &state.CombatEvents[index]
+				if event.Kind == "ability" && event.CommandID == commandID {
+					acknowledgement = event
+				}
+			}
+			if acknowledgement == nil || !acknowledgement.Accepted || !acknowledgement.Resolved {
+				t.Fatalf("%s gadget acknowledgement = %#v, want accepted/resolved", hero, acknowledgement)
+			}
+			if acknowledgement.AbilitySlot != "secondary" || acknowledgement.ResourceKind != "gadget_charges" || acknowledgement.ResourceBefore != 3 || acknowledgement.ResourceAfter != 2 {
+				t.Fatalf("%s gadget resource contract = %#v, want secondary 3 -> 2", hero, acknowledgement)
+			}
+			if !attacker.LastAbilityOK || attacker.GadgetPulse == 0 {
+				t.Fatalf("%s gadget did not create a local authoritative outcome: ok=%v pulse=%d", hero, attacker.LastAbilityOK, attacker.GadgetPulse)
+			}
+		})
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 )
@@ -231,6 +232,39 @@ func (runner *CombatScenarioRunner) RecordBotAIMetrics(prefix string) error {
 		"spawnProtectionAvoidances": float64(metrics.SpawnProtectionAvoidances),
 		"stuckReplans":              float64(metrics.StuckReplans),
 		"idleDecisionTicks":         float64(metrics.IdleDecisionTicks),
+		"mlDecisions":               float64(metrics.MLDecisions),
+		"mlUtilityOverrides":        float64(metrics.MLUtilityOverrides),
+		"mlTacticalDecisions":       float64(metrics.MLTacticalDecisions),
+		"mlTacticalBehaviorChanges": float64(metrics.MLTacticalBehaviorChanges),
+		"mlFallbacks":               float64(metrics.MLFallbacks),
+		"mlLatencyMicros":           float64(metrics.MLLatencyMicros),
+		"mlLatencySamples":          float64(metrics.MLLatencySamples),
+		"mlShadowDecisions":         float64(metrics.MLShadowDecisions),
+		"mlShadowDisagreements":     float64(metrics.MLShadowDisagreements),
+		"mlShadowFallbacks":         float64(metrics.MLShadowFallbacks),
+		"mlShadowLatencyMicros":     float64(metrics.MLShadowLatencyMicros),
+		"mlShadowLatencySamples":    float64(metrics.MLShadowLatencySamples),
+	}
+	botCount, aliveBots, botDeaths, botKills, botDamage := 0, 0, 0, 0, 0
+	for _, bot := range runner.state.Players {
+		if bot == nil || !bot.IsBot {
+			continue
+		}
+		botCount++
+		if bot.IsAlive() {
+			aliveBots++
+		}
+		botDeaths += bot.Deaths
+		botKills += bot.Kills
+		botDamage += bot.BasicDamage + bot.SkillDamage
+	}
+	if botCount > 0 {
+		values["botCount"] = float64(botCount)
+		values["aliveRate"] = float64(aliveBots) / float64(botCount)
+		values["deaths"] = float64(botDeaths)
+		values["kills"] = float64(botKills)
+		values["damage"] = float64(botDamage)
+		values["damagePerLife"] = float64(botDamage) / float64(botDeaths+1)
 	}
 	if metrics.AttackAttempts > 0 {
 		values["accuracy"] = float64(metrics.AttackHits) / float64(metrics.AttackAttempts)
@@ -238,9 +272,18 @@ func (runner *CombatScenarioRunner) RecordBotAIMetrics(prefix string) error {
 	for action, count := range metrics.ActionSelections {
 		values["action."+action] = float64(count)
 	}
+	for action, count := range metrics.MLActionSelections {
+		values["mlAction."+action] = float64(count)
+	}
+	for action, count := range metrics.MLShadowActionSelections {
+		values["mlShadowAction."+action] = float64(count)
+	}
 	for action, sum := range metrics.ActionScoreSums {
 		if samples := metrics.ActionScoreSamples[action]; samples > 0 {
-			values["actionScore."+action] = sum / float64(samples)
+			mean := sum / float64(samples)
+			if !math.IsNaN(mean) && !math.IsInf(mean, 0) {
+				values["actionScore."+action] = mean
+			}
 		}
 	}
 	for role, count := range metrics.ResourceContestByRole {

@@ -21,6 +21,18 @@ type BotAIMetricSample struct {
 	SpawnProtectionAvoidances uint64
 	StuckReplans              uint64
 	IdleDecisionTicks         uint64
+	MLLatencyMicros           uint64
+	MLLatencySamples          uint64
+	MLUtilityOverrides        uint64
+	MLTacticalDecisions       uint64
+	MLTacticalBehaviorChanges uint64
+	MLActionSelections        map[string]uint64
+	MLShadowDecisions         uint64
+	MLShadowDisagreements     uint64
+	MLShadowFallbacks         uint64
+	MLShadowLatencyMicros     uint64
+	MLShadowLatencySamples    uint64
+	MLShadowActionSelections  map[string]uint64
 }
 
 func RecordBotAIMetrics(registry *Registry, sample BotAIMetricSample) {
@@ -55,6 +67,28 @@ func RecordBotAIMetrics(registry *Registry, sample BotAIMetricSample) {
 	registry.AddCounter("battle_bot_spawn_protection_avoids_total", "Bot avoided spawn-protected targets", float64(sample.SpawnProtectionAvoidances), labels)
 	registry.AddCounter("battle_bot_stuck_replans_total", "Bot path stuck replans", float64(sample.StuckReplans), labels)
 	registry.AddCounter("battle_bot_idle_decision_ticks_total", "Bot decision ticks without target or movement", float64(sample.IdleDecisionTicks), labels)
+	registry.AddCounter("battle_bot_ml_utility_overrides_total", "Bot ML decisions that changed the utility action", float64(sample.MLUtilityOverrides), labels)
+	registry.AddCounter("battle_bot_ml_tactical_decisions_total", "Bot ML tactical decisions", float64(sample.MLTacticalDecisions), labels)
+	registry.AddCounter("battle_bot_ml_tactical_behavior_changes_total", "Bot ML tactical decisions that changed executed behavior", float64(sample.MLTacticalBehaviorChanges), labels)
+	registry.AddCounter("battle_bot_ml_shadow_decisions_total", "Bot ML shadow decisions", float64(sample.MLShadowDecisions), labels)
+	registry.AddCounter("battle_bot_ml_shadow_disagreements_total", "Bot ML shadow disagreements with utility policy", float64(sample.MLShadowDisagreements), labels)
+	registry.AddCounter("battle_bot_ml_shadow_fallbacks_total", "Bot ML shadow invalid/fallback decisions", float64(sample.MLShadowFallbacks), labels)
+	for action, count := range sample.MLActionSelections {
+		if count > 0 && isBotMetricAction(action) {
+			registry.AddCounter("battle_bot_ml_action_total", "Bot ML active actions by prediction", float64(count), map[string]string{"mode": labels["mode"], "action": action})
+		}
+	}
+	for action, count := range sample.MLShadowActionSelections {
+		if count > 0 && isBotMetricAction(action) {
+			registry.AddCounter("battle_bot_ml_shadow_action_total", "Bot ML shadow actions by prediction", float64(count), map[string]string{"mode": labels["mode"], "action": action})
+		}
+	}
+	if sample.MLLatencySamples > 0 {
+		registry.ObserveHistogram("battle_bot_ml_latency_microseconds", "Bot ML inference latency", float64(sample.MLLatencyMicros)/float64(sample.MLLatencySamples), []float64{100, 500, 1000, 5000, 10000}, labels)
+	}
+	if sample.MLShadowLatencySamples > 0 {
+		registry.ObserveHistogram("battle_bot_ml_shadow_latency_microseconds", "Bot ML shadow inference latency", float64(sample.MLShadowLatencyMicros)/float64(sample.MLShadowLatencySamples), []float64{100, 500, 1000, 5000, 10000}, labels)
+	}
 	for action, mean := range sample.ActionScoreMeans {
 		if isBotMetricAction(action) {
 			registry.SetGauge("battle_bot_action_score", "Mean bot tactical action score", mean, map[string]string{"mode": labels["mode"], "action": action})

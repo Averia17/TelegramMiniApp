@@ -154,6 +154,12 @@ type GameState struct {
 	Skyfalls                []*Skyfall
 	TemporaryWalls          map[*geometry.WallTile]int64
 	BotMemory               map[string]*BotPerception
+	botMLPolicy             BotMLPolicy
+	botMLShadowPolicy       BotMLPolicy
+	botMLTacticalPolicy     BotMLTacticalPolicy
+	botMLTacticalDirect     bool
+	botMLRecordTrajectory   bool
+	botMLTrajectory         []BotMLTrajectorySample
 	botMetrics              BotAIMetrics
 	botMetricsFlushed       bool
 	batMetrics              BatLifecycleMetrics
@@ -231,6 +237,20 @@ type BotAIMetrics struct {
 	SpawnProtectionAvoidances uint64
 	StuckReplans              uint64
 	IdleDecisionTicks         uint64
+	MLDecisions               uint64
+	MLUtilityOverrides        uint64
+	MLTacticalDecisions       uint64
+	MLTacticalBehaviorChanges uint64
+	MLFallbacks               uint64
+	MLActionSelections        map[string]uint64
+	MLLatencyMicros           uint64
+	MLLatencySamples          uint64
+	MLShadowDecisions         uint64
+	MLShadowDisagreements     uint64
+	MLShadowFallbacks         uint64
+	MLShadowLatencyMicros     uint64
+	MLShadowLatencySamples    uint64
+	MLShadowActionSelections  map[string]uint64
 	attackHitKeys             map[string]struct{}
 }
 
@@ -276,11 +296,13 @@ const maxBatTimelineEvents = 256
 
 func newBotAIMetrics() BotAIMetrics {
 	return BotAIMetrics{
-		ActionSelections:      make(map[string]uint64),
-		ActionScoreSums:       make(map[string]float64),
-		ActionScoreSamples:    make(map[string]uint64),
-		ResourceContestByRole: make(map[string]uint64),
-		attackHitKeys:         make(map[string]struct{}),
+		ActionSelections:         make(map[string]uint64),
+		ActionScoreSums:          make(map[string]float64),
+		ActionScoreSamples:       make(map[string]uint64),
+		ResourceContestByRole:    make(map[string]uint64),
+		MLActionSelections:       make(map[string]uint64),
+		MLShadowActionSelections: make(map[string]uint64),
+		attackHitKeys:            make(map[string]struct{}),
 	}
 }
 
@@ -313,6 +335,14 @@ func (gs *GameState) BotAIMetricsSnapshot() BotAIMetrics {
 	snapshot.ResourceContestByRole = make(map[string]uint64, len(gs.botMetrics.ResourceContestByRole))
 	for role, count := range gs.botMetrics.ResourceContestByRole {
 		snapshot.ResourceContestByRole[role] = count
+	}
+	snapshot.MLActionSelections = make(map[string]uint64, len(gs.botMetrics.MLActionSelections))
+	for action, count := range gs.botMetrics.MLActionSelections {
+		snapshot.MLActionSelections[action] = count
+	}
+	snapshot.MLShadowActionSelections = make(map[string]uint64, len(gs.botMetrics.MLShadowActionSelections))
+	for action, count := range gs.botMetrics.MLShadowActionSelections {
+		snapshot.MLShadowActionSelections[action] = count
 	}
 	return snapshot
 }
@@ -361,6 +391,11 @@ type BotPerception struct {
 	MoveX, MoveY             float64
 	MoveScale                float64
 	MoveCommandAt            int64
+	MLAction                 string
+	MLActionSet              bool
+	MLUtilityAction          string
+	MLExpertNextAt           int64
+	MLShadowNextAt           int64
 }
 
 type DelayedBattleEffect struct {

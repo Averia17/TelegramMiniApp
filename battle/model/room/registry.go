@@ -5,6 +5,7 @@ import (
 	"battle/model/player"
 	"battle/observability"
 	"battle/provider"
+	"log"
 	"sync"
 	"time"
 )
@@ -57,6 +58,18 @@ func GetOrCreateRoomWithDependencies(roomId, roomName string, profile MatchProfi
 		Broadcast:    r.BroadcastMsg,
 		SendToPlayer: r.sendToPlayerUnlocked,
 	})
+	mlConfig := game.BotMLRuntimeConfigFromEnv()
+	if err := gs.ConfigureBotMLRuntime(mlConfig); err != nil {
+		log.Printf("bot ML runtime disabled room=%s: %v", roomId, err)
+	} else if mlConfig.Mode != game.BotMLRuntimeDisabled {
+		log.Printf("bot ML runtime enabled room=%s mode=%s checkpoint=%s", roomId, mlConfig.Mode, mlConfig.CheckpointPath)
+	}
+	tacticalConfig := game.BotMLTacticalRuntimeConfigFromEnv()
+	if err := gs.ConfigureBotMLTacticalRuntime(tacticalConfig); err != nil {
+		log.Printf("bot tactical ML runtime disabled room=%s: %v", roomId, err)
+	} else if tacticalConfig.Mode != game.BotMLRuntimeDisabled {
+		log.Printf("bot tactical ML runtime enabled room=%s mode=%s direct=%t checkpoint=%s", roomId, tacticalConfig.Mode, tacticalConfig.Direct, tacticalConfig.CheckpointPath)
+	}
 	gs.OnGameEnd = func(players map[string]*player.Player, winner string, duration int64) {
 		for playerID, p := range players {
 			if p != nil && !p.IsBot && r.PlayerStates[playerID] != BattleSessionLeftVoluntarily {

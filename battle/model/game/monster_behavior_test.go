@@ -249,6 +249,17 @@ func TestRootGuardianCreatesEscapableDamageZoneAfterTelegraph(t *testing.T) {
 	if len(gs.MonsterZones) != 1 {
 		t.Fatalf("root guardian zones=%d, want one", len(gs.MonsterZones))
 	}
+	if guardian.State != monster.MonsterRecovery || guardian.RecoveryUntil <= now || guardian.VulnerableUntil <= now {
+		t.Fatalf("root guardian should expose a punishable recovery: state=%s recoveryUntil=%d vulnerableUntil=%d now=%d", guardian.State, guardian.RecoveryUntil, guardian.VulnerableUntil, now)
+	}
+	if len(gs.Effects) < 3 || gs.Effects[len(gs.Effects)-1].Kind != "root_guardian_recovery" {
+		t.Fatalf("root guardian recovery effect=%#v", gs.Effects)
+	}
+	guardianLives := guardian.Lives
+	gs.damageMonster("camp-03", guardian, 40)
+	if guardian.Lives != guardianLives-50 {
+		t.Fatalf("root guardian recovery should amplify punish damage: before=%d after=%d", guardianLives, guardian.Lives)
+	}
 	now += 120
 	gs.updateMonsterZones()
 	if target.Lives >= livesBefore {

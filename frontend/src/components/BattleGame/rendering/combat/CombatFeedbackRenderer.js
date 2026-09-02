@@ -37,12 +37,12 @@ const createDamageTexture = damage => {
   return texture
 }
 
-const createHitBurst = (radius, color, directionAngle = 0) => {
+const createHitBurst = (radius, color, directionAngle = 0, flashMultiplier = 1) => {
   const group = new THREE.Group()
   group.userData.role = "combat-hit-feedback"
   const material = flatMaterial(color, {
     transparent: true,
-    opacity: .95,
+    opacity: .95 * flashMultiplier,
     depthWrite: false,
     depthTest: false,
     side: THREE.DoubleSide,
@@ -72,12 +72,13 @@ const createHitBurst = (radius, color, directionAngle = 0) => {
 }
 
 export class CombatFeedbackRenderer {
-  constructor(root) {
+  constructor(root, {reducedFlash = false} = {}) {
     this.root = root
     this.feedback = new Map()
     this.seenIds = new Set()
     this.state = null
     this.localPlayerId = null
+    this.reducedFlash = Boolean(reducedFlash)
   }
 
   setLocalPlayerId(id) {
@@ -94,7 +95,8 @@ export class CombatFeedbackRenderer {
       ? Math.atan2(position.y - sourcePosition.y, position.x - sourcePosition.x)
       : 0
     const profile = getCombatHitProfile(event)
-    const group = createHitBurst(radius * profile.burstScale, color, directionAngle)
+    const flashMultiplier = this.reducedFlash ? .45 : 1
+    const group = createHitBurst(radius * profile.burstScale, color, directionAngle, flashMultiplier)
     group.position.copy(worldToScene(position.x, position.y, 2))
     group.userData.eventId = String(event.id)
     group.userData.damage = Number(event.damage) || 0
@@ -102,12 +104,14 @@ export class CombatFeedbackRenderer {
     group.userData.targetType = String(event.targetType || "players")
     group.userData.reaction = profile.reaction
     group.userData.hitStopSeconds = profile.hitStopSeconds
+    group.userData.flashMultiplier = flashMultiplier
 
     const texture = createDamageTexture(event.damage)
     const label = new THREE.Sprite(new THREE.SpriteMaterial({
       color,
       map: texture,
       transparent: true,
+      opacity: flashMultiplier,
       depthTest: false,
       depthWrite: false,
     }))
@@ -169,7 +173,7 @@ export class CombatFeedbackRenderer {
         if (child.userData.role === "damage-number") {
           child.position.y = 5.2 + progress * 1.15
         }
-        if (child.material) child.material.opacity = 1 - progress
+        if (child.material) child.material.opacity = (1 - progress) * (entry.group.userData.flashMultiplier || 1)
       })
       if (progress >= 1) {
         const label = entry.group.userData.damageNumber

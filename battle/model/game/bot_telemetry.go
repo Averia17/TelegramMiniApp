@@ -97,6 +97,18 @@ func (gs *GameState) flushBotAIMetrics() {
 		SpawnProtectionAvoidances: metrics.SpawnProtectionAvoidances,
 		StuckReplans:              metrics.StuckReplans,
 		IdleDecisionTicks:         metrics.IdleDecisionTicks,
+		MLLatencyMicros:           metrics.MLLatencyMicros,
+		MLLatencySamples:          metrics.MLLatencySamples,
+		MLUtilityOverrides:        metrics.MLUtilityOverrides,
+		MLTacticalDecisions:       metrics.MLTacticalDecisions,
+		MLTacticalBehaviorChanges: metrics.MLTacticalBehaviorChanges,
+		MLActionSelections:        metrics.MLActionSelections,
+		MLShadowDecisions:         metrics.MLShadowDecisions,
+		MLShadowDisagreements:     metrics.MLShadowDisagreements,
+		MLShadowFallbacks:         metrics.MLShadowFallbacks,
+		MLShadowLatencyMicros:     metrics.MLShadowLatencyMicros,
+		MLShadowLatencySamples:    metrics.MLShadowLatencySamples,
+		MLShadowActionSelections:  metrics.MLShadowActionSelections,
 	})
 	gs.flushBatLifecycleMetrics()
 }

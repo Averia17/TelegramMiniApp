@@ -123,6 +123,8 @@ func TestMeleeSupersHoldEnemiesForAFollowUpAttack(t *testing.T) {
 		source, target := gs.Players["source"], gs.Players["target"]
 		source.X, source.Y, target.X, target.Y = 500, 500, 570, 500
 		WukongMicoKit{}.Super(gs, source, now, 0, 0)
+		gs.clockNow = func() int64 { return now + 250 }
+		gs.updateNewHeroSystems()
 		micoControlWindow := MicoVortexStunDuration.Milliseconds()
 		if target.StunUntil < now+micoControlWindow {
 			t.Fatalf("stun until %d, want at least %d", target.StunUntil, now+micoControlWindow)

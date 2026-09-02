@@ -124,8 +124,12 @@ async function auditHero(page, hero, index) {
   }
 
   await trigger("basic", 120, 300)
-  await trigger("super", 180, 900)
+  // Gadgets are spawn-ready, while Super charge is earned during the fight.
+  // Probe the resource that should be immediately available before the long
+  // Super observation window, otherwise a bot kill can hide a broken gadget
+  // path behind a misleading "passed" report.
   await trigger("gadget", 180, 1400)
+  await trigger("super", 180, 900)
   const finalState = await readBattle(page)
   return {hero, frames, finalState}
 }
@@ -147,7 +151,12 @@ runWithBrowser(
       page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
       try {
         const result = await auditHero(page, hero, index)
-        report.push({...result, status: "passed", consoleErrors, pageErrors})
+        const skipped = (result.frames || []).filter(frame => frame.phase === "skipped")
+        if (skipped.length) {
+          report.push({...result, status: "blocked", error: `live skill audit skipped ${skipped.length} skill probe(s)`, consoleErrors, pageErrors})
+        } else {
+          report.push({...result, status: "passed", consoleErrors, pageErrors})
+        }
       } catch (error) {
         const screenshot = path.join(OUTPUT, `${slug(hero)}-error.png`)
         await page.screenshot({path: screenshot, fullPage: true}).catch(() => {})
@@ -174,5 +183,5 @@ runWithBrowser(
     console.log(JSON.stringify({reportFile, output: OUTPUT, summary}, null, 2))
     assert.equal(report.length, heroes.length)
   },
-  {maxRuntimeMs: 360000},
+  {maxRuntimeMs: Number(process.env.HERO_LIVE_AUDIT_TIMEOUT_MS || 900000)},
 )

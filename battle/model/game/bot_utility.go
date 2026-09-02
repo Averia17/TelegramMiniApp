@@ -4,6 +4,7 @@ import (
 	"battle/model/player"
 	"battle/model/prop"
 	"math"
+	"time"
 )
 
 // botUtilityAction is the tactical layer between perception and movement. It
@@ -483,6 +484,100 @@ func (gs *GameState) botUtilityActionFor(id string, bot *player.Player, target *
 	scores := scoreBotUtility(ctx)
 	current := botUtilityAction(memory.UtilityAction)
 	selected := chooseBotUtilityAction(scores, current, memory.UtilityActionUntil, now)
+	teacherSelected := selected
+	var expertObservation BotMLObservation
+	expertObservationReady := false
+	if gs.botMLRecordTrajectory {
+		if observation, err := gs.BotMLObservationFor(id, now); err == nil {
+			expertObservation = observation
+			expertObservationReady = true
+		}
+	}
+	if gs.botMLShadowPolicy != nil && now >= memory.MLShadowNextAt {
+		started := time.Now()
+		observation, err := gs.BotMLObservationFor(id, now)
+		if err != nil {
+			gs.botMetrics.MLShadowFallbacks++
+		} else {
+			var action BotMLAction
+			if stateful, ok := gs.botMLShadowPolicy.(BotMLStatefulPolicy); ok {
+				action = stateful.DecideFor(id, observation)
+			} else {
+				action = gs.botMLShadowPolicy.Decide(observation)
+			}
+			gs.botMetrics.MLShadowDecisions++
+			if utilityAction, supported := botMLActionToUtility(action); supported && int(action) < len(observation.ActionMask) && observation.ActionMask[action] {
+				if gs.botMetrics.MLShadowActionSelections == nil {
+					gs.botMetrics.MLShadowActionSelections = make(map[string]uint64)
+				}
+				gs.botMetrics.MLShadowActionSelections[botMLActionName(action)]++
+				if utilityAction != selected {
+					gs.botMetrics.MLShadowDisagreements++
+				}
+			} else {
+				gs.botMetrics.MLShadowFallbacks++
+			}
+		}
+		gs.botMetrics.MLShadowLatencyMicros += uint64(time.Since(started).Microseconds())
+		gs.botMetrics.MLShadowLatencySamples++
+		memory.MLShadowNextAt = now + botUtilityCommitMs
+	}
+	if gs.botMLPolicy != nil {
+		if memory.MLActionSet && now < memory.UtilityActionUntil {
+			selected = botUtilityAction(memory.MLUtilityAction)
+		} else {
+			observation, err := gs.BotMLObservationFor(id, now)
+			if err == nil {
+				gs.botMetrics.MLDecisions++
+				started := time.Now()
+				var action BotMLAction
+				if stateful, ok := gs.botMLPolicy.(BotMLStatefulPolicy); ok {
+					action = stateful.DecideFor(id, observation)
+				} else {
+					action = gs.botMLPolicy.Decide(observation)
+				}
+				gs.botMetrics.MLLatencyMicros += uint64(time.Since(started).Microseconds())
+				gs.botMetrics.MLLatencySamples++
+				if int(action) >= 0 && int(action) < len(observation.ActionMask) && observation.ActionMask[action] {
+					memory.MLAction = botMLActionName(action)
+					if utilityAction, supported := botMLActionToUtility(action); supported {
+						if utilityAction != teacherSelected {
+							gs.botMetrics.MLUtilityOverrides++
+						}
+						selected = utilityAction
+					} else {
+						gs.botMetrics.MLFallbacks++
+					}
+					if gs.botMetrics.MLActionSelections == nil {
+						gs.botMetrics.MLActionSelections = make(map[string]uint64)
+					}
+					gs.botMetrics.MLActionSelections[botMLActionName(action)]++
+				} else {
+					gs.botMetrics.MLFallbacks++
+					memory.MLAction = "fallback"
+				}
+			} else {
+				gs.botMetrics.MLFallbacks++
+				memory.MLAction = "fallback"
+			}
+			memory.MLActionSet = true
+			memory.MLUtilityAction = string(selected)
+			memory.UtilityActionUntil = now + botUtilityCommitMs
+		}
+	}
+	if expertObservationReady && now >= memory.MLExpertNextAt {
+		if action, supported := botUtilityToMLAction(teacherSelected); supported && int(action) < len(expertObservation.ActionMask) && expertObservation.ActionMask[action] {
+			gs.recordBotMLTrajectory(BotMLTrajectorySample{
+				AtMs:        now,
+				BotID:       id,
+				Hero:        bot.HeroName,
+				Policy:      "utility-v1",
+				Observation: expertObservation,
+				Action:      action,
+			})
+		}
+		memory.MLExpertNextAt = now + botUtilityCommitMs
+	}
 	if selected != current {
 		memory.UtilityAction = string(selected)
 		memory.UtilityActionUntil = now + botUtilityCommitMs

@@ -9,6 +9,7 @@ import {EffectRenderer} from "../combat/EffectRenderer"
 import {CombatFeedbackRenderer} from "../combat/CombatFeedbackRenderer.js"
 import {getCombatHitProfile} from "../combat/combatFeedback.js"
 import {CombatAudio} from "../combat/combatAudio.js"
+import {getCombatAccessibilityPreferences} from "../combat/combatAccessibility.js"
 import {createLastContactEffects} from "../combat/lastContactEffects.js"
 import {ProjectileRenderer} from "../combat/ProjectileRenderer"
 import {CameraRig} from "../CameraRig"
@@ -25,7 +26,8 @@ export class ThreeBattleRenderer {
     this.sceneRoot = new SceneRoot(canvas)
     this.renderer = this.sceneRoot.renderer
     this.scene = this.sceneRoot.scene
-    this.cameraRig = new CameraRig()
+    this.accessibility = getCombatAccessibilityPreferences()
+    this.cameraRig = new CameraRig({reducedShake: this.accessibility.reducedShake})
     this.camera = this.cameraRig.camera
     this.mapRoot = this.sceneRoot.roots.map
     this.actorRoot = this.sceneRoot.roots.actors
@@ -38,8 +40,8 @@ export class ThreeBattleRenderer {
     this.pickups = new PickupRenderer(this.pickupRoot)
     this.projectiles = new ProjectileRenderer(this.projectileRoot)
     this.effects = new EffectRenderer(this.effectRoot)
-    this.combatFeedback = new CombatFeedbackRenderer(this.effectRoot)
-    this.combatAudio = new CombatAudio()
+    this.combatFeedback = new CombatFeedbackRenderer(this.effectRoot, {reducedFlash: this.accessibility.reducedFlash})
+    this.combatAudio = new CombatAudio({enabled: !this.accessibility.reducedAudio})
     this.aim = new AimRenderer(this.aimRoot)
     this.state = null
     this.mapState = null
@@ -160,15 +162,18 @@ export class ThreeBattleRenderer {
     this.projectiles.sync(state.bullets || [])
     this.monsters.sync(state.monsters || {})
     this.pickups.sync(state.props || [])
+    this.combatAudio.syncEvents(state.combatEvents || [])
+    this.combatAudio.syncEffects(state.effects || [])
     this.effects.sync([...(state.effects || []), ...createLastContactEffects(state.players || {}, state.ts || Date.now())])
     const newHits = this.combatFeedback.sync(state)
     newHits.forEach(event => {
       const targetIsLocal = String(event.targetId) === this.localPlayerId
       const sourceIsLocal = String(event.sourceId) === this.localPlayerId
       this.players.get(String(event.targetId))?.triggerHitReaction?.(event)
-      this.combatAudio.playCombatEvent(event)
       this.cameraRig.addShake(targetIsLocal ? .18 : sourceIsLocal ? .07 : .025)
-      this.hitStopRemaining = Math.max(this.hitStopRemaining, getCombatHitProfile(event).hitStopSeconds)
+      if (!this.accessibility.reducedMotion) {
+        this.hitStopRemaining = Math.max(this.hitStopRemaining, getCombatHitProfile(event).hitStopSeconds)
+      }
     })
     recordBattleMetric("renderer.scene_entity_count", active.size + Object.keys(state.monsters || {}).length + (state.bullets || []).length, {
       players: active.size,
@@ -206,7 +211,7 @@ export class ThreeBattleRenderer {
     const frameInterval = now - this.lastRenderAt
     recordBattleMetric("renderer.frame_interval", frameInterval)
     const delta=clamp(frameInterval/1000,1/240,.05);this.lastRenderAt=now
-    const hitStopActive = this.hitStopRemaining > 0
+    const hitStopActive = !this.accessibility.reducedMotion && this.hitStopRemaining > 0
     const visualDelta = hitStopActive ? 0 : delta
     this.hitStopRemaining = Math.max(0, this.hitStopRemaining - delta)
     this.time += visualDelta
@@ -263,6 +268,7 @@ export class ThreeBattleRenderer {
     this.monsters.dispose()
     this.mapRenderer.dispose()
     this.combatFeedback.dispose()
+    this.effects.dispose()
     this.combatAudio.dispose()
     this.sceneRoot.dispose()
   }

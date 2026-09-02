@@ -212,6 +212,151 @@ const createSpawnProtectionAura = () => {
   return group
 }
 
+const createKattySpawnPaintCloud = () => {
+  const group = new THREE.Group()
+  group.name = "katty-spawn-paint-cloud"
+  group.visible = false
+  group.renderOrder = 17
+  group.userData.role = "katty-spawn-paint-cloud"
+  const palette = [0xff4f9a, 0x8d62ff, 0x36d9ef, 0xffd45b]
+  const hazeMaterial = new THREE.MeshBasicMaterial({
+    color: palette[0],
+    transparent: true,
+    opacity: 0,
+    blending: THREE.NormalBlending,
+    depthTest: true,
+    depthWrite: false,
+  })
+  const haze = new THREE.Mesh(new THREE.SphereGeometry(.72, 18, 12), hazeMaterial)
+  haze.scale.set(1.3, .52, 1.3)
+  haze.position.y = .26
+  haze.userData.role = "paint-cloud-haze"
+  group.add(haze)
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(.72, .07, 8, 40),
+    new THREE.MeshBasicMaterial({
+      color: palette[1],
+      transparent: true,
+      opacity: 0,
+      blending: THREE.NormalBlending,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  )
+  ring.rotation.x = Math.PI / 2
+  ring.position.y = .08
+  ring.userData.role = "paint-cloud-ring"
+  group.add(ring)
+  const outerRing = new THREE.Mesh(
+    new THREE.TorusGeometry(1.02, .035, 8, 40),
+    new THREE.MeshBasicMaterial({
+      color: palette[2],
+      transparent: true,
+      opacity: 0,
+      blending: THREE.NormalBlending,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  )
+  outerRing.rotation.x = Math.PI / 2
+  outerRing.position.y = .1
+  outerRing.userData.role = "paint-cloud-outer-ring"
+  group.add(outerRing)
+  const puffs = []
+  for (let index = 0; index < 20; index += 1) {
+    const angle = index * Math.PI * 2 / 20
+    const material = new THREE.MeshBasicMaterial({
+      color: palette[index % palette.length],
+      transparent: true,
+      opacity: 0,
+      blending: THREE.NormalBlending,
+      depthTest: true,
+      depthWrite: false,
+    })
+    const puff = new THREE.Mesh(
+      new THREE.SphereGeometry(.13 + index % 3 * .035, 10, 8),
+      material,
+    )
+    puff.userData.role = "paint-cloud-puff"
+    puff.userData.angle = angle
+    puff.userData.radius = .24 + index % 5 * .1
+    puff.userData.lift = .2 + index % 4 * .09
+    puffs.push(puff)
+    group.add(puff)
+  }
+  const sprayDrops = []
+  for (let index = 0; index < 15; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: palette[(index + 2) % palette.length],
+      transparent: true,
+      opacity: 0,
+      blending: THREE.NormalBlending,
+      depthTest: true,
+      depthWrite: false,
+    })
+    const drop = new THREE.Mesh(new THREE.SphereGeometry(.045 + index % 2 * .018, 8, 6), material)
+    drop.userData.role = "paint-spray-drop"
+    drop.userData.index = index
+    drop.userData.burst = index % 3
+    sprayDrops.push(drop)
+    group.add(drop)
+  }
+  group.userData.haze = haze
+  group.userData.ring = ring
+  group.userData.outerRing = outerRing
+  group.userData.puffs = puffs
+  group.userData.sprayDrops = sprayDrops
+  return group
+}
+
+const smoothStep = value => value * value * (3 - 2 * value)
+
+const updateKattySpawnPaintCloud = (group, elapsed, duration, facing = 0) => {
+  if (!group) return
+  const progress = clamp(elapsed / Math.max(.1, duration), 0, 1)
+  const open = smoothStep(clamp(progress / .5, 0, 1))
+  const dissolve = smoothStep(clamp((progress - .62) / .38, 0, 1))
+  const visibility = 1 - dissolve
+  group.visible = progress < 1
+  group.rotation.y = facing
+  const haze = group.userData.haze
+  haze.scale.set(1.3 + open * .72, .52 + open * .28, 1.3 + open * .72)
+  haze.position.y = .26 + open * .18
+  haze.material.opacity = (.02 + open * .06) * visibility
+  const ring = group.userData.ring
+  ring.scale.setScalar(.45 + open * 1.18)
+  ring.material.opacity = (.08 + open * .18) * visibility
+  const outerRing = group.userData.outerRing
+  outerRing.scale.setScalar(.2 + open * 1.46)
+  outerRing.material.opacity = (.04 + open * .14) * visibility
+  for (const puff of group.userData.puffs) {
+    const burst = open * (1 - dissolve * .25)
+    const distance = puff.userData.radius * (.72 + burst * .9)
+    puff.position.set(
+      Math.cos(puff.userData.angle) * distance,
+      .14 + puff.userData.lift * burst + Math.sin(progress * 11 + puff.userData.angle) * .035,
+      Math.sin(puff.userData.angle) * distance,
+    )
+    puff.scale.setScalar(.65 + burst * .82)
+    puff.material.opacity = (.025 + burst * .12) * visibility
+  }
+  for (const drop of group.userData.sprayDrops) {
+    const index = drop.userData.index
+    const fan = (index % 5 - 2) / 2
+    const burstTime = [.32, .47, .62][drop.userData.burst]
+    const pulse = Math.max(0, 1 - Math.abs(progress - burstTime) / .095)
+    const spray = smoothStep(pulse)
+    const travel = .18 + spray * (.5 + index % 4 * .08)
+    drop.position.set(
+      -.32 + fan * travel * .72,
+      1.62 + spray * (.15 + (index % 2) * .16) + Math.abs(fan) * .08,
+      .16 + travel,
+    )
+    drop.rotation.z = fan * .45
+    drop.material.opacity = (.03 + spray * .42) * visibility
+  }
+}
+
 export class HeroView {
   constructor(id, state, isLocalPlayer = false, teamBattle = false, localTeam = "") {
     this.id = id
@@ -237,6 +382,7 @@ export class HeroView {
     this.teamMarker.renderOrder = 12
     this.teamMarker.userData.role = "team-marker"
     this.spawnProtectionAura = createSpawnProtectionAura()
+    this.spawnPaintCloud = state.hero === "Katty" ? createKattySpawnPaintCloud() : null
     this.deathBurst = createDeathBurst(state.hero)
     this.deathMarker = createDeathMarker()
     this.taunt = createClownTaunt()
@@ -245,6 +391,7 @@ export class HeroView {
     this.deathTime = 0
     this.deathElapsed = 0
     this.group.add(this.teamMarker, this.deathMarker, this.spawnProtectionAura, this.model, this.deathBurst, this.taunt)
+    if (this.spawnPaintCloud) this.group.add(this.spawnPaintCloud)
     if (this.shadow) this.group.add(this.shadow)
     if (this.label) this.group.add(this.label)
     this.x = this.targetX = state.x
@@ -257,6 +404,8 @@ export class HeroView {
     this.lastSuperPulse = state.superPulse
     this.lastLives = state.lives
     this.spawnPulse = 0
+    this.spawnPaintCloudElapsed = 0
+    this.spawnPaintCloudActive = false
     this.flightVisualHeight = 0
     this.recoil = 0
     this.hit = 0
@@ -516,6 +665,23 @@ export class HeroView {
       this.model.rotation.y += this.animation.attackSwingYaw
       this.animation.setHitFlash(this.hit)
     }
+    const isKattySpawn = this.state.hero === "Katty" && this.animation?.state === "spawn"
+    if (isKattySpawn && !this.spawnPaintCloudActive) this.spawnPaintCloudElapsed = 0
+    if (this.spawnPaintCloud) {
+      if (isKattySpawn) {
+        this.spawnPaintCloudElapsed += Math.max(0, delta)
+        updateKattySpawnPaintCloud(
+          this.spawnPaintCloud,
+          this.spawnPaintCloudElapsed,
+          this.animation?.spawnDuration || 1.45,
+          this.model.rotation.y,
+        )
+      } else {
+        this.spawnPaintCloud.visible = false
+        this.spawnPaintCloudElapsed = 0
+      }
+    }
+    this.spawnPaintCloudActive = isKattySpawn
     if (this.deathTime > 0) {
       this.deathElapsed += delta
       this.deathTime = Math.max(0, this.deathTime - delta)

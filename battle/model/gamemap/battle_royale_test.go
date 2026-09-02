@@ -1,6 +1,7 @@
 package gamemap
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -38,6 +39,32 @@ func TestGenerateBattleRoyaleProducesPlayableArena(t *testing.T) {
 	for _, spawn := range gameMap.Spawners {
 		if spawn.X <= 0 || spawn.Y <= 0 || spawn.X >= gameMap.WidthInPixels || spawn.Y >= gameMap.HeightInPixels {
 			t.Fatalf("spawn outside arena: %.0f,%.0f", spawn.X, spawn.Y)
+		}
+	}
+}
+
+func TestGenerateBattleRoyalePublishesDeterministicMonsterCamps(t *testing.T) {
+	gameMap := GenerateBattleRoyale(CanonicalBattleRoyaleSeed)
+	if len(gameMap.MonsterSpawns) != 8 {
+		t.Fatalf("monster camps = %d, want 8 authored solo camps", len(gameMap.MonsterSpawns))
+	}
+	walls := geometry.NewSpatialHash(40)
+	for _, wall := range gameMap.Collisions {
+		walls.Insert(wall)
+	}
+	for index, camp := range gameMap.MonsterSpawns {
+		if camp.ID != fmt.Sprintf("camp-%02d", index+1) || camp.Kind == "" || camp.TerritoryRadius <= 0 {
+			t.Fatalf("camp %d has incomplete contract: %#v", index, camp)
+		}
+		body := &geometry.CircleBody{X: camp.X, Y: camp.Y, Radius: 20}
+		if geometry.CollidesCircleWithBlockingWalls(body, walls) {
+			t.Fatalf("camp %s is inside a blocking collider at (%.0f, %.0f)", camp.ID, camp.X, camp.Y)
+		}
+	}
+	other := GenerateBattleRoyale(CanonicalBattleRoyaleSeed)
+	for index, camp := range other.MonsterSpawns {
+		if camp != gameMap.MonsterSpawns[index] {
+			t.Fatalf("camp %d changed for the same canonical seed: %#v vs %#v", index, camp, gameMap.MonsterSpawns[index])
 		}
 	}
 }

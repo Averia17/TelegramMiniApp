@@ -16,6 +16,19 @@ test("hero combat effects use authored visual families instead of the generic ri
   }
 })
 
+test("effect renderer recycles a completed effect mesh without duplicating children", () => {
+  const root = new THREE.Group()
+  const renderer = new EffectRenderer(root)
+  renderer.sync([{id: "first", kind: "kaze_cross_slash", x: 0, y: 0, radius: 90, life: .1, maxLife: .1}])
+  const first = root.children[0]
+  renderer.sync([])
+  assert.equal(root.children.length, 0)
+  renderer.sync([{id: "second", kind: "kaze_cross_slash", x: 120, y: 0, radius: 90, life: .1, maxLife: .1}])
+  assert.equal(root.children.length, 1)
+  assert.equal(root.children[0], first)
+  assert.equal(renderer.meshes.size, 1)
+})
+
 test("hero impact families expose layered geometry for readable hit feedback", () => {
   const root = new THREE.Group()
   const renderer = new EffectRenderer(root)

@@ -77,7 +77,7 @@ def valid_report():
 
     return {
         "profileId": "combat-profile",
-        "combatRulesVersion": "2026-08-27-skill-cooldown-source",
+        "combatRulesVersion": read_profile()["profileRevision"],
         "combatProfileFingerprint": profile_fingerprint(read_profile()),
         "heroCoverage": [
             "Needle",

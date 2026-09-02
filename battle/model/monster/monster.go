@@ -96,6 +96,7 @@ func ProfileForKind(kind MonsterKind, tier int) AttackProfile {
 		profile.Telegraph = "root_guardian_telegraph"
 		profile.Impact = "root_guardian_impact"
 		profile.Color = "#9be66f"
+		profile.RecoveryMs = 850
 	}
 	return profile
 }

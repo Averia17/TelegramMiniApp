@@ -55,7 +55,7 @@ const IMPACT_KINDS = new Set([
   "lightning", "zeus_lightning_strike", "zeus_lightning_blast", "mico_skyfall", "mico_armor_burst",
   "burst", "evade", "damage", "crate_hit", "crate_break", "rock",
   "wall_break", "objective_hit", "tower_shot_blocked",
-  "ash_hound_charge_impact", "ash_hound_recovery", "root_guardian_impact",
+  "ash_hound_charge_impact", "ash_hound_recovery", "root_guardian_impact", "root_guardian_recovery",
 ])
 const CONTACT_KINDS = new Set(["last_contact"])
 const NEEDLE_FIELD_KINDS = new Set(["needle_root_telegraph", "needle_root_active", "needle_spore_cloud", "needle_spores"])
@@ -71,6 +71,7 @@ const CUSTOM_COMPOSITION_KINDS = new Set([
   "lumi_seedburst", "lumi_root_impact", "zeus_fire_ground",
   "ash_hound_charge_telegraph", "root_guardian_telegraph", "root_guardian_zone",
 ])
+const MAX_POOLED_EFFECT_MESHES = 48
 
 // These are deliberately exported for the visual audit and contract tests. A
 // backend effect must never silently fall through to the generic ring when it
@@ -89,7 +90,7 @@ export const HERO_EFFECT_VISUAL_KINDS = new Set([
 
 export const MONSTER_EFFECT_VISUAL_KINDS = new Set([
   "ash_hound_charge_telegraph", "ash_hound_charge_impact", "ash_hound_recovery",
-  "root_guardian_telegraph", "root_guardian_impact", "root_guardian_zone",
+  "root_guardian_telegraph", "root_guardian_impact", "root_guardian_zone", "root_guardian_recovery",
 ])
 
 const SHARED_VFX_KINDS = new Set([
@@ -1260,6 +1261,50 @@ export class EffectRenderer {
   constructor(root) {
     this.root = root
     this.meshes = new Map()
+    this.pool = new Map()
+    this.poolSize = 0
+  }
+
+  acquire(poolKey) {
+    const entries = this.pool.get(poolKey)
+    if (!entries?.length) return null
+    const mesh = entries.pop()
+    this.poolSize--
+    if (entries.length === 0) this.pool.delete(poolKey)
+    mesh.visible = true
+    return mesh
+  }
+
+  recycle(mesh) {
+    if (!mesh?.userData?.poolKey) {
+      disposeObjectTree(mesh)
+      return
+    }
+    mesh.visible = false
+    mesh.position.set(0, 0, 0)
+    mesh.rotation.set(0, 0, 0)
+    mesh.scale.setScalar(1)
+    mesh.userData.phase = null
+    mesh.traverse(child => {
+      if (child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material]
+        materials.forEach(material => { material.opacity = 0 })
+      }
+    })
+    const entries = this.pool.get(mesh.userData.poolKey) || []
+    entries.push(mesh)
+    this.pool.set(mesh.userData.poolKey, entries)
+    this.poolSize++
+    while (this.poolSize > MAX_POOLED_EFFECT_MESHES) {
+      const oldestKey = this.pool.keys().next().value
+      const oldestEntries = this.pool.get(oldestKey)
+      const oldest = oldestEntries?.shift()
+      if (oldest) {
+        this.poolSize--
+        disposeObjectTree(oldest)
+      }
+      if (!oldestEntries?.length) this.pool.delete(oldestKey)
+    }
   }
 
   sync(effects) {
@@ -1272,105 +1317,110 @@ export class EffectRenderer {
       let mesh = this.meshes.get(id)
       if (!mesh) {
         const radius = Math.max(12, effect.radius || (MELEE_SWING_KINDS.has(effect.kind) ? effect.range : effect.range * 0.18) || 30) * WORLD_SCALE
-        const visualColor = new THREE.Color(effect.color || 0xffffff)
-        if (String(effect.kind || "").startsWith("zeus_") || effect.kind === "lightning") {
-          visualColor.offsetHSL(0, .14, -.18)
-        }
-        const style = resolveVfxStyle(effect.kind, visualColor)
-        const material = flatMaterial(style.primary, {
-          transparent: true,
-          opacity: 0.42,
-          side: THREE.DoubleSide,
-          blending: THREE.NormalBlending,
-          depthWrite: false,
-          depthTest: false,
-        })
-        if (effect.kind === "heal" || effect.kind === "health_boost") {
-          mesh = createHealEffect(radius, effect.color || 0x65ff9c)
-        } else if (effect.kind === "mandy_super_charge") {
-          mesh = createMandyChargeEffect(radius, material)
-        } else if (effect.kind === "mandy_super_wave") {
-          const range = Math.max(1, effect.range || Math.hypot((effect.toX || effect.x) - effect.x, (effect.toY || effect.y) - effect.y))
-          mesh = createMandyWaveEffect(range * WORLD_SCALE, Math.max(100, (effect.radius || 50) * 2) * WORLD_SCALE, material)
-        } else if (TRAIL_KINDS.has(effect.kind)) {
-          mesh = ["kaze_dash", "mico_leap", "needle_spore_dash"].includes(effect.kind)
-            ? createDashRibbonEffect(material, effect.kind)
-            : createTrailLaneEffect(material, effect.kind)
-          mesh.userData.kind = effect.kind
-        } else if (effect.kind === "mina_healing_aura") {
-          mesh = createHealEffect(radius, effect.color || 0xff9bea)
-        } else if (effect.kind === "katty_paint_puddle") {
-          mesh = createPaintPuddleEffect(radius, material)
-        } else if (effect.kind === "katty_paint_trail") {
-          mesh = createPaintPuddleEffect(radius, material, effect.kind)
-        } else if (effect.kind === "zeus_storm_target") {
-          mesh = createStrikeTargetEffect(radius, material)
-        } else if (effect.kind === "root_guardian_zone") {
-          mesh = createRootGuardianZoneEffect(radius, material)
-        } else if (PAINT_SPRAY_KINDS.has(effect.kind)) {
-          mesh = createPaintSprayEffect(radius, effect.arc || .20, material)
-        } else if (WAVE_KINDS.has(effect.kind)) {
-          mesh = createWaveEffect(radius, material, effect.kind)
-        } else if (BEAM_KINDS.has(effect.kind)) {
-          mesh = createLightningBeam(radius, material)
-        } else if (NEEDLE_FIELD_KINDS.has(effect.kind)) {
-          mesh = createNeedleFieldEffect(radius, material, effect.kind)
-        } else if (effect.kind === "vortex" || effect.kind === "mico_staff_spin") {
-          mesh = createVortexEffect(radius, material, effect.kind)
-        } else if (effect.kind === "zeus_fire_ground") {
-          mesh = hasDirectedPath(effect)
-            ? createFireTrailLaneEffect(material, effect.kind)
-            : createGroundFieldEffect(radius, material)
-        } else if (["zeus_lightning_strike", "zeus_lightning_blast", "mico_skyfall"].includes(effect.kind)) {
-          mesh = createLightningImpact(radius, material, effect.kind)
-        } else if (ORBITAL_KINDS.has(effect.kind)) {
-          mesh = createOrbitalEffect(radius, material, effect.kind)
-        } else if (TELEGRAPH_KINDS.has(effect.kind)) {
-          mesh = ["kaze_dash_telegraph", "ash_hound_charge_telegraph"].includes(effect.kind)
-            ? createDirectedDashTelegraphEffect(material, effect.kind)
-            : effect.kind === "mico_vortex_telegraph"
-              ? createDirectedDashTelegraphEffect(material, effect.kind, radius)
-              : createTelegraphEffect(radius, material, effect.kind)
-        } else if (effect.kind === "wall_break") {
-          mesh = createWallBreak(radius, material)
-        } else if (TOWER_TELEGRAPH_KINDS.has(effect.kind)) {
-          mesh = createTowerTelegraph(radius, material, effect.kind)
-        } else if (TOWER_BEAM_KINDS.has(effect.kind)) {
-          mesh = createTowerBeam(radius, material)
-        } else if (effect.kind === "damage") {
-          mesh = createDamageContactEffect(radius, material)
-        } else if (IMPACT_KINDS.has(effect.kind) || CONTACT_KINDS.has(effect.kind)) {
-          mesh = createImpactBurst(radius, material, effect.kind)
-        } else if (MELEE_SWING_KINDS.has(effect.kind)) {
-          mesh = ["mandy_staff_swing", "mico_staff_swing"].includes(effect.kind)
-            ? createHeroSwingEffect(radius, effect.arc || Math.PI * .35, material, effect.kind)
-            : createProjectedSwingArc(radius, effect.arc || Math.PI * .35, material)
-          mesh.userData.kind = effect.kind
-        } else if (effect.kind === "kaze_cross_slash") {
-          mesh = new THREE.Group()
-          mesh.userData.kind = effect.kind
-          const arc = effect.arc || .9
-          const first = createSwingArc(radius, arc, material, .70)
-          const second = createSwingArc(radius, arc, material.clone(), .70)
-          first.rotation.x = -Math.PI / 2
-          second.rotation.x = -Math.PI / 2
-          first.rotation.z = -.18
-          second.rotation.z = .18
-          mesh.add(first, second)
-        } else {
-          mesh = new THREE.Mesh(new THREE.RingGeometry(radius * 0.78, radius, 32), material)
-          mesh.userData.kind = effect.kind
-        }
-        if (SHARED_VFX_KINDS.has(effect.kind)) {
-          mesh = addSharedVfxTreatment(mesh, radius, style, phase, effect.kind)
-        }
-        if (!["heal", "kaze_cross_slash", "mandy_super_wave", ...WAVE_KINDS, ...BEAM_KINDS].includes(effect.kind) &&
+        const poolKey = `${String(effect.kind || "")}:${radius}:${String(effect.color || "default")}`
+        mesh = this.acquire(poolKey)
+        if (!mesh) {
+          const visualColor = new THREE.Color(effect.color || 0xffffff)
+          if (String(effect.kind || "").startsWith("zeus_") || effect.kind === "lightning") {
+            visualColor.offsetHSL(0, .14, -.18)
+          }
+          const style = resolveVfxStyle(effect.kind, visualColor)
+          const material = flatMaterial(style.primary, {
+            transparent: true,
+            opacity: 0.42,
+            side: THREE.DoubleSide,
+            blending: THREE.NormalBlending,
+            depthWrite: false,
+            depthTest: false,
+          })
+          if (effect.kind === "heal" || effect.kind === "health_boost") {
+            mesh = createHealEffect(radius, effect.color || 0x65ff9c)
+          } else if (effect.kind === "mandy_super_charge") {
+            mesh = createMandyChargeEffect(radius, material)
+          } else if (effect.kind === "mandy_super_wave") {
+            const range = Math.max(1, effect.range || Math.hypot((effect.toX || effect.x) - effect.x, (effect.toY || effect.y) - effect.y))
+            mesh = createMandyWaveEffect(range * WORLD_SCALE, Math.max(100, (effect.radius || 50) * 2) * WORLD_SCALE, material)
+          } else if (TRAIL_KINDS.has(effect.kind)) {
+            mesh = ["kaze_dash", "mico_leap", "needle_spore_dash"].includes(effect.kind)
+              ? createDashRibbonEffect(material, effect.kind)
+              : createTrailLaneEffect(material, effect.kind)
+            mesh.userData.kind = effect.kind
+          } else if (effect.kind === "mina_healing_aura") {
+            mesh = createHealEffect(radius, effect.color || 0xff9bea)
+          } else if (effect.kind === "katty_paint_puddle") {
+            mesh = createPaintPuddleEffect(radius, material)
+          } else if (effect.kind === "katty_paint_trail") {
+            mesh = createPaintPuddleEffect(radius, material, effect.kind)
+          } else if (effect.kind === "zeus_storm_target") {
+            mesh = createStrikeTargetEffect(radius, material)
+          } else if (effect.kind === "root_guardian_zone") {
+            mesh = createRootGuardianZoneEffect(radius, material)
+          } else if (PAINT_SPRAY_KINDS.has(effect.kind)) {
+            mesh = createPaintSprayEffect(radius, effect.arc || .20, material)
+          } else if (WAVE_KINDS.has(effect.kind)) {
+            mesh = createWaveEffect(radius, material, effect.kind)
+          } else if (BEAM_KINDS.has(effect.kind)) {
+            mesh = createLightningBeam(radius, material)
+          } else if (NEEDLE_FIELD_KINDS.has(effect.kind)) {
+            mesh = createNeedleFieldEffect(radius, material, effect.kind)
+          } else if (effect.kind === "vortex" || effect.kind === "mico_staff_spin") {
+            mesh = createVortexEffect(radius, material, effect.kind)
+          } else if (effect.kind === "zeus_fire_ground") {
+            mesh = hasDirectedPath(effect)
+              ? createFireTrailLaneEffect(material, effect.kind)
+              : createGroundFieldEffect(radius, material)
+          } else if (["zeus_lightning_strike", "zeus_lightning_blast", "mico_skyfall"].includes(effect.kind)) {
+            mesh = createLightningImpact(radius, material, effect.kind)
+          } else if (ORBITAL_KINDS.has(effect.kind)) {
+            mesh = createOrbitalEffect(radius, material, effect.kind)
+          } else if (TELEGRAPH_KINDS.has(effect.kind)) {
+            mesh = ["kaze_dash_telegraph", "ash_hound_charge_telegraph"].includes(effect.kind)
+              ? createDirectedDashTelegraphEffect(material, effect.kind)
+              : effect.kind === "mico_vortex_telegraph"
+                ? createDirectedDashTelegraphEffect(material, effect.kind, radius)
+                : createTelegraphEffect(radius, material, effect.kind)
+          } else if (effect.kind === "wall_break") {
+            mesh = createWallBreak(radius, material)
+          } else if (TOWER_TELEGRAPH_KINDS.has(effect.kind)) {
+            mesh = createTowerTelegraph(radius, material, effect.kind)
+          } else if (TOWER_BEAM_KINDS.has(effect.kind)) {
+            mesh = createTowerBeam(radius, material)
+          } else if (effect.kind === "damage") {
+            mesh = createDamageContactEffect(radius, material)
+          } else if (IMPACT_KINDS.has(effect.kind) || CONTACT_KINDS.has(effect.kind)) {
+            mesh = createImpactBurst(radius, material, effect.kind)
+          } else if (MELEE_SWING_KINDS.has(effect.kind)) {
+            mesh = ["mandy_staff_swing", "mico_staff_swing"].includes(effect.kind)
+              ? createHeroSwingEffect(radius, effect.arc || Math.PI * .35, material, effect.kind)
+              : createProjectedSwingArc(radius, effect.arc || Math.PI * .35, material)
+            mesh.userData.kind = effect.kind
+          } else if (effect.kind === "kaze_cross_slash") {
+            mesh = new THREE.Group()
+            mesh.userData.kind = effect.kind
+            const arc = effect.arc || .9
+            const first = createSwingArc(radius, arc, material, .70)
+            const second = createSwingArc(radius, arc, material.clone(), .70)
+            first.rotation.x = -Math.PI / 2
+            second.rotation.x = -Math.PI / 2
+            first.rotation.z = -.18
+            second.rotation.z = .18
+            mesh.add(first, second)
+          } else {
+            mesh = new THREE.Mesh(new THREE.RingGeometry(radius * 0.78, radius, 32), material)
+            mesh.userData.kind = effect.kind
+          }
+          if (SHARED_VFX_KINDS.has(effect.kind)) {
+            mesh = addSharedVfxTreatment(mesh, radius, style, phase, effect.kind)
+          }
+          if (!["heal", "kaze_cross_slash", "mandy_super_wave", ...WAVE_KINDS, ...BEAM_KINDS].includes(effect.kind) &&
             !ORBITAL_KINDS.has(effect.kind) && !PAINT_SPRAY_KINDS.has(effect.kind) && !TRAIL_KINDS.has(effect.kind) &&
             !TELEGRAPH_KINDS.has(effect.kind) && !TOWER_TELEGRAPH_KINDS.has(effect.kind) && !IMPACT_KINDS.has(effect.kind) && !TOWER_BEAM_KINDS.has(effect.kind) && !NEEDLE_FIELD_KINDS.has(effect.kind) && effect.kind !== "root_guardian_zone") {
-          mesh.rotation.x = -Math.PI / 2
+            mesh.rotation.x = -Math.PI / 2
+          }
+          mesh.userData.poolKey = poolKey
+          mesh.renderOrder = 18
         }
         mesh.userData.phase = phase
-        mesh.renderOrder = 18
         this.meshes.set(id, mesh)
         this.root.add(mesh)
       }
@@ -1680,9 +1730,17 @@ export class EffectRenderer {
     this.meshes.forEach((mesh, id) => {
       if (active.has(id)) return
       this.root.remove(mesh)
-      disposeObjectTree(mesh)
+      this.recycle(mesh)
       this.meshes.delete(id)
     })
     endBattlePerformance(perfToken)
+  }
+
+  dispose() {
+    this.meshes.forEach(mesh => disposeObjectTree(mesh))
+    this.pool.forEach(entries => entries.forEach(mesh => disposeObjectTree(mesh)))
+    this.meshes.clear()
+    this.pool.clear()
+    this.poolSize = 0
   }
 }

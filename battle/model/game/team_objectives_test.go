@@ -273,7 +273,10 @@ func TestTeamTowerShotStopsWhenCoverAppearsDuringWindup(t *testing.T) {
 	state.Players["blue"].X, state.Players["blue"].Y = 2560, 680
 	now := time.Now().UnixMilli()
 	state.updateTeamObjectivesAt(now)
-	wall := &geometry.WallTile{MinX: 2430, MinY: 590, MaxX: 2470, MaxY: 730, Type: "wall"}
+	// Place cover on the authored red east-tower -> blue spawn line. The map
+	// objective coordinates changed, but the old wall was behind the tower and
+	// could never intercept its projectile.
+	wall := &geometry.WallTile{MinX: 2525, MinY: 620, MaxX: 2555, MaxY: 660, Type: "wall"}
 	state.Walls = geometry.NewSpatialHash(TileSize)
 	state.Walls.Insert(wall)
 	state.updateTeamObjectivesAt(now + teamTowerWindup + 1)

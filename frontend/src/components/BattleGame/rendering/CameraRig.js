@@ -6,6 +6,9 @@ export const CAMERA_GROUND_PROJECTION = Math.sin(CAMERA_ANGLE)
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 const blend = (speed, delta) => 1 - Math.exp(-speed * delta)
 const MAP_FRAME_MARGIN = .96
+const CAMERA_LOOK_AHEAD_WORLD = 64
+const CAMERA_MOVE_LOOK_AHEAD_WORLD = 40
+const CAMERA_DEAD_ZONE_WORLD = 8
 
 export const fitVerticalSpanToMap = (preferred, aspect, mapWidth, mapHeight) => Math.max(8, Math.min(
   preferred,
@@ -14,7 +17,7 @@ export const fitVerticalSpanToMap = (preferred, aspect, mapWidth, mapHeight) => 
 ))
 
 export class CameraRig {
-  constructor() {
+  constructor({reducedShake = false} = {}) {
     this.camera = new THREE.OrthographicCamera(-20, 20, 12, -12, 0.1, 180)
     this.camera.up.set(0, 1, 0)
     this.target = new THREE.Vector3()
@@ -24,12 +27,16 @@ export class CameraRig {
     this.preferredVertical = 27
     this.vertical = 0
     this.followOffset = new THREE.Vector2()
+    this.lookAhead = new THREE.Vector2()
+    this.lastPlayerPosition = null
     this.initialized = false
     this.shake = 0
     this.shakeTime = 0
+    this.reducedShake = Boolean(reducedShake)
   }
 
   addShake(amount = .08) {
+    if (this.reducedShake) return
     this.shake = Math.min(.34, this.shake + Math.max(0, Number(amount) || 0))
   }
 
@@ -75,8 +82,41 @@ export class CameraRig {
     // A dead local player is removed from the actor scene, but the camera must
     // not switch to the map centre (the beacon lives there). Hold the last
     // tracked hero position until the result overlay takes over.
-    const desired = player
-      ? worldToScene(player.x + this.followOffset.x, player.y + this.followOffset.y)
+    if (player && !this.lastPlayerPosition) {
+      this.lastPlayerPosition = new THREE.Vector2(player.x, player.y)
+    } else if (player && this.lastPlayerPosition) {
+      const dx = player.x - this.lastPlayerPosition.x
+      const dy = player.y - this.lastPlayerPosition.y
+      if (Math.hypot(dx, dy) > CAMERA_DEAD_ZONE_WORLD) {
+        this.lastPlayerPosition.set(player.x, player.y)
+      }
+    }
+
+    const lookAheadTarget = new THREE.Vector2()
+    if (player) {
+      const rotation = Number(player.rotation)
+      const moveX = Number(player.moveX) || 0
+      const moveY = Number(player.moveY) || 0
+      const moveLength = Math.hypot(moveX, moveY)
+      if (player.aiming === true && Number.isFinite(rotation)) {
+        lookAheadTarget.set(
+          Math.cos(rotation) * CAMERA_LOOK_AHEAD_WORLD,
+          Math.sin(rotation) * CAMERA_LOOK_AHEAD_WORLD,
+        )
+      } else if (moveLength > .01) {
+        lookAheadTarget.set(
+          moveX / moveLength * CAMERA_MOVE_LOOK_AHEAD_WORLD,
+          moveY / moveLength * CAMERA_MOVE_LOOK_AHEAD_WORLD,
+        )
+      }
+    }
+    this.lookAhead.lerp(lookAheadTarget, blend(10, delta))
+
+    const desired = player && this.lastPlayerPosition
+      ? worldToScene(
+        this.lastPlayerPosition.x + this.followOffset.x + this.lookAhead.x,
+        this.lastPlayerPosition.y + this.followOffset.y + this.lookAhead.y,
+      )
       : this.initialized
         ? this.target.clone()
         : worldToScene(map.width / 2 + this.followOffset.x, map.height / 2 + this.followOffset.y)

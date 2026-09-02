@@ -56,6 +56,9 @@ func TestNeutralKindsHaveDistinctAttackProfiles(t *testing.T) {
 	if hound.RecoveryMs <= 0 {
 		t.Fatal("ash hound must expose a punishable recovery window")
 	}
+	if guardian.RecoveryMs <= 0 {
+		t.Fatal("root guardian must expose a punishable recovery window")
+	}
 	if guardian.WindupMs <= hound.WindupMs {
 		t.Fatalf("root guardian should give a longer readable zone telegraph: guardian=%d hound=%d", guardian.WindupMs, hound.WindupMs)
 	}

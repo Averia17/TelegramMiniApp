@@ -1,0 +1,3 @@
+# CPU training dependencies for recurrent PPO/checkpoint export.
+numpy>=2.0,<3
+torch>=2.5,<3

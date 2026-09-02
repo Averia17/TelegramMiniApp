@@ -85,6 +85,13 @@ func TestScenarioPackDirectTradeComparesBasicAndReadySuper(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("apply direct trade: %v", err)
 		}
+		// Kaze Super is intentionally telegraphed. Measure the trade after its
+		// authoritative impact window instead of treating cast as instant damage.
+		if withSuper {
+			if err := runner.AdvanceTo(300); err != nil {
+				t.Fatalf("advance Kaze Super impact: %v", err)
+			}
+		}
 		damage := before - target.Lives
 		if err := runner.RecordMetric("directTradeDamage", float64(damage)); err != nil {
 			t.Fatalf("record direct trade damage: %v", err)

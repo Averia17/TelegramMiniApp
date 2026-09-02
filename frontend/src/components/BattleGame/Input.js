@@ -4,6 +4,7 @@ import {triggerTelegramHaptic} from "../../utils/telegramWebApp.js"
 
 const AUTO_AIM_GESTURE_DRAG_LIMIT = 10
 const MIN_ATTACK_INPUT_DEBOUNCE_MS = 90
+export const ATTACK_INPUT_BUFFER_MS = 140
 export const MOBILE_INPUT_MEDIA_QUERY = "(pointer: coarse), (max-width: 700px)"
 
 export const isMobileInputDevice = () =>
@@ -54,6 +55,7 @@ export class Input {
     this.aimCurrent = null
     this.shooting = false
     this.lastShotAt = 0
+    this.pendingAttack = null
     // The battle engine remains authoritative; this timestamp suppresses clicks
     // that its published hero cadence cannot accept yet.
     this.localPlayerId = null
@@ -366,7 +368,17 @@ export class Input {
     if (!this.active) return
     const {state, player} = this.getAttackContext()
     const now = Date.now()
-    if (!canStartAttack(player, now, this.lastShotAt, state?.game?.state)) return
+    if (!canStartAttack(player, now, this.lastShotAt, state?.game?.state)) {
+      this.queueBufferedAttack(autoAim, now, state, player)
+      return
+    }
+
+    this.pendingAttack = null
+    this.sendShot(autoAim, player, now)
+  }
+
+  queueBufferedAttack(autoAim, now, state, player) {
+    if (state?.game?.state !== "game" || !player || Number(player.lives) <= 0 || Number(player.ammo) <= 0) return false
 
     const rect = this.canvas.getBoundingClientRect()
     const screenX = this.mouseX
@@ -374,15 +386,58 @@ export class Input {
     const origin = this.getAimOrigin(rect, player)
 
     const angle = this.resolveAimAngle(screenX, screenY, player, origin)
-    const sentAt = this.client.shoot(angle, this.resolveAimDistance(screenX, screenY, origin), autoAim)
+    this.pendingAttack = {
+      angle,
+      distance: this.resolveAimDistance(screenX, screenY, origin),
+      autoAim,
+      expiresAt: now + ATTACK_INPUT_BUFFER_MS,
+    }
+    return true
+  }
+
+  sendShot(autoAim, player, now, buffered = null) {
+    const sentAt = buffered
+      ? this.client.shoot(buffered.angle, buffered.distance, buffered.autoAim)
+      : (() => {
+        const rect = this.canvas.getBoundingClientRect()
+        const screenX = this.mouseX
+        const screenY = this.mouseY
+        const origin = this.getAimOrigin(rect, player)
+        const angle = this.resolveAimAngle(screenX, screenY, player, origin)
+        return this.client.shoot(angle, this.resolveAimDistance(screenX, screenY, origin), autoAim)
+      })()
     if (sentAt !== null && sentAt !== undefined) {
       this.lastShotAt = now
       triggerTelegramHaptic(globalThis, "impact", "light")
     }
+    return sentAt
+  }
+
+  flushBufferedAttack(now = Date.now()) {
+    const buffered = this.pendingAttack
+    if (!buffered) return false
+    if (now > buffered.expiresAt) {
+      this.pendingAttack = null
+      return false
+    }
+    const {state, player} = this.getAttackContext()
+    if (!canStartAttack(player, now, this.lastShotAt, state?.game?.state)) return false
+    this.pendingAttack = null
+    return this.sendShot(buffered.autoAim, player, now, buffered) !== null
+  }
+
+  /*
+   * A release during the server's short recovery/cadence window is still a
+   * deliberate input. Retain it briefly, then let the authoritative snapshot
+   * decide when the shot may actually be sent.
+   */
+  flushBufferedAttackOnUpdate() {
+    this.flushBufferedAttack(Date.now())
   }
 
   update() {
     if (!this.active) return
+    this.flushBufferedAttackOnUpdate()
     this.sendKeyboardMove()
 
   }
@@ -416,6 +471,7 @@ export class Input {
   destroy() {
     this.events.abort()
     this.shooting = false
+    this.pendingAttack = null
     if (this.attackAiming) this.client.setAiming?.(false)
     this.attackAiming = false
     this.keys = {}

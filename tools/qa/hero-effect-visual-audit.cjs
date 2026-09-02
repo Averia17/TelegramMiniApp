@@ -5,6 +5,15 @@ const {launchHeadlessChromium, runWithBrowser} = require("./playwright-runner.cj
 
 const baseUrl = process.env.HERO_SKILL_QA_URL || "http://localhost"
 const output = path.resolve(__dirname, "../../output/playwright/hero-effect-visual-audit")
+const parsePositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(value ?? "", 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+const viewport = {
+  width: parsePositiveInt(process.env.HERO_EFFECT_QA_WIDTH, 1100),
+  height: parsePositiveInt(process.env.HERO_EFFECT_QA_HEIGHT, 900),
+}
+const deviceScaleFactor = Math.min(3, Math.max(1, Number(process.env.HERO_EFFECT_QA_DPR) || 1))
 const slug = value => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
 const heroes = {
   Needle: [
@@ -44,6 +53,15 @@ const heroColors = {
 const heroEntries = process.env.HERO_EFFECT_QA_HERO
   ? Object.entries(heroes).filter(([hero]) => hero === process.env.HERO_EFFECT_QA_HERO)
   : Object.entries(heroes)
+const monsterEffects = [
+  ["Ash Hound", "ash_hound_charge_telegraph", "telegraph"],
+  ["Ash Hound", "ash_hound_charge_impact", "impact"],
+  ["Ash Hound", "ash_hound_recovery", "recovery"],
+  ["Root Guardian", "root_guardian_telegraph", "telegraph"],
+  ["Root Guardian", "root_guardian_impact", "impact"],
+  ["Root Guardian", "root_guardian_zone", "active"],
+  ["Root Guardian", "root_guardian_recovery", "recovery"],
+]
 
 runWithBrowser(
   () => launchHeadlessChromium(chromium, {headless: true, args: ["--use-gl=swiftshader", "--disable-gpu-sandbox"]}),
@@ -51,7 +69,7 @@ runWithBrowser(
     fs.mkdirSync(output, {recursive: true})
     const results = []
     for (const [hero, skills] of heroEntries) {
-      const context = await browser.newContext({viewport: {width: 1100, height: 900}, deviceScaleFactor: 1})
+      const context = await browser.newContext({viewport, deviceScaleFactor})
       const page = await context.newPage()
       const consoleErrors = []
       const pageErrors = []
@@ -59,6 +77,27 @@ runWithBrowser(
         if (message.type() === "error") consoleErrors.push(message.text())
       })
       page.on("pageerror", error => pageErrors.push(error.stack || String(error)))
+      // This audit targets the frontend renderer and must be runnable without
+      // a battle service. Keep the fixture deliberately small: the harness
+      // only needs a valid map envelope and the hero catalog selector.
+      await page.route("**/api/battle/heroes", route => route.fulfill({
+        json: Object.keys(heroes).map(name => ({name})),
+      }))
+      await page.route("**/api/battle/map-preview", route => route.fulfill({
+        json: {
+          map: {
+            id: "qa-combat-map@1",
+            name: "qa-combat-map",
+            seed: 1,
+            revision: 1,
+            width: 1024,
+            height: 768,
+            tileSize: 40,
+            walls: [],
+            features: [],
+          },
+        },
+      }))
       await page.goto(`${baseUrl}/test/glb-hero-harness?hero=${encodeURIComponent(hero)}`, {waitUntil: "domcontentloaded", timeout: 30000})
       await page.waitForFunction(() => document.querySelector("#status")?.classList.contains("ready"), {timeout: 30000})
       await page.waitForTimeout(260)
@@ -125,9 +164,44 @@ runWithBrowser(
               depthTest: node.material.depthTest,
             })
           })
-          return {roles: [...new Set(found)], materials, position: mesh?.position?.toArray?.() || null}
+          return {phase: mesh?.userData?.phase || null, roles: [...new Set(found)], materials, position: mesh?.position?.toArray?.() || null}
         })
-        results.push({hero, skill, kind, screenshot, ...roles})
+        results.push({hero, skill, kind, authoritativePhase: effect.phase, screenshot, ...roles})
+      }
+      if (hero === "Kaze") {
+        for (const [monster, kind, phase] of monsterEffects) {
+          const effect = {
+            id: `${kind}-monster-audit`,
+            kind,
+            x: 360,
+            y: 280,
+            toX: 680,
+            toY: 280,
+            radius: kind === "root_guardian_zone" ? 112 : 36,
+            range: 280,
+            angle: 0,
+            color: monster === "Ash Hound" ? "#ff8a3d" : "#9be66f",
+            maxLife: phase === "active" ? 4 : 1.2,
+            phase,
+            life: phase === "active" ? 4 : 1.2,
+          }
+          await page.evaluate(effectValue => {
+            window.qa.battleState.effects = [effectValue]
+            window.qa.battleRenderer.setState(window.qa.battleState)
+            window.qa.battleRenderer.render()
+          }, effect)
+          await page.waitForTimeout(70)
+          const screenshot = path.join(output, `${slug(monster)}-${kind}.png`)
+          await page.locator("canvas").screenshot({path: screenshot})
+          const roles = await page.evaluate(() => {
+            const renderer = window.qa.battleRenderer.impl || window.qa.battleRenderer
+            const mesh = renderer.effects?.meshes?.values?.().next?.().value
+            const found = []
+            mesh?.traverse?.(node => { if (node.userData?.role) found.push(node.userData.role) })
+            return {phase: mesh?.userData?.phase || null, roles: [...new Set(found)]}
+          })
+          results.push({hero: "Neutral camps", monster, kind, authoritativePhase: phase, screenshot, ...roles})
+        }
       }
       results.push({hero, audit: "runtime-errors", consoleErrors, pageErrors})
       await context.close()
@@ -137,7 +211,7 @@ runWithBrowser(
     if (runtimeErrors.length) {
       throw new Error(`hero effect visual audit found runtime errors: ${JSON.stringify(runtimeErrors)}`)
     }
-    console.log(JSON.stringify({output, results}, null, 2))
+    console.log(JSON.stringify({output, viewport, deviceScaleFactor, results}, null, 2))
   },
   {maxRuntimeMs: 600000},
 )

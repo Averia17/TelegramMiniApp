@@ -1,4 +1,14 @@
-const PHASES = new Set(["cast", "telegraph", "active", "impact"])
+export const COMBAT_EFFECT_PHASES = Object.freeze([
+  "intent", "cast", "telegraph", "active", "impact", "status", "recovery",
+])
+const PHASES = new Set(COMBAT_EFFECT_PHASES)
+const PHASE_ALIASES = new Map([
+  ["read", "intent"],
+  ["accepted", "intent"],
+  ["anticipation", "telegraph"],
+  ["release", "cast"],
+  ["payoff", "impact"],
+])
 
 const TELEGRAPH_KINDS = new Set([
   "zeus_strike_warning", "tower_telegraph", "needle_root_telegraph", "mandy_super_charge", "kaze_dash_telegraph", "mico_vortex_telegraph",
@@ -18,24 +28,30 @@ const IMPACT_KINDS = new Set([
   "katty_paint_impact", "katty_paint_stick", "lumi_root_impact", "lumi_seedburst",
   "lightning", "zeus_lightning_strike", "zeus_lightning_blast", "mico_skyfall", "mico_armor_burst", "burst", "evade", "damage", "crate_hit", "crate_break", "rock",
   "mina_air_wave", "wall_break", "objective_hit", "tower_shot_blocked", "collapse", "kaze_cross_slash",
-  "ash_hound_charge_impact", "ash_hound_recovery", "root_guardian_impact",
+  "ash_hound_charge_impact", "root_guardian_impact",
 ])
+const RECOVERY_KINDS = new Set(["ash_hound_recovery", "root_guardian_recovery"])
 
 const FALLBACK_PHASES = new Map([
+  ...[...RECOVERY_KINDS].map(kind => [kind, "recovery"]),
   ...[...TELEGRAPH_KINDS].map(kind => [kind, "telegraph"]),
   ...[...ACTIVE_KINDS].map(kind => [kind, "active"]),
   ...[...IMPACT_KINDS].map(kind => [kind, "impact"]),
 ])
 
 export const getCombatEffectPhase = effect => {
-  const authoritative = String(effect?.phase || "")
+  const raw = String(effect?.phase || "").trim().toLowerCase()
+  const authoritative = PHASE_ALIASES.get(raw) || raw
   if (PHASES.has(authoritative)) return authoritative
   return FALLBACK_PHASES.get(String(effect?.kind || "")) || "cast"
 }
 
 export const getCombatEffectPhaseLabel = effect => ({
+  intent: "НАМЕРЕНИЕ",
   cast: "ЗАМАХ",
   telegraph: "ТЕЛЕГРАФ",
   active: "ЗОНА",
   impact: "УДАР",
+  status: "СТАТУС",
+  recovery: "ВОССТАНОВЛЕНИЕ",
 }[getCombatEffectPhase(effect)])

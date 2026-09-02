@@ -135,6 +135,8 @@ type EffectJSON struct {
 	Arc         float64 `json:"arc,omitempty"`
 	Color       string  `json:"color,omitempty"`
 	Damage      int     `json:"damage,omitempty"`
+	CreatedAt   int64   `json:"createdAt,omitempty"`
+	ExpiresAt   int64   `json:"expiresAt,omitempty"`
 	Life        float64 `json:"life"`
 	MaxLife     float64 `json:"maxLife"`
 }

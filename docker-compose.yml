@@ -46,10 +46,17 @@ services:
   battle:
     container_name: dev-battle
     image: dev-battle
+    # Local canary: the trained checkpoint is mounted read-only and active
+    # mode can be disabled with BOT_ML_MODE=disabled when needed.
+    volumes:
+      - ./artifacts/bot_ml:/app/artifacts/bot_ml:ro
     environment:
       REDIS_ADDR: dev-battle-redis:6379
       KAFKA_ADDR: dev-kafka:9092
       ACCOUNT_URL: http://dev-account:8000
+      BOT_ML_MODE: ${BOT_ML_MODE:-active}
+      BOT_ML_CHECKPOINT: /app/artifacts/bot_ml/recurrent-ppo-lstm-dagger-v2.json
+      BOT_ML_ACTIVE_APPROVED: ${BOT_ML_ACTIVE_APPROVED:-true}
 
   battle-redis:
     container_name: dev-battle-redis

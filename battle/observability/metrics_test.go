@@ -113,6 +113,11 @@ func TestRecordBotAIMetricsPublishesBoundedDecisionSignals(t *testing.T) {
 		AbilityUses: 5, PeelDecisions: 2, ResourceContestDecisions: 3,
 		AttackAttempts: 8, AttackHits: 5,
 		SpawnProtectionAvoidances: 4, StuckReplans: 1,
+		MLShadowDecisions: 4, MLShadowDisagreements: 2, MLShadowFallbacks: 1,
+		MLShadowLatencyMicros: 1200, MLShadowLatencySamples: 4,
+		MLShadowActionSelections: map[string]uint64{"engage": 4},
+		MLActionSelections:       map[string]uint64{"engage": 4},
+		MLLatencyMicros:          800, MLLatencySamples: 4,
 	})
 
 	metrics := httptest.NewRecorder()
@@ -127,6 +132,11 @@ func TestRecordBotAIMetricsPublishesBoundedDecisionSignals(t *testing.T) {
 		`battle_bot_attack_attempts_total{mode="team deathmatch"} 8`,
 		`battle_bot_attack_hits_total{mode="team deathmatch"} 5`,
 		`battle_bot_spawn_protection_avoids_total{mode="team deathmatch"} 4`,
+		`battle_bot_ml_shadow_decisions_total{mode="team deathmatch"} 4`,
+		`battle_bot_ml_shadow_disagreements_total{mode="team deathmatch"} 2`,
+		`battle_bot_ml_shadow_fallbacks_total{mode="team deathmatch"} 1`,
+		`battle_bot_ml_action_total{action="engage",mode="team deathmatch"} 4`,
+		`battle_bot_ml_shadow_action_total{action="engage",mode="team deathmatch"} 4`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("bot metric missing %q:\n%s", want, body)

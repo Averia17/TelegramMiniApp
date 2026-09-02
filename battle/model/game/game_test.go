@@ -1851,18 +1851,19 @@ func TestGameStartGame(t *testing.T) {
 	}
 }
 
-func TestSoloModeKeepsRandomMonsterPathEvenWithAuthoredMapSpawns(t *testing.T) {
+func TestSoloModeUsesAuthoredMonsterCampWhenMapPublishesOne(t *testing.T) {
 	gs := newTestGameState()
-	gs.Map.MonsterSpawns = []gamemap.MapMonsterSpawn{{X: 240, Y: 240}}
+	gs.Map.MonsterSpawns = []gamemap.MapMonsterSpawn{{ID: "camp-solo-01", Kind: "ash_hound", X: 240, Y: 240, TerritoryRadius: 180}}
 	gs.Monsters = make(map[string]*monster.Monster)
 
 	gs.monstersAdd(1)
 
-	if _, authoredID := gs.Monsters["team-bat-0"]; authoredID {
-		t.Fatal("solo mode used the authored team monster spawn path")
+	authored, ok := gs.Monsters["solo-camp-0"]
+	if !ok {
+		t.Fatal("solo mode did not use the authored monster camp path")
 	}
-	if len(gs.Monsters) != 1 {
-		t.Fatalf("solo monsters = %d, want one random monster", len(gs.Monsters))
+	if len(gs.Monsters) != 1 || authored.CampID != "camp-solo-01" || authored.Kind != monster.MonsterAshHound {
+		t.Fatalf("solo monster = %#v, want authored ash hound camp", authored)
 	}
 }
 

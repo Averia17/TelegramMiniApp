@@ -1,6 +1,7 @@
 package gamemap
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 
@@ -234,6 +235,34 @@ func GenerateBattleRoyale(seed int64) *GameMap {
 	// Keep one readable stone landmark outside the open plaza.
 	clear(20, 20)
 	add(20, 20, "menhir")
+
+	// Solo neutrals use authored camps as well. The camps sit on the four
+	// approach quadrants plus their inner lanes, so every reward has a known
+	// territory and a predictable route into a player encounter.
+	soloCampCells := []struct {
+		x, y      int
+		kind      string
+		territory float64
+	}{
+		{14, 14, "bat", 240},
+		{46, 14, "ash_hound", 280},
+		{46, 46, "root_guardian", 300},
+		{14, 46, "bat", 240},
+		{23, 10, "ash_hound", 280},
+		{50, 23, "root_guardian", 300},
+		{37, 50, "bat", 240},
+		{10, 37, "ash_hound", 280},
+	}
+	for index, camp := range soloCampCells {
+		// Clear authored camp footprints after all procedural dressing has been
+		// placed; the collision filter below then removes only these cells.
+		clearDisc(camp.x, camp.y, 1.8)
+		gm.MonsterSpawns = append(gm.MonsterSpawns, MapMonsterSpawn{
+			ID: fmt.Sprintf("camp-%02d", index+1), Kind: camp.kind,
+			X: float64(camp.x) * tile, Y: float64(camp.y) * tile,
+			TerritoryRadius: camp.territory,
+		})
+	}
 
 	// Filter cleared cells from the authored collision list and keep bush groups
 	// stable for visibility, healing and bot perception.
