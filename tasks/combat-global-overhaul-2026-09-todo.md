@@ -1,6 +1,6 @@
 # Combat 2.0 — checklist
 
-## Current verification — 2026-09-02
+## Current verification — 2026-09-03
 
 - [x] Frontend: 710 tests (706 pass, 4 skipped), lint и production build.
 - [x] Catalog/profile/GLB validators: 8 hero cards and 8 canonical runtime GLBs.
@@ -31,8 +31,13 @@
 - [x] Live battle QA на локальном Compose stack: WebSocket snapshot получил
   реальный team battle (6 players/5 bots), mobile shell прошёл 9 viewport’ов
   с touch move/aim без overflow/overlap/errors; team HUD прошёл 5 phone
-  viewport’ов. All-hero live skill audit прошёл 8/8 героев, observedHero и
-  effect delivery совпали, console/page errors отсутствуют.
+  viewport’ов.
+- [ ] Strict full-sequence all-hero live skill audit пока не закрыт: выбранный
+  герой совпадает с `observedHero`, но длинная последовательность матчей даёт
+  `live-authority` event-missing для части команд при пустых console/page
+  errors. Отдельные single-hero повторы Needle, Mandy, Wukong, Persephone Lumi
+  и Katty прошли; это указывает на последовательный transport/retention/load
+  риск, который нельзя засчитать как 8/8 до отдельного исправления.
 - [x] Steady-state performance baseline: snapshot p95 44.5ms, renderer frame
   p95 8.1ms, GPU p95 6.9ms, long-task 51ms (1 observed jank) на headless
   WebGL; это baseline для device profiling, не финальный low-end FPS sign-off.
@@ -65,12 +70,30 @@ look-ahead/dead-zone, mobile basic-attack buffer, cast cancel wiring, ability
 and danger audio cues, event/effect dedupe, bounded VFX pool/reset lifecycle и
 accessibility preferences. Добавлен all-hero proof: stun блокирует Gadget без
 списания ресурса, после recovery Gadget и Basic снова получают управление.
+Live harness теперь передаёт полный directional input, проверяет
+`sourceId/commandId/accepted`, различает `not-ready` Super, gameplay survival и
+QA infrastructure blockers.
 
 Не выдаются за готовность и остаются открытыми: полный rhythm/pacing balance
 report, FPS/mix на реальных устройствах, manual miss/interrupt/re-entry clarity,
 минимум пять human playtests и staged rollout/rollback. Эти пункты требуют либо внешней
 среды/людей, либо отдельного профилирования; placeholder-скриншоты их не
 закрывают.
+
+### Strict live-audit follow-up — 2026-09-03
+
+- [x] Усилен `tools/qa/hero-live-skill-audit.cjs`: directional abilities получают
+  полный input contract, обязательные Basic/Gadget probes ждут
+  `sourceId/commandId/accepted`, Super проверяется только при charge `100/100`,
+  а блокеры разделены на `gameplay-survival`, `live-authority` и
+  `qa-infrastructure`.
+- [x] Single-hero smoke повторно прошёл для Needle, Mandy, Wukong Mico,
+  Persephone Lumi и Katty без console/page errors.
+- [ ] Full sequential 8-hero live run остаётся открытым: в последнем прогоне
+  console/page errors отсутствуют, но authoritative acknowledgements пропущены
+  у части команд (`live-authority`). Нужен отдельный transport/retention/load
+  fix и повторный 8/8 run; чужие bot effects больше не засчитываются как skill
+  delivery выбранного героя.
 
 ## Phase 0 — baseline
 

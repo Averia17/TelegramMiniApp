@@ -241,6 +241,12 @@ type BotAIMetrics struct {
 	MLUtilityOverrides        uint64
 	MLTacticalDecisions       uint64
 	MLTacticalBehaviorChanges uint64
+	MLTacticalTeamVictory     uint64
+	MLTacticalFocusFire       uint64
+	MLTacticalAllyHelp        uint64
+	MLTacticalCover           uint64
+	MLTacticalSmartRetreat    uint64
+	MLTacticalSafetyFallbacks uint64
 	MLFallbacks               uint64
 	MLActionSelections        map[string]uint64
 	MLLatencyMicros           uint64
@@ -392,6 +398,11 @@ type BotPerception struct {
 	MoveScale                float64
 	MoveCommandAt            int64
 	MLAction                 string
+	MLTacticalNextAt         int64
+	MLTacticalIntent         string
+	MLTacticalTarget         string
+	MLTacticalMovement       string
+	MLTacticalAbility        string
 	MLActionSet              bool
 	MLUtilityAction          string
 	MLExpertNextAt           int64

@@ -64,3 +64,37 @@ func NewBotMLScenarioState(scenarioID string, episode int) (*GameState, error) {
 	}
 	return state, nil
 }
+
+// NewBotMLTeamScenarioState creates the reproducible 3v3 arena used by the
+// multi-agent bridge. All six agents are authoritative bots; the external
+// policy can therefore control both teams with isolated recurrent state.
+func NewBotMLTeamScenarioState(episode int) (*GameState, error) {
+	state := NewGameState(GameConfig{
+		MatchID: fmt.Sprintf("bot-ml-team-%d", episode), RoomName: "bot-ml-team-scenario",
+		MapName: "small", MaxPlayers: 6, Mode: ModeTeamDeathmatch,
+	})
+	state.State = GameStateWaiting
+	blue := []struct{ id, hero string }{{"blue-0", "Needle"}, {"blue-1", "Fairy Mina"}, {"blue-2", "Brock Zeus"}}
+	red := []struct{ id, hero string }{{"red-0", "Kaze"}, {"red-1", "Mandy"}, {"red-2", "Wukong Mico"}}
+	for _, entry := range append(blue, red...) {
+		state.PlayerAdd(entry.id, entry.id, entry.hero)
+		player := state.Players[entry.id]
+		player.IsBot = true
+		if entry.id[:4] == "blue" {
+			player.Team = "Blue"
+		} else {
+			player.Team = "Red"
+		}
+	}
+	positions := map[string][2]float64{
+		"blue-0": {180, 280}, "blue-1": {180, 400}, "blue-2": {180, 520},
+		"red-0": {620, 280}, "red-1": {620, 400}, "red-2": {620, 520},
+	}
+	for id, position := range positions {
+		state.Players[id].X, state.Players[id].Y = position[0], position[1]
+	}
+	state.State = GameStateGame
+	state.Walls = nil
+	state.Props = nil
+	return state, nil
+}

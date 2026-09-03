@@ -11,12 +11,23 @@ import (
 )
 
 type protocolMessage struct {
-	Type          string                     `json:"type"`
-	SchemaVersion string                     `json:"schemaVersion,omitempty"`
-	Observation   *game.BotMLObservation     `json:"observation,omitempty"`
-	Action        *game.BotMLAction          `json:"action,omitempty"`
-	Reward        float64                    `json:"reward,omitempty"`
-	Report        *game.CombatScenarioReport `json:"report,omitempty"`
+	Type                string                         `json:"type"`
+	BotID               string                         `json:"botId,omitempty"`
+	SchemaVersion       string                         `json:"schemaVersion,omitempty"`
+	Observation         *game.BotMLObservation         `json:"observation,omitempty"`
+	TacticalObservation *game.BotMLTacticalObservation `json:"tacticalObservation,omitempty"`
+	Action              *game.BotMLAction              `json:"action,omitempty"`
+	TacticalAction      *tacticalActionMessage         `json:"tacticalAction,omitempty"`
+	Reward              float64                        `json:"reward,omitempty"`
+	RewardBreakdown     *game.BotMLTacticalReward      `json:"rewardBreakdown,omitempty"`
+	Report              *game.CombatScenarioReport     `json:"report,omitempty"`
+}
+
+type tacticalActionMessage struct {
+	Intent   int `json:"intent"`
+	Target   int `json:"target"`
+	Movement int `json:"movement"`
+	Ability  int `json:"ability"`
 }
 
 type stdinPolicy struct {
@@ -67,10 +78,96 @@ func (p *stdinPolicy) captureState() {
 	p.initialized = true
 }
 
+type stdinTacticalPolicy struct {
+	input     *bufio.Scanner
+	output    *json.Encoder
+	writer    *bufio.Writer
+	bots      map[string]*player.Player
+	state     *game.GameState
+	last      map[string]tacticalSnapshot
+	decisions map[string]game.BotMLTacticalDecision
+}
+
+type tacticalSnapshot struct {
+	lives, damage int
+}
+
+func (p *stdinTacticalPolicy) DecideTactical(botID string, observation game.BotMLTacticalObservation) game.BotMLTacticalDecision {
+	if p == nil || p.input == nil || p.output == nil || p.writer == nil {
+		return game.BotMLTacticalDecision{}
+	}
+	reward := p.rewardSinceLastDecision(botID)
+	if err := p.output.Encode(protocolMessage{Type: "tactical_observation", BotID: botID, TacticalObservation: &observation, Reward: reward.Total, RewardBreakdown: &reward}); err != nil {
+		return game.BotMLTacticalDecision{}
+	}
+	if err := p.writer.Flush(); err != nil || !p.input.Scan() {
+		return game.BotMLTacticalDecision{}
+	}
+	var message struct {
+		TacticalAction tacticalActionMessage `json:"tacticalAction"`
+	}
+	if err := json.Unmarshal(p.input.Bytes(), &message); err != nil {
+		return game.BotMLTacticalDecision{}
+	}
+	decision := game.BotMLTacticalDecision{
+		Intent: game.BotMLTacticalIntent(message.TacticalAction.Intent), Target: game.BotMLTacticalTargetSlot(message.TacticalAction.Target),
+		Movement: game.BotMLTacticalMovement(message.TacticalAction.Movement), Ability: game.BotMLTacticalAbility(message.TacticalAction.Ability),
+	}
+	if p.decisions == nil {
+		p.decisions = make(map[string]game.BotMLTacticalDecision)
+	}
+	p.decisions[botID] = decision
+	p.captureState(botID)
+	return decision
+}
+
+func (p *stdinTacticalPolicy) rewardSinceLastDecision(botID string) game.BotMLTacticalReward {
+	if p == nil || p.bots == nil {
+		return game.BotMLTacticalReward{}
+	}
+	bot := p.bots[botID]
+	if bot == nil {
+		return game.BotMLTacticalReward{}
+	}
+	previous := p.last[botID]
+	if previous.lives == 0 && previous.damage == 0 {
+		p.captureState(botID)
+		return game.BotMLTacticalReward{}
+	}
+	reward := game.BotMLTacticalReward{}
+	if p.state != nil {
+		decision := p.decisions[botID]
+		target := p.state.BotMLTacticalTargetFor(botID, decision.Target)
+		reward = p.state.BotMLTacticalRewardFor(botID, decision, target)
+	}
+	reward.Total += float64(bot.BasicDamage-previous.damage)*0.002 - float64(maxInt(0, previous.lives-bot.Lives))*0.01
+	return reward
+}
+
+func (p *stdinTacticalPolicy) captureState(botID string) {
+	if p == nil || p.bots == nil {
+		return
+	}
+	if p.last == nil {
+		p.last = make(map[string]tacticalSnapshot)
+	}
+	if bot := p.bots[botID]; bot != nil {
+		p.last[botID] = tacticalSnapshot{lives: bot.Lives, damage: bot.BasicDamage}
+	}
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 func main() {
 	durationMs := flag.Int64("duration-ms", 5_000, "episode duration")
 	seed := flag.Int64("seed", 123, "deterministic episode seed")
 	scenarioID := flag.String("scenario", "open_engage", "deterministic ML scenario id")
+	team3v3 := flag.Bool("team-3v3", false, "run six-agent tactical 3v3 self-play protocol")
 	flag.Parse()
 	if *durationMs <= 0 {
 		fmt.Fprintln(os.Stderr, "duration-ms must be positive")
@@ -79,16 +176,32 @@ func main() {
 	output := bufio.NewWriter(os.Stdout)
 	encoder := json.NewEncoder(output)
 	input := bufio.NewScanner(os.Stdin)
-	state, err := game.NewBotMLScenarioState(*scenarioID, int(*seed))
+	var state *game.GameState
+	var err error
+	if *team3v3 {
+		state, err = game.NewBotMLTeamScenarioState(int(*seed))
+	} else {
+		state, err = game.NewBotMLScenarioState(*scenarioID, int(*seed))
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "build IPC scenario: %v\n", err)
 		os.Exit(1)
 	}
-	policy := &stdinPolicy{input: input, output: encoder, writer: output, bot: state.Players["bot"], enemy: state.Players["enemy"]}
-	state.SetBotMLPolicy(policy)
-	runner := game.NewCombatScenarioRunner("bot-ml-ipc", *seed, game.ModeDeathmatch, state)
+	readySchema := game.BotMLObservationSchemaVersion
+	runnerMode := game.ModeDeathmatch
+	if *team3v3 {
+		policy := &stdinTacticalPolicy{input: input, output: encoder, writer: output, bots: state.Players, state: state, last: make(map[string]tacticalSnapshot), decisions: make(map[string]game.BotMLTacticalDecision)}
+		state.SetBotMLTacticalPolicy(policy)
+		state.SetBotMLTacticalDirect(true)
+		readySchema = game.BotMLTacticalSchemaVersion
+		runnerMode = game.ModeTeamDeathmatch
+	} else {
+		policy := &stdinPolicy{input: input, output: encoder, writer: output, bot: state.Players["bot"], enemy: state.Players["enemy"]}
+		state.SetBotMLPolicy(policy)
+	}
+	runner := game.NewCombatScenarioRunner("bot-ml-ipc", *seed, runnerMode, state)
 	state.GameEndsAt = runner.CurrentTimeMs() + *durationMs + 1_000
-	if err := writeMessage(output, protocolMessage{Type: "ready", SchemaVersion: game.BotMLObservationSchemaVersion}); err != nil {
+	if err := writeMessage(output, protocolMessage{Type: "ready", SchemaVersion: readySchema}); err != nil {
 		fmt.Fprintf(os.Stderr, "write IPC ready: %v\n", err)
 		os.Exit(1)
 	}

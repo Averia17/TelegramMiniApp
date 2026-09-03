@@ -10,6 +10,13 @@ from .schema import (
     OBSERVATION_SIZE,
     SCHEMA_FINGERPRINT,
     SCHEMA_VERSION,
+    TACTICAL_ABILITY_NAMES,
+    TACTICAL_INTENT_NAMES,
+    TACTICAL_MOVEMENT_NAMES,
+    TACTICAL_OBSERVATION_SIZE,
+    TACTICAL_SCHEMA_FINGERPRINT,
+    TACTICAL_SCHEMA_VERSION,
+    TACTICAL_TARGET_NAMES,
 )
 
 try:
@@ -47,6 +54,36 @@ class MaskedRecurrentActorCritic(nn.Module):
         if action_mask is not None:
             logits = logits.masked_fill(~action_mask.bool(), -1e9)
         return logits, self.critic(output).squeeze(-1), hidden
+
+
+class MaskedTacticalRecurrentActorCritic(nn.Module):
+    """Shared LSTM with separately masked tactical decision heads."""
+
+    def __init__(self, input_size: int, hidden_size: int):
+        if not HAS_TORCH:
+            raise ImportError("PyTorch is required for tactical PPO training")
+        super().__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers=1)
+        self.intent = nn.Linear(hidden_size, len(TACTICAL_INTENT_NAMES))
+        self.target = nn.Linear(hidden_size, len(TACTICAL_TARGET_NAMES))
+        self.movement = nn.Linear(hidden_size, len(TACTICAL_MOVEMENT_NAMES))
+        self.ability = nn.Linear(hidden_size, len(TACTICAL_ABILITY_NAMES))
+        self.critic = nn.Linear(hidden_size, 1)
+
+    def forward(self, values, hidden=None, masks=None):
+        output, hidden = self.lstm(values, hidden)
+        heads = {
+            "intent": self.intent(output),
+            "target": self.target(output),
+            "movement": self.movement(output),
+            "ability": self.ability(output),
+        }
+        if masks is not None:
+            for name, mask in masks.items():
+                heads[name] = heads[name].masked_fill(~mask.bool(), -1e9)
+        return heads, self.critic(output).squeeze(-1), hidden
 
 
 @dataclass(frozen=True)
@@ -163,6 +200,48 @@ def export_checkpoint(model: MaskedRecurrentActorCritic) -> Dict:
         "lstmBias": lstm_bias,
         "actorWeight": actor_weight,
         "actorBias": actor_bias,
+    }
+
+
+def export_tactical_checkpoint(model: MaskedTacticalRecurrentActorCritic) -> Dict:
+    if not HAS_TORCH:
+        raise ImportError("PyTorch is required to export a tactical checkpoint")
+    with torch.no_grad():
+        input_to_hidden = model.lstm.weight_ih_l0.detach().cpu().tolist()
+        hidden_to_hidden = model.lstm.weight_hh_l0.detach().cpu().tolist()
+        lstm_bias = (
+            (model.lstm.bias_ih_l0 + model.lstm.bias_hh_l0).detach().cpu().tolist()
+        )
+
+        def head(layer):
+            return (
+                layer.weight.detach().cpu().tolist(),
+                layer.bias.detach().cpu().tolist(),
+            )
+
+        intent_weight, intent_bias = head(model.intent)
+        target_weight, target_bias = head(model.target)
+        movement_weight, movement_bias = head(model.movement)
+        ability_weight, ability_bias = head(model.ability)
+    return {
+        "kind": "recurrent-ppo-lstm-tactical-v2",
+        "schemaVersion": TACTICAL_SCHEMA_VERSION,
+        "schemaFingerprint": TACTICAL_SCHEMA_FINGERPRINT,
+        "combatProfileId": COMBAT_PROFILE_ID,
+        "combatRulesVersion": COMBAT_RULES_VERSION,
+        "inputSize": model.input_size,
+        "hiddenSize": model.hidden_size,
+        "inputToHidden": input_to_hidden,
+        "hiddenToHidden": hidden_to_hidden,
+        "lstmBias": lstm_bias,
+        "intentWeight": intent_weight,
+        "intentBias": intent_bias,
+        "targetWeight": target_weight,
+        "targetBias": target_bias,
+        "movementWeight": movement_weight,
+        "movementBias": movement_bias,
+        "abilityWeight": ability_weight,
+        "abilityBias": ability_bias,
     }
 
 

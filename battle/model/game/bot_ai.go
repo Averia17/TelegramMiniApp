@@ -352,6 +352,10 @@ func (s *teamBattleBotStrategy) Update(gs *GameState) {
 			index++
 			continue
 		}
+		if gs.botMLTacticalControl(id, bot, now) {
+			index++
+			continue
+		}
 		visible := gs.botSelectTarget(bot, now)
 		gs.recordBotTargetSelection(bot.PlayerId, visible)
 		if visible != nil && visible.player != nil && gs.botHasVisibleContestedMonster(bot, now) {

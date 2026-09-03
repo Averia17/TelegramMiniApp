@@ -4,7 +4,7 @@ import subprocess
 import threading
 from typing import Dict, List, Optional
 
-from .schema import SCHEMA_VERSION
+from .schema import SCHEMA_VERSION, TACTICAL_SCHEMA_VERSION
 
 
 class GoSimulatorParallelEnv:
@@ -167,4 +167,151 @@ class GoSimulatorParallelEnv:
             raise message
         if message is None:
             raise RuntimeError("Go simulator exited before sending a protocol message")
+        return message
+
+
+class GoSimulatorTacticalTeamEnv:
+    """Six-agent parallel bridge for the authoritative 3v3 tactical loop."""
+
+    def __init__(
+        self,
+        command: List[str],
+        workdir: str,
+        duration_ms: int = 5000,
+        timeout_seconds: float = 20,
+    ):
+        self.command = list(command)
+        self.workdir = workdir
+        self.duration_ms = duration_ms
+        self.timeout_seconds = timeout_seconds
+        self.agents: List[str] = []
+        self.last_report: Optional[Dict] = None
+        self._process = None
+        self._messages = None
+        self._reader = None
+        self._current = None
+
+    def reset(self, seed: int = 0):
+        self.close()
+        command = self.command + [
+            "-duration-ms",
+            str(self.duration_ms),
+            "-seed",
+            str(seed),
+            "-team-3v3",
+        ]
+        self._process = subprocess.Popen(
+            command,
+            cwd=self.workdir,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=None,
+            text=True,
+            bufsize=1,
+        )
+        self._messages = queue.Queue()
+        self._reader = threading.Thread(target=self._read_stdout, daemon=True)
+        self._reader.start()
+        ready = self._read_message()
+        if (
+            ready.get("type") != "ready"
+            or ready.get("schemaVersion") != TACTICAL_SCHEMA_VERSION
+        ):
+            raise RuntimeError(f"invalid tactical Go simulator ready message: {ready}")
+        self.agents = ["blue-0", "blue-1", "blue-2", "red-0", "red-1", "red-2"]
+        message = self._read_message()
+        if message.get("type") != "tactical_observation":
+            raise RuntimeError(
+                f"Go simulator did not expose a tactical observation: {message}"
+            )
+        self._current = message
+        default_actions = {
+            agent: {"intent": 0, "target": 0, "movement": 0, "ability": 0}
+            for agent in self.agents
+        }
+        observations, _, _, _, infos = self.step(default_actions)
+        return observations, infos
+
+    def step(self, actions: Dict[str, Dict[str, int]]):
+        if not self._process or not self.agents or self._current is None:
+            raise RuntimeError("Go tactical simulator must be reset before step")
+        observations: Dict[str, Dict] = {}
+        rewards: Dict[str, float] = {}
+        current = self._current
+        for _ in range(len(self.agents)):
+            bot_id = current.get("botId")
+            action = actions.get(
+                bot_id, {"intent": 0, "target": 0, "movement": 0, "ability": 0}
+            )
+            self._process.stdin.write(json.dumps({"tacticalAction": action}) + "\n")
+            self._process.stdin.flush()
+            message = self._read_message()
+            if message.get("type") == "report":
+                self.last_report = message["report"]
+                self._current = None
+                return (
+                    {},
+                    {agent: 0.0 for agent in self.agents},
+                    {agent: True for agent in self.agents},
+                    {agent: False for agent in self.agents},
+                    {},
+                )
+            if message.get("type") != "tactical_observation":
+                raise RuntimeError(
+                    f"invalid tactical Go simulator step message: {message}"
+                )
+            rewards[bot_id] = float(current.get("reward", 0.0))
+            current = message
+            observations[current["botId"]] = current["tacticalObservation"]
+        self._current = current
+        return (
+            observations,
+            rewards,
+            {agent: False for agent in self.agents},
+            {agent: False for agent in self.agents},
+            {
+                agent: {"schemaVersion": TACTICAL_SCHEMA_VERSION}
+                for agent in self.agents
+            },
+        )
+
+    def close(self):
+        if self._process is None:
+            return
+        if self._process.poll() is None:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                self._process.wait(timeout=2)
+        if self._process.stdin is not None:
+            self._process.stdin.close()
+        if self._process.stdout is not None:
+            self._process.stdout.close()
+        self._process = None
+        self.agents = []
+        self._current = None
+
+    def _read_stdout(self):
+        process = self._process
+        for line in process.stdout:
+            try:
+                self._messages.put(json.loads(line))
+            except json.JSONDecodeError as error:
+                self._messages.put(RuntimeError(f"invalid Go simulator JSON: {error}"))
+        self._messages.put(None)
+
+    def _read_message(self) -> Dict:
+        try:
+            message = self._messages.get(timeout=self.timeout_seconds)
+        except queue.Empty as error:
+            self.close()
+            raise TimeoutError("Go tactical simulator response timed out") from error
+        if isinstance(message, Exception):
+            raise message
+        if message is None:
+            raise RuntimeError(
+                "Go tactical simulator exited before sending a protocol message"
+            )
         return message

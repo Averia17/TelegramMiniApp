@@ -26,6 +26,12 @@ type BotAIMetricSample struct {
 	MLUtilityOverrides        uint64
 	MLTacticalDecisions       uint64
 	MLTacticalBehaviorChanges uint64
+	MLTacticalTeamVictory     uint64
+	MLTacticalFocusFire       uint64
+	MLTacticalAllyHelp        uint64
+	MLTacticalCover           uint64
+	MLTacticalSmartRetreat    uint64
+	MLTacticalSafetyFallbacks uint64
 	MLActionSelections        map[string]uint64
 	MLShadowDecisions         uint64
 	MLShadowDisagreements     uint64
@@ -70,6 +76,12 @@ func RecordBotAIMetrics(registry *Registry, sample BotAIMetricSample) {
 	registry.AddCounter("battle_bot_ml_utility_overrides_total", "Bot ML decisions that changed the utility action", float64(sample.MLUtilityOverrides), labels)
 	registry.AddCounter("battle_bot_ml_tactical_decisions_total", "Bot ML tactical decisions", float64(sample.MLTacticalDecisions), labels)
 	registry.AddCounter("battle_bot_ml_tactical_behavior_changes_total", "Bot ML tactical decisions that changed executed behavior", float64(sample.MLTacticalBehaviorChanges), labels)
+	registry.AddCounter("battle_bot_ml_tactical_team_victory_total", "Bot ML team-victory reward events", float64(sample.MLTacticalTeamVictory), labels)
+	registry.AddCounter("battle_bot_ml_tactical_focus_fire_total", "Bot ML focus-fire reward events", float64(sample.MLTacticalFocusFire), labels)
+	registry.AddCounter("battle_bot_ml_tactical_ally_help_total", "Bot ML ally-help reward events", float64(sample.MLTacticalAllyHelp), labels)
+	registry.AddCounter("battle_bot_ml_tactical_cover_total", "Bot ML cover reward events", float64(sample.MLTacticalCover), labels)
+	registry.AddCounter("battle_bot_ml_tactical_smart_retreat_total", "Bot ML smart-retreat reward events", float64(sample.MLTacticalSmartRetreat), labels)
+	registry.AddCounter("battle_bot_ml_tactical_safety_fallbacks_total", "Bot ML tactical safety fallbacks", float64(sample.MLTacticalSafetyFallbacks), labels)
 	registry.AddCounter("battle_bot_ml_shadow_decisions_total", "Bot ML shadow decisions", float64(sample.MLShadowDecisions), labels)
 	registry.AddCounter("battle_bot_ml_shadow_disagreements_total", "Bot ML shadow disagreements with utility policy", float64(sample.MLShadowDisagreements), labels)
 	registry.AddCounter("battle_bot_ml_shadow_fallbacks_total", "Bot ML shadow invalid/fallback decisions", float64(sample.MLShadowFallbacks), labels)

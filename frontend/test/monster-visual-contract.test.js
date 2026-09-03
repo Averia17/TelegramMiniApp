@@ -46,9 +46,13 @@ test("each neutral monster mounts authored silhouette parts with its own animati
     return roles
   }
   assert.ok(rolesFor("bat").includes("bat-wing"))
+  assert.ok(rolesFor("bat").includes("bat-belly"))
   assert.ok(rolesFor("hound").includes("ash-hound-leg"))
   assert.ok(rolesFor("hound").includes("ash-hound-snout"))
+  assert.ok(rolesFor("hound").includes("ash-hound-collar"))
   assert.ok(rolesFor("guardian").includes("root-guardian-core"))
+  assert.ok(rolesFor("guardian").includes("root-guardian-shoulder"))
+  assert.ok(rolesFor("guardian").includes("root-guardian-bark-band"))
 
   const batWingBefore = renderer.views.get("bat").leftWing.rotation.z
   const houndLegBefore = renderer.views.get("hound").legs[0].rotation.z

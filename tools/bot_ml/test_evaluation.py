@@ -53,6 +53,27 @@ class EvaluationTests(unittest.TestCase):
         self.assertIn("bot.damage regression", result["reasons"])
         self.assertIn("bot.accuracy regression", result["reasons"])
 
+    def test_tactical_gate_rejects_damage_regression_even_when_model_changes_behavior(
+        self,
+    ):
+        result = evaluate_benchmark(
+            {
+                "metrics": {
+                    "baseline": {"damage": 100, "aliveRate": 1},
+                    "tacticalV2": {
+                        "damage": 90,
+                        "aliveRate": 1,
+                        "mlTacticalDecisions": 20,
+                        "mlTacticalBehaviorChanges": 8,
+                        "safetyFallbacks": 2,
+                    },
+                },
+                "deltas": {"damage": -10, "aliveRate": 0},
+            }
+        )
+        self.assertFalse(result["passed"])
+        self.assertIn("damage regression", result["reasons"])
+
     def test_opponent_pool_is_deterministic_and_rotates(self):
         pool = OpponentPool(["utility-v1", "checkpoint-a", "checkpoint-b"])
         self.assertEqual(pool.choose(10, 4), pool.choose(10, 4))

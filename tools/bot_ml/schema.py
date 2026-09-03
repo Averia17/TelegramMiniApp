@@ -58,6 +58,72 @@ FEATURE_NAMES = [
 
 ACTION_NAMES = ["roam", "engage", "retreat", "collect_pickup"]
 
+TACTICAL_SCHEMA_VERSION = "bot-ml-tactical-v2"
+TACTICAL_FEATURE_NAMES = (
+    FEATURE_NAMES
+    + [
+        f"{group}_{slot}_{field}"
+        for group, count, fields in (
+            (
+                "enemy",
+                3,
+                ("distance", "bearing", "health", "pressure", "score", "attack_range"),
+            ),
+            ("ally", 3, ("distance", "bearing", "health", "pressure", "score")),
+            ("monster", 3, ("distance", "bearing", "health", "score", "attack_range")),
+        )
+        for slot in range(count)
+        for field in fields
+    ]
+    + [
+        "objective_distance",
+        "objective_health",
+        "objective_bearing",
+        "cover_available",
+        "cover_distance",
+        "cover_quality",
+    ]
+)
+TACTICAL_OBSERVATION_SIZE = len(TACTICAL_FEATURE_NAMES)
+TACTICAL_INTENT_NAMES = [
+    "roam",
+    "engage",
+    "retreat",
+    "kite",
+    "chase",
+    "take_cover",
+    "use_ability",
+]
+TACTICAL_TARGET_NAMES = [
+    "none",
+    "enemy_0",
+    "enemy_1",
+    "enemy_2",
+    "ally_0",
+    "objective",
+    "monster_0",
+    "pickup",
+]
+TACTICAL_MOVEMENT_NAMES = ["direct", "strafe", "kite", "chase", "cover", "regroup"]
+TACTICAL_ABILITY_NAMES = ["none", "gadget", "super"]
+
+
+def tactical_schema_fingerprint() -> str:
+    payload = "\x00".join(
+        [
+            TACTICAL_SCHEMA_VERSION,
+            "\x00".join(TACTICAL_FEATURE_NAMES),
+            "\x00".join(TACTICAL_INTENT_NAMES),
+            "\x00".join(TACTICAL_TARGET_NAMES),
+            "\x00".join(TACTICAL_MOVEMENT_NAMES),
+            "\x00".join(TACTICAL_ABILITY_NAMES),
+        ]
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+TACTICAL_SCHEMA_FINGERPRINT = tactical_schema_fingerprint()
+
 
 def schema_fingerprint() -> str:
     payload = "\x00".join(

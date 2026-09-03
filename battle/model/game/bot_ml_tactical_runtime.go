@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	botMLTacticalKind       = "recurrent-ppo-lstm-tactical-v2"
+	botMLTacticalKind        = "recurrent-ppo-lstm-tactical-v2"
 	botMLTacticalHiddenLimit = 256
 )
 
@@ -179,25 +179,43 @@ func validateBotMLTacticalCheckpoint(checkpoint BotMLTacticalCheckpoint) error {
 	if len(checkpoint.InputToHidden) != checkpoint.HiddenSize*4 || len(checkpoint.HiddenToHidden) != checkpoint.HiddenSize*4 || len(checkpoint.LSTMBias) != checkpoint.HiddenSize*4 {
 		return fmt.Errorf("invalid tactical ML LSTM shape")
 	}
-	if err := validateMatrix(checkpoint.InputToHidden, checkpoint.HiddenSize*4, checkpoint.InputSize, "input"); err != nil { return err }
-	if err := validateMatrix(checkpoint.HiddenToHidden, checkpoint.HiddenSize*4, checkpoint.HiddenSize, "hidden"); err != nil { return err }
-	if !finiteFloat64s(checkpoint.LSTMBias) { return fmt.Errorf("invalid tactical ML LSTM bias") }
-	for name, weights, bias, size := range map[string]struct{ weights [][]float64; bias []float64; size int }{
-		"intent": {checkpoint.IntentWeight, checkpoint.IntentBias, int(BotMLTacticalIntentCount)},
-		"target": {checkpoint.TargetWeight, checkpoint.TargetBias, int(BotMLTacticalTargetCount)},
+	if err := validateMatrix(checkpoint.InputToHidden, checkpoint.HiddenSize*4, checkpoint.InputSize, "input"); err != nil {
+		return err
+	}
+	if err := validateMatrix(checkpoint.HiddenToHidden, checkpoint.HiddenSize*4, checkpoint.HiddenSize, "hidden"); err != nil {
+		return err
+	}
+	if !finiteFloat64s(checkpoint.LSTMBias) {
+		return fmt.Errorf("invalid tactical ML LSTM bias")
+	}
+	for name, head := range map[string]struct {
+		weights [][]float64
+		bias    []float64
+		size    int
+	}{
+		"intent":   {checkpoint.IntentWeight, checkpoint.IntentBias, int(BotMLTacticalIntentCount)},
+		"target":   {checkpoint.TargetWeight, checkpoint.TargetBias, int(BotMLTacticalTargetCount)},
 		"movement": {checkpoint.MovementWeight, checkpoint.MovementBias, int(BotMLTacticalMovementCount)},
-		"ability": {checkpoint.AbilityWeight, checkpoint.AbilityBias, int(BotMLTacticalAbilityCount)},
+		"ability":  {checkpoint.AbilityWeight, checkpoint.AbilityBias, int(BotMLTacticalAbilityCount)},
 	} {
-		if len(weights) != size || len(bias) != size || !finiteFloat64s(bias) { return fmt.Errorf("invalid tactical ML %s head shape", name) }
-		if err := validateMatrix(weights, size, checkpoint.HiddenSize, name); err != nil { return err }
+		if len(head.weights) != head.size || len(head.bias) != head.size || !finiteFloat64s(head.bias) {
+			return fmt.Errorf("invalid tactical ML %s head shape", name)
+		}
+		if err := validateMatrix(head.weights, head.size, checkpoint.HiddenSize, name); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func validateMatrix(matrix [][]float64, rows, columns int, name string) error {
-	if len(matrix) != rows { return fmt.Errorf("invalid tactical ML %s matrix rows", name) }
+	if len(matrix) != rows {
+		return fmt.Errorf("invalid tactical ML %s matrix rows", name)
+	}
 	for row := range matrix {
-		if len(matrix[row]) != columns || !finiteFloat64s(matrix[row]) { return fmt.Errorf("invalid tactical ML %s matrix row %d", name, row) }
+		if len(matrix[row]) != columns || !finiteFloat64s(matrix[row]) {
+			return fmt.Errorf("invalid tactical ML %s matrix row %d", name, row)
+		}
 	}
 	return nil
 }

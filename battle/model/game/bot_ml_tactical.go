@@ -16,7 +16,7 @@ const BotMLTacticalSchemaVersion = "bot-ml-tactical-v2"
 
 // 48 legacy combat features + 18 enemy features + 15 ally features +
 // 15 monster features + 3 cover features.
-const BotMLTacticalObservationSize = 99
+const BotMLTacticalObservationSize = 102
 
 type BotMLTacticalIntent uint8
 
@@ -95,6 +95,11 @@ type BotMLTacticalPolicy interface {
 	DecideTactical(botID string, observation BotMLTacticalObservation) BotMLTacticalDecision
 }
 
+type BotMLTacticalStatefulPolicy interface {
+	BotMLTacticalPolicy
+	Reset(botID string)
+}
+
 type BotMLTacticalPolicyFunc struct {
 	PolicyName string
 	Fn         func(string, BotMLTacticalObservation) BotMLTacticalDecision
@@ -134,8 +139,24 @@ func botMLTacticalFeatureNames() []string {
 			}
 		}
 	}
-	features = append(features, "cover_available", "cover_distance", "cover_quality")
+	features = append(features, "objective_distance", "objective_health", "objective_bearing", "cover_available", "cover_distance", "cover_quality")
 	return features
+}
+
+func BotMLTacticalFeatureNames() []string {
+	return append([]string(nil), botMLTacticalFeatureNames()...)
+}
+func BotMLTacticalIntentNames() []string {
+	return append([]string(nil), botMLTacticalIntentNames[:]...)
+}
+func BotMLTacticalTargetNames() []string {
+	return append([]string(nil), botMLTacticalTargetNames[:]...)
+}
+func BotMLTacticalMovementNames() []string {
+	return append([]string(nil), botMLTacticalMovementNames[:]...)
+}
+func BotMLTacticalAbilityNames() []string {
+	return append([]string(nil), botMLTacticalAbilityNames[:]...)
 }
 
 func botMLTacticalIntentName(value BotMLTacticalIntent) string {
@@ -190,6 +211,9 @@ func (gs *GameState) BotMLTacticalObservationFor(botID string, now int64) (BotML
 	}
 	for _, target := range monsters {
 		botMLPutTacticalTarget(values, &index, bot, target, 5)
+	}
+	if objective := gs.teamObjective(bot.Team, false); objective != nil {
+		botMLPutTacticalTarget(values, &index, bot, &botTarget{kind: "objective", id: objective.ID, objective: objective, x: objective.X, y: objective.Y, distance: math.Hypot(objective.X-bot.X, objective.Y-bot.Y)}, 3)
 	}
 	for index < len(values)-3 {
 		values[index] = 0
@@ -293,7 +317,7 @@ func (gs *GameState) botMLTacticalCandidates(bot *player.Player, now int64) (ene
 		return nil, nil, nil
 	}
 	for id, candidate := range gs.Players {
-		if candidate == nil || id == bot.PlayerId || !candidate.IsAlive() || !gs.botCanSee(bot, candidate, now) {
+		if candidate == nil || id == bot.PlayerId || !candidate.IsAlive() || candidate.InvulnerableUntil > now || !gs.botCanSee(bot, candidate, now) {
 			continue
 		}
 		distance := math.Hypot(candidate.X-bot.X, candidate.Y-bot.Y)
@@ -303,6 +327,9 @@ func (gs *GameState) botMLTacticalCandidates(bot *player.Player, now int64) (ene
 				target.score = (1-float64(candidate.Lives)/math.Max(1, float64(candidate.MaxLives)))*100 - distance/100
 				allies = append(allies, target)
 			}
+			continue
+		}
+		if !candidate.CanBulletHurt(bot.PlayerId, bot.Team) {
 			continue
 		}
 		target.score = gs.botTargetScore(bot, target, now)

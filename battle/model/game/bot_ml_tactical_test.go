@@ -6,10 +6,10 @@ func TestBotMLTacticalObservationUsesStableVisibleTargetSlots(t *testing.T) {
 	state := newTestGameState()
 	state.Walls = nil
 	state.Props = nil
-	state.State = GameStateGame
 	state.PlayerAdd("bot", "Bot", "Needle")
 	state.PlayerAdd("enemy-a", "Enemy A", "Kaze")
 	state.PlayerAdd("enemy-b", "Enemy B", "Mandy")
+	state.State = GameStateGame
 
 	bot := state.Players["bot"]
 	bot.IsBot = true
@@ -40,8 +40,8 @@ func TestBotMLTacticalObservationMasksUnavailableTargetAndAbilityChoices(t *test
 	state := newTestGameState()
 	state.Walls = nil
 	state.Props = nil
-	state.State = GameStateGame
 	state.PlayerAdd("bot", "Bot", "Needle")
+	state.State = GameStateGame
 	state.Players["bot"].IsBot = true
 	state.Players["bot"].GadgetCharges = 0
 
@@ -57,5 +57,12 @@ func TestBotMLTacticalObservationMasksUnavailableTargetAndAbilityChoices(t *test
 	}
 	if !observation.IntentMask[BotMLTacticalIntentRoam] || !observation.MovementMask[BotMLTacticalMovementDirect] {
 		t.Fatalf("basic tactical choices were masked: intent=%#v movement=%#v", observation.IntentMask, observation.MovementMask)
+	}
+}
+
+func TestBotMLTacticalSchemaMatchesTrainingContract(t *testing.T) {
+	const expectedFingerprint = "a9bc9fab8e57c2149892ccf513e4d1cf3f3a8c9a0f2f7b1c355dcae797db9d5a"
+	if got := BotMLTacticalSchemaFingerprint(); got != expectedFingerprint {
+		t.Fatalf("tactical schema fingerprint=%s, want %s", got, expectedFingerprint)
 	}
 }

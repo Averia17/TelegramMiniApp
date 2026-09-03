@@ -896,6 +896,10 @@ func (gs *GameState) updateBattleRoyaleBots() {
 			botIndex++
 			continue
 		}
+		if gs.botMLTacticalControl(id, bot, now) {
+			botIndex++
+			continue
+		}
 		visibleTarget := gs.botSelectTarget(bot, now)
 		gs.recordBotTargetSelection(id, visibleTarget)
 		if visibleTarget == nil && gs.botTryAbility(id, bot, nil, now) {

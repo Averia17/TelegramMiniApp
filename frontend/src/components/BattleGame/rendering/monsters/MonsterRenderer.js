@@ -166,6 +166,7 @@ const createBat = state => {
   for (const x of [-.12, .12]) {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(.045, 8, 6), eyeMaterial)
     eye.position.set(x, .4, .3)
+    eye.userData.role = "bat-eye"
     group.add(eye)
   }
 
@@ -186,12 +187,23 @@ const createBat = state => {
   const houndLegs = []
   let houndTail = null
   let houndEmber = null
+  let houndCollar = null
   const guardianVines = []
   const guardianVineBaseRotations = []
+  const guardianBarkBands = []
+  const guardianShoulders = []
   let guardianCrown = null
   let guardianCore = null
 
   if (kind === "bat") {
+    const belly = new THREE.Mesh(
+      new THREE.SphereGeometry(.29, 10, 8),
+      new THREE.MeshStandardMaterial({color: 0x8748a6, roughness: .78}),
+    )
+    belly.position.set(0, .04, .27)
+    belly.scale.set(.92, 1.05, .28)
+    belly.userData.role = "bat-belly"
+    group.add(belly)
     const fangMaterial = new THREE.MeshStandardMaterial({color: 0xf4e9d0, roughness: .48})
     for (const x of [-.12, .12]) {
       const fang = new THREE.Mesh(new THREE.ConeGeometry(.045, .16, 6), fangMaterial.clone())
@@ -211,11 +223,32 @@ const createBat = state => {
       horn.userData.role = "ash-hound-horn"
       group.add(horn)
     }
+    houndCollar = new THREE.Mesh(
+      new THREE.TorusGeometry(.31, .045, 7, 16),
+      new THREE.MeshStandardMaterial({color: profile.accent, emissive: 0x3a1206, emissiveIntensity: .35, roughness: .55}),
+    )
+    houndCollar.rotation.x = Math.PI / 2
+    houndCollar.position.set(0, .31, .02)
+    houndCollar.userData.role = "ash-hound-collar"
+    group.add(houndCollar)
     const snout = new THREE.Mesh(new THREE.SphereGeometry(.22, 10, 8), bodyMaterial.clone())
     snout.position.set(0, .18, .31)
     snout.scale.set(1.15, .68, 1.22)
     snout.userData.role = "ash-hound-snout"
     group.add(snout)
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(.075, 8, 6), new THREE.MeshStandardMaterial({color: 0x211820, roughness: .42}))
+    nose.position.set(0, .18, .56)
+    nose.scale.set(1.15, .75, .7)
+    nose.userData.role = "ash-hound-nose"
+    group.add(nose)
+    for (const x of [-.31, .31]) {
+      const shoulder = new THREE.Mesh(new THREE.DodecahedronGeometry(.16, 0), bodyMaterial.clone())
+      shoulder.position.set(x, .06, .02)
+      shoulder.scale.set(.9, 1.1, .8)
+      shoulder.userData.role = "ash-hound-shoulder"
+      shoulder.castShadow = true
+      group.add(shoulder)
+    }
     for (const x of [-.22, .22]) {
       for (const z of [-.17, .17]) {
         const leg = new THREE.Mesh(new THREE.CylinderGeometry(.085, .105, .34, 7), bodyMaterial.clone())
@@ -247,6 +280,7 @@ const createBat = state => {
 
   if (kind === "root_guardian") {
     const rootMaterial = new THREE.MeshStandardMaterial({color: profile.accent, emissive: 0x173c20, emissiveIntensity: .48})
+    const barkMaterial = new THREE.MeshStandardMaterial({color: 0x274838, roughness: .94})
     guardianCore = new THREE.Mesh(new THREE.SphereGeometry(.13, 10, 8), new THREE.MeshBasicMaterial({color: profile.accent}))
     guardianCore.position.set(0, .02, .42)
     guardianCore.userData.role = "root-guardian-core"
@@ -256,6 +290,23 @@ const createBat = state => {
     guardianCrown.position.y = .58
     guardianCrown.userData.role = "root-guardian-crown"
     group.add(guardianCrown)
+    for (const [y, radius] of [[-.02, .42], [.25, .36]]) {
+      const band = new THREE.Mesh(new THREE.TorusGeometry(radius, .045, 6, 14), barkMaterial.clone())
+      band.rotation.x = Math.PI / 2
+      band.position.y = y
+      band.userData.role = "root-guardian-bark-band"
+      guardianBarkBands.push(band)
+      group.add(band)
+    }
+    for (const x of [-.38, .38]) {
+      const shoulder = new THREE.Mesh(new THREE.DodecahedronGeometry(.20, 0), barkMaterial.clone())
+      shoulder.position.set(x, .18, .02)
+      shoulder.scale.set(.9, 1.2, .86)
+      shoulder.userData.role = "root-guardian-shoulder"
+      shoulder.castShadow = true
+      guardianShoulders.push(shoulder)
+      group.add(shoulder)
+    }
     for (const x of [-.28, 0, .28]) {
       const root = new THREE.Mesh(new THREE.ConeGeometry(.07, .38, 5), rootMaterial.clone())
       root.position.set(x, -.18, .05)
@@ -294,8 +345,11 @@ const createBat = state => {
     legs: houndLegs,
     tail: houndTail,
     ember: houndEmber,
+    collar: houndCollar,
     vines: guardianVines,
     vineBaseRotations: guardianVineBaseRotations,
+    barkBands: guardianBarkBands,
+    shoulders: guardianShoulders,
     crown: guardianCrown,
     core: guardianCore,
     targetX: state.x,
@@ -388,6 +442,7 @@ export class MonsterRenderer {
         })
         if (view.tail) view.tail.rotation.z = Math.sin(phase * .8) * .16
         if (view.ember) view.ember.scale.setScalar(1 + Math.sin(phase * 1.4) * .18)
+        if (view.collar) view.collar.scale.setScalar(1 + Math.sin(phase * .7) * .025)
       }
       if (view.group.userData.kind === "root_guardian") {
         view.vines.forEach((vine, index) => {
@@ -395,6 +450,12 @@ export class MonsterRenderer {
         })
         if (view.crown) view.crown.rotation.z = Math.sin(phase * .26) * .10
         if (view.core) view.core.scale.setScalar(1 + Math.sin(phase * .8) * .14)
+        view.barkBands.forEach((band, index) => {
+          band.scale.setScalar(1 + Math.sin(phase * .32 + index * .8) * .025)
+        })
+        view.shoulders.forEach((shoulder, index) => {
+          shoulder.rotation.z = (index === 0 ? -.08 : .08) + Math.sin(phase * .38 + index * Math.PI) * .035
+        })
       }
       view.body.position.y = Math.sin(phase * .5) * view.hoverAmplitude
       void delta

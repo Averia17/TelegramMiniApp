@@ -1,6 +1,6 @@
 # Combat 2.0 — all-hero visual matrix
 
-Дата runtime-проверки: 2026-09-02.
+Дата runtime-проверки: 2026-09-03.
 
 Аудит запускался через `tools/qa/hero-effect-visual-audit.cjs` на локальном
 Vite-сервере с frontend-only map fixture. Проверены 8 героев и 7 neutral-camp
@@ -24,11 +24,14 @@ Runtime animation transition audit также прошёл для всех 8 GLB
 overlay возвращается к idle. Это не является доказательством совпадения
 authored active frame с серверным impact — такой gate остаётся отдельным.
 
-Дополнительно all-hero live skill audit через локальный WebSocket stack прошёл
-8/8: каждый observedHero совпал с выбранным героем, authoritative snapshots
-доставили skill effects до renderer, console/page errors отсутствуют. Это
-подтверждает живой путь `client → battle service → snapshot → renderer`, но не
-заменяет device FPS и human clarity review.
+Дополнительно live skill audit через локальный WebSocket stack проверил всех
+8 героев: каждый `observedHero` совпадает с выбранным героем, а page/console
+errors отсутствуют. После усиления harness обязательные Basic/Gadget команды
+сверяются по `sourceId/commandId/accepted`; отдельные single-hero повторы
+Needle, Mandy, Wukong, Persephone Lumi и Katty прошли. Однако длинная
+последовательность матчей пока даёт `live-authority` event-missing для части
+команд, поэтому full-sequence 8/8 не засчитан до исправления transport/
+retention/load риска. Super помечается `not-ready`, если серверный charge <100.
 
 | Герой | Capture states | Проверяемая визуальная семантика | Статус runtime |
 |---|---:|---|---|
@@ -45,9 +48,12 @@ authored active frame с серверным impact — такой gate оста�
 
 ## Acceptance boundary
 
-- PASS означает: effect имеет отдельную runtime composition, phase-aware
-  lifecycle и корректно создаётся в Three.js без ошибок; authoritative gadget
-  coverage хранится в `TestScenarioPackGadgetAuthorityCoversEveryHero`.
+- PASS в visual matrix означает: effect имеет отдельную runtime composition,
+  phase-aware lifecycle и корректно создаётся в Three.js без ошибок;
+  authoritative gadget coverage хранится в
+  `TestScenarioPackGadgetAuthorityCoversEveryHero`. Live skill PASS
+  дополнительно требует подтверждённый `accepted` event выбранного героя;
+  `event-missing` не маскируется эффектами соседних ботов.
 - Финальный all-hero gate всё ещё требует для каждого героя: реального
   solo/team scenario, miss/interrupt/re-entry проверки, mobile FPS capture и
   минимум одного human playtest на читаемость угрозы и ответа.
